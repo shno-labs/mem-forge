@@ -6,7 +6,7 @@
 
 ## Decision
 
-MemInception will add a **Memory Evaluation Mechanism** made of four cooperating parts:
+MemForge will add a **Memory Evaluation Mechanism** made of four cooperating parts:
 
 1. **Memory Audit Ledger**: an append-only operation log for memory decisions and outcomes.
 2. **Safe Memory Write Path**: a refined write boundary so memory mutations cannot bypass SQLite, FTS5, ChromaDB, and audit coordination.
@@ -17,7 +17,7 @@ The weekly evaluator does not mutate memories. It produces findings and recommen
 
 ## Why This Exists
 
-MemInception currently records useful but incomplete operational history:
+MemForge currently records useful but incomplete operational history:
 
 - `sync_history` records source-level run outcomes.
 - `changelog` records document-level changes.
@@ -438,7 +438,7 @@ This keeps the weekly evaluator focused on trust-risky behavior without ignoring
 
 ## Retrieval Evaluation
 
-Retrieval quality must be evaluated separately from memory quality because MemInception retrieval uses multiple channels.
+Retrieval quality must be evaluated separately from memory quality because MemForge retrieval uses multiple channels.
 
 The mechanism should maintain query probes with expected or observed useful results:
 

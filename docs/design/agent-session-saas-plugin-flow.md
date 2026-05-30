@@ -6,25 +6,25 @@ Status: active design, 2026-05-30
 
 Agent-session memory should work for long Codex, Claude Code, and future coding
 agent sessions without letting any client plugin own memory authority. The
-plugin captures bounded session windows and delivers them safely. MemInception owns
+plugin captures bounded session windows and delivers them safely. MemForge owns
 authorization, package generation, source sync, extraction, reconciliation,
 review, and indexing.
 
 The design is intentionally small:
 
 ```text
-agent coding tool plugin -> redacted canonical evidence window -> MemInception package
+agent coding tool plugin -> redacted canonical evidence window -> MemForge package
                          -> agent_session source sync -> canonical memories
 ```
 
 Native transcript rows are transient. The plugin uses them only as a local
-cursor source and projects them into canonical evidence before upload. MemInception
+cursor source and projects them into canonical evidence before upload. MemForge
 stores generated packages, receipts, hashes, and processing status. It does not
 store raw windows by default.
 
 ## Ownership Boundary
 
-| Concern | Agent coding tool plugin | MemInception service |
+| Concern | Agent coding tool plugin | MemForge service |
 | --- | --- | --- |
 | Local lifecycle | Observe Codex, Claude Code, or future client hooks | Never read local transcript files directly |
 | Session reading | Use a client adapter to count and slice local event units | Validate upload shape, limits, and canonical evidence |
@@ -43,10 +43,10 @@ and project scope must be service-derived.
 ```mermaid
 sequenceDiagram
   participant Tool as "Codex or Claude Code"
-  participant Plugin as "MemInception plugin"
+  participant Plugin as "MemForge plugin"
   participant Queue as "Local queue.sqlite"
   participant Worker as "Run-once worker"
-  participant API as "MemInception API"
+  participant API as "MemForge API"
   participant LLM as "Stage 1 package LLM"
   participant Source as "Agent Session source"
   participant Pipeline as "Memory pipeline"
@@ -177,7 +177,7 @@ metadata/context noise. If one JSONL line contains oversized useful evidence,
 the plugin preserves the evidence head and tail with a middle truncation marker,
 marks the window truncated, and advances by one line after upload succeeds.
 
-### 5. MemInception Generates Or Rejects A Package
+### 5. MemForge Generates Or Rejects A Package
 
 The plugin posts to:
 
@@ -227,7 +227,7 @@ Representative request:
 }
 ```
 
-MemInception validates `schema_version`, redacts again, canonicalizes the uploaded
+MemForge validates `schema_version`, redacts again, canonicalizes the uploaded
 events again, hashes the service-canonical content, and runs Stage 1 package
 generation. The LLM can return a durable package or `no_output`.
 
@@ -276,7 +276,7 @@ No-output response:
 
 ### 6. Package Promotes Through The Existing Source Pipeline
 
-When Stage 1 creates a package, MemInception persists it as an `agent_session`
+When Stage 1 creates a package, MemForge persists it as an `agent_session`
 source document, writes a receipt with the window outcome, and queues a coalesced
 `Agent Session Summaries` sync. If a package is created while that source is
 already syncing, the queued request waits for the active pass and then runs one
@@ -441,7 +441,7 @@ POST /api/agent-sessions/documents
 ```
 
 Use it when an agent or user already has a real generated summary document.
-Automatic hook capture should use `/api/agent-sessions/windows` so MemInception owns
+Automatic hook capture should use `/api/agent-sessions/windows` so MemForge owns
 the package-generation prompt and source-sync scheduling.
 
 `POST /api/hooks/receipts` remains a lightweight lifecycle receipt endpoint. It
@@ -543,7 +543,7 @@ Keep hosted tenancy as a tracked hardening list, not as extra MVP machinery:
 ## Non-Goals
 
 - No direct memory insertion from hooks.
-- No MemInception discovery of local Codex or Claude Code transcript files.
+- No MemForge discovery of local Codex or Claude Code transcript files.
 - No mandatory standalone daemon for users.
 - No raw window storage by default.
 - No Codex-style global Phase 2 consolidation in the MVP.

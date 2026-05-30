@@ -17,7 +17,7 @@ Current default:
 ```text
 plugin hook -> local queue -> bounded transcript window
             -> POST /api/agent-sessions/windows
-            -> MemInception-generated package
+            -> MemForge-generated package
             -> queued agent_session source sync
 ```
 
@@ -44,5 +44,5 @@ Example request shape:
 
 Use this path only when the caller already has a real summary document to store
 as low-authority generated source material. Automatic Codex and Claude Code hook
-capture should upload windows instead, so MemInception owns the package-generation
+capture should upload windows instead, so MemForge owns the package-generation
 prompt, receipt outcome, and source-sync scheduling.

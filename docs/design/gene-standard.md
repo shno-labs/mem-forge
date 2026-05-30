@@ -34,7 +34,7 @@
 
 ### What is a Gene?
 
-A **gene** is a plugin that integrates an external data source (Confluence, Jira, Slack, ServiceNow, Teams, etc.) into MemInception's memory extraction pipeline. Each gene encapsulates the complete lifecycle of syncing data: authentication, discovery, fetching, and normalization.
+A **gene** is a plugin that integrates an external data source (Confluence, Jira, Slack, ServiceNow, Teams, etc.) into MemForge's memory extraction pipeline. Each gene encapsulates the complete lifecycle of syncing data: authentication, discovery, fetching, and normalization.
 
 ### Design Goals
 
@@ -77,7 +77,7 @@ class SlackGene(Gene):
 
 ```python
 class Gene(ABC):
-    """Abstract base class for all MemInception data-source plugins.
+    """Abstract base class for all MemForge data-source plugins.
 
     Lifecycle (called by the sync orchestrator):
 
@@ -819,12 +819,12 @@ A 3rd-party gene is a standard pip package:
 ```toml
 # pyproject.toml
 [project]
-name = "meminception-gene-slack"
+name = "memforge-gene-slack"
 version = "0.3.0"
-dependencies = ["meminception>=0.1.0"]
+dependencies = ["memforge>=0.1.0"]
 
-[project.entry-points."meminception.genes"]
-slack = "meminception_slack:SlackGene"
+[project.entry-points."memforge.genes"]
+slack = "memforge_slack:SlackGene"
 ```
 
 The entry point *name* is informational. The registry key comes from `metadata().name`.
@@ -841,8 +841,8 @@ _discover_entrypoint_genes()      # 2. Entry points cannot override builtins
 
 ```python
 def _discover_entrypoint_genes() -> None:
-    """Scan installed packages for meminception.genes entry points."""
-    eps = importlib.metadata.entry_points(group="meminception.genes")
+    """Scan installed packages for memforge.genes entry points."""
+    eps = importlib.metadata.entry_points(group="memforge.genes")
     for ep in eps:
         try:
             gene_cls = ep.load()
@@ -872,10 +872,10 @@ def _discover_entrypoint_genes() -> None:
 ### 11.1 Template Project (Cookiecutter)
 
 ```
-meminception-gene-{name}/
+memforge-gene-{name}/
 ├── pyproject.toml              # entry_points, deps, build config
 ├── src/
-│   └── meminception_{name}/
+│   └── memforge_{name}/
 │       ├── __init__.py         # re-exports the Gene class
 │       ├── gene.py             # Gene subclass skeleton
 │       └── py.typed            # PEP 561 marker
@@ -926,8 +926,8 @@ class {{ClassName}}(Gene):
 
 ```python
 # tests/test_compliance.py
-from meminception.testing import GeneTestSuite
-from meminception_slack import SlackGene
+from memforge.testing import GeneTestSuite
+from memforge_slack import SlackGene
 
 class TestSlackCompliance(GeneTestSuite):
     gene_class = SlackGene
@@ -941,12 +941,12 @@ All contract tests inherited automatically (15+ tests covering every lifecycle s
 
 ### 11.4 Developer Documentation Outline
 
-1. **Quick Start** -- cookiecutter, fill template fields, run pytest, pip install into MemInception
+1. **Quick Start** -- cookiecutter, fill template fields, run pytest, pip install into MemForge
 2. **Gene Lifecycle** -- diagram, method responsibilities, error expectations
 3. **Data Model Reference** -- ContentItem, RawContent, NormalizedContent field-by-field
 4. **Configuration Design** -- groups, fields, secrets, dynamic visibility
 5. **Testing Your Gene** -- GeneTestSuite, MockHTTPServer, integration testing
-6. **Publishing** -- PyPI naming (`meminception-gene-*`), versioning
+6. **Publishing** -- PyPI naming (`memforge-gene-*`), versioning
 7. **Capability Flags** -- what each enables
 8. **Troubleshooting** -- common registration errors, debugging checklist
 

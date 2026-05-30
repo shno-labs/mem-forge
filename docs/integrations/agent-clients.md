@@ -1,6 +1,6 @@
 # Agent Client Integrations
 
-MemInception supports Codex, Claude Code, and similar tools through thin client
+MemForge supports Codex, Claude Code, and similar tools through thin client
 adapters. The adapter boundary is deliberately small so different agent session
 formats can be normalized without moving memory decisions into the client.
 
@@ -20,7 +20,7 @@ sync, or read transcript files that belong to another tool.
 
 ## Service-Side Responsibilities
 
-The MemInception service owns:
+The MemForge service owns:
 
 - validating the window schema and client metadata
 - redacting again because client-side redaction is not a trust boundary
@@ -31,7 +31,7 @@ The MemInception service owns:
   policies
 
 This is the same boundary for local self-hosting and a future hosted service.
-Only `MEMINCEPTION_API_URL` and authentication change.
+Only `MEMFORGE_API_URL` and authentication change.
 
 ## Window Shape
 
@@ -40,8 +40,8 @@ Only `MEMINCEPTION_API_URL` and authentication change.
   "schema_version": "agent-session-window/v1",
   "client": "codex",
   "session_id": "session-123",
-  "workspace": "/workspace/mem-inception",
-  "repo": "DoDoMan-TTT/mem-inception",
+  "workspace": "/workspace/mem-forge",
+  "repo": "DoDoMan-TTT/mem-forge",
   "branch": "main",
   "trigger": "GATED_CAPTURE",
   "window": {

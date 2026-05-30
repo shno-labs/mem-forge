@@ -24,7 +24,7 @@ native hook payload
   -> local session_cursor bookmark/pending state
   -> run-once worker slices live event source
   -> /api/agent-sessions/windows
-  -> MemInception-generated package
+  -> MemForge-generated package
   -> service-owned source sync
 ```
 

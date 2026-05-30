@@ -1,4 +1,4 @@
-# MemInception: Architecture Design Document
+# MemForge: Architecture Design Document
 
 > Auto-evolutionary agent memory layer for development teams.
 > Sits between users/agents and knowledge sources, providing persistent team-wide memory
@@ -39,7 +39,7 @@ Development teams accumulate knowledge across many tools (Confluence, Jira, Micr
 
 ### Solution
 
-MemInception is a **memory layer** that:
+MemForge is a **memory layer** that:
 
 - **Extracts** atomic knowledge units (memories) from documents synced via pluggable connectors (genes)
 - **Deduplicates** across sources using semantic similarity
@@ -73,7 +73,7 @@ MemInception is a **memory layer** that:
 | LLM (memory extraction) | **Claude Sonnet** (via Anthropic SDK) | Whole-document extraction, max_tokens=8192 |
 | LLM (reconciliation) | **Claude Sonnet** (via Anthropic SDK) | Third call on document updates only |
 | Scheduler | APScheduler | Per-gene cron schedules |
-| Auth (Atlassian) | Encrypted PAT + shared Jira browser sessions + httpx | HTTPS-only Confluence PAT access; Jira can use a shared per-origin browser session for instances that do not grant PAT REST quota. Source PATs and Jira browser-session cookies use `MEMINCEPTION_SECRET_KEY` when provided, otherwise an app-managed local Fernet key file |
+| Auth (Atlassian) | Encrypted PAT + shared Jira browser sessions + httpx | HTTPS-only Confluence PAT access; Jira can use a shared per-origin browser session for instances that do not grant PAT REST quota. Source PATs and Jira browser-session cookies use `MEMFORGE_SECRET_KEY` when provided, otherwise an app-managed local Fernet key file |
 | Auth (OAuth2) | httpx + MSAL | Microsoft Graph API for Teams/Outlook |
 | Frontend | React 19 + TypeScript + Vite | Admin dashboard |
 | MCP | mcp Python SDK | stdio transport for agent integration |
@@ -82,7 +82,7 @@ MemInception is a **memory layer** that:
 
 ```toml
 [project]
-name = "meminception"
+name = "memforge"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -227,7 +227,7 @@ All distance thresholds are calibrated for **text-embedding-3-small** with cosin
 Default agent-session hook capture is not the MCP
 `submit_agent_session_document` path. The plugin keeps a local queue, uploads
 bounded canonical evidence windows to `/api/agent-sessions/windows`, and
-MemInception queues the `agent_session` source sync after package creation. A
+MemForge queues the `agent_session` source sync after package creation. A
 queued request that arrives while the source is already syncing waits for that
 active pass and then runs one coalesced follow-up pass.
 
@@ -444,13 +444,13 @@ def list_available_genes() -> list[GeneMetadata]:
 
 ### Agent Session Gene Design
 
-Agent-derived memory enters MemInception as generated session documents, not as
+Agent-derived memory enters MemForge as generated session documents, not as
 direct memory writes. The canonical flow is documented in
 `docs/design/agent-session-saas-plugin-flow.md`.
 
-**Content unit:** a MemInception-generated markdown package for one bounded
+**Content unit:** a MemForge-generated markdown package for one bounded
 agent-session window. Codex and Claude Code plugins upload redacted canonical
-evidence windows to `POST /api/agent-sessions/windows`; MemInception canonicalizes
+evidence windows to `POST /api/agent-sessions/windows`; MemForge canonicalizes
 again, runs the Stage 1 package LLM, and stores the package as an
 `agent_session` source document. The explicit
 `POST /api/agent-sessions/documents` path remains for already-generated manual or
@@ -475,7 +475,7 @@ and receipt-only metadata are removed. Receipt provenance remains available in
 
 ### Agent Hook Integration
 
-Codex, Claude Code, and similar coding agents use MemInception through two
+Codex, Claude Code, and similar coding agents use MemForge through two
 separate paths:
 
 - MCP is the model-visible read path. Agents call `search`, `get_memory`, and
@@ -489,21 +489,21 @@ hook, workspace, repo, branch, prompt, touched files, and a memory limit. It
 returns `should_inject=false` for trivial prompts, or a compact markdown block
 with relevant active memories, recent memory changes, and source warnings.
 
-Installable hook packages live under `integrations/codex/meminception-memory` for Codex
-and `integrations/claude-code/meminception-memory` for Claude Code. They share the
-`meminception.hook_adapter` command adapter contract through a vendored plugin
+Installable hook packages live under `integrations/codex/memforge-memory` for Codex
+and `integrations/claude-code/memforge-memory` for Claude Code. They share the
+`memforge.hook_adapter` command adapter contract through a vendored plugin
 script, so provider-specific plugins stay thin while the Admin API remains the
 integration contract. Each package also includes `.mcp.json` so the same
-installation exposes explicit memory tools through the MemInception MCP server.
-The packaged MCP config starts `meminception serve` from `PATH`, or from
-`MEMINCEPTION_MCP_COMMAND` when a local checkout should provide the executable.
+installation exposes explicit memory tools through the MemForge MCP server.
+The packaged MCP config starts `memforge serve` from `PATH`, or from
+`MEMFORGE_MCP_COMMAND` when a local checkout should provide the executable.
 
 Lifecycle receipt write-back is `POST /api/hooks/receipts`; receipts do not
 enter the source pipeline. Automatic hook capture uses a local plugin queue and
 uploads bounded, redacted canonical evidence windows to
 `POST /api/agent-sessions/windows`. The plugin keeps native transcript rows as
 local cursor units, but the package LLM sees filtered evidence rather than raw
-JSONL prefixes when canonical events exist. MemInception generates packages and
+JSONL prefixes when canonical events exist. MemForge generates packages and
 queues the `agent_session` source sync internally, including a coalesced
 follow-up when a package is created during an active sync. Hooks never write
 canonical memories directly. See `docs/design/agent-hook-integration.md` for the
@@ -1668,8 +1668,8 @@ Use `get_memory` for ALL sources when a memory has multiple provenance docs.
     "doc_id": "confluence-12345",
     "doc_title": "PAY Architecture Decision Records",
     "source_type": "confluence",
-    "file_uri": "~/.meminception/documents/pay-docs/arch-decisions.md",
-    "pdf_uri": "~/.meminception/documents/pay-docs/arch-decisions.pdf",
+    "file_uri": "~/.memforge/documents/pay-docs/arch-decisions.md",
+    "pdf_uri": "~/.memforge/documents/pay-docs/arch-decisions.pdf",
     "source_url": "https://wiki.example.com/pages/12345"
   },
   "corroborated_by": 2,
@@ -1769,7 +1769,7 @@ Agent receives a question
 - ChromaDB "memories" collection (parameterized get_chroma_collection)
 - Hook memory extraction into GeneSyncOrchestrator after enrichment
 - Full initial sync to populate memory corpus
-- Basic CLI: `meminception init`, `meminception sync`, `meminception serve`
+- Basic CLI: `memforge init`, `memforge sync`, `memforge serve`
 
 ### Phase 2: Retrieval (Week 3-4)
 
@@ -1815,7 +1815,7 @@ Agent receives a question
 - Retrieval quality evaluation set + metrics (Recall@k, MRR, NDCG)
 - Observability: structured logging, health check, metrics dashboard
 - Admin UI: quality dashboard, contradiction view, merge suggestions
-- `meminception rebuild-vectors` CLI command
+- `memforge rebuild-vectors` CLI command
 
 ---
 
@@ -1846,7 +1846,7 @@ Agent receives a question
 
 The fundamental mismatch:
 
-| Dimension | Mem0 | MemInception |
+| Dimension | Mem0 | MemForge |
 |-----------|------|-------------|
 | Input | Short message pairs | Long-form documents (1K-100K tokens) |
 | Who remembers | One user's personal facts | Entire team's collective knowledge |
@@ -1936,7 +1936,7 @@ The system has two data stores that must stay in sync. Strategy:
    FTS5, and ChromaDB. Memory FTS rows are rebuilt from canonical `memory_entities`
    after entity links are committed. Chroma memory vectors are embedded from that
    same canonical entity set.
-3. **Repair command**: `meminception maintenance repair-indexes` rebuilds FTS5,
+3. **Repair command**: `memforge maintenance repair-indexes` rebuilds FTS5,
    removes non-search-visible memory vectors, and repairs memory/document Chroma
    freshness metadata from SQLite. It also prunes FTS orphans and repairs missing
    vector payload hashes without needing source documents.
@@ -1988,7 +1988,7 @@ Estimated LLM cost: ~$300-400 (Claude Sonnet, ~5K avg input + ~1.5K avg output t
   cookies are moved into encrypted source-secret records and replaced with
   stable references in source config.
 - The local encryption key is managed under `<base_dir>/secrets/` by default.
-  `MEMINCEPTION_SECRET_KEY` or `MEMINCEPTION_SECRET_KEY_FILE` can override it
+  `MEMFORGE_SECRET_KEY` or `MEMFORGE_SECRET_KEY_FILE` can override it
   for controlled deployments.
 
 ### Data Governance for Teams/Outlook
@@ -1999,7 +1999,7 @@ Estimated LLM cost: ~$300-400 (Claude Sonnet, ~5K avg input + ~1.5K avg output t
 | PII in extracted memories | Enrichment prompt includes: "Do NOT extract personal information (phone numbers, home addresses, personal medical info). Extract only work-relevant technical and project knowledge." |
 | GDPR right-to-deletion | `purge_source_data(source_id)` deletes all memories, documents, and entities from a source. Admin UI provides per-source purge button. |
 | Sensitive content in Teams DMs | Teams gene only syncs **channel** messages, not 1:1 or group chats. Configurable channel include/exclude patterns. |
-| Access control on memories | All memories are team-visible (by design). If per-team isolation is needed, run separate MemInception instances. |
+| Access control on memories | All memories are team-visible (by design). If per-team isolation is needed, run separate MemForge instances. |
 
 ---
 
@@ -2007,8 +2007,8 @@ Estimated LLM cost: ~$300-400 (Claude Sonnet, ~5K avg input + ~1.5K avg output t
 
 ### Configuration Sources (Priority Order)
 
-1. **Environment variables** (highest priority for process config): `MEMINCEPTION_*` prefix
-2. **Config file**: `~/.meminception/config.toml`
+1. **Environment variables** (highest priority for process config): `MEMFORGE_*` prefix
+2. **Config file**: `~/.memforge/config.toml`
 3. **Database**: `sources`, `schedule_config`, and admin-managed `llm_config`
 4. **Defaults** (lowest priority): Hardcoded in code
 
@@ -2019,24 +2019,24 @@ when present; missing DB values fall back to the environment/config-file
 ### Configurable Parameters
 
 ```toml
-# ~/.meminception/config.toml
+# ~/.memforge/config.toml
 
-base_dir = "~/.meminception"          # Root data directory
+base_dir = "~/.memforge"          # Root data directory
 
 [storage]
-db_path = "db/meminception.db"        # SQLite path (relative to base_dir)
+db_path = "db/memforge.db"        # SQLite path (relative to base_dir)
 chroma_path = "vectors/chroma"        # ChromaDB path (relative to base_dir)
 docs_path = "documents"               # Document content path (relative to base_dir)
 
 [llm]
 enrichment_model = "claude-sonnet-4-20250514"
 enrichment_base_url = "https://api.anthropic.com"
-enrichment_api_key = ""               # or MEMINCEPTION_ENRICHMENT_API_KEY env var
+enrichment_api_key = ""               # or MEMFORGE_ENRICHMENT_API_KEY env var
 enrichment_max_tokens = 4000
 enrichment_max_concurrent = 3         # Semaphore limit
 embedding_model = "text-embedding-3-small"
 embedding_base_url = "https://api.openai.com/v1"
-embedding_api_key = ""               # or MEMINCEPTION_EMBEDDING_API_KEY env var
+embedding_api_key = ""               # or MEMFORGE_EMBEDDING_API_KEY env var
 
 [memory]
 dedup_cosine_threshold = 0.08         # Below this cosine distance = duplicate
@@ -2050,19 +2050,19 @@ embedding_cache_size = 256
 
 [server]
 admin_api_port = 8765
-jwt_secret = ""                       # or MEMINCEPTION_JWT_SECRET env var
+jwt_secret = ""                       # or MEMFORGE_JWT_SECRET env var
 ```
 
 Supported environment overrides include:
 
-- `MEMINCEPTION_BASE_DIR`
-- `MEMINCEPTION_STORAGE_DB_PATH`, `MEMINCEPTION_STORAGE_CHROMA_PATH`, `MEMINCEPTION_STORAGE_DOCS_PATH`
-- `MEMINCEPTION_ENRICHMENT_MODEL`, `MEMINCEPTION_ENRICHMENT_BASE_URL`, `MEMINCEPTION_ENRICHMENT_API_KEY`
-- `MEMINCEPTION_EMBEDDING_MODEL`, `MEMINCEPTION_EMBEDDING_BASE_URL`, `MEMINCEPTION_EMBEDDING_API_KEY`
-- `MEMINCEPTION_ADMIN_API_PORT`, `MEMINCEPTION_CORS_ORIGINS`, `MEMINCEPTION_JWT_SECRET`
-- `MEMINCEPTION_SECRET_KEY` optionally overrides the app-managed local key for encrypting stored source secrets and shared auth sessions, including Atlassian PATs and Jira browser-session cookies. This must be a 32-byte url-safe base64 Fernet key when set.
-- `MEMINCEPTION_SECRET_KEY_FILE` optionally points to the local source-secret key file. When unset, MemInception uses `<base_dir>/secrets/source-secrets.key`.
-- `MEMINCEPTION_CHROME_PATH`, `MEMINCEPTION_CHROME_NO_SANDBOX` for Confluence PDF rendering
+- `MEMFORGE_BASE_DIR`
+- `MEMFORGE_STORAGE_DB_PATH`, `MEMFORGE_STORAGE_CHROMA_PATH`, `MEMFORGE_STORAGE_DOCS_PATH`
+- `MEMFORGE_ENRICHMENT_MODEL`, `MEMFORGE_ENRICHMENT_BASE_URL`, `MEMFORGE_ENRICHMENT_API_KEY`
+- `MEMFORGE_EMBEDDING_MODEL`, `MEMFORGE_EMBEDDING_BASE_URL`, `MEMFORGE_EMBEDDING_API_KEY`
+- `MEMFORGE_ADMIN_API_PORT`, `MEMFORGE_CORS_ORIGINS`, `MEMFORGE_JWT_SECRET`
+- `MEMFORGE_SECRET_KEY` optionally overrides the app-managed local key for encrypting stored source secrets and shared auth sessions, including Atlassian PATs and Jira browser-session cookies. This must be a 32-byte url-safe base64 Fernet key when set.
+- `MEMFORGE_SECRET_KEY_FILE` optionally points to the local source-secret key file. When unset, MemForge uses `<base_dir>/secrets/source-secrets.key`.
+- `MEMFORGE_CHROME_PATH`, `MEMFORGE_CHROME_NO_SANDBOX` for Confluence PDF rendering
 
 ### Source Authority Mapping
 

@@ -1,6 +1,6 @@
 # Source-Agnostic Memory Extraction
 
-MemInception keeps source-specific behavior at the normalization boundary. A
+MemForge keeps source-specific behavior at the normalization boundary. A
 gene owns how raw source data becomes stable, structured markdown. After that,
 memory extraction, reconciliation, support management, review gating, and
 lifecycle/index writes use the shared pipeline.
