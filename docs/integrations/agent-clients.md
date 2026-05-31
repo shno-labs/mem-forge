@@ -41,7 +41,7 @@ Only `MEMFORGE_API_URL` and authentication change.
   "client": "codex",
   "session_id": "session-123",
   "workspace": "/workspace/mem-forge",
-  "repo": "DoDoMan-TTT/mem-forge",
+  "repo": "dodoman-sun/mem-forge",
   "branch": "main",
   "trigger": "GATED_CAPTURE",
   "window": {
