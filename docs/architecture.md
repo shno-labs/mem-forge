@@ -1670,6 +1670,8 @@ Use `get_memory` for ALL sources when a memory has multiple provenance docs.
     "source_type": "confluence",
     "file_uri": "~/.memforge/documents/pay-docs/arch-decisions.md",
     "pdf_uri": "~/.memforge/documents/pay-docs/arch-decisions.pdf",
+    "content_url": "/api/documents/confluence-12345/content",
+    "pdf_url": "/api/documents/confluence-12345/pdf",
     "source_url": "https://wiki.example.com/pages/12345"
   },
   "corroborated_by": 2,
@@ -1679,9 +1681,9 @@ Use `get_memory` for ALL sources when a memory has multiple provenance docs.
 }
 ```
 
-File URIs are included so the agent can read normalized source documents directly
-without a second search call. PDF URIs are included when the source gene exported
-a PDF rendition.
+`content_url` and `pdf_url` are the portable artifact links for Docker and
+hosted deployments. `file_uri` and `pdf_uri` are storage-local paths retained
+for local debugging and compatibility.
 
 **`freshness` field values:**
 
@@ -1694,9 +1696,9 @@ a PDF rendition.
 **`pdf_uri`**: Only available for genes that support PDF export (e.g., Confluence).
 Null for genes that don't (Jira, Teams, Outlook).
 
-Admin API memory detail uses the same provenance shape: `file_uri` points to the
-normalized markdown or raw artifact, and `pdf_uri` points to the local PDF when a
-gene produced one.
+Admin API memory detail uses the same provenance shape. Agents should prefer the
+service URLs unless they are intentionally running in the same filesystem as the
+MemForge service.
 
 ### Tool: `get_memory`
 
@@ -1739,7 +1741,7 @@ Agent receives a question
     |     |
     |     +-- Need more detail? -> get_memory
     |           |
-    |           +-- Need full document? -> read file_uri (already have it)
+    |           +-- Need full document? -> fetch content_url / pdf_url
     |
     Done. No routing ambiguity.
 ```
