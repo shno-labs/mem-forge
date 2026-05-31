@@ -32,7 +32,9 @@ Agents retrieve memory context progressively:
 
 This keeps Codex, Claude Code, and future adapters source-format agnostic. The
 client follows service-provided URLs instead of assuming where MemForge stores
-documents on disk.
+documents on disk. `get_resource` resolves relative artifact URLs against
+`MEMFORGE_API_URL`, so a host-side agent can read artifacts served from a Docker
+volume or hosted service without sharing the service filesystem.
 
 ## Service-Side Responsibilities
 
@@ -46,8 +48,12 @@ The MemForge service owns:
 - applying quality gates, reconciliation, review, storage, search, and lifecycle
   policies
 
-This is the same boundary for local self-hosting and a future hosted service.
-Only `MEMFORGE_API_URL` and authentication change.
+This is the same adapter boundary for local self-hosting and a future hosted
+service. Today `MEMFORGE_API_URL` is used by hook API calls and by
+`get_resource` artifact reads. MCP retrieval tools such as `search` and
+`get_memory` still run inside the configured `memforge serve` process; a hosted
+deployment can replace that process with an HTTP-backed MCP bridge without
+changing the agent-facing tool contract.
 
 ## Window Shape
 

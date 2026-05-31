@@ -1489,7 +1489,8 @@ Query -> [Query Analyzer] -> classifies type, extracts entities + temporal signa
     [Optional Reranker (top-20, only for ambiguous results)]
                 |
     Memory Cards (Level 0: ~60 tokens each)
-         | agent needs complete provenance
+         | primary source enough? -> get_resource(content_url/pdf_url)
+         | complete provenance needed
     Memory Detail (Level 1: 100-500 tokens)
          | agent needs backing evidence
     Source Artifact (Level 2: via get_resource on content_url/pdf_url)
@@ -1664,18 +1665,17 @@ Use `get_memory` for ALL sources when a memory has multiple provenance docs.
 {
   "memory_id": "mem-a7f3b2c1",
   "memory_type": "decision",
+  "is_document_result": false,
   "summary": "Team chose gRPC over REST for inter-service calls...",
   "confidence": 0.90,
   "relevance_score": 0.87,
   "tags": ["grpc", "architecture", "performance"],
-  "primary_source": {
-    "doc_id": "confluence-12345",
-    "doc_title": "PAY Architecture Decision Records",
-    "source_type": "confluence",
-    "content_url": "/api/documents/confluence-12345/content",
-    "pdf_url": "/api/documents/confluence-12345/pdf",
-    "source_url": "https://wiki.example.com/pages/12345"
-  },
+  "source_doc_id": "confluence-12345",
+  "source_doc_title": "PAY Architecture Decision Records",
+  "source_type": "confluence",
+  "content_url": "/api/documents/confluence-12345/content",
+  "pdf_url": "/api/documents/confluence-12345/pdf",
+  "source_url": "https://wiki.example.com/pages/12345",
   "corroborated_by": 2,
   "last_observed_at": "2026-03-15T10:30:00Z",
   "freshness": "current",
@@ -1697,11 +1697,12 @@ sources before deciding which artifact to read.
 | `stale` | Source document was updated but memory hasn't been re-extracted yet |
 | `unverified` | Source document is no longer accessible (gene auth failed, etc.) |
 
-**`pdf_url`**: Only available for genes that support PDF export (e.g.,
-Confluence). Null for genes that do not provide a PDF rendition.
+**`pdf_url`**: Only available when MemForge has a service-readable PDF artifact
+for the document. Null when a PDF rendition was not exported or is not readable
+from service storage.
 
-Admin API memory detail and MCP memory detail use the same provenance shape.
-They expose service artifact URLs, not service-local storage paths.
+Admin API memory detail and MCP memory detail share the same artifact URL
+contract. They expose service artifact URLs, not service-local storage paths.
 
 ### Tool: `get_memory`
 
@@ -1753,9 +1754,10 @@ Returns both document changes and memory changes (created, updated, superseded).
 ```
 
 `get_resource` reads a MemForge document artifact URL returned by search or
-`get_memory`. Text artifacts can be returned inline. PDFs and other binary
-artifacts can be saved to a local cache file for agent runtimes that can read
-files, or returned as base64 when that is more practical.
+`get_memory` by fetching it through `MEMFORGE_API_URL` (default
+`http://127.0.0.1:8765`). Text artifacts can be returned inline. PDFs and other
+binary artifacts can be saved to a local cache file for agent runtimes that can
+read files, or returned as base64 when that is more practical.
 
 ### Agent Decision Tree
 
