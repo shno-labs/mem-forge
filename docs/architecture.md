@@ -131,7 +131,7 @@ All distance thresholds are calibrated for **text-embedding-3-small** with cosin
 | **Source-agnostic update extraction** | Every gene normalizes raw source data into stable markdown. Updates extract from changed hunks with the normalized full source item as context, then reconcile only current-document extracted memories. No persisted `KnowledgeBlock` layer or source-specific extraction strategy is required for the current lean design. |
 | **Code-level entity resolution** | Entities are resolved in code (exact match → alias lookup → fuzzy match), not by LLM prompt instructions. The LLM assists by extracting explicit aliases from document text. |
 | **Normalizer carries the weight** | Memory quality is proportional to normalizer quality. Each gene's normalizer must surface ALL meaningful structured data as readable markdown. |
-| **Progressive disclosure** | Level 0 (memory cards, ~60 tokens each) > Level 1 (full detail + provenance) > Level 2 (backing document via file_uri). Agents drill down only when needed. |
+| **Progressive disclosure** | Level 0 (memory cards, ~60 tokens each) > Level 1 (full detail + provenance) > Level 2 (backing source artifact via `get_resource`). Agents drill down only when needed. |
 | **Unified search** | One `search` MCP tool that returns memories (primary) with document fallback. No routing ambiguity for agents. |
 
 ---
@@ -1489,10 +1489,10 @@ Query -> [Query Analyzer] -> classifies type, extracts entities + temporal signa
     [Optional Reranker (top-20, only for ambiguous results)]
                 |
     Memory Cards (Level 0: ~60 tokens each)
-         | agent requests detail
+         | agent needs complete provenance
     Memory Detail (Level 1: 100-500 tokens)
-         | agent needs full context
-    Source Document (Level 2: via file_uri, existing get_document)
+         | agent needs backing evidence
+    Source Artifact (Level 2: via get_resource on content_url/pdf_url)
 ```
 
 ### Query Analysis (Two-Tier Entity Detection)
@@ -1608,13 +1608,17 @@ represented by a memory are excluded to avoid duplication.
 ```
 search             "What do I need to know?"
                     -> memories (primary) + documents (fallback)
-                    -> always includes file URIs for source documents
+                    -> includes service artifact URLs for source documents
                     -> one call for any knowledge question
 
 get_memory         "Tell me more about this specific memory"
-                    -> full content + all source documents with URIs
+                    -> full content + all source documents with artifact URLs
                     -> provenance chain + related memories
                     -> only called when agent needs to verify/deep-dive
+
+get_resource       "Read this source artifact"
+                    -> accepts content_url/pdf_url from search or get_memory
+                    -> returns text, a local cache file path, or base64 bytes
 
 list_recent_changes "What's new?"
                     -> document changes + memory changes
@@ -1668,8 +1672,6 @@ Use `get_memory` for ALL sources when a memory has multiple provenance docs.
     "doc_id": "confluence-12345",
     "doc_title": "PAY Architecture Decision Records",
     "source_type": "confluence",
-    "file_uri": "~/.memforge/documents/pay-docs/arch-decisions.md",
-    "pdf_uri": "~/.memforge/documents/pay-docs/arch-decisions.pdf",
     "content_url": "/api/documents/confluence-12345/content",
     "pdf_url": "/api/documents/confluence-12345/pdf",
     "source_url": "https://wiki.example.com/pages/12345"
@@ -1682,8 +1684,10 @@ Use `get_memory` for ALL sources when a memory has multiple provenance docs.
 ```
 
 `content_url` and `pdf_url` are the portable artifact links for Docker and
-hosted deployments. `file_uri` and `pdf_uri` are storage-local paths retained
-for local debugging and compatibility.
+hosted deployments. Agents can pass either URL to the MCP `get_resource` tool
+when the primary source is enough. They should call `get_memory` first when
+they need the complete provenance set, contradiction context, or corroborating
+sources before deciding which artifact to read.
 
 **`freshness` field values:**
 
@@ -1693,12 +1697,11 @@ for local debugging and compatibility.
 | `stale` | Source document was updated but memory hasn't been re-extracted yet |
 | `unverified` | Source document is no longer accessible (gene auth failed, etc.) |
 
-**`pdf_uri`**: Only available for genes that support PDF export (e.g., Confluence).
-Null for genes that don't (Jira, Teams, Outlook).
+**`pdf_url`**: Only available for genes that support PDF export (e.g.,
+Confluence). Null for genes that do not provide a PDF rendition.
 
-Admin API memory detail uses the same provenance shape. Agents should prefer the
-service URLs unless they are intentionally running in the same filesystem as the
-MemForge service.
+Admin API memory detail and MCP memory detail use the same provenance shape.
+They expose service artifact URLs, not service-local storage paths.
 
 ### Tool: `get_memory`
 
@@ -1711,8 +1714,13 @@ MemForge service.
 }
 ```
 
-Returns: full content + context + ALL source documents with file URIs +
-related memories + entity links.
+Returns: full content, context, all source documents with service artifact URLs,
+related memories, entity links, confidence, and lifecycle metadata.
+
+Use `get_memory` when an agent needs all source documents for a memory,
+corroboration, contradictions, entities, or lifecycle metadata. A simple answer
+that only needs the primary source can skip this step and go straight from a
+search result's `content_url` / `pdf_url` to `get_resource`.
 
 ### Tool: `list_recent_changes`
 
@@ -1730,6 +1738,25 @@ related memories + entity links.
 
 Returns both document changes and memory changes (created, updated, superseded).
 
+### Tool: `get_resource`
+
+```json
+{
+  "name": "get_resource",
+  "inputSchema": {
+    "url": "string (required)",
+    "mode": "text | file | base64",
+    "max_chars": "integer",
+    "max_bytes": "integer"
+  }
+}
+```
+
+`get_resource` reads a MemForge document artifact URL returned by search or
+`get_memory`. Text artifacts can be returned inline. PDFs and other binary
+artifacts can be saved to a local cache file for agent runtimes that can read
+files, or returned as base64 when that is more practical.
+
 ### Agent Decision Tree
 
 ```
@@ -1739,9 +1766,11 @@ Agent receives a question
     |
     +-- Everything else -> search
     |     |
-    |     +-- Need more detail? -> get_memory
+    |     +-- Primary source is enough? -> get_resource(content_url/pdf_url)
+    |     |
+    |     +-- Need complete provenance? -> get_memory
     |           |
-    |           +-- Need full document? -> fetch content_url / pdf_url
+    |           +-- Need backing evidence? -> get_resource(content_url/pdf_url)
     |
     Done. No routing ambiguity.
 ```
@@ -1922,7 +1951,7 @@ When enrichment completely fails, store the document with:
 ```python
 def fallback_metadata(doc_id: str) -> EnrichmentResult:
     return EnrichmentResult(
-        summary="Enrichment failed. Document content available via file_uri.",
+        summary="Enrichment failed. Document content remains available through source artifacts.",
         tags=[], entities=[], relationships=[],
         doc_type="unknown", complexity="unknown",
         memories=[], entity_aliases=[],

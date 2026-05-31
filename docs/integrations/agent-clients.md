@@ -18,6 +18,22 @@ The agent-client package owns:
 The client does not extract canonical memories, write memory rows, run source
 sync, or read transcript files that belong to another tool.
 
+## Source Artifact Access
+
+Agents retrieve memory context progressively:
+
+- Use `search` first for compact memory cards and the primary source's
+  `content_url` / `pdf_url`.
+- Call MCP `get_resource` directly on that URL when the primary source is
+  enough evidence.
+- Call MCP `get_memory(memory_id)` first when complete provenance,
+  corroborating sources, contradiction context, or lifecycle metadata is needed;
+  then call `get_resource` for whichever source artifact is most useful.
+
+This keeps Codex, Claude Code, and future adapters source-format agnostic. The
+client follows service-provided URLs instead of assuming where MemForge stores
+documents on disk.
+
 ## Service-Side Responsibilities
 
 The MemForge service owns:
