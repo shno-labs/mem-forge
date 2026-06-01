@@ -1660,6 +1660,12 @@ service URL/token configuration, artifact URL validation, and agent-local cache
 writes. The service owns search, memory detail, recent changes, session intake,
 artifact bytes, provenance, tenancy, and future SaaS auth.
 
+The CLI exposes the same read flow for humans and scripts:
+`memforge search`, `memforge get-memory`, and `memforge get-resource`. These
+commands call the Admin API and follow the same artifact-cache semantics as the
+MCP proxy; they do not read the local SQLite store or container filesystem
+directly.
+
 | Agent call | Local proxy behavior | MemForge service call |
 | --- | --- | --- |
 | `search` | Normalize MCP args and forward | `POST /api/memories/search` |

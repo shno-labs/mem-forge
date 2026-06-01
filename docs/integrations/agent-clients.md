@@ -72,6 +72,18 @@ for compact prompt context, receipts, and agent-session windows:
 `/api/hooks/context`, `/api/hooks/receipts`, and
 `/api/agent-sessions/windows`.
 
+The human CLI follows the same read path for local checks:
+
+```bash
+memforge search "docker artifact provenance"
+memforge get-memory mem-123
+memforge get-resource /api/documents/doc-456/pdf --mode file
+```
+
+Those commands use the same API URL and token environment variables as the
+plugin proxy. They are a terminal surface over the same service behavior, not a
+separate local-database reader.
+
 ## Source Artifact Access
 
 Agents retrieve memory context progressively:
