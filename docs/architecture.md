@@ -2153,8 +2153,7 @@ Supported environment overrides include:
 - `MEMFORGE_ADMIN_API_PORT`, `MEMFORGE_CORS_ORIGINS`, `MEMFORGE_JWT_SECRET`
 - `MEMFORGE_SECRET_KEY` optionally overrides the app-managed local key for encrypting stored source secrets and shared auth sessions, including Atlassian PATs and Jira browser-session cookies. This must be a 32-byte url-safe base64 Fernet key when set.
 - `MEMFORGE_SECRET_KEY_FILE` optionally points to the local source-secret key file. When unset, MemForge uses `<base_dir>/secrets/source-secrets.key`.
-- `MEMFORGE_PDF_RENDERER` controls Confluence PDF rendering: `auto` tries WeasyPrint first and falls back to Chrome when available, `weasyprint` requires WeasyPrint, and `chrome` forces Chrome or Chromium.
-- `MEMFORGE_CHROME_PATH`, `MEMFORGE_CHROME_NO_SANDBOX` apply only when Chrome rendering is selected. The Docker image uses WeasyPrint by default to avoid bundling a browser.
+- Confluence PDF rendering uses WeasyPrint. The Docker image includes the required WeasyPrint runtime libraries and does not bundle a browser.
 - Docker build-only mirror variables include `MEMFORGE_DOCKERHUB_PREFIX`, `MEMFORGE_DEBIAN_MIRROR`, `MEMFORGE_DEBIAN_SECURITY_MIRROR`, `MEMFORGE_PYPI_INDEX_URL`, and `MEMFORGE_NPM_REGISTRY`. `.env.mirrors.example` sets these together for restricted or slow registry networks without changing runtime behavior.
 
 ### Source Authority Mapping
