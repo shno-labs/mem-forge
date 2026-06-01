@@ -495,8 +495,9 @@ and `integrations/claude-code/memforge-memory` for Claude Code. They share the
 script, so provider-specific plugins stay thin while the Admin API remains the
 integration contract. Each package also includes `.mcp.json` so the same
 installation exposes explicit memory tools through the MemForge MCP server.
-The packaged MCP config starts `memforge serve` from `PATH`, or from
-`MEMFORGE_MCP_COMMAND` when a local checkout should provide the executable.
+The packaged MCP config starts a stdlib-only local proxy. The proxy forwards
+memory operations to `MEMFORGE_API_URL` and owns only client-local work such as
+artifact cache files for `get_resource(mode="file")`.
 
 Lifecycle receipt write-back is `POST /api/hooks/receipts`; receipts do not
 enter the source pipeline. Automatic hook capture uses a local plugin queue and
@@ -1632,11 +1633,43 @@ submit_agent_session_document
                     -> feeds the generated source through normal sync when requested
 ```
 
-MCP remains the model-visible memory interface. Agent lifecycle hooks use the
-Admin API instead: `POST /api/hooks/context` for compact prompt context and
+MCP remains the model-visible memory interface. In Codex and Claude Code
+plugins, MCP is implemented as a local thin proxy: `search`, `get_memory`,
+`list_recent_changes`, and `submit_agent_session_document` are forwarded to the
+MemForge API, while `get_resource(mode="file")` downloads artifacts into a
+client-local cache and returns a real local path. Agent lifecycle hooks use the
+Admin API separately: `POST /api/hooks/context` for compact prompt context and
 `POST /api/hooks/receipts` for lifecycle receipt write-back. Automatic
 agent-session capture uses `POST /api/agent-sessions/windows`; explicit
 already-generated summaries still use `POST /api/agent-sessions/documents`.
+
+### Local Proxy Request Path
+
+```text
+Codex / Claude Code
+  -> MCP stdio
+  -> plugin-local MemForge proxy
+  -> HTTP(S) MemForge API
+```
+
+The local proxy is the transport bridge, not a memory engine. It owns MCP stdio,
+service URL/token configuration, artifact URL validation, and agent-local cache
+writes. The service owns search, memory detail, recent changes, session intake,
+artifact bytes, provenance, tenancy, and future SaaS auth.
+
+| Agent call | Local proxy behavior | MemForge service call |
+| --- | --- | --- |
+| `search` | Normalize MCP args and forward | `POST /api/memories/search` |
+| `get_memory` | Forward by memory ID | `GET /api/memories/{memory_id}` |
+| `list_recent_changes` | Forward filters | `GET /api/recent-changes` |
+| `submit_agent_session_document` | Forward generated markdown summary | `POST /api/agent-sessions/documents` |
+| `get_resource(mode="text")` | Fetch and return text inline | `GET` service artifact URL |
+| `get_resource(mode="base64")` | Fetch and return encoded bytes | `GET` service artifact URL |
+| `get_resource(mode="file")` | Fetch bytes, write local cache, return `local_path` | `GET` service artifact URL |
+
+The MemForge service returns portable artifact URLs such as
+`/api/documents/{document_id}/content` and `/api/documents/{document_id}/pdf`.
+It does not return host-local, container-local, or SaaS-local file paths.
 
 ### Tool: `search`
 
@@ -1757,7 +1790,9 @@ Returns both document changes and memory changes (created, updated, superseded).
 `get_memory` by fetching it through `MEMFORGE_API_URL` (default
 `http://127.0.0.1:8765`). Text artifacts can be returned inline. PDFs and other
 binary artifacts can be saved to a local cache file for agent runtimes that can
-read files, or returned as base64 when that is more practical.
+read files, or returned as base64 when that is more practical. The cache file is
+created by the local plugin proxy, not by the MemForge service, so `local_path`
+remains valid for Docker and future SaaS deployments.
 
 ### Agent Decision Tree
 

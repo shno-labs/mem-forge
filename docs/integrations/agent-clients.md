@@ -14,9 +14,63 @@ The agent-client package owns:
 - translating native transcript rows into a bounded canonical evidence window
 - redacting obvious client-visible secrets before upload
 - uploading the window to `POST /api/agent-sessions/windows`
+- exposing a local MCP proxy that forwards memory operations to the service
+- downloading source artifacts into a client-local cache when an agent calls
+  `get_resource(mode="file")`
 
 The client does not extract canonical memories, write memory rows, run source
 sync, or read transcript files that belong to another tool.
+
+## MCP Communication Flow
+
+Codex, Claude Code, and similar agent clients speak MCP over stdio to the
+plugin-local MemForge proxy. The proxy then calls the MemForge API over HTTP(S).
+For self-hosted use, the API is usually `http://127.0.0.1:8765` with no auth.
+For hosted MemForge, the same proxy uses `MEMFORGE_API_URL` and
+`MEMFORGE_API_TOKEN`.
+
+The proxy accepts the common stdio JSON-RPC framings used by agent clients:
+newline-delimited JSON and `Content-Length` framed messages. This is a client
+compatibility boundary only; it does not change the MemForge service contract.
+
+The service never creates agent-local filesystem paths. When an agent asks for a
+source artifact in `file` mode, the local proxy downloads the bytes from the
+service, writes the file on the agent machine, and returns that `local_path`.
+
+```mermaid
+sequenceDiagram
+  participant Agent as Codex / Claude Code
+  participant Proxy as Plugin-local MCP proxy
+  participant Service as MemForge API
+  participant Cache as Agent-local cache
+
+  Agent->>Proxy: MCP stdio tools/list
+  Proxy-->>Agent: search, get_memory, get_resource schemas
+  Agent->>Proxy: MCP stdio tools/call search
+  Proxy->>Service: POST /api/memories/search
+  Service-->>Proxy: ranked memories + content_url/pdf_url
+  Proxy-->>Agent: MCP text result
+  Agent->>Proxy: MCP stdio tools/call get_resource(mode=file)
+  Proxy->>Service: GET /api/documents/{doc_id}/pdf
+  Service-->>Proxy: artifact bytes
+  Proxy->>Cache: write ~/.memforge-agent/artifacts/...
+  Proxy-->>Agent: local_path + metadata
+```
+
+| MCP tool | Proxy action | Service endpoint | Local state |
+| --- | --- | --- | --- |
+| `search` | Forward query | `POST /api/memories/search` | None |
+| `get_memory` | Fetch memory detail | `GET /api/memories/{memory_id}` | None |
+| `list_recent_changes` | Fetch temporal changes | `GET /api/recent-changes` | None |
+| `submit_agent_session_document` | Submit generated summary | `POST /api/agent-sessions/documents` | None |
+| `get_resource(mode="text")` | Fetch artifact text | Service `content_url` | None |
+| `get_resource(mode="base64")` | Fetch artifact bytes | Service artifact URL | None |
+| `get_resource(mode="file")` | Fetch artifact bytes and cache locally | Service artifact URL | Writes `~/.memforge-agent/artifacts` |
+
+Hook traffic is separate from MCP tool calls. Hooks use the Admin API directly
+for compact prompt context, receipts, and agent-session windows:
+`/api/hooks/context`, `/api/hooks/receipts`, and
+`/api/agent-sessions/windows`.
 
 ## Source Artifact Access
 
@@ -33,8 +87,10 @@ Agents retrieve memory context progressively:
 This keeps Codex, Claude Code, and future adapters source-format agnostic. The
 client follows service-provided URLs instead of assuming where MemForge stores
 documents on disk. `get_resource` resolves relative artifact URLs against
-`MEMFORGE_API_URL`, so a host-side agent can read artifacts served from a Docker
-volume or hosted service without sharing the service filesystem.
+`MEMFORGE_API_URL`; in `file` mode the local MCP proxy downloads the bytes into
+`~/.memforge-agent/artifacts` and returns a path on the agent host. The service
+never returns service-local or container-local filesystem paths as agent
+evidence.
 
 ## Service-Side Responsibilities
 
@@ -49,11 +105,11 @@ The MemForge service owns:
   policies
 
 This is the same adapter boundary for local self-hosting and a future hosted
-service. Today `MEMFORGE_API_URL` is used by hook API calls and by
-`get_resource` artifact reads. MCP retrieval tools such as `search` and
-`get_memory` still run inside the configured `memforge serve` process; a hosted
-deployment can replace that process with an HTTP-backed MCP bridge without
-changing the agent-facing tool contract.
+service. `MEMFORGE_API_URL` defaults to `http://127.0.0.1:8765` for the
+self-hosted stack and can point at a hosted MemForge service. `MEMFORGE_API_TOKEN`
+is optional for local no-auth deployments and becomes the bearer/API-token hook
+for SaaS. The MCP proxy itself stays local so `local_path` always means a path
+on the agent machine.
 
 ## Window Shape
 
