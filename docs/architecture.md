@@ -45,7 +45,7 @@ MemForge is a **memory layer** that:
 - **Deduplicates** across sources using semantic similarity
 - **Evolves** automatically when source documents change (via scheduled sync)
 - **Retrieves** precisely via hybrid search (vector + BM25 + entity graph + temporal filtering)
-- **Exposes** a unified MCP interface for LLM agents
+- **Exposes** a unified MCP tool interface through agent-client proxies
 
 ### Key Metrics
 
@@ -65,7 +65,7 @@ MemForge is a **memory layer** that:
 | Component | Technology | Version / Notes |
 |-----------|-----------|----------------|
 | Language | Python 3.12+ | async/await throughout |
-| Web framework | FastAPI | Admin REST API + MCP server |
+| Web framework | FastAPI | Admin REST API |
 | Async DB | aiosqlite | SQLite with WAL mode |
 | Vector store | ChromaDB | PersistentClient, cosine similarity |
 | Embedding model | **OpenAI text-embedding-3-small** | 1536 dimensions, cosine distance. All similarity thresholds calibrated for this model. |
@@ -76,7 +76,6 @@ MemForge is a **memory layer** that:
 | Auth (Atlassian) | Encrypted PAT + shared Jira browser sessions + httpx | HTTPS-only Confluence PAT access; Jira can use a shared per-origin browser session for instances that do not grant PAT REST quota. Source PATs and Jira browser-session cookies use `MEMFORGE_SECRET_KEY` when provided, otherwise an app-managed local Fernet key file |
 | Auth (OAuth2) | httpx + MSAL | Microsoft Graph API for Teams/Outlook |
 | Frontend | React 19 + TypeScript + Vite | Admin dashboard |
-| MCP | mcp Python SDK | stdio transport for agent integration |
 
 ### Python Dependencies (Core)
 
@@ -92,7 +91,6 @@ dependencies = [
     "anthropic>=0.40",
     "httpx>=0.27",
     "apscheduler>=3.10",
-    "mcp>=1.0",
     "pydantic>=2.9",
     "tiktoken>=0.7",
     "markdownify>=0.13",
@@ -144,16 +142,16 @@ All distance thresholds are calibrated for **text-embedding-3-small** with cosin
 +----------------------------------------------------------------------+
 |                        AGENT / USER LAYER                            |
 |  +----------------+  +--------------+  +---------------------------+ |
-|  | Codex/Claude   |  |  Admin UI    |  |  Other MCP Clients        | |
-|  | plugin+MCP     |  |  (REST API)  |  |  (Cursor, Windsurf, etc) | |
+|  | Codex/Claude   |  |  Admin UI    |  |  Future Agent Clients     | |
+|  | plugin+MCP     |  |  (REST API)  |  |  (plugin/proxy)           | |
 |  +-------+--------+  +------+-------+  +-----------+---------------+ |
 +----------|-------------------|------------------------|--------------+
-           | MCP + hooks        | REST                   | MCP
+           | MCP + hooks        | REST                   | MCP via proxy
            v                   v                        v
 +----------------------------------------------------------------------+
 |                     RETRIEVAL LAYER                                   |
 |                                                                      |
-|  MCP Tools:                    Admin API:                            |
+|  MCP Proxy Tools:              Admin API:                            |
 |  +---------------------+      +----------------------------+        |
 |  | search              |      | POST /api/hooks/context    |        |
 |  | get_memory          |      | POST /api/agent-sessions/  |        |
@@ -494,7 +492,7 @@ and `integrations/claude-code/memforge-memory` for Claude Code. They share the
 `memforge.hook_adapter` command adapter contract through a vendored plugin
 script, so provider-specific plugins stay thin while the Admin API remains the
 integration contract. Each package also includes `.mcp.json` so the same
-installation exposes explicit memory tools through the MemForge MCP server.
+installation exposes explicit memory tools through a plugin-local MCP proxy.
 The packaged MCP config starts a stdlib-only local proxy. The proxy forwards
 memory operations to `MEMFORGE_API_URL` and owns only client-local work such as
 artifact cache files for `get_resource(mode="file")`.
@@ -1837,7 +1835,7 @@ Agent receives a question
 - ChromaDB "memories" collection (parameterized get_chroma_collection)
 - Hook memory extraction into GeneSyncOrchestrator after enrichment
 - Full initial sync to populate memory corpus
-- Basic CLI: `memforge init`, `memforge sync`, `memforge serve`
+- Basic CLI: `memforge init`, `memforge sync`, `memforge api`
 
 ### Phase 2: Retrieval (Week 3-4)
 
@@ -1904,7 +1902,7 @@ Agent receives a question
 | Mem0 Feature | Why We Skip It |
 |-------------|---------------|
 | Mem0 as a pip dependency | Conversational vs. document-sourced mismatch too large |
-| Mem0 MCP server | Conflicts with our MCP server |
+| Mem0 MCP server | Duplicates the MemForge MCP tool contract and does not fit source-backed provenance |
 | User/session/agent scoping | We need team/project/source scoping |
 | Neo4j graph backend | SQLite sufficient at our scale |
 | KV store (Redis) | SQLite indexed content_hash serves same purpose |
@@ -2045,7 +2043,7 @@ Estimated LLM cost: ~$300-400 (Claude Sonnet, ~5K avg input + ~1.5K avg output t
 
 | Interface | Auth Method |
 |-----------|------------|
-| MCP server | Inherited from MCP client (Claude Code, etc.) — no additional auth. The MCP server runs locally. |
+| Agent MCP proxy | Optional bearer/API token forwarded to the Admin API; the proxy itself runs locally. |
 | Admin REST API | JWT tokens (access + refresh). bcrypt password hashing. Admin and viewer roles. |
 | Gene connections | Per-gene auth (SSO for Confluence/Jira, OAuth2 for Teams/Outlook) |
 
