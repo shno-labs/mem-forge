@@ -283,6 +283,15 @@ already syncing, the queued request waits for the active pass and then runs one
 follow-up pass, so packages created after discovery are not stranded until a
 manual sync.
 
+`Agent Session Summaries` is a service-managed source. Admin UI surfaces can
+show its status, counts, and sync or repair controls, but it is not offered in
+the normal add-source connector list and it does not expose a user-editable
+source configuration dialog or destructive delete action.
+The read-only details view should use the generic
+`GET /api/sources/{source_id}/projects` inventory endpoint plus
+`GET /api/agent-sessions/completeness`; it should not expose raw package JSON or
+local package paths.
+
 ```text
 generated package
   -> agent_session source document
@@ -313,7 +322,10 @@ outcome = package_created | no_output | failed
 ```
 
 `GET /api/agent-sessions/completeness` summarizes processed window outcomes on
-demand. It does not store a verdict or create a background audit job.
+demand. It does not store a verdict or create a background audit job. When at
+least one window failed, the response also carries a `latest_failure` summary
+(`count`, `reason`, `last_seen_at`) so the admin UI can surface a single
+operational warning instead of querying receipts again.
 
 ## Client-Side Components
 

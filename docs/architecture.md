@@ -466,6 +466,11 @@ but they should not bypass the normal source pipeline. When they conflict with
 authored team sources, the conflict should become a human review decision rather
 than an automatic win or loss.
 
+**Admin ownership:** the `agent_session` source is service-managed. The Admin UI
+may list it for sync status and repair actions, but users do not add, configure,
+or delete it like Confluence, Jira, or Teams. Its storage path and sync requests
+are owned by the agent-session API flow.
+
 **Normalized markdown includes:** the generated session-window package after
 operational sections such as validation logs, runtime notes, command evidence,
 and receipt-only metadata are removed. Receipt provenance remains available in
@@ -2082,6 +2087,20 @@ For sync runtime, admin-managed `llm_config` values override process defaults
 when present; missing DB values fall back to the environment/config-file
 `AppConfig`.
 
+The admin UI treats model configuration as explicit operator input. It does not
+present fallback defaults as onboarding choices. The Settings screen calls
+`POST /api/llm-config/probe` to test whether the API process can reach the
+given endpoint and, when supported by the provider or proxy, fetch available
+model IDs before saving. This keeps Docker and future hosted deployments on the
+same path: the URL must be reachable from the MemForge service process, not
+only from the user's browser.
+
+For the current self-hosted admin API, the probe is an operator tool for the
+local service owner. Before enabling the same endpoint in a multi-tenant SaaS
+control plane, it must be tenant-authenticated and host-restricted so one
+tenant cannot use MemForge to probe internal service networks or send API-key
+headers to untrusted endpoints.
+
 ### Configurable Parameters
 
 ```toml
@@ -2211,6 +2230,7 @@ mapping before broad rollout.
 | GET | `/api/genes` | List available genes (from registry) |
 | GET | `/api/genes/{name}/config-schema` | Get config schema for UI rendering |
 | GET | `/api/sources` | List configured sources |
+| GET | `/api/sources/{id}/projects` | List project buckets observed for one source, with document and memory counts |
 | POST | `/api/sources` | Add a new source (create gene instance) |
 | PUT | `/api/sources/{id}` | Update source config |
 | DELETE | `/api/sources/{id}` | Delete source and purge all its data |
@@ -2222,7 +2242,7 @@ mapping before broad rollout.
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/agent-sessions/windows` | Submit a versioned, redacted agent-session evidence window for service-owned canonicalization, package generation, and queued source sync |
-| GET | `/api/agent-sessions/completeness` | Summarize processed window outcomes (`package_created`, `no_output`, `failed`) on demand |
+| GET | `/api/agent-sessions/completeness` | Summarize processed window outcomes (`package_created`, `no_output`, `failed`) on demand; non-zero failures also surface a `latest_failure` summary (`count`, `reason`, `last_seen_at`) |
 | POST | `/api/agent-sessions/documents` | Submit an explicit already-generated session summary document, store receipt lineage, and optionally start the `agent_session` source sync |
 | POST | `/api/hooks/receipts` | Record a coding-agent lifecycle hook receipt without creating source material |
 
@@ -2520,7 +2540,7 @@ Current route summary:
 /entities               -> entity list
 /entities/:id           -> entity detail
 /sources                -> source list, configuration, and sync controls
-/settings               -> LLM configuration
+/settings               -> LLM endpoint testing and model configuration
 ```
 
 The UI is intentionally a client of the Admin API. It does not run extraction logic, mutate vector state directly, or own source lifecycle behavior. Those operations stay behind the service API so CLI, UI, scheduled sync, and future hosted deployments share the same runtime path.
@@ -2538,7 +2558,7 @@ Public implementation references:
 | Review | Resolve incumbent/challenger memory decisions | review endpoints |
 | Entities | Inspect resolved entities and aliases | entity endpoints |
 | Sources | Configure genes and start sync jobs | source endpoints |
-| Settings | Configure runtime LLM settings | config endpoints |
+| Settings | Test endpoints, fetch model IDs, and configure runtime LLM settings | `GET/PUT /api/llm-config`, `POST /api/llm-config/probe` |
 
 ## 16. Open Questions & Future Work
 
