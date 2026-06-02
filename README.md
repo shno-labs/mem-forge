@@ -44,8 +44,8 @@ integrations, with review flows for superseded facts and contradictions.
 - Provides a React admin UI for source management, review queues, memory detail,
   entity browsing, and runtime settings.
 
-Built-in genes today: `confluence`, `jira`, `github_pages`, `teams`, and
-`agent_session`.
+Built-in genes today: `confluence`, `jira`, `github_pages`, `teams`,
+`agent_session`, and `local_markdown`.
 
 ## Integrations
 
@@ -70,8 +70,9 @@ useful work from the session into new memories afterward.
 | <img alt="Jira" src="https://api.iconify.design/simple-icons:jira.svg?color=%230052CC" width="18"> **Jira** | Issues, delivery outcomes, and conventions that outlive a ticket. |
 | <img alt="GitHub" src="https://api.iconify.design/simple-icons:github.svg?color=%23181717" width="18"> **GitHub Pages** | Published docs and design references from static project sites. |
 | <img alt="Microsoft Teams" src="https://api.iconify.design/simple-icons:microsoftteams.svg?color=%236264A7" width="18"> **Teams** | Decisions, significant discussions, and follow-ups from team conversations. |
+| <img alt="Local Repository" src="https://api.iconify.design/simple-icons:obsidian.svg?color=%237C3AED" width="18"> **Local Repository** | Any local folder or repo synced via the CLI (Obsidian vaults, plain folders). Markdown, text, JSON, and HTML files become source-traced memories, on demand or on a schedule. See [docs/local-repo-sync.md](docs/local-repo-sync.md). |
 
-More source connectors are in development, including Slack, Obsidian, Outlook,
+More source connectors are in development, including Slack, Outlook,
 and custom team systems. Cursor and other agent runtimes can follow the same
 integration pattern. Built-in support today is the set listed above.
 

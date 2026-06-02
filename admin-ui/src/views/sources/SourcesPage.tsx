@@ -32,7 +32,7 @@ const SOURCE_LABELS: Record<string, { name: string; subtitle: string; descriptio
   confluence: { name: "Confluence", subtitle: "Knowledge source", description: "Wiki pages and documentation" },
   github_pages: { name: "GitHub Pages", subtitle: "Documentation source", description: "Published documentation pages" },
   jira: { name: "Jira", subtitle: "Work tracking source", description: "Tickets, decisions, and work items" },
-  local_markdown: { name: "Local Markdown", subtitle: "CLI adapter source", description: "Markdown notes pushed from a local CLI adapter" },
+  local_markdown: { name: "Local Repository", subtitle: "Local folder source", description: "Files from a local folder or repo (Markdown, text, JSON, HTML) pushed via the CLI adapter" },
   teams: { name: "Microsoft Teams", subtitle: "Conversation source", description: "Channel messages, group chats, and direct messages" },
 };
 

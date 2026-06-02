@@ -257,3 +257,65 @@ def test_local_markdown_gene_discovers_pushed_packages(tmp_path):
         assert normalized.source_semantics["relative_path"] == "release.md"
     finally:
         asyncio.run(database.close())
+
+
+def test_to_markdown_conversions():
+    """The gene's content-type converter handles every supported file type."""
+    from memforge.genes.local_markdown_gene import _to_markdown
+
+    assert _to_markdown("text/markdown", "# Keep\n\nx").startswith("# Keep")
+    assert _to_markdown("text/plain", "plain") == "plain"
+    assert _to_markdown("application/json", '{"a": 1}') == '```json\n{"a": 1}\n```\n'
+    assert _to_markdown("text/html", "<h1>T</h1><p>hi</p>") == "# T\n\nhi"
+    # content-type parameters and unknown types degrade to plain text
+    assert _to_markdown("text/markdown; charset=utf-8", "# H") == "# H"
+    assert _to_markdown("application/octet-stream", "raw") == "raw"
+
+
+def test_local_markdown_gene_converts_by_content_type(tmp_path):
+    """HTML and JSON pushes convert to markdown server-side; text passes through."""
+    from memforge.genes import create_gene
+    from memforge.server.admin_api import create_admin_app
+
+    cfg = _config(tmp_path)
+    database = _connect_database(tmp_path)
+    try:
+        app = create_admin_app(db=database, config=cfg)
+        with TestClient(app) as client:
+            source_id = _create_local_markdown_source(client)["id"]
+            docs = [
+                ("page.html", "text/html", "<h1>Decision</h1><p>Ship on <b>Tuesday</b>.</p>"),
+                ("data.json", "application/json", '{"deploy": "tuesday"}'),
+                ("note.txt", "text/plain", "plain reminder"),
+            ]
+            for rel, ctype, body in docs:
+                resp = client.post(
+                    f"/api/sources/{source_id}/adapter/documents",
+                    json={
+                        "vault_id": "engineering",
+                        "relative_path": rel,
+                        "markdown_body": body,
+                        "content_type": ctype,
+                        "process_now": False,
+                    },
+                )
+                assert resp.status_code == 200, resp.text
+
+        row = asyncio.run(database.get_source(source_id))
+        gene = create_gene("local_markdown", row["config"], source_id)
+        asyncio.run(gene.authenticate())
+
+        async def _normalized_by_path():
+            out = {}
+            async for item in gene.discover():
+                normalized = await gene.normalize(await gene.fetch(item))
+                out[normalized.source_semantics["relative_path"]] = normalized
+            return out
+
+        by_path = asyncio.run(_normalized_by_path())
+        assert by_path["page.html"].markdown_body == "# Decision\n\nShip on **Tuesday**."
+        assert by_path["page.html"].source_semantics["content_type"] == "text/html"
+        assert by_path["data.json"].markdown_body == '```json\n{"deploy": "tuesday"}\n```\n'
+        assert by_path["note.txt"].markdown_body == "plain reminder"
+    finally:
+        asyncio.run(database.close())

@@ -22,7 +22,7 @@ const sourcesPageSource = readFileSync("src/views/sources/SourcesPage.tsx", "utf
 
 assert.match(
   sourcesPageSource,
-  /local_markdown:\s*{[^}]*Local Markdown/,
+  /local_markdown:\s*{[^}]*Local Repository/,
   "SourcesPage should label local_markdown sources with a friendly name",
 );
 
