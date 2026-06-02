@@ -387,8 +387,8 @@ async function actionSetupRepository() {
 
   const setup = await group(
     {
-      vaultId: () =>
-        text({ message: "Repository id (how MemForge addresses it)", initialValue: slugify(folderName), validate: required }),
+      name: () =>
+        text({ message: "Name this repository", initialValue: folderName, validate: required }),
       customize: () => confirm({ message: "Customize include / exclude patterns?", initialValue: false }),
     },
     { onCancel: goBack },
@@ -408,13 +408,16 @@ async function actionSetupRepository() {
     excludes = splitList(globs.exclude);
   }
 
-  const vaultId = setup.vaultId.trim();
+  const displayName = setup.name.trim();
+  // The id MemForge and the CLI use to address this repository, derived from the
+  // name you chose (lowercased, slugified) so it is stable and shell-safe.
+  const vaultId = slugify(displayName);
   const profileName = vaultId;
 
   const addArgs = ["adapter", "kb", "add", profileName, "--root", root, "--vault-id", vaultId];
   for (const pattern of includes) addArgs.push("--include", pattern);
   for (const pattern of excludes) addArgs.push("--exclude", pattern);
-  addArgs.push("--display-label", folderName, "--create-source");
+  addArgs.push("--display-label", displayName, "--create-source");
 
   const added = await runStep("Linking repository to MemForge", addArgs);
   if (added?.source_link_error) {
@@ -456,7 +459,7 @@ async function actionSetupRepository() {
   if (Array.isArray(pushed?.failed) && pushed.failed.length) {
     note(pushed.failed.map((entry) => `- ${entry.relative_path}: ${entry.error}`).join("\n"), "Failed files");
   }
-  note(`Repository '${profileName}' is set up. Run 'Sync now' anytime to push changes.`, "Done");
+  note(`"${displayName}" is set up (CLI id: ${profileName}). Run 'Sync now' anytime to push changes.`, "Done");
 }
 
 // --- per-repository actions (operate on an already-chosen repository) ---
