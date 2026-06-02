@@ -459,23 +459,21 @@ async function actionSetupRepository() {
   note(`Repository '${profileName}' is set up. Run 'Sync now' anytime to push changes.`, "Done");
 }
 
-async function actionSyncNow() {
-  const name = await pickKbProfile("Sync which repository?");
-  if (!name) return;
+// --- per-repository actions (operate on an already-chosen repository) ---
+
+async function syncRepo(name) {
   const processNow = ensureNotCancelled(
-    await confirm({ message: "Trigger extraction after the push?", initialValue: false }),
+    await confirm({ message: "Run extraction after the push?", initialValue: false }),
   );
   const args = ["adapter", "kb", "push", name, processNow ? "--process-now" : "--no-process-now"];
-  const payload = await runStep("Pushing notes", args);
+  const payload = await runStep("Pushing files", args);
   if (payload?.counts) note(formatCounts(payload.counts), "Push counts");
   if (Array.isArray(payload?.failed) && payload.failed.length) {
     note(payload.failed.map((entry) => `- ${entry.relative_path}: ${entry.error}`).join("\n"), "Failed files");
   }
 }
 
-async function actionPreview() {
-  const name = await pickKbProfile("Preview which repository?");
-  if (!name) return;
+async function previewRepo(name) {
   const limit = ensureNotCancelled(await text({ message: "Max files to list", placeholder: "20" }));
   const args = ["adapter", "kb", "preview", name];
   if (limit && /^\d+$/.test(limit.trim())) args.push("--limit", limit.trim());
@@ -486,39 +484,7 @@ async function actionPreview() {
   }
 }
 
-async function actionManageRepositories() {
-  const profiles = parseJson((await runMemforge(["adapter", "kb", "list"])).stdout)?.profiles ?? {};
-  const names = Object.keys(profiles);
-  if (!names.length) {
-    log.warn("No repositories configured yet. Use 'Set up a repository' first.");
-    return;
-  }
-  note(
-    names
-      .map((name) => `- ${name}  (${profiles[name]?.root || "?"})${profiles[name]?.source_id ? ` → ${profiles[name].source_id}` : " - not linked"}`)
-      .join("\n"),
-    "Configured repositories",
-  );
-  const choice = ensureNotCancelled(
-    await select({
-      message: "Manage which repository?",
-      maxItems: MENU_MAX_ITEMS,
-      options: [
-        ...names.map((name) => ({ value: name, label: `Remove ${name}` })),
-        { value: "__back__", label: "← Back" },
-      ],
-    }),
-  );
-  if (choice === "__back__") return;
-  const confirmRemove = ensureNotCancelled(
-    await confirm({ message: `Remove repository '${choice}'? (local profile only)`, initialValue: false }),
-  );
-  if (confirmRemove) await runStep("Removing repository", ["adapter", "kb", "remove", choice]);
-}
-
-async function actionSchedule() {
-  const name = await pickKbProfile("Schedule which repo?");
-  if (!name) return;
+async function scheduleRepo(name) {
   const every = ensureNotCancelled(
     await select({
       message: "How often should it sync?",
@@ -542,29 +508,104 @@ async function actionSchedule() {
   if (payload?.cron) note(`cron: ${payload.cron}\n${payload.command || ""}`, "Scheduled");
 }
 
-async function actionManageSchedules() {
-  const payload = parseJson((await runMemforge(["adapter", "kb", "schedule-list"])).stdout);
-  const schedules = Array.isArray(payload?.schedules) ? payload.schedules : [];
-  if (!schedules.length) {
-    log.warn("No schedules configured yet. Use 'Schedule sync' first.");
-    return;
+async function unscheduleRepo(name) {
+  const payload = await runStep("Removing schedule", ["adapter", "kb", "unschedule", name]);
+  if (payload && payload.removed === false) note("No schedule was installed.", "Nothing to remove");
+}
+
+async function removeRepo(name) {
+  const confirmRemove = ensureNotCancelled(
+    await confirm({ message: `Remove repository '${name}'? (local profile only; the server source stays)`, initialValue: false }),
+  );
+  if (!confirmRemove) return false;
+  await runStep("Removing repository", ["adapter", "kb", "remove", name]);
+  return true;
+}
+
+// Per-repository submenu: every action for one repository lives here.
+async function runRepoMenu(name) {
+  while (true) {
+    const profile = parseJson((await runMemforge(["adapter", "kb", "list"])).stdout)?.profiles?.[name];
+    if (!profile) return; // removed elsewhere
+    const scheduled = Boolean(profile.schedule);
+    header();
+    let choice;
+    try {
+      choice = ensureNotCancelled(
+        await select({
+          message: `Repository: ${name}`,
+          options: [
+            { value: "sync", label: "Sync now", hint: "push new and changed files" },
+            { value: "preview", label: "Preview (dry run)", hint: "show what would sync" },
+            {
+              value: "schedule",
+              label: "Schedule sync",
+              hint: scheduled ? `replace ${profile.schedule}` : "run automatically on a timer",
+            },
+            ...(scheduled ? [{ value: "unschedule", label: "Remove schedule" }] : []),
+            { value: "remove", label: "Remove repository", hint: "local profile only" },
+            { value: "__back__", label: "← Back" },
+          ],
+        }),
+      );
+    } catch (error) {
+      if (error === BACK) return;
+      throw error;
+    }
+    if (choice === "__back__") return;
+    try {
+      if (choice === "sync") await syncRepo(name);
+      else if (choice === "preview") await previewRepo(name);
+      else if (choice === "schedule") await scheduleRepo(name);
+      else if (choice === "unschedule") await unscheduleRepo(name);
+      else if (choice === "remove" && (await removeRepo(name))) return; // back to the repo list
+    } catch (error) {
+      if (error === BACK) continue; // ESC inside a per-repo action returns here
+      throw error;
+    }
+    await pause();
   }
-  note(
-    schedules.map((s) => `- ${s.profile}  (${s.cron || "?"})${s.installed ? "" : " - cron job missing"}`).join("\n"),
-    "Configured schedules",
-  );
-  const choice = ensureNotCancelled(
-    await select({
-      message: "Remove which schedule?",
-      maxItems: MENU_MAX_ITEMS,
-      options: [
-        ...schedules.map((s) => ({ value: s.profile, label: `Remove ${s.profile}` })),
-        { value: "__back__", label: "← Back" },
-      ],
-    }),
-  );
-  if (choice === "__back__") return;
-  await runStep("Removing schedule", ["adapter", "kb", "unschedule", choice]);
+}
+
+// --- top-level local-repository actions ---
+
+async function actionSyncNow() {
+  const name = await pickKbProfile("Sync which repository?");
+  if (name) await syncRepo(name);
+}
+
+async function actionManageRepositories() {
+  while (true) {
+    const profiles = parseJson((await runMemforge(["adapter", "kb", "list"])).stdout)?.profiles ?? {};
+    const names = Object.keys(profiles);
+    if (!names.length) {
+      log.warn("No repositories configured yet. Use 'Set up a repository' first.");
+      return;
+    }
+    header();
+    let choice;
+    try {
+      choice = ensureNotCancelled(
+        await select({
+          message: "Manage which repository?",
+          maxItems: MENU_MAX_ITEMS,
+          options: [
+            ...names.map((name) => ({
+              value: name,
+              label: name,
+              hint: `${profiles[name]?.root || "?"}${profiles[name]?.schedule ? ` · ${profiles[name].schedule}` : ""}`,
+            })),
+            { value: "__back__", label: "← Back" },
+          ],
+        }),
+      );
+    } catch (error) {
+      if (error === BACK) return;
+      throw error;
+    }
+    if (choice === "__back__") return;
+    await runRepoMenu(choice);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -702,14 +743,24 @@ const AREAS = [
     value: "markdown",
     label: "Local repository",
     hint: "sync a local folder (md, txt, json, html) into memory",
-    actions: [
-      { value: "setup", label: "Set up a repository", hint: "guided: folder → link → first sync", run: actionSetupRepository },
-      { value: "sync", label: "Sync now", hint: "push new and changed files", run: actionSyncNow },
-      { value: "preview", label: "Preview (dry run)", hint: "show what would sync", run: actionPreview },
-      { value: "schedule", label: "Schedule sync", hint: "run sync automatically on a timer", run: actionSchedule },
-      { value: "schedules", label: "Manage schedules", hint: "list and remove timers", run: actionManageSchedules },
-      { value: "manage", label: "Manage repositories", hint: "list and remove", run: actionManageRepositories },
-    ],
+    // Until a repository exists, the only useful action is to set one up; the
+    // rest appear once at least one is configured.
+    actions: async () => {
+      const hasRepos =
+        Object.keys(parseJson((await runMemforge(["adapter", "kb", "list"])).stdout)?.profiles ?? {}).length > 0;
+      const setup = {
+        value: "setup",
+        label: "Set up a repository",
+        hint: "guided: folder → link → first sync",
+        run: actionSetupRepository,
+      };
+      if (!hasRepos) return [setup];
+      return [
+        setup,
+        { value: "sync", label: "Sync now", hint: "push new and changed files", run: actionSyncNow },
+        { value: "manage", label: "Manage repositories", hint: "per-repo: preview, schedule, remove", run: actionManageRepositories },
+      ];
+    },
   },
   {
     value: "jira",
@@ -741,6 +792,7 @@ const AREAS = [
 async function runArea(area) {
   while (true) {
     header();
+    const actions = typeof area.actions === "function" ? await area.actions() : area.actions;
     let choice;
     try {
       choice = ensureNotCancelled(
@@ -748,7 +800,7 @@ async function runArea(area) {
           message: area.label,
           maxItems: MENU_MAX_ITEMS,
           options: [
-            ...area.actions.map(({ value, label, hint }) => ({ value, label, hint })),
+            ...actions.map(({ value, label, hint }) => ({ value, label, hint })),
             { value: "__back__", label: "← Back" },
           ],
         }),
@@ -758,7 +810,7 @@ async function runArea(area) {
       throw error;
     }
     if (choice === "__back__") return;
-    const action = area.actions.find((item) => item.value === choice);
+    const action = actions.find((item) => item.value === choice);
     if (!action) continue;
     try {
       await action.run();

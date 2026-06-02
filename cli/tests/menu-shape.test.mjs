@@ -25,7 +25,7 @@ const requiredLabels = [
   "Sync now",
   "Preview (dry run)",
   "Schedule sync",
-  "Manage schedules",
+  "Remove repository",
   "Manage repositories",
   "Check session status",
   "Authenticate browser session",
