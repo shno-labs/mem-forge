@@ -41,6 +41,16 @@ const {
   note,
 } = prompts;
 
+// Color is optional polish. picocolors ships with @clack/prompts; if it is ever
+// unavailable, fall back to identity functions so the CLI still runs uncolored.
+let pc;
+try {
+  pc = (await import("picocolors")).default;
+} catch {
+  const identity = (value) => value;
+  pc = { bold: identity, green: identity, dim: identity, cyan: identity };
+}
+
 const MEMFORGE_BIN = process.env.MEMFORGE_CLI_BIN || "memforge";
 const MENU_MAX_ITEMS = 12;
 
@@ -131,7 +141,8 @@ function header() {
   // menu accumulates a transcript. Mirror clack's own startup move (the basic
   // example does `console.clear()` then `intro`) on every menu render.
   console.clear();
-  intro(activeServer ? `MemForge  ${activeServer}` : "MemForge");
+  const title = pc.bold("MemForge");
+  intro(activeServer ? `${title}  ${pc.green(activeServer)}` : title);
 }
 
 async function pause() {
