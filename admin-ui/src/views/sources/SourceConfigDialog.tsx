@@ -52,11 +52,16 @@ export function SourceConfigDialog({
   source?: Source | null;
   onSaved?: () => void;
 }) {
+  // A local repository is created from the CLI (which scans the folder and
+  // pushes), not by hand in the UI, so a new one shows setup instructions
+  // instead of a config form.
+  const isNewLocalRepo = sourceType === "local_markdown" && !source;
+
   const schemaQuery = useQuery<GeneConfigSchema>({
     queryKey: ["gene-config-schema", sourceType],
     queryFn: () =>
       client.get(`/api/genes/${sourceType}/config-schema`).then((response) => response.data),
-    enabled: open && Boolean(sourceType) && canConfigureSourceType(sourceType ?? ""),
+    enabled: open && Boolean(sourceType) && canConfigureSourceType(sourceType ?? "") && !isNewLocalRepo,
   });
 
   if (!sourceType || !canConfigureSourceType(sourceType)) return null;
@@ -64,7 +69,9 @@ export function SourceConfigDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        {schemaQuery.isPending ? (
+        {isNewLocalRepo ? (
+          <LocalRepoSetupInstructions onClose={() => onOpenChange(false)} />
+        ) : schemaQuery.isPending ? (
           <div className="flex items-center justify-center gap-2 p-12 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
             Loading source schema...
@@ -541,6 +548,58 @@ function JiraBrowserSessionPanel({
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+function LocalRepoSetupInstructions({ onClose }: { onClose: () => void }) {
+  const steps = [
+    {
+      title: "1. Create and link the source",
+      command: "memforge adapter kb add my-repo --root /path/to/folder --create-source",
+      note: "Creates the source for you (no Vault ID to invent) and links it to that folder.",
+    },
+    {
+      title: "2. Push your files",
+      command: "memforge adapter kb push my-repo --process-now",
+      note: "The repository then appears in this list, and you can rename it here anytime.",
+    },
+  ];
+  const copy = (text: string) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) void navigator.clipboard.writeText(text);
+  };
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
+      <DialogHeader>
+        <DialogTitle>Add a local repository</DialogTitle>
+      </DialogHeader>
+      <p className="text-sm text-muted-foreground">
+        A local repository is set up and synced from the CLI. MemForge does not read your
+        filesystem, so the CLI scans your folder and pushes its files into a source it creates for
+        you. Run these two commands to get started.
+      </p>
+
+      <ol className="space-y-4">
+        {steps.map((step) => (
+          <li key={step.title} className="space-y-1.5">
+            <div className="text-sm font-medium text-foreground">{step.title}</div>
+            <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-2">
+              <code className="flex-1 break-all font-mono text-[11px] text-foreground">{step.command}</code>
+              <Button type="button" variant="outline" size="sm" onClick={() => copy(step.command)}>
+                Copy
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">{step.note}</p>
+          </li>
+        ))}
+      </ol>
+
+      <DialogFooter className="mx-0 mb-0 flex-row justify-end rounded-none rounded-b-xl bg-background p-3">
+        <Button type="button" onClick={onClose}>
+          Got it
+        </Button>
+      </DialogFooter>
     </div>
   );
 }
