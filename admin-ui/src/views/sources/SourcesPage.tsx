@@ -32,6 +32,7 @@ const SOURCE_LABELS: Record<string, { name: string; subtitle: string; descriptio
   confluence: { name: "Confluence", subtitle: "Knowledge source", description: "Wiki pages and documentation" },
   github_pages: { name: "GitHub Pages", subtitle: "Documentation source", description: "Published documentation pages" },
   jira: { name: "Jira", subtitle: "Work tracking source", description: "Tickets, decisions, and work items" },
+  local_markdown: { name: "Local Markdown", subtitle: "CLI adapter source", description: "Markdown notes pushed from a local CLI adapter" },
   teams: { name: "Microsoft Teams", subtitle: "Conversation source", description: "Channel messages, group chats, and direct messages" },
 };
 
@@ -40,6 +41,7 @@ const SOURCE_ITEM_LABELS: Record<string, string> = {
   confluence: "pages",
   github_pages: "documents",
   jira: "issues",
+  local_markdown: "notes",
   teams: "conversations",
 };
 
@@ -213,7 +215,7 @@ export function SourcesPage() {
                           <span>{source.sync?.status === "running" ? "Syncing now" : `Last synced: ${timeAgo(source.last_sync)}`}</span>
                           {source.type === "jira" && source.auth_session && (
                             <span className={source.auth_session.status === "active" ? "text-emerald-600" : "text-destructive"}>
-                              Browser session: {authSessionLabel(source.auth_session.status)}
+                              Browser session (local adapter): {authSessionLabel(source.auth_session.status)}
                             </span>
                           )}
                         </div>

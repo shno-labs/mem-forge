@@ -456,6 +456,19 @@ class AgentSessionDocumentRequest(BaseModel):
     process_now: bool = True
 
 
+class LocalAdapterDocumentRequest(BaseModel):
+    """One markdown document pushed by the local CLI adapter into a configured source."""
+
+    vault_id: str
+    relative_path: str
+    markdown_body: str
+    title: str | None = None
+    raw_hash: str | None = None
+    submitted_by: str | None = None
+    submitted_at: str | None = None
+    process_now: bool = True
+
+
 class AgentSessionWindowRequest(BaseModel):
     schema_version: str = "agent-session-window/v1"
     plugin_version: str | None = None
@@ -922,6 +935,7 @@ def _validate_source_config(
         _validate_confluence_config(config, existing_config=existing_config)
     if source_type == "jira":
         _validate_jira_auth_config(config, existing_config=existing_config)
+        _validate_jira_scope_config(config)
 
 
 def _validate_confluence_config(
@@ -1052,6 +1066,26 @@ def _validate_github_pages_scope_url(base_url: str, candidate_url: str, label: s
         raise ValueError(f"GitHub Pages {label} must stay under the configured site path")
 
 
+def _validate_jira_scope_config(config: dict[str, Any]) -> None:
+    """Require the field that actually drives discovery for the chosen query mode.
+
+    ``projects`` is optional at the schema level so advanced JQL queries (which
+    embed their own project clause) do not have to duplicate it.
+    """
+    mode = str(config.get("query_mode") or "simple").strip().lower()
+    if mode == "advanced":
+        if not str(config.get("jql") or "").strip():
+            raise ValueError("Jira JQL is required in advanced query mode")
+        return
+    projects = config.get("projects")
+    has_projects = (
+        (isinstance(projects, list) and any(str(p).strip() for p in projects))
+        or (isinstance(projects, str) and any(p.strip() for p in projects.split(",")))
+    )
+    if not has_projects:
+        raise ValueError("Jira Projects to Sync is required in simple query mode")
+
+
 def _validate_jira_auth_config(
     config: dict[str, Any],
     existing_config: dict[str, Any] | None = None,
@@ -1155,6 +1189,21 @@ def _drop_source_owned_jira_cookie(config: dict[str, Any]) -> dict[str, Any]:
             "pat_decrypt_failed",
         ):
             cleaned.pop(key, None)
+    return cleaned
+
+
+def _populate_local_markdown_inbox(
+    config: dict[str, Any],
+    source_id: str,
+    app_config: AppConfig,
+) -> dict[str, Any]:
+    """Fill the per-source inbox path so the gene can read pushed packages."""
+    from memforge.local_adapter import default_local_adapter_inbox
+
+    cleaned = dict(config)
+    inbox = default_local_adapter_inbox(app_config, source_id)
+    inbox.mkdir(parents=True, exist_ok=True)
+    cleaned["documents_dir"] = str(inbox)
     return cleaned
 
 
@@ -2516,14 +2565,27 @@ def create_admin_app(
         )
 
     @gene_router.post("/{name}/preview-discovery", response_model=DiscoveryPreviewResponse)
-    async def preview_gene_discovery(name: str, req: DiscoveryPreviewRequest):
+    async def preview_gene_discovery(
+        name: str,
+        req: DiscoveryPreviewRequest,
+        db: Database = Depends(get_db),
+    ):
         """Preview the documents a source config would discover without saving it."""
         if name not in GENE_REGISTRY:
             raise HTTPException(status_code=404, detail=f"Gene '{name}' not found")
 
         try:
             _validate_source_config(name, req.config)
-            gene = create_gene(name, dict(req.config), source_id=f"preview-{name}")
+            preview_config = dict(req.config)
+            if name == "jira" and effective_jira_auth_mode(preview_config) == "browser_cookie":
+                # Browser-session mode keeps the cookie in the auth store, not the
+                # source config. Inject it the same way a real sync does.
+                preview_config["jira_cookie"] = await JiraAuthSessionService(db).cookie_header_for_sync(
+                    str(preview_config.get("base_url") or ""),
+                    tls_config=preview_config,
+                    allow_browser_refresh=False,
+                )
+            gene = create_gene(name, preview_config, source_id=f"preview-{name}")
             await gene.authenticate()
             items: list[DiscoveryPreviewItemResponse] = []
             count = 0
@@ -2539,6 +2601,8 @@ def create_admin_app(
                 if count > req.limit:
                     break
         except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except JiraAuthSessionError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
             logger.exception("Discovery preview failed for gene %s", name)
@@ -3010,6 +3074,7 @@ def create_admin_app(
     async def create_source(
         req: CreateSourceRequest,
         db: Database = Depends(get_db),
+        config: AppConfig = Depends(get_config),
     ):
         """Create a new source (gene instance) with the given type, name, and config."""
         # Validate gene type exists
@@ -3028,6 +3093,8 @@ def create_admin_app(
             )
             if req.type == "jira":
                 source_config = _drop_source_owned_jira_cookie(source_config)
+            if req.type == "local_markdown":
+                source_config = _populate_local_markdown_inbox(source_config, source_id, config)
         except (SecretConfigurationError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         await db.upsert_source(
@@ -3044,6 +3111,7 @@ def create_admin_app(
         req: UpdateSourceRequest,
         db: Database = Depends(get_db),
         sync_service: SyncService = Depends(get_sync_service),
+        config: AppConfig = Depends(get_config),
     ):
         """Update an existing source's configuration."""
         existing = await db.get_source(source_id)
@@ -3061,6 +3129,8 @@ def create_admin_app(
                 )
                 if existing["type"] == "jira":
                     src_config = _drop_source_owned_jira_cookie(src_config)
+                if existing["type"] == "local_markdown":
+                    src_config = _populate_local_markdown_inbox(src_config, source_id, config)
             except (SecretConfigurationError, ValueError) as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
         else:
@@ -3160,6 +3230,53 @@ def create_admin_app(
         except SyncAlreadyRunningError:
             raise HTTPException(status_code=409, detail="Sync already running for this source")
         return {"ok": True, "message": "Force resync started", "source_id": source_id}
+
+    @source_router.post("/{source_id}/adapter/documents")
+    async def push_local_adapter_document(
+        source_id: str,
+        req: LocalAdapterDocumentRequest,
+        db: Database = Depends(get_db),
+        config: AppConfig = Depends(get_config),
+        sync_service: SyncService = Depends(get_sync_service),
+    ):
+        """Receive one markdown document pushed by the local CLI adapter.
+
+        The service owns the inbox layout and the package format. The CLI never
+        writes into MemForge storage directly: it sends the normalized body and
+        the service creates a stable doc id, atomically writes the package, and
+        leaves the rest of ingestion to the source's sync pipeline.
+        """
+        from memforge.local_adapter import submit_local_markdown_document
+
+        source = await db.get_source(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        try:
+            result = await submit_local_markdown_document(
+                db=db,
+                config=config,
+                source=source,
+                vault_id=req.vault_id,
+                relative_path=req.relative_path,
+                markdown_body=req.markdown_body,
+                title=req.title,
+                raw_hash=req.raw_hash,
+                submitted_by=req.submitted_by,
+                submitted_at=req.submitted_at,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        sync_started = False
+        if req.process_now:
+            try:
+                sync_service.start_source(source_id)
+                sync_started = True
+            except SyncAlreadyRunningError:
+                sync_started = True
+
+        return {**result, "sync_started": sync_started}
 
     # ===================================================================
     # 4b. Agent Session Document Intake

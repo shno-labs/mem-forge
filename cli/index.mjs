@@ -1,0 +1,607 @@
+#!/usr/bin/env node
+// Interactive Clack-based menu for the `memforge` CLI.
+//
+// This script never re-implements scriptable behavior. Every action collects
+// inputs through `@clack/prompts`, then shells out to the canonical Python
+// `memforge` commands (target, adapter, memory). The wrapper runs only when
+// `memforge` is invoked with no subcommand, so the Python entrypoint sets
+// `MEMFORGE_NO_INTERACTIVE=1` for every spawn to prevent recursion.
+//
+// The menu is organized by intent (areas) rather than by the command tree:
+// connect a server, sync local notes, connect Jira, search, inspect status.
+
+import { spawn } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
+
+let prompts;
+try {
+  prompts = await import("@clack/prompts");
+} catch (error) {
+  process.stderr.write(
+    "memforge interactive UI requires @clack/prompts.\n" +
+      "Install once with:\n" +
+      "  cd cli && npm install\n" +
+      "Then re-run `memforge`.\n",
+  );
+  process.exit(2);
+}
+
+const {
+  intro,
+  outro,
+  group,
+  select,
+  text,
+  confirm,
+  isCancel,
+  cancel,
+  spinner,
+  log,
+  note,
+} = prompts;
+
+const MEMFORGE_BIN = process.env.MEMFORGE_CLI_BIN || "memforge";
+const MENU_MAX_ITEMS = 12;
+
+// ---------------------------------------------------------------------------
+// Shell-out + result helpers
+// ---------------------------------------------------------------------------
+
+function runMemforge(args) {
+  // Async spawn (never the blocking variant) so a clack spinner keeps
+  // animating while the Python subcommand runs.
+  return new Promise((resolve) => {
+    const env = { ...process.env, MEMFORGE_NO_INTERACTIVE: "1" };
+    const child = spawn(MEMFORGE_BIN, args, { env });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => resolve({ code: null, stdout, stderr, error }));
+    child.on("close", (code) => resolve({ code, stdout, stderr, error: null }));
+  });
+}
+
+function parseJson(stdout) {
+  if (!stdout || !stdout.trim()) return null;
+  try {
+    return JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+}
+
+function reportResult(label, result) {
+  if (result.error) {
+    log.error(`${label} failed to start: ${result.error.message}`);
+    return null;
+  }
+  const payload = parseJson(result.stdout);
+  if (result.code !== 0) {
+    if (payload?.error) {
+      log.error(`${label} failed: ${payload.error}${payload.detail ? ` - ${payload.detail}` : ""}`);
+    } else {
+      const detail = (result.stderr || result.stdout || "").trim().split("\n").slice(0, 6).join("\n");
+      log.error(`${label} failed (exit ${result.code})${detail ? `:\n${detail}` : ""}`);
+    }
+    return payload;
+  }
+  log.success(`${label} ok`);
+  return payload;
+}
+
+async function runStep(label, args) {
+  const s = spinner();
+  s.start(label);
+  const result = await runMemforge(args);
+  s.stop(label);
+  return reportResult(label, result);
+}
+
+// ---------------------------------------------------------------------------
+// Prompt helpers
+// ---------------------------------------------------------------------------
+
+function cancelAndExit() {
+  cancel("Cancelled.");
+  process.exit(0);
+}
+
+function ensureNotCancelled(value) {
+  if (isCancel(value)) cancelAndExit();
+  return value;
+}
+
+function required(value) {
+  return value && value.trim() ? undefined : "Required";
+}
+
+function httpUrl(value) {
+  return value && value.startsWith("http") ? undefined : "Must start with http:// or https://";
+}
+
+function httpsUrl(value) {
+  return value && value.startsWith("https://") ? undefined : "Use an https:// URL";
+}
+
+function expandHome(value) {
+  if (value === "~") return homedir();
+  if (value.startsWith("~/")) return join(homedir(), value.slice(2));
+  return value;
+}
+
+function validateFolder(value) {
+  const raw = (value || "").trim();
+  if (!raw) return "Required";
+  const resolved = expandHome(raw);
+  if (!existsSync(resolved)) return "That path does not exist";
+  try {
+    if (!statSync(resolved).isDirectory()) return "That path is not a folder";
+  } catch {
+    return "That path is not readable";
+  }
+  return undefined;
+}
+
+function slugify(value) {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "vault";
+}
+
+function splitList(value) {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function formatCounts(counts) {
+  return Object.entries(counts)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n");
+}
+
+async function pickKbProfile(message) {
+  const profiles = parseJson((await runMemforge(["adapter", "kb", "list"])).stdout)?.profiles ?? {};
+  const names = Object.keys(profiles);
+  if (!names.length) {
+    log.warn("No vaults configured yet. Use 'Set up a vault' first.");
+    return null;
+  }
+  return ensureNotCancelled(
+    await select({
+      message,
+      maxItems: MENU_MAX_ITEMS,
+      options: names.map((name) => ({
+        value: name,
+        label: name,
+        hint: profiles[name]?.source_id ? `→ ${profiles[name].source_id}` : "not linked",
+      })),
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Area: Connect a MemForge server
+// ---------------------------------------------------------------------------
+
+async function actionConnectServer() {
+  const answers = await group(
+    {
+      name: () => text({ message: "Server name", placeholder: "sap.prod", validate: required }),
+      apiUrl: () =>
+        text({ message: "API URL", placeholder: "https://memforge.example.test", validate: httpUrl }),
+      tokenEnv: () =>
+        text({ message: "Env var holding the API token (optional)", placeholder: "MEMFORGE_API_TOKEN" }),
+    },
+    { onCancel: cancelAndExit },
+  );
+
+  const args = ["target", "add", answers.name.trim(), "--api-url", answers.apiUrl.trim()];
+  if (answers.tokenEnv && answers.tokenEnv.trim()) args.push("--token-env", answers.tokenEnv.trim());
+
+  await runStep("Adding server", args);
+  await runStep("Activating server", ["target", "use", answers.name.trim()]);
+
+  const checkNow = ensureNotCancelled(
+    await confirm({ message: "Run a health check against this server now?", initialValue: true }),
+  );
+  if (checkNow) await runStep("Health check", ["target", "check"]);
+}
+
+async function actionSwitchServer() {
+  const config = parseJson((await runMemforge(["target", "list"])).stdout) ?? {};
+  const targets = config.targets && typeof config.targets === "object" ? config.targets : {};
+  const names = Object.keys(targets);
+  if (!names.length) {
+    log.warn("No servers configured yet. Use 'Connect a server' first.");
+    return;
+  }
+  const choice = ensureNotCancelled(
+    await select({
+      message: "Switch active server",
+      maxItems: MENU_MAX_ITEMS,
+      options: names.map((name) => ({
+        value: name,
+        label: name,
+        hint: `${targets[name]?.api_url || ""}${config.active === name ? " (active)" : ""}`,
+      })),
+    }),
+  );
+  await runStep("Activating server", ["target", "use", choice]);
+}
+
+async function actionHealthCheck() {
+  await runStep("Health check", ["target", "check"]);
+}
+
+// ---------------------------------------------------------------------------
+// Area: Markdown & Obsidian notes
+// ---------------------------------------------------------------------------
+
+async function actionVaultWizard() {
+  const folderInput = ensureNotCancelled(
+    await text({
+      message: "Path to your notes folder",
+      placeholder: "~/Obsidian/MyVault",
+      validate: validateFolder,
+    }),
+  );
+  const root = expandHome(folderInput.trim());
+  const folderName = basename(root);
+  if (existsSync(join(root, ".obsidian"))) {
+    log.info(`Detected an Obsidian vault: ${folderName}`);
+  }
+
+  // Instant feedback: confirm the folder actually has notes before going on.
+  const scan = await runStep("Scanning folder", ["adapter", "kb", "scan", "--root", root, "--limit", "5"]);
+  const found = scan?.counts?.included ?? 0;
+  if (!found) {
+    log.warn("No markdown files matched in that folder. Nothing to sync yet.");
+    return;
+  }
+  note(formatCounts(scan.counts), `Found ${found} markdown files`);
+
+  const setup = await group(
+    {
+      vaultId: () =>
+        text({ message: "Vault id (how MemForge addresses this vault)", initialValue: slugify(folderName), validate: required }),
+      customize: () => confirm({ message: "Customize include / exclude patterns?", initialValue: false }),
+    },
+    { onCancel: cancelAndExit },
+  );
+
+  let includes = [];
+  let excludes = [];
+  if (setup.customize) {
+    const globs = await group(
+      {
+        include: () => text({ message: "Include globs (comma-separated, blank for defaults)", placeholder: "**/*.md" }),
+        exclude: () => text({ message: "Extra exclude globs (comma-separated, blank for defaults)", placeholder: "archive/**" }),
+      },
+      { onCancel: cancelAndExit },
+    );
+    includes = splitList(globs.include);
+    excludes = splitList(globs.exclude);
+  }
+
+  const vaultId = setup.vaultId.trim();
+  const profileName = vaultId;
+
+  const addArgs = ["adapter", "kb", "add", profileName, "--root", root, "--vault-id", vaultId];
+  for (const pattern of includes) addArgs.push("--include", pattern);
+  for (const pattern of excludes) addArgs.push("--exclude", pattern);
+  addArgs.push("--display-label", folderName, "--create-source");
+
+  const added = await runStep("Linking vault to MemForge", addArgs);
+  if (added?.source_link_error) {
+    log.warn(`Vault saved locally, but it couldn't be linked: ${added.source_link_error}`);
+    note(
+      `Create a 'local_markdown' source in the admin UI with this vault id, then\nrun Sync now:\n  ${vaultId}`,
+      "Finish linking in the admin UI",
+    );
+    return;
+  }
+  if (added?.source_id) {
+    log.success(`Linked to source ${added.source_id}${added.source_reused ? " (reused existing)" : ""}`);
+  }
+
+  const doPush = ensureNotCancelled(
+    await confirm({ message: `Push ${found} notes to MemForge now?`, initialValue: true }),
+  );
+  if (!doPush) {
+    note("Run 'Sync now' whenever you're ready.", "Setup complete");
+    return;
+  }
+  const processNow = ensureNotCancelled(
+    await confirm({ message: "Trigger extraction after the push?", initialValue: false }),
+  );
+  const pushArgs = ["adapter", "kb", "push", profileName, processNow ? "--process-now" : "--no-process-now"];
+  const pushed = await runStep("Pushing notes", pushArgs);
+  if (pushed?.counts) note(formatCounts(pushed.counts), "Push counts");
+  if (Array.isArray(pushed?.failed) && pushed.failed.length) {
+    note(pushed.failed.map((entry) => `- ${entry.relative_path}: ${entry.error}`).join("\n"), "Failed files");
+  }
+  note(`Vault '${profileName}' is set up. Run 'Sync now' anytime to push changes.`, "Done");
+}
+
+async function actionSyncNow() {
+  const name = await pickKbProfile("Sync which vault?");
+  if (!name) return;
+  const processNow = ensureNotCancelled(
+    await confirm({ message: "Trigger extraction after the push?", initialValue: false }),
+  );
+  const args = ["adapter", "kb", "push", name, processNow ? "--process-now" : "--no-process-now"];
+  const payload = await runStep("Pushing notes", args);
+  if (payload?.counts) note(formatCounts(payload.counts), "Push counts");
+  if (Array.isArray(payload?.failed) && payload.failed.length) {
+    note(payload.failed.map((entry) => `- ${entry.relative_path}: ${entry.error}`).join("\n"), "Failed files");
+  }
+}
+
+async function actionPreview() {
+  const name = await pickKbProfile("Preview which vault?");
+  if (!name) return;
+  const limit = ensureNotCancelled(await text({ message: "Max files to list", placeholder: "20" }));
+  const args = ["adapter", "kb", "preview", name];
+  if (limit && /^\d+$/.test(limit.trim())) args.push("--limit", limit.trim());
+  const payload = await runStep("Previewing", args);
+  if (payload?.counts) note(formatCounts(payload.counts), `${payload.profile} preview counts`);
+  if (Array.isArray(payload?.items) && payload.items.length) {
+    note(payload.items.map((item) => `- ${item.relative_path}`).join("\n"), "Sample files");
+  }
+}
+
+async function actionManageVaults() {
+  const profiles = parseJson((await runMemforge(["adapter", "kb", "list"])).stdout)?.profiles ?? {};
+  const names = Object.keys(profiles);
+  if (!names.length) {
+    log.warn("No vaults configured yet. Use 'Set up a vault' first.");
+    return;
+  }
+  note(
+    names
+      .map((name) => `- ${name}  (${profiles[name]?.root || "?"})${profiles[name]?.source_id ? ` → ${profiles[name].source_id}` : " — not linked"}`)
+      .join("\n"),
+    "Configured vaults",
+  );
+  const choice = ensureNotCancelled(
+    await select({
+      message: "Manage which vault?",
+      maxItems: MENU_MAX_ITEMS,
+      options: [
+        ...names.map((name) => ({ value: name, label: `Remove ${name}` })),
+        { value: "__back__", label: "← Back" },
+      ],
+    }),
+  );
+  if (choice === "__back__") return;
+  const confirmRemove = ensureNotCancelled(
+    await confirm({ message: `Remove vault '${choice}'? (local profile only)`, initialValue: false }),
+  );
+  if (confirmRemove) await runStep("Removing vault", ["adapter", "kb", "remove", choice]);
+}
+
+// ---------------------------------------------------------------------------
+// Area: Jira
+// ---------------------------------------------------------------------------
+
+function formatJiraStatus(status) {
+  const rows = [
+    ["origin", status.origin],
+    ["status", status.status],
+    ["principal", status.principal_name || status.principal_email || status.principal_id],
+    ["browser", status.browser],
+    ["captured", status.captured_at],
+    ["validated", status.validated_at],
+    ["last error", status.last_error],
+  ];
+  return rows.filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`).join("\n");
+}
+
+async function actionJiraStatus() {
+  const baseUrl = ensureNotCancelled(
+    await text({ message: "Jira base URL", placeholder: "https://jira.example.test", validate: httpsUrl }),
+  );
+  const payload = await runStep("Jira session status", ["adapter", "auth", "jira-status", "--base-url", baseUrl.trim()]);
+  if (payload) note(formatJiraStatus(payload), `Jira session: ${payload.status || "unknown"}`);
+}
+
+async function actionAuthJira() {
+  const answers = await group(
+    {
+      baseUrl: () =>
+        text({ message: "Jira base URL", placeholder: "https://jira.example.test", validate: httpsUrl }),
+      browser: () =>
+        select({
+          message: "Browser to read cookies from",
+          options: [
+            { value: "", label: "Auto-detect" },
+            { value: "chrome", label: "Chrome" },
+            { value: "edge", label: "Edge" },
+            { value: "safari", label: "Safari" },
+            { value: "firefox", label: "Firefox" },
+          ],
+        }),
+    },
+    { onCancel: cancelAndExit },
+  );
+
+  const args = ["adapter", "auth", "jira", "--base-url", answers.baseUrl.trim()];
+  if (answers.browser) args.push("--browser", answers.browser);
+
+  const payload = await runStep("Refreshing Jira browser session", args);
+  if (payload?.error === "jira_principal_changed") {
+    const confirmChange = ensureNotCancelled(
+      await confirm({ message: "A different Jira user is signed in. Confirm principal change?", initialValue: false }),
+    );
+    if (confirmChange) {
+      await runStep("Refreshing Jira browser session (confirmed)", [...args, "--confirm-principal-change"]);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Area: Search memory
+// ---------------------------------------------------------------------------
+
+async function actionSearch() {
+  const answers = await group(
+    {
+      query: () => text({ message: "Search query", validate: required }),
+      topK: () => text({ message: "Top K", placeholder: "10" }),
+      includeSuperseded: () => confirm({ message: "Include superseded memories?", initialValue: false }),
+    },
+    { onCancel: cancelAndExit },
+  );
+
+  const args = ["memory", "search", answers.query.trim()];
+  if (answers.topK && /^\d+$/.test(answers.topK.trim())) args.push("--top-k", answers.topK.trim());
+  if (answers.includeSuperseded) args.push("--include-superseded");
+
+  const payload = await runStep("Searching", args);
+  if (Array.isArray(payload?.results) && payload.results.length) {
+    note(
+      payload.results
+        .slice(0, 10)
+        .map((row) => {
+          const id = row.memory_id || row.id || "(no id)";
+          const summary = row.summary || row.content || "";
+          return `- ${id}: ${summary.slice(0, 120)}`;
+        })
+        .join("\n"),
+      "Top results",
+    );
+  } else if (payload && Array.isArray(payload?.results)) {
+    note("No results", "Top results");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Area: Status & diagnostics
+// ---------------------------------------------------------------------------
+
+async function actionAdapterStatus() {
+  const status = await runStep("Adapter status", ["adapter", "status"]);
+  if (status?.capabilities) note(status.capabilities.join("\n"), "Adapter capabilities");
+  const profiles = parseJson((await runMemforge(["adapter", "kb", "list"])).stdout)?.profiles ?? {};
+  const names = Object.keys(profiles);
+  note(names.length ? names.join("\n") : "(none)", "Configured vaults");
+}
+
+async function actionDiagnostics() {
+  await runStep("Adapter status", ["adapter", "status"]);
+  await runStep("Health check", ["target", "check"]);
+}
+
+// ---------------------------------------------------------------------------
+// Menu structure (area -> actions)
+// ---------------------------------------------------------------------------
+
+const AREAS = [
+  {
+    value: "server",
+    label: "Connect a MemForge server",
+    hint: "where your memories are stored",
+    actions: [
+      { value: "connect", label: "Connect a server", hint: "add and activate a target", run: actionConnectServer },
+      { value: "switch", label: "Switch active server", hint: "choose an existing target", run: actionSwitchServer },
+      { value: "check", label: "Health check", hint: "probe the active server", run: actionHealthCheck },
+    ],
+  },
+  {
+    value: "markdown",
+    label: "Markdown & Obsidian notes",
+    hint: "sync a local folder into memory",
+    actions: [
+      { value: "setup", label: "Set up a vault", hint: "guided: folder → link → first sync", run: actionVaultWizard },
+      { value: "sync", label: "Sync now", hint: "push new and changed notes", run: actionSyncNow },
+      { value: "preview", label: "Preview (dry run)", hint: "show what would sync", run: actionPreview },
+      { value: "manage", label: "Manage vaults", hint: "list and remove", run: actionManageVaults },
+    ],
+  },
+  {
+    value: "jira",
+    label: "Jira",
+    hint: "let the server sync Jira as you",
+    actions: [
+      { value: "status", label: "Check session status", hint: "is the current login still valid?", run: actionJiraStatus },
+      { value: "auth", label: "Authenticate browser session", hint: "hand over your Jira cookies", run: actionAuthJira },
+    ],
+  },
+  {
+    value: "search",
+    label: "Search memory",
+    hint: "find stored facts and decisions",
+    actions: [{ value: "search", label: "Search", hint: "query stored memories", run: actionSearch }],
+  },
+  {
+    value: "status",
+    label: "Status & diagnostics",
+    hint: "connection, capabilities, sources",
+    actions: [
+      { value: "status", label: "Adapter capabilities & vaults", hint: "read-only status", run: actionAdapterStatus },
+      { value: "diagnostics", label: "Run diagnostics", hint: "adapter status + server check", run: actionDiagnostics },
+    ],
+  },
+];
+
+async function runArea(area) {
+  while (true) {
+    const choice = ensureNotCancelled(
+      await select({
+        message: area.label,
+        maxItems: MENU_MAX_ITEMS,
+        options: [
+          ...area.actions.map(({ value, label, hint }) => ({ value, label, hint })),
+          { value: "__back__", label: "← Back" },
+        ],
+      }),
+    );
+    if (choice === "__back__") return;
+    const action = area.actions.find((item) => item.value === choice);
+    if (!action) return;
+    try {
+      await action.run();
+    } catch (error) {
+      log.error(`${action.label}: ${error?.message || error}`);
+    }
+  }
+}
+
+async function main() {
+  intro("MemForge");
+  while (true) {
+    const choice = ensureNotCancelled(
+      await select({
+        message: "Choose an area",
+        maxItems: MENU_MAX_ITEMS,
+        options: [
+          ...AREAS.map(({ value, label, hint }) => ({ value, label, hint })),
+          { value: "__quit__", label: "Quit" },
+        ],
+      }),
+    );
+    if (choice === "__quit__") {
+      outro("Bye");
+      return;
+    }
+    const area = AREAS.find((item) => item.value === choice);
+    if (area) await runArea(area);
+  }
+}
+
+main().catch((error) => {
+  process.stderr.write(`memforge interactive crashed: ${error?.stack || error}\n`);
+  process.exit(1);
+});

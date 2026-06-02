@@ -77,6 +77,58 @@ class ToolClient:
             return {"error": "memory_id is required"}
         return self._http_json("GET", f"/api/memories/{quote(memory_id, safe='')}", None)
 
+    def push_local_markdown_document(
+        self,
+        *,
+        source_id: str,
+        vault_id: str,
+        relative_path: str,
+        markdown_body: str,
+        title: str | None = None,
+        raw_hash: str | None = None,
+        submitted_by: str | None = None,
+        submitted_at: str | None = None,
+        process_now: bool = False,
+    ) -> dict[str, Any]:
+        """Push one markdown document into a configured local_markdown source."""
+        source_id = source_id.strip()
+        if not source_id:
+            return {"error": "source_id is required"}
+        body: dict[str, Any] = {
+            "vault_id": vault_id,
+            "relative_path": relative_path,
+            "markdown_body": markdown_body,
+            "process_now": process_now,
+        }
+        if title is not None:
+            body["title"] = title
+        if raw_hash is not None:
+            body["raw_hash"] = raw_hash
+        if submitted_by is not None:
+            body["submitted_by"] = submitted_by
+        if submitted_at is not None:
+            body["submitted_at"] = submitted_at
+        return self._http_json(
+            "POST",
+            f"/api/sources/{quote(source_id, safe='')}/adapter/documents",
+            body,
+        )
+
+    def list_sources(self) -> dict[str, Any]:
+        """List configured sources. Returns the API ``{"data": [...]}`` envelope."""
+        return self._http_json("GET", "/api/sources", None)
+
+    def create_source(self, *, source_type: str, name: str, config: dict[str, Any]) -> dict[str, Any]:
+        """Create a source (gene instance) of ``source_type`` with the given config."""
+        return self._http_json(
+            "POST",
+            "/api/sources",
+            {"type": source_type, "name": name, "config": config},
+        )
+
+    def health(self) -> dict[str, Any]:
+        return self._http_json("GET", "/api/health", None)
+
     def get_resource(
         self,
         *,
