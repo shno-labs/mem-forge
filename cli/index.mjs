@@ -318,10 +318,10 @@ async function actionVaultWizard() {
   const scan = await runStep("Scanning folder", ["adapter", "kb", "scan", "--root", root, "--limit", "5"]);
   const found = scan?.counts?.included ?? 0;
   if (!found) {
-    log.warn("No markdown files matched in that folder. Nothing to sync yet.");
+    log.warn("No matching files in that folder. Nothing to sync yet.");
     return;
   }
-  note(formatCounts(scan.counts), `Found ${found} markdown files`);
+  note(formatCounts(scan.counts), `Found ${found} matching files`);
 
   const setup = await group(
     {

@@ -271,13 +271,17 @@ function SourceConfigForm({
               </details>
             )}
 
-            <DiscoveryPreviewPanel
-              ready={previewReady}
-              isPending={previewDiscovery.isPending}
-              error={previewDiscovery.isError ? previewDiscovery.error : null}
-              data={previewDiscovery.data}
-              onPreview={() => previewDiscovery.mutate()}
-            />
+            {/* Local repositories are pushed from the CLI, not discovered server-side,
+                so the discovery preview does not apply (and its inbox is empty here). */}
+            {sourceType !== "local_markdown" && (
+              <DiscoveryPreviewPanel
+                ready={previewReady}
+                isPending={previewDiscovery.isPending}
+                error={previewDiscovery.isError ? previewDiscovery.error : null}
+                data={previewDiscovery.data}
+                onPreview={() => previewDiscovery.mutate()}
+              />
+            )}
           </div>
 
           {saveSource.isError && (

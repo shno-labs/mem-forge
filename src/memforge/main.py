@@ -982,7 +982,7 @@ def adapter_kb_add(
     display_label: str | None,
     create_source: bool,
 ):
-    """Add or update a local markdown knowledge-base profile.
+    """Add or update a local repository profile.
 
     With ``--create-source`` the profile is also linked to its MemForge source:
     an existing ``local_markdown`` source with the same vault id is reused, or a
@@ -1024,7 +1024,7 @@ def adapter_kb_add(
 @adapter_kb.command("list")
 @click.pass_context
 def adapter_kb_list(ctx):
-    """List local markdown knowledge-base profiles."""
+    """List local repository profiles."""
     _emit_tool_payload(ctx, {"profiles": _read_adapter_config().get("kb", {})})
 
 
@@ -1053,7 +1053,7 @@ def adapter_kb_scan(ctx, root: Path, includes: tuple[str, ...], excludes: tuple[
 @click.argument("name")
 @click.pass_context
 def adapter_kb_remove(ctx, name: str):
-    """Remove a local markdown knowledge-base profile."""
+    """Remove a local repository profile."""
     name = name.strip()
     data = _read_adapter_config()
     kb = data.get("kb", {})
