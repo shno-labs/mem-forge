@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { timeAgo } from "@/utils/date";
+import { SourceIcon } from "@/components/sources/SourceIcon";
 import { SourceConfigDialog } from "./SourceConfigDialog";
 import { canConfigureSourceType, canDeleteSourceType, isManagedSourceType, userConfigurableGenes } from "./managedSources";
 import { getSourceActionEndpoint, getSourceMenuStyle, sourceActionLayout } from "./sourceActions";
@@ -32,15 +33,6 @@ const SOURCE_LABELS: Record<string, { name: string; subtitle: string; descriptio
   github_pages: { name: "GitHub Pages", subtitle: "Documentation source", description: "Published documentation pages" },
   jira: { name: "Jira", subtitle: "Work tracking source", description: "Tickets, decisions, and work items" },
   teams: { name: "Microsoft Teams", subtitle: "Conversation source", description: "Channel messages, group chats, and direct messages" },
-};
-
-const SOURCE_DOTS: Record<string, string> = {
-  agent_session: "bg-cyan-500",
-  confluence: "bg-blue-500",
-  github_pages: "bg-slate-500",
-  jira: "bg-emerald-500",
-  teams: "bg-violet-500",
-  outlook: "bg-orange-500",
 };
 
 const SOURCE_ITEM_LABELS: Record<string, string> = {
@@ -193,7 +185,7 @@ export function SourcesPage() {
                 <div key={source.id} className="space-y-3 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
-                      <span className={`mt-1 size-2.5 shrink-0 rounded-full ${SOURCE_DOTS[source.type] ?? "bg-muted-foreground"}`} />
+                      <SourceIcon type={source.type} className="mt-0.5 size-5" />
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="truncate text-sm font-medium">{source.name}</h3>
@@ -714,7 +706,7 @@ function AddSourceDialog({
             return (
               <div key={gene.name} className="rounded-lg border p-4">
                 <div className="flex items-start gap-3">
-                  <span className={`mt-1 size-3 shrink-0 rounded-full ${SOURCE_DOTS[gene.name] ?? "bg-muted-foreground"}`} />
+                  <SourceIcon type={gene.name} className="mt-0.5 size-6" />
                   <div className="min-w-0">
                     <div className="text-sm font-medium">{source.name}</div>
                     <div className="mt-1 text-xs text-muted-foreground">{source.description}</div>
