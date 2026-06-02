@@ -4,6 +4,7 @@ import json
 from http.cookiejar import Cookie, CookieJar
 from pathlib import Path
 
+import httpx
 import pytest
 
 from memforge.config import AppConfig
@@ -447,3 +448,23 @@ async def test_sync_service_marks_shared_jira_session_expired_when_sync_reports_
     assert "Refresh the session" in status["last_error"]
     assert sync_state is not None
     assert sync_state.last_sync_status == "failed"
+
+
+async def test_validate_treats_html_login_page_as_not_accepted(monkeypatch):
+    from memforge.auth import jira_auth
+    from memforge.auth.jira_auth import JiraAuthSessionMissingError, validate_jira_cookie_session
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # SSO often answers an expired session with a 200 HTML login page.
+        return httpx.Response(200, text="<html><body>Log in</body></html>")
+
+    real_async_client = httpx.AsyncClient
+
+    def patched_async_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_async_client(*args, **kwargs)
+
+    monkeypatch.setattr(jira_auth.httpx, "AsyncClient", patched_async_client)
+
+    with pytest.raises(JiraAuthSessionMissingError):
+        await validate_jira_cookie_session("https://jira.example.test", "SESSION=dead")

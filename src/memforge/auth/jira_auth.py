@@ -444,7 +444,13 @@ async def validate_jira_cookie_session(
     cookie_header: str,
     tls_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Validate a browser Cookie header against Jira and return the principal."""
+    """Validate a browser Cookie header against Jira and return the principal.
+
+    A live session returns a JSON principal from ``/rest/api/2/myself``. An
+    expired SSO session typically answers with a 200 HTML login page or a
+    redirect to the IdP, so a non-JSON body is treated as "session not accepted"
+    rather than surfacing as an opaque parse error.
+    """
     headers = {
         "Accept": "application/json",
         "Cookie": cookie_header,
@@ -460,7 +466,17 @@ async def validate_jira_cookie_session(
         if response.status_code == 401:
             raise JiraAuthSessionMissingError("Jira browser session is expired or not accepted")
         response.raise_for_status()
-        data = response.json()
+        content_type = response.headers.get("content-type", "")
+        if "application/json" not in content_type.lower():
+            raise JiraAuthSessionMissingError(
+                "Jira returned a non-JSON response (likely a login page); the browser session is not accepted"
+            )
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise JiraAuthSessionMissingError(
+                "Jira /myself did not return JSON; the browser session is not accepted"
+            ) from exc
         if not isinstance(data, dict) or not _principal_id(data):
             raise JiraAuthSessionError("Jira /myself response did not contain a stable principal")
         return data
