@@ -24,6 +24,8 @@ export interface Memory {
   extraction_context: string | null;
   entity_refs: string[];
   sources: MemorySource[];
+  /** Source type for the leading glyph: extraction origin, else first source. */
+  origin_source_type: string | null;
 }
 
 export type MemorySourceSupportKind = "extracted" | "corroborated";

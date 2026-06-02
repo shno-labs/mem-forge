@@ -1685,6 +1685,28 @@ class Database:
                 ))
         return results
 
+    async def get_origin_source_pairs(
+        self, memory_ids: list[str]
+    ) -> dict[str, list[tuple[str, str | None]]]:
+        """Return each memory's (source_type, support_kind) pairs, ordered
+        oldest-first by (added_at, doc_id), for a batch of memories in one query.
+        Memories with no sources are absent from the result."""
+        if not memory_ids:
+            return {}
+        placeholders = ",".join("?" for _ in memory_ids)
+        grouped: dict[str, list[tuple[str, str | None]]] = {}
+        async with self.db.execute(
+            f"SELECT memory_id, source_type, support_kind FROM memory_sources "
+            f"WHERE memory_id IN ({placeholders}) ORDER BY added_at ASC, doc_id ASC",
+            memory_ids,
+        ) as cursor:
+            async for row in cursor:
+                d = dict(row)
+                grouped.setdefault(d["memory_id"], []).append(
+                    (d["source_type"], d.get("support_kind"))
+                )
+        return grouped
+
     async def get_corroborated_sources_by_doc(self, doc_id: str) -> list[MemorySource]:
         results: list[MemorySource] = []
         async with self.db.execute(

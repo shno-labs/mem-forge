@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { SearchInput } from "@/components/admin/SearchInput";
 import { ConfidenceBadge, MemoryTypeBadge, StatusDot } from "@/components/admin/StatusBadge";
 import { MemoryTypeIcon } from "@/components/memories/MemoryTypeIcon";
+import { SourceIcon } from "@/components/sources/SourceIcon";
 import { Toolbar } from "@/components/admin/Toolbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -276,6 +277,7 @@ export function MemoriesPage() {
               <TableBody>
                 {memories.map((memory) => {
                   const reviewId = reviewByMemoryId.get(memory.id);
+                  const origin = memory.origin_source_type;
                   const target =
                     reviewId && memory.status === "pending_review"
                       ? `/review/${reviewId}`
@@ -288,7 +290,11 @@ export function MemoriesPage() {
                     >
                       <TableCell>
                         <div className="flex items-center gap-1.5">
-                          <MemoryTypeIcon type={memory.memory_type} className="size-4" />
+                          {origin ? (
+                            <SourceIcon type={origin} className="size-4" />
+                          ) : (
+                            <MemoryTypeIcon type={memory.memory_type} className="size-4" />
+                          )}
                           <StatusDot status={memory.status} />
                         </div>
                       </TableCell>

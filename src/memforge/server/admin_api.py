@@ -220,6 +220,9 @@ class MemoryResponse(BaseModel):
     extraction_context: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    # Source type for the leading glyph: the memory's extraction origin, else its
+    # first attached source. None only when a memory has no remaining provenance.
+    origin_source_type: str | None = None
 
 
 class MemoryDetailResponse(MemoryResponse):
@@ -1328,7 +1331,31 @@ def _memory_source_detail(
     )
 
 
-def _memory_to_response(mem: Memory) -> MemoryResponse:
+def _pick_origin_source_type(pairs: list[tuple[str, str | None]]) -> str | None:
+    """Pick a memory's display source from its (source_type, support_kind) pairs,
+    ordered oldest-first: the extraction origin if any, else the first source.
+    None when there are no sources."""
+    if not pairs:
+        return None
+    for source_type, support_kind in pairs:
+        if support_kind == "extracted":
+            return source_type
+    return pairs[0][0]
+
+
+async def _origin_source_types(db: Database, memory_ids: list[str]) -> dict[str, str]:
+    """Map memory id -> origin source_type for a batch of memories in one query.
+    Memories with no source are omitted."""
+    grouped = await db.get_origin_source_pairs(memory_ids)
+    origins: dict[str, str] = {}
+    for mid, pairs in grouped.items():
+        origin = _pick_origin_source_type(pairs)
+        if origin is not None:
+            origins[mid] = origin
+    return origins
+
+
+def _memory_to_response(mem: Memory, origin_source_type: str | None = None) -> MemoryResponse:
     """Convert a Memory dataclass to a Pydantic response model."""
     return MemoryResponse(
         id=mem.id,
@@ -1352,6 +1379,7 @@ def _memory_to_response(mem: Memory) -> MemoryResponse:
         extraction_context=mem.extraction_context,
         created_at=_dt_iso(mem.created_at),
         updated_at=_dt_iso(mem.updated_at),
+        origin_source_type=origin_source_type,
     )
 
 
@@ -2055,6 +2083,8 @@ def create_admin_app(
                 if row:
                     entity_names.append(row[0])
 
+        origin_source_type = (await _origin_source_types(db, [memory_id])).get(memory_id)
+
         return MemoryDetailResponse(
             id=mem.id,
             memory_type=mem.memory_type,
@@ -2079,6 +2109,7 @@ def create_admin_app(
             updated_at=_dt_iso(mem.updated_at),
             entity_refs=entity_names,
             sources=source_details,
+            origin_source_type=origin_source_type,
         )
 
     # -- Memory update (admin actions) --
@@ -2274,8 +2305,9 @@ def create_admin_app(
                 async for row in cursor:
                     memories.append(db._row_to_memory(row))
 
+        origins = await _origin_source_types(db, [m.id for m in memories])
         return MemoryListResponse(
-            data=[_memory_to_response(m) for m in memories],
+            data=[_memory_to_response(m, origins.get(m.id)) for m in memories],
             total=total,
             limit=limit,
             offset=offset,
