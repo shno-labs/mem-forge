@@ -13,7 +13,7 @@ const source = readFileSync(path.join(here, "..", "index.mjs"), "utf-8");
 const requiredLabels = [
   // Areas
   "Connect a MemForge server",
-  "Markdown & Obsidian notes",
+  "Local repository",
   "Jira",
   "Search memory",
   "Status & diagnostics",
@@ -24,6 +24,8 @@ const requiredLabels = [
   "Set up a vault",
   "Sync now",
   "Preview (dry run)",
+  "Schedule sync",
+  "Manage schedules",
   "Manage vaults",
   "Check session status",
   "Authenticate browser session",
@@ -45,6 +47,8 @@ const requiredCommands = [
   ['"adapter", "kb", "scan"', "Wizard instant feedback wraps `memforge adapter kb scan`"],
   ['"adapter", "kb", "preview"', "Preview wraps `memforge adapter kb preview`"],
   ['"adapter", "kb", "push"', "Sync wraps `memforge adapter kb push`"],
+  ['"adapter", "kb", "schedule"', "Schedule wraps `memforge adapter kb schedule`"],
+  ['"adapter", "kb", "unschedule"', "Manage schedules wraps `memforge adapter kb unschedule`"],
   ['"adapter", "kb", "remove"', "Manage vaults wraps `memforge adapter kb remove`"],
   ['"adapter", "kb", "list"', "Manage vaults / status wraps `memforge adapter kb list`"],
   ['"adapter", "auth", "jira", "status"', "Jira status wraps `adapter auth jira status`"],

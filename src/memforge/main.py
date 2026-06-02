@@ -41,6 +41,19 @@ DEFAULT_KB_INCLUDE = [
     "*.htm", "**/*.htm",
 ]
 DEFAULT_KB_EXCLUDE = [".obsidian/**", ".trash/**", ".git/**", "**/.git/**"]
+KB_SCHEDULE_PRESETS = {
+    "15m": "*/15 * * * *",
+    "30m": "*/30 * * * *",
+    "hourly": "0 * * * *",
+    "2h": "0 */2 * * *",
+    "4h": "0 */4 * * *",
+    "6h": "0 */6 * * *",
+    "12h": "0 */12 * * *",
+    "daily": "0 9 * * *",
+    "weekly": "0 9 * * 1",
+}
+KB_CRON_MARK_START = "# >>> memforge:kb:{name} >>>"
+KB_CRON_MARK_END = "# <<< memforge:kb:{name} <<<"
 LOCAL_MARKDOWN_SOURCE_TYPE = "local_markdown"
 INTERACTIVE_DISABLE_ENV = "MEMFORGE_NO_INTERACTIVE"
 INTERACTIVE_SCRIPT_ENV = "MEMFORGE_INTERACTIVE_SCRIPT"
@@ -175,6 +188,9 @@ def _write_adapter_config(data: dict[str, Any]) -> None:
         source_id = str(profile.get("source_id") or "").strip()
         if source_id:
             lines.append(f"source_id = {_toml_string(source_id)}")
+        schedule = str(profile.get("schedule") or "").strip()
+        if schedule:
+            lines.append(f"schedule = {_toml_string(schedule)}")
         lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
     path.chmod(0o600)
@@ -1119,6 +1135,70 @@ def adapter_kb_push(
     _emit_tool_payload(ctx, payload)
 
 
+@adapter_kb.command("schedule")
+@click.argument("name")
+@click.option("--every", default="daily", show_default=True, type=click.Choice(list(KB_SCHEDULE_PRESETS)),
+              help="How often to sync. Ignored when --cron is given.")
+@click.option("--at", "at_time", default=None,
+              help="Time of day HH:MM for the daily and weekly presets (default 09:00).")
+@click.option("--cron", "cron_expr", default=None,
+              help="Raw 5-field cron expression. Overrides --every and --at.")
+@click.pass_context
+def adapter_kb_schedule(ctx, name: str, every: str, at_time: str | None, cron_expr: str | None):
+    """Install an OS cron job that runs ``adapter kb push NAME --process-now``.
+
+    Scheduling uses the user crontab today. A background watcher daemon is a
+    planned alternative (see docs/local-repo-sync.md).
+    """
+    name = name.strip()
+    if not isinstance(_read_adapter_config().get("kb", {}).get(name), dict):
+        raise click.ClickException(f"Unknown knowledge-base profile: {name}")
+    try:
+        expr = _render_cron_expr(every=every, at_time=at_time, cron_expr=cron_expr)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+    command = _kb_push_command(name)
+    _write_crontab(_apply_crontab_block(_read_crontab(), name, _render_crontab_block(name, expr, command)))
+    data = _read_adapter_config()
+    data.setdefault("kb", {}).setdefault(name, {})["schedule"] = expr
+    _write_adapter_config(data)
+    _emit_tool_payload(ctx, {"ok": True, "profile": name, "cron": expr, "command": command})
+
+
+@adapter_kb.command("schedule-list")
+@click.pass_context
+def adapter_kb_schedule_list(ctx):
+    """List KB sync schedules and whether each cron job is installed."""
+    profiles = _read_adapter_config().get("kb", {})
+    crontab = _read_crontab()
+    schedules = []
+    for name, profile in profiles.items():
+        if not isinstance(profile, dict):
+            continue
+        cron = str(profile.get("schedule") or "").strip()
+        installed = _has_crontab_block(crontab, name)
+        if cron or installed:
+            schedules.append({"profile": name, "cron": cron or None, "installed": installed})
+    _emit_tool_payload(ctx, {"schedules": schedules})
+
+
+@adapter_kb.command("unschedule")
+@click.argument("name")
+@click.pass_context
+def adapter_kb_unschedule(ctx, name: str):
+    """Remove the OS cron job for a KB profile."""
+    name = name.strip()
+    crontab = _read_crontab()
+    removed = _has_crontab_block(crontab, name)
+    if removed:
+        _write_crontab(_remove_crontab_block(crontab, name))
+    data = _read_adapter_config()
+    profile = data.get("kb", {}).get(name)
+    if isinstance(profile, dict) and profile.pop("schedule", None) is not None:
+        _write_adapter_config(data)
+    _emit_tool_payload(ctx, {"ok": True, "profile": name, "removed": removed})
+
+
 def _preview_kb_profile(name: str, profile: dict[str, Any], *, limit: int) -> dict[str, Any]:
     root, include, exclude, vault_id = _resolve_kb_profile(name, profile)
     counts = {"included": 0, "ignored": 0, "too_large": 0, "invalid_utf8": 0, "unreadable": 0}
@@ -1237,6 +1317,98 @@ def _markdown_title(markdown_body: str) -> str | None:
         if stripped.startswith("# "):
             return stripped[2:].strip() or None
     return None
+
+
+def _render_cron_expr(*, every: str, at_time: str | None = None, cron_expr: str | None = None) -> str:
+    """Resolve a 5-field cron expression from a preset (+ optional time) or a raw expression."""
+    if cron_expr:
+        fields = cron_expr.split()
+        if len(fields) != 5:
+            raise ValueError("--cron must be a 5-field expression, for example '0 9 * * 1'")
+        return " ".join(fields)
+    base = KB_SCHEDULE_PRESETS.get(every)
+    if base is None:
+        raise ValueError(f"Unknown schedule preset: {every}")
+    if at_time and every in ("daily", "weekly"):
+        hour, minute = _parse_hh_mm(at_time)
+        parts = base.split()
+        parts[0], parts[1] = str(minute), str(hour)
+        return " ".join(parts)
+    return base
+
+
+def _parse_hh_mm(value: str) -> tuple[int, int]:
+    try:
+        hh, mm = value.strip().split(":")
+        hour, minute = int(hh), int(mm)
+    except (ValueError, AttributeError):
+        raise ValueError("--at must be a 24-hour time HH:MM, for example 08:30") from None
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ValueError("--at must be a valid 24-hour time HH:MM")
+    return hour, minute
+
+
+def _kb_push_command(name: str) -> str:
+    memforge = shutil.which("memforge") or "memforge"
+    return f"{memforge} adapter kb push {name} --process-now >> $HOME/.memforge/kb-{name}.log 2>&1"
+
+
+def _render_crontab_block(name: str, cron_expr: str, command: str) -> str:
+    return "\n".join([
+        KB_CRON_MARK_START.format(name=name),
+        f"{cron_expr} {command}",
+        KB_CRON_MARK_END.format(name=name),
+    ])
+
+
+def _has_crontab_block(crontab: str, name: str) -> bool:
+    return KB_CRON_MARK_START.format(name=name) in crontab
+
+
+def _strip_crontab_block(crontab: str, name: str) -> str:
+    start = KB_CRON_MARK_START.format(name=name)
+    end = KB_CRON_MARK_END.format(name=name)
+    kept: list[str] = []
+    skipping = False
+    for line in crontab.splitlines():
+        if line.strip() == start:
+            skipping = True
+            continue
+        if skipping:
+            if line.strip() == end:
+                skipping = False
+            continue
+        kept.append(line)
+    return "\n".join(kept).rstrip("\n")
+
+
+def _apply_crontab_block(crontab: str, name: str, block: str) -> str:
+    cleaned = _strip_crontab_block(crontab, name)
+    body = "\n".join(part for part in (cleaned, block) if part)
+    return body + "\n"
+
+
+def _remove_crontab_block(crontab: str, name: str) -> str:
+    cleaned = _strip_crontab_block(crontab, name)
+    return cleaned + "\n" if cleaned else ""
+
+
+def _read_crontab() -> str:
+    try:
+        result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    except FileNotFoundError as exc:
+        raise click.ClickException("`crontab` is not available on this system.") from exc
+    # A missing crontab exits non-zero with a notice on stderr; treat that as empty.
+    return result.stdout if result.returncode == 0 else ""
+
+
+def _write_crontab(content: str) -> None:
+    try:
+        proc = subprocess.run(["crontab", "-"], input=content, capture_output=True, text=True)
+    except FileNotFoundError as exc:
+        raise click.ClickException("`crontab` is not available on this system.") from exc
+    if proc.returncode != 0:
+        raise click.ClickException(f"Failed to update crontab: {proc.stderr.strip()}")
 
 
 @adapter.group("auth")

@@ -443,6 +443,57 @@ async function actionManageVaults() {
   if (confirmRemove) await runStep("Removing vault", ["adapter", "kb", "remove", choice]);
 }
 
+async function actionSchedule() {
+  const name = await pickKbProfile("Schedule which repo?");
+  if (!name) return;
+  const every = ensureNotCancelled(
+    await select({
+      message: "How often should it sync?",
+      maxItems: MENU_MAX_ITEMS,
+      options: [
+        { value: "hourly", label: "Hourly" },
+        { value: "6h", label: "Every 6 hours" },
+        { value: "12h", label: "Every 12 hours" },
+        { value: "daily", label: "Daily" },
+        { value: "weekly", label: "Weekly" },
+        { value: "15m", label: "Every 15 minutes" },
+      ],
+    }),
+  );
+  const args = ["adapter", "kb", "schedule", name, "--every", every];
+  if (every === "daily" || every === "weekly") {
+    const at = ensureNotCancelled(await text({ message: "Time of day (HH:MM)", placeholder: "09:00" }));
+    if (at && /^\d{1,2}:\d{2}$/.test(at.trim())) args.push("--at", at.trim());
+  }
+  const payload = await runStep("Scheduling sync", args);
+  if (payload?.cron) note(`cron: ${payload.cron}\n${payload.command || ""}`, "Scheduled");
+}
+
+async function actionManageSchedules() {
+  const payload = parseJson((await runMemforge(["adapter", "kb", "schedule-list"])).stdout);
+  const schedules = Array.isArray(payload?.schedules) ? payload.schedules : [];
+  if (!schedules.length) {
+    log.warn("No schedules configured yet. Use 'Schedule sync' first.");
+    return;
+  }
+  note(
+    schedules.map((s) => `- ${s.profile}  (${s.cron || "?"})${s.installed ? "" : " — cron job missing"}`).join("\n"),
+    "Configured schedules",
+  );
+  const choice = ensureNotCancelled(
+    await select({
+      message: "Remove which schedule?",
+      maxItems: MENU_MAX_ITEMS,
+      options: [
+        ...schedules.map((s) => ({ value: s.profile, label: `Remove ${s.profile}` })),
+        { value: "__back__", label: "← Back" },
+      ],
+    }),
+  );
+  if (choice === "__back__") return;
+  await runStep("Removing schedule", ["adapter", "kb", "unschedule", choice]);
+}
+
 // ---------------------------------------------------------------------------
 // Area: Jira
 // ---------------------------------------------------------------------------
@@ -576,12 +627,14 @@ const AREAS = [
   },
   {
     value: "markdown",
-    label: "Markdown & Obsidian notes",
-    hint: "sync a local folder into memory",
+    label: "Local repository",
+    hint: "sync a local folder (md, txt, json, html) into memory",
     actions: [
       { value: "setup", label: "Set up a vault", hint: "guided: folder → link → first sync", run: actionVaultWizard },
-      { value: "sync", label: "Sync now", hint: "push new and changed notes", run: actionSyncNow },
+      { value: "sync", label: "Sync now", hint: "push new and changed files", run: actionSyncNow },
       { value: "preview", label: "Preview (dry run)", hint: "show what would sync", run: actionPreview },
+      { value: "schedule", label: "Schedule sync", hint: "run sync automatically on a timer", run: actionSchedule },
+      { value: "schedules", label: "Manage schedules", hint: "list and remove timers", run: actionManageSchedules },
       { value: "manage", label: "Manage vaults", hint: "list and remove", run: actionManageVaults },
     ],
   },
