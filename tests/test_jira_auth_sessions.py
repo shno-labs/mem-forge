@@ -58,7 +58,7 @@ def _cookie(
 
 
 def test_cookie_header_post_filters_domain_path_and_secure_scope():
-    from memforge.auth.jira_auth import _cookie_header_from_jar
+    from memforge.auth.jira_capture import _cookie_header_from_jar
 
     jar = CookieJar()
     jar.set_cookie(_cookie("root", "ok", ".example.test", "/", secure=False))
