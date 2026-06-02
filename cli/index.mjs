@@ -297,10 +297,40 @@ async function actionHealthCheck() {
 }
 
 // ---------------------------------------------------------------------------
-// Area: Markdown & Obsidian notes
+// Area: Local repository
 // ---------------------------------------------------------------------------
 
+// Linking a repo needs a reachable server. Without an active target (and no
+// MEMFORGE_API_URL), the CLI silently falls back to the local default and the
+// link fails late, so surface it up front.
+async function ensureServerConnected() {
+  if (process.env.MEMFORGE_API_URL) return true;
+  const config = parseJson((await runMemforge(["target", "list"])).stdout) ?? {};
+  if (config.active) return true;
+
+  log.warn("No MemForge server connected yet. Linking a repo needs a running server.");
+  const choice = ensureNotCancelled(
+    await select({
+      message: "Connect a server before setting up the repo?",
+      options: [
+        { value: "connect", label: "Connect a server now" },
+        { value: "continue", label: "Continue anyway (runs against the local default; may fail)" },
+        { value: "back", label: "← Back" },
+      ],
+    }),
+  );
+  if (choice === "back") return false;
+  if (choice === "connect") {
+    await actionConnectServer();
+    if (process.env.MEMFORGE_API_URL) return true;
+    const after = parseJson((await runMemforge(["target", "list"])).stdout) ?? {};
+    return Boolean(after.active);
+  }
+  return true;
+}
+
 async function actionVaultWizard() {
+  if (!(await ensureServerConnected())) return;
   const folderInput = ensureNotCancelled(
     await text({
       message: "Path to your notes folder",
@@ -356,11 +386,22 @@ async function actionVaultWizard() {
 
   const added = await runStep("Linking vault to MemForge", addArgs);
   if (added?.source_link_error) {
-    log.warn(`Vault saved locally, but it couldn't be linked: ${added.source_link_error}`);
-    note(
-      `Create a 'local_markdown' source in the admin UI with this vault id, then\nrun Sync now:\n  ${vaultId}`,
-      "Finish linking in the admin UI",
+    log.warn(`Saved locally, but couldn't link to a source: ${added.source_link_error}`);
+    if (added.detail) log.info(added.detail);
+    const unreachable = /unavailable|unreachable|connection|refused|ECONNREFUSED|timed out/i.test(
+      `${added.source_link_error} ${added.detail ?? ""}`,
     );
+    if (unreachable) {
+      note(
+        "Couldn't reach your MemForge server. Connect one ('Connect a MemForge server')\nor start the API, then run 'Sync now'.",
+        "Server not reachable",
+      );
+    } else {
+      note(
+        `Create a 'local_markdown' source in the admin UI with this vault id, then\nrun 'Sync now':\n  ${vaultId}`,
+        "Finish linking in the admin UI",
+      );
+    }
     return;
   }
   if (added?.source_id) {
