@@ -60,6 +60,10 @@ memforge adapter kb push my-notes --process-now   # push and trigger extraction
 `--process-now`, a source sync runs after the last file. Re-pushing a file
 overwrites its package; the pipeline skips documents whose content is unchanged.
 
+Deleting a file locally is not propagated automatically: the push model only
+adds and updates. To drop deleted files, remove the source (or run a forced full
+resync) so the pipeline reconciles the inbox.
+
 ## Schedule
 
 Scheduling installs a job in your **user crontab** that runs

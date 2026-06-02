@@ -41,7 +41,7 @@ const SOURCE_ITEM_LABELS: Record<string, string> = {
   confluence: "pages",
   github_pages: "documents",
   jira: "issues",
-  local_markdown: "notes",
+  local_markdown: "files",
   teams: "conversations",
 };
 

@@ -28,8 +28,8 @@ assert.match(
 
 assert.match(
   sourcesPageSource,
-  /local_markdown:\s*"notes"/,
-  "SourcesPage should describe local_markdown items as 'notes'",
+  /local_markdown:\s*"files"/,
+  "SourcesPage should describe local_markdown items as 'files'",
 );
 
 const sourceConfigDialogSource = readFileSync("src/views/sources/SourceConfigDialog.tsx", "utf8");

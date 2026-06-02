@@ -196,6 +196,30 @@ def _write_adapter_config(data: dict[str, Any]) -> None:
     path.chmod(0o600)
 
 
+# A profile name becomes part of the source id, a TOML table key, and a line in
+# the user crontab, so it is restricted to an identifier-safe character set.
+_KB_PROFILE_NAME_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+)
+
+
+def _validate_kb_profile_name(name: str) -> str:
+    """Return a safe profile name or raise.
+
+    Restricting the character set blocks crontab injection (an embedded newline
+    would otherwise add a live cron line) and multi-word names that cron would
+    split into separate arguments.
+    """
+    cleaned = (name or "").strip()
+    if not cleaned:
+        raise click.ClickException("Profile name is required.")
+    if any(ch not in _KB_PROFILE_NAME_CHARS for ch in cleaned):
+        raise click.ClickException(
+            "Profile name may contain only letters, digits, '.', '_', and '-' (no spaces or newlines)."
+        )
+    return cleaned
+
+
 def _toml_string_list(values: list[str]) -> str:
     return "[" + ", ".join(_toml_string(value) for value in values) + "]"
 
@@ -934,7 +958,7 @@ def adapter_status(ctx):
 
 @adapter.group("kb")
 def adapter_kb():
-    """Manage local markdown knowledge-base adapter profiles."""
+    """Manage local repository adapter profiles (Markdown, text, JSON, HTML)."""
     pass
 
 
@@ -964,9 +988,7 @@ def adapter_kb_add(
     an existing ``local_markdown`` source with the same vault id is reused, or a
     new one is created, and its id is stored so ``push`` needs no source id.
     """
-    name = name.strip()
-    if not name:
-        raise click.ClickException("Profile name is required.")
+    name = _validate_kb_profile_name(name)
     resolved_vault = vault_id or name
     data = _read_adapter_config()
     kb = data.setdefault("kb", {})
@@ -1150,7 +1172,7 @@ def adapter_kb_schedule(ctx, name: str, every: str, at_time: str | None, cron_ex
     Scheduling uses the user crontab today. A background watcher daemon is a
     planned alternative (see docs/local-repo-sync.md).
     """
-    name = name.strip()
+    name = _validate_kb_profile_name(name)
     if not isinstance(_read_adapter_config().get("kb", {}).get(name), dict):
         raise click.ClickException(f"Unknown knowledge-base profile: {name}")
     try:

