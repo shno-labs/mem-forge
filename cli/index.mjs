@@ -739,6 +739,26 @@ async function runArea(area) {
 }
 
 async function main() {
+  // Until a MemForge server is reachable, the only useful action is to connect
+  // one — everything else needs the backend, so don't offer the full menu yet.
+  while (!(await probeServerReachable())) {
+    header();
+    const choice = ensureNotCancelled(
+      await select({
+        message: "No MemForge server reachable — connect one to continue",
+        options: [
+          { value: "connect", label: "Connect a MemForge server", hint: "where your memories are stored" },
+          { value: "__quit__", label: "Quit" },
+        ],
+      }),
+    );
+    if (choice === "__quit__") {
+      outro("Bye");
+      return;
+    }
+    await actionConnectServer();
+  }
+
   while (true) {
     header();
     const choice = ensureNotCancelled(
