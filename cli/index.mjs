@@ -36,7 +36,6 @@ const {
   text,
   confirm,
   isCancel,
-  cancel,
   spinner,
   log,
   note,
@@ -108,13 +107,18 @@ async function runStep(label, args) {
 // Prompt helpers
 // ---------------------------------------------------------------------------
 
-function cancelAndExit() {
-  cancel("Cancelled.");
-  process.exit(0);
+// ESC / Ctrl-C in any prompt unwinds one level up (back to the parent menu)
+// instead of quitting outright. Cancelled prompts throw BACK; each menu loop
+// catches it (sub-menu returns to its parent; the top menu and the connect gate
+// quit, since nothing sits above them).
+const BACK = Symbol("back");
+
+function goBack() {
+  throw BACK;
 }
 
 function ensureNotCancelled(value) {
-  if (isCancel(value)) cancelAndExit();
+  if (isCancel(value)) throw BACK;
   return value;
 }
 
@@ -259,7 +263,7 @@ async function actionConnectServer() {
       tokenEnv: () =>
         text({ message: "Env var holding the API token (optional)", placeholder: "MEMFORGE_API_TOKEN" }),
     },
-    { onCancel: cancelAndExit },
+    { onCancel: goBack },
   );
 
   const args = ["target", "add", answers.name.trim(), "--api-url", answers.apiUrl.trim()];
@@ -376,7 +380,7 @@ async function actionSetupRepository() {
         text({ message: "Repository id (how MemForge addresses it)", initialValue: slugify(folderName), validate: required }),
       customize: () => confirm({ message: "Customize include / exclude patterns?", initialValue: false }),
     },
-    { onCancel: cancelAndExit },
+    { onCancel: goBack },
   );
 
   let includes = [];
@@ -387,7 +391,7 @@ async function actionSetupRepository() {
         include: () => text({ message: "Include globs (comma-separated, blank for defaults)", placeholder: "**/*.md" }),
         exclude: () => text({ message: "Extra exclude globs (comma-separated, blank for defaults)", placeholder: "archive/**" }),
       },
-      { onCancel: cancelAndExit },
+      { onCancel: goBack },
     );
     includes = splitList(globs.include);
     excludes = splitList(globs.exclude);
@@ -626,7 +630,7 @@ async function actionSearch() {
       topK: () => text({ message: "Top K", placeholder: "10" }),
       includeSuperseded: () => confirm({ message: "Include superseded memories?", initialValue: false }),
     },
-    { onCancel: cancelAndExit },
+    { onCancel: goBack },
   );
 
   const args = ["memory", "search", answers.query.trim()];
@@ -726,22 +730,29 @@ const AREAS = [
 async function runArea(area) {
   while (true) {
     header();
-    const choice = ensureNotCancelled(
-      await select({
-        message: area.label,
-        maxItems: MENU_MAX_ITEMS,
-        options: [
-          ...area.actions.map(({ value, label, hint }) => ({ value, label, hint })),
-          { value: "__back__", label: "← Back" },
-        ],
-      }),
-    );
+    let choice;
+    try {
+      choice = ensureNotCancelled(
+        await select({
+          message: area.label,
+          maxItems: MENU_MAX_ITEMS,
+          options: [
+            ...area.actions.map(({ value, label, hint }) => ({ value, label, hint })),
+            { value: "__back__", label: "← Back" },
+          ],
+        }),
+      );
+    } catch (error) {
+      if (error === BACK) return; // ESC at the area menu goes up to the top menu
+      throw error;
+    }
     if (choice === "__back__") return;
     const action = area.actions.find((item) => item.value === choice);
-    if (!action) return;
+    if (!action) continue;
     try {
       await action.run();
     } catch (error) {
+      if (error === BACK) continue; // ESC inside an action returns to this menu
       log.error(`${action.label}: ${error?.message || error}`);
     }
     // Keep the action's output on screen until the user is ready to move on,
@@ -755,35 +766,51 @@ async function main() {
   // one; everything else needs the backend, so don't offer the full menu yet.
   while (!(await probeServerReachable())) {
     header();
-    const choice = ensureNotCancelled(
-      await select({
-        message: "No MemForge server reachable. Connect one to continue.",
-        options: [
-          { value: "connect", label: "Connect a MemForge server", hint: "where your memories are stored" },
-          { value: "__quit__", label: "Quit" },
-        ],
-      }),
-    );
+    let choice;
+    try {
+      choice = ensureNotCancelled(
+        await select({
+          message: "No MemForge server reachable. Connect one to continue.",
+          options: [
+            { value: "connect", label: "Connect a MemForge server", hint: "where your memories are stored" },
+            { value: "__quit__", label: "Quit" },
+          ],
+        }),
+      );
+    } catch (error) {
+      if (error === BACK) { outro("Bye"); return; } // nothing above the gate, so ESC quits
+      throw error;
+    }
     if (choice === "__quit__") {
       outro("Bye");
       return;
     }
-    await actionConnectServer();
+    try {
+      await actionConnectServer();
+    } catch (error) {
+      if (error !== BACK) throw error; // ESC during connect just re-shows the gate
+    }
   }
   activeServer = await resolveServerAddress();
 
   while (true) {
     header();
-    const choice = ensureNotCancelled(
-      await select({
-        message: "Choose an area",
-        maxItems: MENU_MAX_ITEMS,
-        options: [
-          ...AREAS.map(({ value, label, hint }) => ({ value, label, hint })),
-          { value: "__quit__", label: "Quit" },
-        ],
-      }),
-    );
+    let choice;
+    try {
+      choice = ensureNotCancelled(
+        await select({
+          message: "Choose an area",
+          maxItems: MENU_MAX_ITEMS,
+          options: [
+            ...AREAS.map(({ value, label, hint }) => ({ value, label, hint })),
+            { value: "__quit__", label: "Quit" },
+          ],
+        }),
+      );
+    } catch (error) {
+      if (error === BACK) { outro("Bye"); return; } // ESC at the top menu quits
+      throw error;
+    }
     if (choice === "__quit__") {
       outro("Bye");
       return;
@@ -798,6 +825,7 @@ async function main() {
 }
 
 main().catch((error) => {
+  if (error === BACK) return; // unwound above the top menu; nothing left to do
   process.stderr.write(`memforge interactive crashed: ${error?.stack || error}\n`);
   process.exit(1);
 });
