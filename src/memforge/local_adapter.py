@@ -86,12 +86,17 @@ async def submit_local_markdown_document(
     vault_id: str,
     relative_path: str,
     markdown_body: str,
+    content_type: str = "text/markdown",
     title: str | None = None,
     raw_hash: str | None = None,
     submitted_by: str | None = None,
     submitted_at: str | None = None,
 ) -> dict[str, Any]:
-    """Validate, package, and persist one local-markdown document push."""
+    """Validate, package, and persist one local repository file push.
+
+    ``markdown_body`` is the raw file text and ``content_type`` declares its
+    format. Conversion to markdown happens later, in the gene's ``normalize``.
+    """
     if source.get("type") != LOCAL_MARKDOWN_SOURCE_TYPE:
         raise ValueError(
             f"source {source.get('id')} is type {source.get('type')!r}, not 'local_markdown'"
@@ -136,6 +141,7 @@ async def submit_local_markdown_document(
         "version": document_hash,
         "vault_id": configured_vault,
         "relative_path": relative,
+        "content_type": content_type,
         "raw_hash": raw_hash,
         "submitted_at": submitted_at,
         "submitted_by": submitted_by,

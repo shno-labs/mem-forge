@@ -2308,6 +2308,16 @@ class Database:
             )
             await self.db.commit()
 
+    async def delete_auth_session(self, provider: str, origin: str) -> bool:
+        """Delete a stored auth session. Returns True if a row was removed."""
+        async with self._write_lock:
+            cursor = await self.db.execute(
+                "DELETE FROM auth_sessions WHERE provider = ? AND origin = ?",
+                (provider, origin),
+            )
+            await self.db.commit()
+            return cursor.rowcount > 0
+
     # ==================================================================
     # Agent session receipt lineage
     # ==================================================================

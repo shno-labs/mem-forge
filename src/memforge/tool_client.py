@@ -84,13 +84,19 @@ class ToolClient:
         vault_id: str,
         relative_path: str,
         markdown_body: str,
+        content_type: str = "text/markdown",
         title: str | None = None,
         raw_hash: str | None = None,
         submitted_by: str | None = None,
         submitted_at: str | None = None,
         process_now: bool = False,
     ) -> dict[str, Any]:
-        """Push one markdown document into a configured local_markdown source."""
+        """Push one file's raw text into a configured local repository source.
+
+        ``content_type`` tells the service how to convert ``markdown_body``
+        (the raw file text) during sync: Markdown/text pass through, HTML and
+        JSON are converted server-side.
+        """
         source_id = source_id.strip()
         if not source_id:
             return {"error": "source_id is required"}
@@ -98,6 +104,7 @@ class ToolClient:
             "vault_id": vault_id,
             "relative_path": relative_path,
             "markdown_body": markdown_body,
+            "content_type": content_type,
             "process_now": process_now,
         }
         if title is not None:

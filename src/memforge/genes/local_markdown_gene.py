@@ -41,6 +41,23 @@ def _parse_dt(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def _to_markdown(content_type: str, body: str) -> str:
+    """Convert one pushed file's raw text into markdown for extraction.
+
+    Markdown and plain text pass through unchanged; HTML is converted with the
+    shared ``html_to_markdown`` helper; JSON is wrapped in a fenced code block so
+    its structure survives. Unknown types are treated as plain text.
+    """
+    ctype = (content_type or "").split(";", 1)[0].strip().lower()
+    if ctype == "text/html":
+        from memforge.pipeline.normalizer_utils import html_to_markdown
+
+        return html_to_markdown(body)
+    if ctype == "application/json":
+        return f"```json\n{body.strip()}\n```\n"
+    return body
+
+
 class LocalMarkdownGene(Gene):
     """Local markdown knowledge-base source pushed from the CLI adapter."""
 
@@ -48,8 +65,8 @@ class LocalMarkdownGene(Gene):
     def metadata(cls) -> GeneMetadata:
         return GeneMetadata(
             name="local_markdown",
-            display_name="Local Markdown",
-            description="Markdown notes pushed from a local CLI adapter (Obsidian-style vaults, plain folders)",
+            display_name="Local Repository",
+            description="Files from a local folder or repo (Markdown, text, JSON, HTML) pushed via the CLI adapter",
             default_sync_interval_minutes=0,
             auth_method="local_adapter",
             data_shape="document",
@@ -108,7 +125,7 @@ class LocalMarkdownGene(Gene):
                 title=package.get("title") or package["doc_id"],
                 source_url=package.get("source_url", ""),
                 last_modified=last_modified,
-                content_type="text/markdown",
+                content_type=package.get("content_type") or "text/markdown",
                 space_or_project=package.get("space_or_project") or package.get("vault_id") or "",
                 version=package.get("version", ""),
                 author=package.get("author"),
@@ -126,7 +143,8 @@ class LocalMarkdownGene(Gene):
 
     async def normalize(self, raw: RawContent) -> NormalizedContent:
         package = json.loads(raw.body.decode("utf-8"))
-        markdown = package.get("markdown", "")
+        content_type = package.get("content_type") or "text/markdown"
+        markdown = _to_markdown(content_type, package.get("markdown", ""))
         return NormalizedContent(
             item=raw.item,
             markdown_body=markdown,
@@ -134,6 +152,7 @@ class LocalMarkdownGene(Gene):
                 "source_kind": "local_markdown",
                 "vault_id": package.get("vault_id"),
                 "relative_path": package.get("relative_path"),
+                "content_type": content_type,
                 "raw_hash": package.get("raw_hash"),
                 "submitted_at": package.get("submitted_at"),
                 "submitted_by": package.get("submitted_by"),

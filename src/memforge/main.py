@@ -24,6 +24,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
 
+from memforge.auth import browser_session
 from memforge.config import AppConfig, load_config
 from memforge.tool_client import ToolClient
 
@@ -31,7 +32,14 @@ console = Console()
 log_console = Console(stderr=True)
 DEFAULT_CLI_CONFIG_PATH = Path.home() / ".memforge" / "cli.toml"
 DEFAULT_ADAPTER_CONFIG_PATH = Path.home() / ".memforge" / "adapter.toml"
-DEFAULT_KB_INCLUDE = ["*.md", "**/*.md"]
+DEFAULT_KB_INCLUDE = [
+    "*.md", "**/*.md",
+    "*.markdown", "**/*.markdown",
+    "*.txt", "**/*.txt",
+    "*.json", "**/*.json",
+    "*.html", "**/*.html",
+    "*.htm", "**/*.htm",
+]
 DEFAULT_KB_EXCLUDE = [".obsidian/**", ".trash/**", ".git/**", "**/.git/**"]
 LOCAL_MARKDOWN_SOURCE_TYPE = "local_markdown"
 INTERACTIVE_DISABLE_ENV = "MEMFORGE_NO_INTERACTIVE"
@@ -1073,7 +1081,7 @@ def adapter_kb_push(
     pushed: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
 
-    entries = _scan_kb_profile(root, include=include, exclude=exclude, vault_id=vault_id, counts=counts)
+    entries = _scan_kb_profile(root, include=include, exclude=exclude, counts=counts)
     selected_entries = list(islice(entries, limit)) if limit else list(entries)
 
     for index, entry in enumerate(selected_entries):
@@ -1082,7 +1090,8 @@ def adapter_kb_push(
             source_id=source_id,
             vault_id=vault_id,
             relative_path=entry["relative_path"],
-            markdown_body=entry["normalized"],
+            markdown_body=entry["text"],
+            content_type=entry["content_type"],
             title=entry["title"],
             raw_hash=entry["raw_hash"],
             submitted_by=submitted_by,
@@ -1114,14 +1123,14 @@ def _preview_kb_profile(name: str, profile: dict[str, Any], *, limit: int) -> di
     root, include, exclude, vault_id = _resolve_kb_profile(name, profile)
     counts = {"included": 0, "ignored": 0, "too_large": 0, "invalid_utf8": 0, "unreadable": 0}
     items: list[dict[str, Any]] = []
-    for entry in _scan_kb_profile(root, include=include, exclude=exclude, vault_id=vault_id, counts=counts):
+    for entry in _scan_kb_profile(root, include=include, exclude=exclude, counts=counts):
         if len(items) < limit:
             items.append(
                 {
                     "relative_path": entry["relative_path"],
                     "title": entry["title"],
+                    "content_type": entry["content_type"],
                     "raw_hash": entry["raw_hash"],
-                    "normalized_hash": entry["normalized_hash"],
                     "bytes": entry["bytes"],
                 }
             )
@@ -1152,10 +1161,14 @@ def _scan_kb_profile(
     *,
     include: list[str],
     exclude: list[str],
-    vault_id: str,
     counts: dict[str, int],
 ):
-    """Yield one entry per included markdown file, updating ``counts`` in place."""
+    """Yield one entry per included file, updating ``counts`` in place.
+
+    The CLI is a thin bridge: it reads each file's raw UTF-8 text and tags it
+    with a ``content_type`` derived from the extension. All conversion to
+    markdown happens server-side during sync.
+    """
     max_bytes = 1_000_000
     for path in sorted(root.rglob("*")):
         if path.is_symlink():
@@ -1184,20 +1197,16 @@ def _scan_kb_profile(
         except OSError:
             counts["unreadable"] += 1
             continue
+        content_type = _content_type_for_path(path)
         raw_hash = hashlib.sha256(raw).hexdigest()
-        normalized = _normalize_markdown_kb_document(
-            vault_id=vault_id,
-            relative_path=rel_path,
-            markdown_body=text,
-        )
-        normalized_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        title = (_markdown_title(text) if content_type == "text/markdown" else None) or rel_path
         counts["included"] += 1
         yield {
             "relative_path": rel_path,
-            "title": _markdown_title(text) or rel_path,
+            "title": title,
+            "content_type": content_type,
             "raw_hash": raw_hash,
-            "normalized": normalized,
-            "normalized_hash": normalized_hash,
+            "text": text,
             "bytes": size,
         }
 
@@ -1207,22 +1216,19 @@ def _glob_match(relative_path: str, patterns: list[str]) -> bool:
     return any(path.match(pattern) for pattern in patterns)
 
 
-def _normalize_markdown_kb_document(
-    *,
-    vault_id: str,
-    relative_path: str,
-    markdown_body: str,
-) -> str:
-    return (
-        f"# {relative_path}\n\n"
-        "## Source Metadata\n"
-        "- Source Type: Local Markdown\n"
-        f"- Vault: {vault_id}\n"
-        f"- Relative Path: {relative_path}\n"
-        "\n"
-        "## Document\n"
-        f"{markdown_body.strip()}\n"
-    )
+_CONTENT_TYPE_BY_SUFFIX = {
+    ".md": "text/markdown",
+    ".markdown": "text/markdown",
+    ".txt": "text/plain",
+    ".json": "application/json",
+    ".html": "text/html",
+    ".htm": "text/html",
+}
+
+
+def _content_type_for_path(path: Path) -> str:
+    """Map a file extension to the content type the service converter expects."""
+    return _CONTENT_TYPE_BY_SUFFIX.get(path.suffix.lower(), "text/plain")
 
 
 def _markdown_title(markdown_body: str) -> str | None:
@@ -1239,50 +1245,100 @@ def adapter_auth():
     pass
 
 
-@adapter_auth.command("jira")
-@click.option("--base-url", required=True, help="Jira base URL, for example https://jira.example.test")
-@click.option("--browser", default=None, help="Browser to read cookies from, for example chrome or edge")
-@click.option("--confirm-principal-change", is_flag=True, help="Allow this session to replace a different Jira user")
-@click.pass_context
-def adapter_auth_jira(ctx, base_url: str, browser: str | None, confirm_principal_change: bool):
-    """Refresh the shared local Jira browser session for a Jira origin."""
-    payload = _jira_auth_payload(
-        ctx,
-        base_url=base_url,
-        browser=browser,
-        confirm_principal_change=confirm_principal_change,
-    )
-    _emit_tool_payload(ctx, payload)
-
-
-@adapter_auth.command("jira-status")
-@click.option("--base-url", required=True, help="Jira base URL, for example https://jira.example.test")
-@click.pass_context
-def adapter_auth_jira_status(ctx, base_url: str):
-    """Show the current stored Jira browser-session status for a Jira origin.
-
-    Read-only: it reports the last validation (status, principal, validated_at,
-    last_error) from local state without re-reading the browser. Run
-    ``adapter auth jira`` to re-validate from the browser.
-    """
-    _emit_tool_payload(ctx, _jira_session_status(ctx, base_url=base_url))
-
-
-def _jira_session_status(ctx, *, base_url: str) -> dict[str, Any]:
+def _run_session_op(ctx, async_factory):
     async def _run():
-        from memforge.auth.jira_auth import JiraAuthSessionService
-
         config: AppConfig = ctx.obj["config"]
         db = await _get_db(config)
         try:
-            return await JiraAuthSessionService(db).get_status(base_url)
+            return await async_factory(db)
         finally:
             await db.close()
 
-    try:
-        return asyncio.run(_run())
-    except ValueError as exc:
-        return {"error": "jira_status_failed", "detail": str(exc)}
+    return asyncio.run(_run())
+
+
+def _make_browser_session_group(descriptor):
+    """Build an ``adapter auth <provider>`` group (status/list/forget/refresh).
+
+    Every subcommand routes through the provider-agnostic ``browser_session``
+    ops, so a new browser-session source needs only to register a descriptor.
+    """
+    provider = descriptor.provider
+
+    @click.group(name=provider, help=f"Manage the local {descriptor.label} browser session.")
+    def group():
+        pass
+
+    @group.command("status")
+    @click.option("--base-url", required=True, help=f"{descriptor.label} base URL.")
+    @click.pass_context
+    def status_cmd(ctx, base_url):
+        """Show the stored session status (read-only) for an origin."""
+        try:
+            payload = _run_session_op(ctx, lambda db: browser_session.status(db, provider, base_url))
+        except ValueError as exc:
+            payload = {"error": "status_failed", "detail": str(exc)}
+        _emit_tool_payload(ctx, payload)
+
+    @group.command("list")
+    @click.pass_context
+    def list_cmd(ctx):
+        """List known origins: authenticated sessions and configured sources."""
+        origins = _run_session_op(ctx, lambda db: browser_session.list_origins(db, provider))
+        _emit_tool_payload(ctx, {"origins": origins})
+
+    @group.command("forget")
+    @click.option("--base-url", required=True, help="Origin whose stored browser session to delete.")
+    @click.pass_context
+    def forget_cmd(ctx, base_url):
+        """Forget (delete) the stored browser session for an origin."""
+        try:
+            payload = _run_session_op(ctx, lambda db: browser_session.forget(db, provider, base_url))
+        except ValueError as exc:
+            raise click.ClickException(str(exc))
+        _emit_tool_payload(ctx, payload)
+
+    @group.command("refresh")
+    @click.option("--base-url", required=True, help=f"{descriptor.label} base URL.")
+    @click.option("--browser", default=None, help="Browser to read cookies from, for example chrome or edge.")
+    @click.option("--confirm-principal-change", is_flag=True, help="Allow this session to replace a different user.")
+    @click.pass_context
+    def refresh_cmd(ctx, base_url, browser, confirm_principal_change):
+        """Re-capture the browser session for an origin."""
+        try:
+            result = _run_session_op(
+                ctx,
+                lambda db: browser_session.refresh(
+                    db,
+                    provider,
+                    base_url=base_url,
+                    browser=browser,
+                    confirm_principal_change=confirm_principal_change,
+                ),
+            )
+        except browser_session.BrowserSessionPrincipalChangedError as exc:
+            _emit_tool_payload(
+                ctx,
+                {
+                    "error": "principal_changed",
+                    "detail": str(exc),
+                    "origin": exc.origin,
+                    "old_principal_id": exc.old_principal_id,
+                    "new_principal_id": exc.new_principal_id,
+                },
+            )
+            return
+        except (browser_session.BrowserSessionError, ValueError) as exc:
+            _emit_tool_payload(ctx, {"error": "auth_failed", "detail": str(exc)})
+            return
+        _emit_tool_payload(ctx, {"ok": True, **result})
+
+    return group
+
+
+browser_session.ensure_builtin_providers()
+for _descriptor in browser_session.registered_providers():
+    adapter_auth.add_command(_make_browser_session_group(_descriptor), name=_descriptor.provider)
 
 
 # ---------------------------------------------------------------------------
@@ -1358,71 +1414,6 @@ def auth_teams(region: str):
         console.print("[yellow]No Chat API token found — skipping verification[/]")
 
     console.print("\n[bold green]Done! Tokens saved to ~/.memforge/tokens/teams.json[/]")
-
-
-def _jira_auth_payload(
-    ctx,
-    *,
-    base_url: str,
-    browser: str | None,
-    confirm_principal_change: bool,
-) -> dict[str, Any]:
-    from memforge.auth.jira_auth import JiraAuthSessionError, JiraPrincipalChangedError
-
-    try:
-        result = _refresh_jira_browser_session(
-            ctx,
-            base_url=base_url,
-            browser=browser,
-            confirm_principal_change=confirm_principal_change,
-        )
-    except JiraPrincipalChangedError as exc:
-        return {
-            "error": "jira_principal_changed",
-            "detail": str(exc),
-            "origin": exc.origin,
-            "old_principal_id": exc.old_principal_id,
-            "new_principal_id": exc.new_principal_id,
-        }
-    except (JiraAuthSessionError, ValueError) as exc:
-        return {"error": "jira_auth_failed", "detail": str(exc)}
-
-    return {
-        "ok": True,
-        "origin": result["origin"],
-        "status": result.get("status"),
-        "principal_id": result.get("principal_id"),
-        "principal_name": result.get("principal_name"),
-        "principal_email": result.get("principal_email"),
-        "browser": result.get("browser"),
-        "captured_at": result.get("captured_at"),
-        "validated_at": result.get("validated_at"),
-        "sync_cursors_reset": len(result.get("sources_reset") or []),
-    }
-
-
-def _refresh_jira_browser_session(
-    ctx,
-    *,
-    base_url: str,
-    browser: str | None,
-    confirm_principal_change: bool,
-) -> dict:
-    async def _run():
-        from memforge.auth.jira_auth import JiraAuthSessionService
-
-        config: AppConfig = ctx.obj["config"]
-        db = await _get_db(config)
-        try:
-            return await JiraAuthSessionService(db).refresh_from_browser(
-                base_url=base_url,
-                browser=browser,
-                confirm_principal_change=confirm_principal_change,
-            )
-        finally:
-            await db.close()
-
-    return asyncio.run(_run())
 
 
 @auth.command("status")

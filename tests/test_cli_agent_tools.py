@@ -238,29 +238,28 @@ def test_env_api_url_does_not_use_active_target_token(monkeypatch, tmp_path: Pat
     ]
 
 
-def test_adapter_jira_auth_uses_base_url_not_source_id(monkeypatch):
+class _FakeDB:
+    async def close(self):
+        pass
+
+
+async def _fake_get_db(config):
+    return _FakeDB()
+
+
+def test_adapter_jira_refresh_uses_base_url(monkeypatch):
     calls: list[dict] = []
 
-    def fake_refresh(ctx, *, base_url: str, browser: str | None, confirm_principal_change: bool):
-        calls.append(
-            {
-                "base_url": base_url,
-                "browser": browser,
-                "confirm_principal_change": confirm_principal_change,
-            }
-        )
-        return {
-            "origin": "https://jira.tools.sap",
-            "principal_name": "i551096",
-            "browser": browser,
-            "sources_reset": [],
-        }
+    async def fake_refresh(db, provider, *, base_url, browser=None, confirm_principal_change=False):
+        calls.append({"provider": provider, "base_url": base_url, "browser": browser, "confirm": confirm_principal_change})
+        return {"origin": base_url, "principal_name": "i551096", "browser": browser, "sources_reset": []}
 
-    monkeypatch.setattr(main, "_refresh_jira_browser_session", fake_refresh)
+    monkeypatch.setattr(main, "_get_db", _fake_get_db)
+    monkeypatch.setattr(main.browser_session, "refresh", fake_refresh)
 
     result = CliRunner().invoke(
         cli,
-        ["adapter", "auth", "jira", "--base-url", "https://jira.tools.sap", "--browser", "chrome"],
+        ["adapter", "auth", "jira", "refresh", "--base-url", "https://jira.tools.sap", "--browser", "chrome"],
     )
 
     assert result.exit_code == 0, result.output
@@ -268,51 +267,49 @@ def test_adapter_jira_auth_uses_base_url_not_source_id(monkeypatch):
     assert payload["ok"] is True
     assert payload["origin"] == "https://jira.tools.sap"
     assert calls == [
-        {
-            "base_url": "https://jira.tools.sap",
-            "browser": "chrome",
-            "confirm_principal_change": False,
-        }
+        {"provider": "jira", "base_url": "https://jira.tools.sap", "browser": "chrome", "confirm": False}
     ]
-    assert "source" not in result.output.lower()
 
 
-def test_adapter_jira_auth_failure_returns_json_error(monkeypatch):
-    def fake_refresh(ctx, *, base_url: str, browser: str | None, confirm_principal_change: bool):
+def test_adapter_jira_refresh_failure_returns_json_error(monkeypatch):
+    async def fake_refresh(db, provider, *, base_url, browser=None, confirm_principal_change=False):
         raise JiraAuthSessionError("No active Jira browser session cookies were found")
 
-    monkeypatch.setattr(main, "_refresh_jira_browser_session", fake_refresh)
+    monkeypatch.setattr(main, "_get_db", _fake_get_db)
+    monkeypatch.setattr(main.browser_session, "refresh", fake_refresh)
 
-    result = CliRunner().invoke(cli, ["adapter", "auth", "jira", "--base-url", "https://jira.tools.sap"])
+    result = CliRunner().invoke(cli, ["adapter", "auth", "jira", "refresh", "--base-url", "https://jira.tools.sap"])
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
-    assert payload["error"] == "jira_auth_failed"
+    assert payload["error"] == "auth_failed"
     assert "No active Jira" in payload["detail"]
 
 
-def test_adapter_jira_principal_change_returns_json_error(monkeypatch):
-    def fake_refresh(ctx, *, base_url: str, browser: str | None, confirm_principal_change: bool):
+def test_adapter_jira_refresh_principal_change_returns_json_error(monkeypatch):
+    async def fake_refresh(db, provider, *, base_url, browser=None, confirm_principal_change=False):
         raise JiraPrincipalChangedError(
             "https://jira.tools.sap",
             old_principal_id="old-user",
             new_principal_id="new-user",
         )
 
-    monkeypatch.setattr(main, "_refresh_jira_browser_session", fake_refresh)
+    monkeypatch.setattr(main, "_get_db", _fake_get_db)
+    monkeypatch.setattr(main.browser_session, "refresh", fake_refresh)
 
-    result = CliRunner().invoke(cli, ["adapter", "auth", "jira", "--base-url", "https://jira.tools.sap"])
+    result = CliRunner().invoke(cli, ["adapter", "auth", "jira", "refresh", "--base-url", "https://jira.tools.sap"])
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
-    assert payload["error"] == "jira_principal_changed"
+    assert payload["error"] == "principal_changed"
     assert payload["origin"] == "https://jira.tools.sap"
     assert payload["old_principal_id"] == "old-user"
     assert payload["new_principal_id"] == "new-user"
 
 
 def test_adapter_jira_status_reports_stored_session(monkeypatch):
-    def fake_status(ctx, *, base_url: str):
+    async def fake_status(db, provider, base_url):
+        assert provider == "jira"
         assert base_url == "https://jira.tools.sap"
         return {
             "provider": "jira",
@@ -324,9 +321,10 @@ def test_adapter_jira_status_reports_stored_session(monkeypatch):
             "last_error": None,
         }
 
-    monkeypatch.setattr(main, "_jira_session_status", fake_status)
+    monkeypatch.setattr(main, "_get_db", _fake_get_db)
+    monkeypatch.setattr(main.browser_session, "status", fake_status)
 
-    result = CliRunner().invoke(cli, ["adapter", "auth", "jira-status", "--base-url", "https://jira.tools.sap"])
+    result = CliRunner().invoke(cli, ["adapter", "auth", "jira", "status", "--base-url", "https://jira.tools.sap"])
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
@@ -336,12 +334,13 @@ def test_adapter_jira_status_reports_stored_session(monkeypatch):
 
 
 def test_adapter_jira_status_missing_session_is_not_an_error(monkeypatch):
-    def fake_status(ctx, *, base_url: str):
+    async def fake_status(db, provider, base_url):
         return {"provider": "jira", "origin": "https://jira.tools.sap", "status": "missing", "last_error": None}
 
-    monkeypatch.setattr(main, "_jira_session_status", fake_status)
+    monkeypatch.setattr(main, "_get_db", _fake_get_db)
+    monkeypatch.setattr(main.browser_session, "status", fake_status)
 
-    result = CliRunner().invoke(cli, ["adapter", "auth", "jira-status", "--base-url", "https://jira.tools.sap"])
+    result = CliRunner().invoke(cli, ["adapter", "auth", "jira", "status", "--base-url", "https://jira.tools.sap"])
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["status"] == "missing"
@@ -602,7 +601,7 @@ def test_adapter_kb_preview_scans_markdown_profile(monkeypatch, tmp_path: Path):
     assert payload["profile"] == "work"
     assert payload["counts"]["included"] == 1
     assert payload["items"][0]["relative_path"] == "notes/cutoff.md"
-    assert payload["items"][0]["normalized_hash"]
+    assert payload["items"][0]["content_type"] == "text/markdown"
 
 
 def test_adapter_kb_custom_excludes_keep_default_safety_excludes(monkeypatch, tmp_path: Path):
@@ -698,7 +697,9 @@ def test_adapter_kb_push_forwards_documents_to_service(monkeypatch, tmp_path: Pa
     assert first_kwargs["vault_id"] == "engineering"
     assert first_kwargs["submitted_by"] == "cli-test"
     assert first_kwargs["process_now"] is False
-    assert first_kwargs["markdown_body"].startswith("# decisions/cutoff.md")
+    # The CLI now sends raw file text tagged with a content type; conversion is server-side.
+    assert first_kwargs["markdown_body"] == "# Cutoff\n\nTuesday."
+    assert first_kwargs["content_type"] == "text/markdown"
 
 
 def test_adapter_kb_push_process_now_triggers_on_last_document(monkeypatch, tmp_path: Path):

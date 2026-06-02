@@ -26,6 +26,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from memforge.config import AppConfig
+from memforge.auth import browser_session
 from memforge.auth.jira_auth import (
     JiraAuthSessionError,
     JiraAuthSessionService,
@@ -457,11 +458,17 @@ class AgentSessionDocumentRequest(BaseModel):
 
 
 class LocalAdapterDocumentRequest(BaseModel):
-    """One markdown document pushed by the local CLI adapter into a configured source."""
+    """One file pushed by the local CLI adapter into a configured source.
+
+    ``markdown_body`` carries the raw file text for the declared ``content_type``
+    (Markdown, plain text, JSON, or HTML). The service converts it to markdown
+    during sync; the CLI does no parsing.
+    """
 
     vault_id: str
     relative_path: str
     markdown_body: str
+    content_type: str = "text/markdown"
     title: str | None = None
     raw_hash: str | None = None
     submitted_by: str | None = None
@@ -2577,14 +2584,10 @@ def create_admin_app(
         try:
             _validate_source_config(name, req.config)
             preview_config = dict(req.config)
-            if name == "jira" and effective_jira_auth_mode(preview_config) == "browser_cookie":
-                # Browser-session mode keeps the cookie in the auth store, not the
-                # source config. Inject it the same way a real sync does.
-                preview_config["jira_cookie"] = await JiraAuthSessionService(db).cookie_header_for_sync(
-                    str(preview_config.get("base_url") or ""),
-                    tls_config=preview_config,
-                    allow_browser_refresh=False,
-                )
+            # Browser-session sources keep the cookie in the auth store, not the
+            # source config. Inject it the same way a real sync does (no-op for
+            # source types that do not use a browser session).
+            await browser_session.inject_cookie_for_source(db, name, preview_config)
             gene = create_gene(name, preview_config, source_id=f"preview-{name}")
             await gene.authenticate()
             items: list[DiscoveryPreviewItemResponse] = []
@@ -2602,7 +2605,7 @@ def create_admin_app(
                     break
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except JiraAuthSessionError as exc:
+        except browser_session.BrowserSessionError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
             logger.exception("Discovery preview failed for gene %s", name)
@@ -3260,6 +3263,7 @@ def create_admin_app(
                 vault_id=req.vault_id,
                 relative_path=req.relative_path,
                 markdown_body=req.markdown_body,
+                content_type=req.content_type,
                 title=req.title,
                 raw_hash=req.raw_hash,
                 submitted_by=req.submitted_by,

@@ -118,6 +118,21 @@ function ensureNotCancelled(value) {
   return value;
 }
 
+function header() {
+  // Clack has no flush API and is built for one-shot flows, so a persistent
+  // menu accumulates a transcript. Mirror clack's own startup move (the basic
+  // example does `console.clear()` then `intro`) on every menu render.
+  console.clear();
+  intro("MemForge");
+}
+
+async function pause() {
+  // No "press any key" in clack; a no-validate text prompt lets the user read
+  // an action's output before the next screen clears. Cancel just returns.
+  const value = await text({ message: "Press Enter to continue", placeholder: "" });
+  return isCancel(value) ? undefined : value;
+}
+
 function required(value) {
   return value && value.trim() ? undefined : "Required";
 }
@@ -189,6 +204,42 @@ async function pickKbProfile(message) {
       })),
     }),
   );
+}
+
+function jiraOriginHint(origin) {
+  const bits = [];
+  bits.push(origin.status ? `${origin.status}${origin.principal_name ? ` (${origin.principal_name})` : ""}` : "no session");
+  if (origin.configured) bits.push("configured");
+  return bits.join(" · ");
+}
+
+async function promptNewSessionUrl() {
+  const url = ensureNotCancelled(
+    await text({ message: "Base URL", placeholder: "https://jira.example.test", validate: httpsUrl }),
+  );
+  return url.trim();
+}
+
+async function pickBrowserOrigin(provider, message, { allowNew = true } = {}) {
+  // The "history" is the set of known origins for a browser-session provider:
+  // authenticated sessions plus configured sources (`adapter auth <provider> list`).
+  const listed = parseJson((await runMemforge(["adapter", "auth", provider, "list"])).stdout);
+  const origins = Array.isArray(listed?.origins) ? listed.origins : [];
+  if (!origins.length) {
+    if (!allowNew) {
+      log.warn("No remembered origins yet. Authenticate one first.");
+      return null;
+    }
+    return promptNewSessionUrl();
+  }
+  const options = origins.map((origin) => ({
+    value: origin.origin,
+    label: origin.origin,
+    hint: jiraOriginHint(origin),
+  }));
+  if (allowNew) options.push({ value: "__new__", label: "➕ Enter a new URL…" });
+  const choice = ensureNotCancelled(await select({ message, maxItems: MENU_MAX_ITEMS, options }));
+  return choice === "__new__" ? promptNewSessionUrl() : choice;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,38 +461,33 @@ function formatJiraStatus(status) {
 }
 
 async function actionJiraStatus() {
-  const baseUrl = ensureNotCancelled(
-    await text({ message: "Jira base URL", placeholder: "https://jira.example.test", validate: httpsUrl }),
-  );
-  const payload = await runStep("Jira session status", ["adapter", "auth", "jira-status", "--base-url", baseUrl.trim()]);
+  const baseUrl = await pickBrowserOrigin("jira", "Check status for which Jira origin?");
+  if (!baseUrl) return;
+  const payload = await runStep("Jira session status", ["adapter", "auth", "jira", "status", "--base-url", baseUrl]);
   if (payload) note(formatJiraStatus(payload), `Jira session: ${payload.status || "unknown"}`);
 }
 
 async function actionAuthJira() {
-  const answers = await group(
-    {
-      baseUrl: () =>
-        text({ message: "Jira base URL", placeholder: "https://jira.example.test", validate: httpsUrl }),
-      browser: () =>
-        select({
-          message: "Browser to read cookies from",
-          options: [
-            { value: "", label: "Auto-detect" },
-            { value: "chrome", label: "Chrome" },
-            { value: "edge", label: "Edge" },
-            { value: "safari", label: "Safari" },
-            { value: "firefox", label: "Firefox" },
-          ],
-        }),
-    },
-    { onCancel: cancelAndExit },
+  const baseUrl = await pickBrowserOrigin("jira", "Authenticate which Jira origin?");
+  if (!baseUrl) return;
+  const browser = ensureNotCancelled(
+    await select({
+      message: "Browser to read cookies from",
+      options: [
+        { value: "", label: "Auto-detect" },
+        { value: "chrome", label: "Chrome" },
+        { value: "edge", label: "Edge" },
+        { value: "safari", label: "Safari" },
+        { value: "firefox", label: "Firefox" },
+      ],
+    }),
   );
 
-  const args = ["adapter", "auth", "jira", "--base-url", answers.baseUrl.trim()];
-  if (answers.browser) args.push("--browser", answers.browser);
+  const args = ["adapter", "auth", "jira", "refresh", "--base-url", baseUrl];
+  if (browser) args.push("--browser", browser);
 
   const payload = await runStep("Refreshing Jira browser session", args);
-  if (payload?.error === "jira_principal_changed") {
+  if (payload?.error === "principal_changed") {
     const confirmChange = ensureNotCancelled(
       await confirm({ message: "A different Jira user is signed in. Confirm principal change?", initialValue: false }),
     );
@@ -449,6 +495,15 @@ async function actionAuthJira() {
       await runStep("Refreshing Jira browser session (confirmed)", [...args, "--confirm-principal-change"]);
     }
   }
+}
+
+async function actionJiraForget() {
+  const baseUrl = await pickBrowserOrigin("jira", "Forget which Jira session?", { allowNew: false });
+  if (!baseUrl) return;
+  const confirmForget = ensureNotCancelled(
+    await confirm({ message: `Forget the stored session for ${baseUrl}?`, initialValue: false }),
+  );
+  if (confirmForget) await runStep("Forgetting Jira session", ["adapter", "auth", "jira", "forget", "--base-url", baseUrl]);
 }
 
 // ---------------------------------------------------------------------------
@@ -537,6 +592,7 @@ const AREAS = [
     actions: [
       { value: "status", label: "Check session status", hint: "is the current login still valid?", run: actionJiraStatus },
       { value: "auth", label: "Authenticate browser session", hint: "hand over your Jira cookies", run: actionAuthJira },
+      { value: "forget", label: "Forget a session", hint: "delete a stored browser session", run: actionJiraForget },
     ],
   },
   {
@@ -558,6 +614,7 @@ const AREAS = [
 
 async function runArea(area) {
   while (true) {
+    header();
     const choice = ensureNotCancelled(
       await select({
         message: area.label,
@@ -576,12 +633,15 @@ async function runArea(area) {
     } catch (error) {
       log.error(`${action.label}: ${error?.message || error}`);
     }
+    // Keep the action's output on screen until the user is ready to move on,
+    // since the next render clears it.
+    await pause();
   }
 }
 
 async function main() {
-  intro("MemForge");
   while (true) {
+    header();
     const choice = ensureNotCancelled(
       await select({
         message: "Choose an area",
