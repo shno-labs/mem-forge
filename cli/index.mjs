@@ -756,9 +756,9 @@ const AREAS = [
       };
       if (!hasRepos) return [setup];
       return [
-        setup,
+        { value: "manage", label: "Manage repositories", hint: "per-repo: sync, preview, schedule, remove", run: actionManageRepositories, quiet: true },
         { value: "sync", label: "Sync now", hint: "push new and changed files", run: actionSyncNow },
-        { value: "manage", label: "Manage repositories", hint: "per-repo: preview, schedule, remove", run: actionManageRepositories },
+        setup,
       ];
     },
   },
@@ -817,10 +817,12 @@ async function runArea(area) {
     } catch (error) {
       if (error === BACK) continue; // ESC inside an action returns to this menu
       log.error(`${action.label}: ${error?.message || error}`);
+      await pause(); // let the user read the error before the screen clears
+      continue;
     }
-    // Keep the action's output on screen until the user is ready to move on,
-    // since the next render clears it.
-    await pause();
+    // Leaf actions print output, so pause to keep it on screen. Submenu actions
+    // (quiet) only navigate, so returning from them should not need a keypress.
+    if (!action.quiet) await pause();
   }
 }
 
