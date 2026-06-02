@@ -118,12 +118,16 @@ function ensureNotCancelled(value) {
   return value;
 }
 
+// The address of the connected MemForge server, shown in the header so the user
+// always knows which backend they are acting on. Resolved after the connect gate.
+let activeServer = "";
+
 function header() {
   // Clack has no flush API and is built for one-shot flows, so a persistent
   // menu accumulates a transcript. Mirror clack's own startup move (the basic
   // example does `console.clear()` then `intro`) on every menu render.
   console.clear();
-  intro("MemForge");
+  intro(activeServer ? `MemForge  ${activeServer}` : "MemForge");
 }
 
 async function pause() {
@@ -169,7 +173,7 @@ function slugify(value) {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "vault";
+    .replace(/^-+|-+$/g, "") || "repo";
 }
 
 function splitList(value) {
@@ -190,7 +194,7 @@ async function pickKbProfile(message) {
   const profiles = parseJson((await runMemforge(["adapter", "kb", "list"])).stdout)?.profiles ?? {};
   const names = Object.keys(profiles);
   if (!names.length) {
-    log.warn("No vaults configured yet. Use 'Set up a vault' first.");
+    log.warn("No repositories configured yet. Use 'Set up a repository' first.");
     return null;
   }
   return ensureNotCancelled(
@@ -302,7 +306,7 @@ async function actionHealthCheck() {
 
 // Linking a repo needs a *reachable* server, not just a configured target.
 // Probe health first; if the backend is down, the only useful action is to
-// connect/start one — don't let the user fill out the whole wizard and fail at
+// connect/start one; don't let the user fill out the whole wizard and fail at
 // the link step.
 async function probeServerReachable() {
   const s = spinner();
@@ -311,6 +315,14 @@ async function probeServerReachable() {
   s.stop("Checking MemForge server");
   const health = parseJson(probe.stdout);
   return probe.code === 0 && Boolean(health) && !health.error;
+}
+
+async function resolveServerAddress() {
+  if (process.env.MEMFORGE_API_URL) return process.env.MEMFORGE_API_URL;
+  const config = parseJson((await runMemforge(["target", "list"])).stdout) ?? {};
+  const active = config.active;
+  const url = active && config.targets?.[active]?.api_url;
+  return url ? `${url} (${active})` : "http://127.0.0.1:8765 (default)";
 }
 
 async function ensureServerReachable() {
@@ -330,16 +342,16 @@ async function ensureServerReachable() {
 
   await actionConnectServer();
   if (await probeServerReachable()) return true;
-  log.warn("Still can't reach the server. Start the API, then run 'Set up a vault' again.");
+  log.warn("Still can't reach the server. Start the API, then run 'Set up a repository' again.");
   return false;
 }
 
-async function actionVaultWizard() {
+async function actionSetupRepository() {
   if (!(await ensureServerReachable())) return;
   const folderInput = ensureNotCancelled(
     await text({
       message: "Path to your notes folder",
-      placeholder: "~/Obsidian/MyVault",
+      placeholder: "~/notes/my-repo",
       validate: validateFolder,
     }),
   );
@@ -361,7 +373,7 @@ async function actionVaultWizard() {
   const setup = await group(
     {
       vaultId: () =>
-        text({ message: "Vault id (how MemForge addresses this vault)", initialValue: slugify(folderName), validate: required }),
+        text({ message: "Repository id (how MemForge addresses it)", initialValue: slugify(folderName), validate: required }),
       customize: () => confirm({ message: "Customize include / exclude patterns?", initialValue: false }),
     },
     { onCancel: cancelAndExit },
@@ -389,7 +401,7 @@ async function actionVaultWizard() {
   for (const pattern of excludes) addArgs.push("--exclude", pattern);
   addArgs.push("--display-label", folderName, "--create-source");
 
-  const added = await runStep("Linking vault to MemForge", addArgs);
+  const added = await runStep("Linking repository to MemForge", addArgs);
   if (added?.source_link_error) {
     log.warn(`Saved locally, but couldn't link to a source: ${added.source_link_error}`);
     if (added.detail) log.info(added.detail);
@@ -403,7 +415,7 @@ async function actionVaultWizard() {
       );
     } else {
       note(
-        `Create a 'local_markdown' source in the admin UI with this vault id, then\nrun 'Sync now':\n  ${vaultId}`,
+        `Create a 'local_markdown' source in the admin UI with this repository id, then\nrun 'Sync now':\n  ${vaultId}`,
         "Finish linking in the admin UI",
       );
     }
@@ -429,11 +441,11 @@ async function actionVaultWizard() {
   if (Array.isArray(pushed?.failed) && pushed.failed.length) {
     note(pushed.failed.map((entry) => `- ${entry.relative_path}: ${entry.error}`).join("\n"), "Failed files");
   }
-  note(`Vault '${profileName}' is set up. Run 'Sync now' anytime to push changes.`, "Done");
+  note(`Repository '${profileName}' is set up. Run 'Sync now' anytime to push changes.`, "Done");
 }
 
 async function actionSyncNow() {
-  const name = await pickKbProfile("Sync which vault?");
+  const name = await pickKbProfile("Sync which repository?");
   if (!name) return;
   const processNow = ensureNotCancelled(
     await confirm({ message: "Trigger extraction after the push?", initialValue: false }),
@@ -447,7 +459,7 @@ async function actionSyncNow() {
 }
 
 async function actionPreview() {
-  const name = await pickKbProfile("Preview which vault?");
+  const name = await pickKbProfile("Preview which repository?");
   if (!name) return;
   const limit = ensureNotCancelled(await text({ message: "Max files to list", placeholder: "20" }));
   const args = ["adapter", "kb", "preview", name];
@@ -459,22 +471,22 @@ async function actionPreview() {
   }
 }
 
-async function actionManageVaults() {
+async function actionManageRepositories() {
   const profiles = parseJson((await runMemforge(["adapter", "kb", "list"])).stdout)?.profiles ?? {};
   const names = Object.keys(profiles);
   if (!names.length) {
-    log.warn("No vaults configured yet. Use 'Set up a vault' first.");
+    log.warn("No repositories configured yet. Use 'Set up a repository' first.");
     return;
   }
   note(
     names
-      .map((name) => `- ${name}  (${profiles[name]?.root || "?"})${profiles[name]?.source_id ? ` → ${profiles[name].source_id}` : " — not linked"}`)
+      .map((name) => `- ${name}  (${profiles[name]?.root || "?"})${profiles[name]?.source_id ? ` → ${profiles[name].source_id}` : " - not linked"}`)
       .join("\n"),
-    "Configured vaults",
+    "Configured repositories",
   );
   const choice = ensureNotCancelled(
     await select({
-      message: "Manage which vault?",
+      message: "Manage which repository?",
       maxItems: MENU_MAX_ITEMS,
       options: [
         ...names.map((name) => ({ value: name, label: `Remove ${name}` })),
@@ -484,9 +496,9 @@ async function actionManageVaults() {
   );
   if (choice === "__back__") return;
   const confirmRemove = ensureNotCancelled(
-    await confirm({ message: `Remove vault '${choice}'? (local profile only)`, initialValue: false }),
+    await confirm({ message: `Remove repository '${choice}'? (local profile only)`, initialValue: false }),
   );
-  if (confirmRemove) await runStep("Removing vault", ["adapter", "kb", "remove", choice]);
+  if (confirmRemove) await runStep("Removing repository", ["adapter", "kb", "remove", choice]);
 }
 
 async function actionSchedule() {
@@ -523,7 +535,7 @@ async function actionManageSchedules() {
     return;
   }
   note(
-    schedules.map((s) => `- ${s.profile}  (${s.cron || "?"})${s.installed ? "" : " — cron job missing"}`).join("\n"),
+    schedules.map((s) => `- ${s.profile}  (${s.cron || "?"})${s.installed ? "" : " - cron job missing"}`).join("\n"),
     "Configured schedules",
   );
   const choice = ensureNotCancelled(
@@ -648,7 +660,7 @@ async function actionAdapterStatus() {
   if (status?.capabilities) note(status.capabilities.join("\n"), "Adapter capabilities");
   const profiles = parseJson((await runMemforge(["adapter", "kb", "list"])).stdout)?.profiles ?? {};
   const names = Object.keys(profiles);
-  note(names.length ? names.join("\n") : "(none)", "Configured vaults");
+  note(names.length ? names.join("\n") : "(none)", "Configured repositories");
 }
 
 async function actionDiagnostics() {
@@ -676,12 +688,12 @@ const AREAS = [
     label: "Local repository",
     hint: "sync a local folder (md, txt, json, html) into memory",
     actions: [
-      { value: "setup", label: "Set up a vault", hint: "guided: folder → link → first sync", run: actionVaultWizard },
+      { value: "setup", label: "Set up a repository", hint: "guided: folder → link → first sync", run: actionSetupRepository },
       { value: "sync", label: "Sync now", hint: "push new and changed files", run: actionSyncNow },
       { value: "preview", label: "Preview (dry run)", hint: "show what would sync", run: actionPreview },
       { value: "schedule", label: "Schedule sync", hint: "run sync automatically on a timer", run: actionSchedule },
       { value: "schedules", label: "Manage schedules", hint: "list and remove timers", run: actionManageSchedules },
-      { value: "manage", label: "Manage vaults", hint: "list and remove", run: actionManageVaults },
+      { value: "manage", label: "Manage repositories", hint: "list and remove", run: actionManageRepositories },
     ],
   },
   {
@@ -705,7 +717,7 @@ const AREAS = [
     label: "Status & diagnostics",
     hint: "connection, capabilities, sources",
     actions: [
-      { value: "status", label: "Adapter capabilities & vaults", hint: "read-only status", run: actionAdapterStatus },
+      { value: "status", label: "Adapter capabilities & repositories", hint: "read-only status", run: actionAdapterStatus },
       { value: "diagnostics", label: "Run diagnostics", hint: "adapter status + server check", run: actionDiagnostics },
     ],
   },
@@ -740,12 +752,12 @@ async function runArea(area) {
 
 async function main() {
   // Until a MemForge server is reachable, the only useful action is to connect
-  // one — everything else needs the backend, so don't offer the full menu yet.
+  // one; everything else needs the backend, so don't offer the full menu yet.
   while (!(await probeServerReachable())) {
     header();
     const choice = ensureNotCancelled(
       await select({
-        message: "No MemForge server reachable — connect one to continue",
+        message: "No MemForge server reachable. Connect one to continue.",
         options: [
           { value: "connect", label: "Connect a MemForge server", hint: "where your memories are stored" },
           { value: "__quit__", label: "Quit" },
@@ -758,6 +770,7 @@ async function main() {
     }
     await actionConnectServer();
   }
+  activeServer = await resolveServerAddress();
 
   while (true) {
     header();
@@ -776,7 +789,11 @@ async function main() {
       return;
     }
     const area = AREAS.find((item) => item.value === choice);
-    if (area) await runArea(area);
+    if (area) {
+      await runArea(area);
+      // The server area can switch/add a target, so refresh the header label.
+      if (area.value === "server") activeServer = await resolveServerAddress();
+    }
   }
 }
 
