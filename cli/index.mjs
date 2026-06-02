@@ -300,37 +300,42 @@ async function actionHealthCheck() {
 // Area: Local repository
 // ---------------------------------------------------------------------------
 
-// Linking a repo needs a reachable server. Without an active target (and no
-// MEMFORGE_API_URL), the CLI silently falls back to the local default and the
-// link fails late, so surface it up front.
-async function ensureServerConnected() {
-  if (process.env.MEMFORGE_API_URL) return true;
-  const config = parseJson((await runMemforge(["target", "list"])).stdout) ?? {};
-  if (config.active) return true;
+// Linking a repo needs a *reachable* server, not just a configured target.
+// Probe health first; if the backend is down, the only useful action is to
+// connect/start one — don't let the user fill out the whole wizard and fail at
+// the link step.
+async function probeServerReachable() {
+  const s = spinner();
+  s.start("Checking MemForge server");
+  const probe = await runMemforge(["target", "check"]);
+  s.stop("Checking MemForge server");
+  const health = parseJson(probe.stdout);
+  return probe.code === 0 && Boolean(health) && !health.error;
+}
 
-  log.warn("No MemForge server connected yet. Linking a repo needs a running server.");
+async function ensureServerReachable() {
+  if (await probeServerReachable()) return true;
+
+  log.warn("No reachable MemForge server. Connect or start one before adding a repo.");
   const choice = ensureNotCancelled(
     await select({
-      message: "Connect a server before setting up the repo?",
+      message: "MemForge server is not reachable.",
       options: [
-        { value: "connect", label: "Connect a server now" },
-        { value: "continue", label: "Continue anyway (runs against the local default; may fail)" },
+        { value: "connect", label: "Connect a server" },
         { value: "back", label: "← Back" },
       ],
     }),
   );
-  if (choice === "back") return false;
-  if (choice === "connect") {
-    await actionConnectServer();
-    if (process.env.MEMFORGE_API_URL) return true;
-    const after = parseJson((await runMemforge(["target", "list"])).stdout) ?? {};
-    return Boolean(after.active);
-  }
-  return true;
+  if (choice !== "connect") return false;
+
+  await actionConnectServer();
+  if (await probeServerReachable()) return true;
+  log.warn("Still can't reach the server. Start the API, then run 'Set up a vault' again.");
+  return false;
 }
 
 async function actionVaultWizard() {
-  if (!(await ensureServerConnected())) return;
+  if (!(await ensureServerReachable())) return;
   const folderInput = ensureNotCancelled(
     await text({
       message: "Path to your notes folder",
