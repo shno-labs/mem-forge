@@ -17,6 +17,7 @@ import { FilterSelect } from "@/components/admin/FilterSelect";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { SearchInput } from "@/components/admin/SearchInput";
 import { ConfidenceBadge, MemoryTypeBadge, StatusDot } from "@/components/admin/StatusBadge";
+import { MemoryTypeIcon } from "@/components/memories/MemoryTypeIcon";
 import { Toolbar } from "@/components/admin/Toolbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -264,7 +265,7 @@ export function MemoriesPage() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-8" />
+                  <TableHead className="w-12" />
                   <TableHead>Memory</TableHead>
                   <TableHead className="w-28">Type</TableHead>
                   <TableHead className="w-28">Confidence</TableHead>
@@ -286,7 +287,10 @@ export function MemoriesPage() {
                       onClick={() => navigate(target)}
                     >
                       <TableCell>
-                        <StatusDot status={memory.status} />
+                        <div className="flex items-center gap-1.5">
+                          <MemoryTypeIcon type={memory.memory_type} className="size-4" />
+                          <StatusDot status={memory.status} />
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="max-w-2xl truncate text-sm font-medium">{memory.content}</div>
