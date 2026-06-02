@@ -8,7 +8,9 @@ depends on ``browser_cookie3``.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.cookiejar import CookieJar
 from typing import Any
@@ -17,7 +19,44 @@ from urllib.parse import urlsplit
 from memforge.auth.jira_auth import (
     JiraAuthSessionMissingError,
     canonical_jira_origin,
+    validate_jira_cookie_session,
 )
+
+
+@dataclass(frozen=True)
+class JiraCaptureResult:
+    origin: str
+    cookie_header: str
+    browser: str | None
+    principal: dict[str, Any]
+
+
+async def capture_and_prevalidate(
+    base_url: str,
+    *,
+    browser: str | None = None,
+    tls_config: dict[str, Any] | None = None,
+    extractor: Callable[[str, str | None], tuple[str, str]] | None = None,
+    validator: Callable[..., Any] | None = None,
+) -> JiraCaptureResult:
+    """Scrape the local browser cookie for one Jira origin and pre-validate it.
+
+    Raises ``JiraAuthSessionMissingError`` when no live session can be captured,
+    so the caller never uploads a dead cookie.
+    """
+    origin = canonical_jira_origin(base_url)
+    extract = extractor or extract_browser_cookie_header
+    validate = validator or validate_jira_cookie_session
+
+    cookie_header, browser_name = extract(origin, browser)
+    result = validate(origin, cookie_header, tls_config)
+    principal = await result if inspect.isawaitable(result) else result
+    return JiraCaptureResult(
+        origin=origin,
+        cookie_header=cookie_header,
+        browser=browser_name,
+        principal=principal,
+    )
 
 
 def extract_browser_cookie_header(origin: str, browser: str | None = None) -> tuple[str, str]:
