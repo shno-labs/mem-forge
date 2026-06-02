@@ -8,7 +8,7 @@
 // `MEMFORGE_NO_INTERACTIVE=1` for every spawn to prevent recursion.
 //
 // The menu is organized by intent (areas) rather than by the command tree:
-// connect a server, sync local notes, connect Jira, search, inspect status.
+// connect a server, sync a local repository, connect Jira, search, inspect status.
 
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
@@ -365,8 +365,8 @@ async function actionSetupRepository() {
   if (!(await ensureServerReachable())) return;
   const folderInput = ensureNotCancelled(
     await text({
-      message: "Path to your notes folder",
-      placeholder: "~/notes/my-repo",
+      message: "Path to the repository folder",
+      placeholder: "~/work/my-repo",
       validate: validateFolder,
     }),
   );
@@ -376,7 +376,7 @@ async function actionSetupRepository() {
     log.info(`Detected an Obsidian vault: ${folderName}`);
   }
 
-  // Instant feedback: confirm the folder actually has notes before going on.
+  // Instant feedback: confirm the folder actually has files before going on.
   const scan = await runStep("Scanning folder", ["adapter", "kb", "scan", "--root", root, "--limit", "5"]);
   const found = scan?.counts?.included ?? 0;
   if (!found) {
@@ -441,7 +441,7 @@ async function actionSetupRepository() {
   }
 
   const doPush = ensureNotCancelled(
-    await confirm({ message: `Push ${found} notes to MemForge now?`, initialValue: true }),
+    await confirm({ message: `Push ${found} files to MemForge now?`, initialValue: true }),
   );
   if (!doPush) {
     note("Run 'Sync now' whenever you're ready.", "Setup complete");
@@ -451,7 +451,7 @@ async function actionSetupRepository() {
     await confirm({ message: "Trigger extraction after the push?", initialValue: false }),
   );
   const pushArgs = ["adapter", "kb", "push", profileName, processNow ? "--process-now" : "--no-process-now"];
-  const pushed = await runStep("Pushing notes", pushArgs);
+  const pushed = await runStep("Pushing files", pushArgs);
   if (pushed?.counts) note(formatCounts(pushed.counts), "Push counts");
   if (Array.isArray(pushed?.failed) && pushed.failed.length) {
     note(pushed.failed.map((entry) => `- ${entry.relative_path}: ${entry.error}`).join("\n"), "Failed files");
