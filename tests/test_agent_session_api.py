@@ -86,12 +86,12 @@ def test_agent_session_window_prompt_uses_memory_quality_gate():
         transcript_markdown=None,
     )
 
-    assert "Will a future agent plausibly act better because this package exists?" in prompt
-    assert "Prefer evidence in this order:" in prompt
-    assert "User-confirmed decisions, constraints, corrections, and accepted direction" in prompt
-    assert "Tool-verified facts: files changed, tests run, errors observed, service responses" in prompt
-    assert "Assistant summaries only when backed by user or tool evidence" in prompt
-    assert "Do not preserve tentative proposals, rejected paths, or brainstorming as durable facts" in prompt
+    assert "A future agent would not act differently because this package exists." in prompt
+    assert "Your job is to COMPRESS, not to structure." in prompt
+    assert "A user-confirmed decision (with the WHY in the same sentence" in prompt
+    assert "A non-obvious tool-verified fact about how the system behaves end-to-end" in prompt
+    assert "Do NOT write bullets that a developer could verify by reading the current code" in prompt
+    assert "Fold rejected alternatives INTO the chosen decision" in prompt
 
 
 def test_agent_session_document_submit_api_records_generated_source(tmp_path):
