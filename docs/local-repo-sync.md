@@ -18,13 +18,12 @@ converts to markdown during sync:
 | `.json` | `application/json` | wrapped in a fenced ` ```json ` block |
 | `.html`, `.htm` | `text/html` | converted with `html_to_markdown` (markdownify) |
 
-Files over 1 MB, non-UTF-8 files, and the default-excluded paths
-(`.obsidian/**`, `.trash/**`, `.git/**`) are skipped. PDF is intentionally not
-supported (no PDF text extraction exists in the service today).
+PDF is intentionally not supported (no PDF text extraction exists in the service
+today). See "Which files are picked up" below for what gets scanned and skipped.
 
 ## Set up a repo
 
-Interactive: run `memforge` and choose **Local repository → Set up a vault**.
+Interactive: run `memforge` and choose **Local repository → Set up a repository**.
 
 Scriptable:
 
@@ -41,11 +40,28 @@ token come from the active target (`memforge target ...`) or
 `MEMFORGE_API_URL` / `MEMFORGE_API_TOKEN`; the default is
 `http://127.0.0.1:8765`.
 
-Include/exclude globs are configurable:
+### Which files are picked up
+
+By default the **entire folder tree is scanned recursively**, and every `.md`,
+`.markdown`, `.txt`, `.json`, `.html`, and `.htm` file (including those in
+subfolders) is included. Narrow or widen that with globs:
 
 ```bash
-memforge adapter kb add my-notes --root /path --include "**/*.md" --exclude "drafts/**"
+memforge adapter kb add my-notes --root /path \
+  --include "**/*.md" \
+  --exclude "drafts/**" --exclude "archive/**"
 ```
+
+- `--include` / `--exclude` are repeatable; globs match the path **relative to
+  the root** (e.g. `analysis/**`, `**/*.md`).
+- **`--include` replaces** the default type set. If you pass any `--include`,
+  only those globs are used, so list every type you want (e.g.
+  `--include "**/*.md" --include "**/*.txt"`).
+- **`--exclude` is added to** the always-on safety excludes (`.obsidian/**`,
+  `.trash/**`, `.git/**`, `**/.git/**`) rather than replacing them.
+- **Exclude wins over include**: a file matched by both is skipped.
+
+Files over 1 MB and non-UTF-8 files are always skipped.
 
 ## Sync
 

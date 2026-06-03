@@ -25,7 +25,7 @@ const requiredLabels = [
   "Sync now",
   "Preview (dry run)",
   "Schedule sync",
-  "Manage schedules",
+  "Remove repository",
   "Manage repositories",
   "Check session status",
   "Authenticate browser session",
@@ -55,6 +55,7 @@ const requiredCommands = [
   ['"adapter", "auth", "jira", "status"', "Jira status wraps `adapter auth jira status`"],
   ['"adapter", "auth", "jira", "refresh"', "Jira auth wraps `adapter auth jira refresh`"],
   ['"adapter", "auth", "jira", "forget"', "Forget wraps `adapter auth jira forget`"],
+  ['"adapter", "auth", "jira", "watch"', "Background refresh wraps `adapter auth jira watch`"],
   ['"adapter", "auth", provider, "list"', "Origin picker wraps `adapter auth <provider> list`"],
   ['"memory", "search"', "Search wraps `memforge memory search`"],
   ['"adapter", "status"', "Status wraps `memforge adapter status`"],
@@ -69,10 +70,6 @@ assert.ok(
   !/\[\s*"auth",\s*"jira"/.test(source),
   "interactive UI must use `adapter auth jira`, never the removed `auth jira`",
 );
-
-// The Jira area offers a foreground watch daemon that keeps the session fresh.
-assert.match(source, /value:\s*"watch"/);
-assert.match(source, /adapter auth jira watch/);
 
 assert.ok(
   !source.includes("spawnSync"),

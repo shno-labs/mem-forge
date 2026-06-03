@@ -3,15 +3,18 @@
 Status: current summary, detailed flow moved to
 `docs/design/agent-session-saas-plugin-flow.md`
 
-Agent hooks have three narrow responsibilities:
+Agent hooks have two narrow responsibilities:
 
-1. Inject memory context through `POST /api/hooks/context` on read-path hooks
-   such as `UserPromptSubmit`.
-2. Record lightweight lifecycle receipts through `POST /api/hooks/receipts` when
+1. Record lightweight lifecycle receipts through `POST /api/hooks/receipts` when
    needed for audit. Receipts do not create source material.
-3. Request agent-session capture by updating the plugin's local queue. The
+2. Request agent-session capture by updating the plugin's local queue. The
    run-once worker uploads bounded, redacted windows to
    `POST /api/agent-sessions/windows`.
+
+Per-prompt memory retrieval is delegated to the MCP `search` tool, which the
+agent calls on demand with a query-aware prompt. The plugin no longer ships a
+`UserPromptSubmit` hook; `POST /api/hooks/context` remains in the API surface
+for future read-path integrations.
 
 Hooks must return quickly, must not run memory extraction, and must not write
 canonical memories directly.

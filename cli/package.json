@@ -13,7 +13,8 @@
     "test": "node tests/dependency-check.test.mjs && node tests/menu-shape.test.mjs"
   },
   "dependencies": {
-    "@clack/prompts": "^0.9.1"
+    "@clack/prompts": "^0.9.1",
+    "picocolors": "^1.1.1"
   },
   "engines": {
     "node": ">=18"

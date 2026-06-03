@@ -155,22 +155,24 @@ otherwise it targets the local Admin API port from config.
 
 ## Plugin Installation
 
-Installable local plugin packages live under:
+Installable plugin packages live under:
 
 - [integrations/codex/memforge-memory](integrations/codex/memforge-memory)
 - [integrations/claude-code/memforge-memory](integrations/claude-code/memforge-memory)
 
-From a source checkout, register this repository as a local marketplace and
-install the plugin:
+Add this repository as a marketplace and install the plugin (no checkout
+required; the marketplace is fetched directly from GitHub):
 
 ```bash
 # Codex
-codex plugin marketplace add ./
+codex plugin marketplace add shno-labs/mem-forge
 codex plugin add memory@memforge
+```
 
-# Claude Code
-claude plugin marketplace add ./
-claude plugin install memory@memforge
+```text
+# Claude Code (run inside an active Claude Code session)
+/plugin marketplace add shno-labs/mem-forge
+/plugin install memory@memforge
 ```
 
 For normal self-hosted use, the plugin talks to the running MemForge API at

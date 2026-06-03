@@ -966,8 +966,10 @@ def adapter_kb():
 @click.argument("name")
 @click.option("--root", required=True, type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option("--vault-id", default=None, help="Stable vault identifier used in local metadata.")
-@click.option("--include", "includes", multiple=True, help="Glob to include. Repeat for multiple globs.")
-@click.option("--exclude", "excludes", multiple=True, help="Glob to exclude. Repeat for multiple globs.")
+@click.option("--include", "includes", multiple=True,
+              help="Glob to include, relative to root. Repeatable. Replaces the default md/txt/json/html set.")
+@click.option("--exclude", "excludes", multiple=True,
+              help="Glob to exclude, relative to root. Repeatable. Added to the .obsidian/.trash/.git safety excludes.")
 @click.option("--display-label", default=None, help="Human-readable label for the linked source.")
 @click.option("--create-source/--no-create-source", default=False, show_default=True,
               help="Reuse or create the matching local_markdown source and store its id in the profile.")
@@ -1030,8 +1032,10 @@ def adapter_kb_list(ctx):
 
 @adapter_kb.command("scan")
 @click.option("--root", required=True, type=click.Path(exists=True, file_okay=False, path_type=Path))
-@click.option("--include", "includes", multiple=True, help="Glob to include. Repeat for multiple globs.")
-@click.option("--exclude", "excludes", multiple=True, help="Glob to exclude. Repeat for multiple globs.")
+@click.option("--include", "includes", multiple=True,
+              help="Glob to include, relative to root. Repeatable. Replaces the default md/txt/json/html set.")
+@click.option("--exclude", "excludes", multiple=True,
+              help="Glob to exclude, relative to root. Repeatable. Added to the .obsidian/.trash/.git safety excludes.")
 @click.option("--limit", default=20, show_default=True, type=int, help="Maximum included files to return.")
 @click.pass_context
 def adapter_kb_scan(ctx, root: Path, includes: tuple[str, ...], excludes: tuple[str, ...], limit: int):
