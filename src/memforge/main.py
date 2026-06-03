@@ -1472,6 +1472,49 @@ def _principal_change_payload(upload_result: dict) -> dict:
     }
 
 
+# Watch defaults. The tick interval is deliberately shorter than a typical Jira
+# idle-session timeout so the stored copy is renewed while it is still valid.
+WATCH_DEFAULT_INTERVAL_SECONDS = 1800  # 30 minutes
+WATCH_BACKOFF_BASE_SECONDS = 5
+WATCH_BACKOFF_MAX_SECONDS = 300  # 5 minutes
+
+
+def _cookie_hash(cookie_header: str) -> str:
+    return hashlib.sha256(cookie_header.encode("utf-8")).hexdigest()
+
+
+async def run_watch_tick(*, base_url, browser, client, last_hash, capture, log):
+    """One watch iteration. Returns (action, new_last_hash).
+
+    action is one of: uploaded, unchanged, expired, principal_conflict, transport_error.
+    Pure over its injected collaborators (capture, client, log) so it is unit-testable.
+    """
+    from memforge.auth.jira_auth import JiraAuthSessionMissingError
+
+    try:
+        result = await capture(base_url, browser=browser)
+    except JiraAuthSessionMissingError as exc:
+        client.mark_jira_session_expired(base_url=base_url, error=str(exc))
+        log(f"Jira session for {base_url} is not active; sign back into Jira in your browser. ({exc})")
+        return "expired", None
+
+    new_hash = _cookie_hash(result.cookie_header)
+    if new_hash == last_hash:
+        return "unchanged", last_hash
+
+    uploaded = client.upload_jira_session(
+        base_url=base_url, cookie_header=result.cookie_header, browser=result.browser,
+    )
+    if uploaded.get("status_code") == 409:
+        log(f"A different Jira user is signed in for {base_url}; re-run refresh with --confirm-principal-change.")
+        return "principal_conflict", last_hash
+    if uploaded.get("error"):
+        log(f"Upload to MemForge failed: {uploaded.get('detail') or uploaded['error']}")
+        return "transport_error", last_hash
+    log(f"Refreshed Jira session for {base_url} (cookie {new_hash[:8]}).")
+    return "uploaded", new_hash
+
+
 def _make_browser_session_group(descriptor):
     """Build an ``adapter auth <provider>`` group (status/list/forget/refresh).
 
@@ -1542,6 +1585,45 @@ def _make_browser_session_group(descriptor):
             _emit_tool_payload(ctx, _principal_change_payload(payload))
             return
         _emit_tool_payload(ctx, payload)
+
+    @group.command("watch")
+    @click.option("--base-url", required=True, help=f"{descriptor.label} base URL.")
+    @click.option("--browser", default=None, help="Browser to read cookies from, for example chrome or edge.")
+    @click.option("--interval-seconds", type=int, default=WATCH_DEFAULT_INTERVAL_SECONDS, show_default=True,
+                  help="Seconds between re-capture attempts. Keep it under your Jira idle timeout.")
+    @click.pass_context
+    def watch_cmd(ctx, base_url, browser, interval_seconds):
+        """Keep the server's Jira session fresh by re-capturing on an interval."""
+        from memforge.auth import jira_capture
+
+        client = _tool_client(ctx)
+
+        async def _capture(url, *, browser=None):
+            return await jira_capture.capture_and_prevalidate(url, browser=browser)
+
+        async def _loop():
+            last_hash = None
+            backoff = WATCH_BACKOFF_BASE_SECONDS
+            while True:
+                try:
+                    action, last_hash = await run_watch_tick(
+                        base_url=base_url, browser=browser, client=client,
+                        last_hash=last_hash, capture=_capture, log=click.echo,
+                    )
+                except Exception as exc:  # a daemon must survive any single-tick failure
+                    click.echo(f"Jira watch tick failed: {exc}")
+                    action = "transport_error"
+                if action == "transport_error":
+                    await asyncio.sleep(min(backoff, WATCH_BACKOFF_MAX_SECONDS))
+                    backoff = min(backoff * 2, WATCH_BACKOFF_MAX_SECONDS)
+                    continue
+                backoff = WATCH_BACKOFF_BASE_SECONDS
+                await asyncio.sleep(interval_seconds)
+
+        try:
+            asyncio.run(_loop())
+        except KeyboardInterrupt:
+            click.echo("Stopped Jira session watch.")
 
     return group
 

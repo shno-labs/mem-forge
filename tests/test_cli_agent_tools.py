@@ -788,3 +788,9 @@ def test_adapter_kb_push_reports_service_errors(monkeypatch, tmp_path: Path):
     assert payload["counts"]["failed"] == 1
     assert payload["failed"][0]["status_code"] == 400
     assert "error" in payload
+
+
+def test_adapter_jira_watch_command_is_registered():
+    result = CliRunner().invoke(cli, ["adapter", "auth", "jira", "watch", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "--interval-seconds" in result.output
