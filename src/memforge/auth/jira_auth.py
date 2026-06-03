@@ -35,7 +35,6 @@ JIRA_SESSION_EXPIRED = "expired"
 JIRA_SESSION_MISSING = "missing"
 JIRA_SESSION_FAILED = "failed"
 
-BrowserExtractor = Callable[[str, str | None], tuple[str, str]]
 SessionValidator = Callable[[str, str, dict[str, Any] | None], Any]
 
 
@@ -118,11 +117,9 @@ class JiraAuthSessionService:
         self,
         db: Database,
         *,
-        browser_extractor: BrowserExtractor | None = None,
         session_validator: SessionValidator | None = None,
     ) -> None:
         self.db = db
-        self._browser_extractor = browser_extractor
         self._session_validator = session_validator or validate_jira_cookie_session
 
     async def get_status(self, base_url: str) -> dict[str, Any]:
@@ -184,52 +181,44 @@ class JiraAuthSessionService:
             "sources_reset": sources_reset,
         }
 
-    async def refresh_from_browser(
+    async def store_uploaded_session(
         self,
         *,
         base_url: str,
+        cookie_header: str,
         browser: str | None = None,
         tls_config: dict[str, Any] | None = None,
         confirm_principal_change: bool = False,
     ) -> dict[str, Any]:
+        """Validate a client-uploaded cookie authoritatively, then store it."""
         origin = canonical_jira_origin(base_url)
         try:
-            extractor = self._browser_extractor
-            if extractor is None:
-                from memforge.auth.jira_capture import extract_browser_cookie_header
-                extractor = extract_browser_cookie_header
-            cookie_header, browser_name = extractor(origin, browser)
             principal = await _maybe_await(self._session_validator(origin, cookie_header, tls_config))
-            return await self.store_validated_session(
-                base_url=origin,
-                cookie_header=cookie_header,
-                principal=principal,
-                browser=browser_name,
-                confirm_principal_change=confirm_principal_change,
-            )
         except JiraPrincipalChangedError:
             raise
         except Exception as exc:
-            await self._record_failure(origin, str(exc))
+            await self._record_failure(origin, str(exc), status=JIRA_SESSION_EXPIRED)
             raise JiraAuthSessionError(str(exc)) from exc
+        return await self.store_validated_session(
+            base_url=origin,
+            cookie_header=cookie_header,
+            principal=principal,
+            browser=browser,
+            confirm_principal_change=confirm_principal_change,
+        )
 
     async def cookie_header_for_sync(
         self,
         base_url: str,
         *,
-        allow_browser_refresh: bool = True,
         tls_config: dict[str, Any] | None = None,
     ) -> str:
         origin = canonical_jira_origin(base_url)
         stored = await self.db.get_auth_session(JIRA_AUTH_PROVIDER, origin)
-        if not stored and allow_browser_refresh:
-            await self.refresh_from_browser(base_url=origin, tls_config=tls_config)
-            stored = await self.db.get_auth_session(JIRA_AUTH_PROVIDER, origin)
-
         if not stored:
             raise JiraAuthSessionMissingError(
                 f"No Jira browser session is available for {origin}. "
-                "Sign in to Jira in your browser, then refresh the browser session."
+                "Sign in to Jira in your browser, then run `memforge adapter auth jira refresh`."
             )
 
         try:
@@ -242,14 +231,9 @@ class JiraAuthSessionService:
                 status=JIRA_SESSION_EXPIRED,
                 last_error=str(exc),
             )
-            if allow_browser_refresh:
-                await self.refresh_from_browser(base_url=origin, tls_config=tls_config)
-                refreshed = await self.db.get_auth_session(JIRA_AUTH_PROVIDER, origin)
-                if refreshed:
-                    return decrypt_secret(refreshed["secret_encrypted"])
             raise JiraAuthSessionMissingError(
                 f"Jira browser session expired for {origin}. "
-                "Sign in to Jira in your browser, then refresh the browser session."
+                "Sign in to Jira in your browser, then run `memforge adapter auth jira refresh`."
             ) from exc
 
         if stored.get("principal_id") and _principal_id(principal) != stored.get("principal_id"):

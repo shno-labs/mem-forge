@@ -182,7 +182,6 @@ async def inject_cookie_for_source(db: Database, source_type: str, config: dict[
     config[descriptor.cookie_config_key] = await service.cookie_header_for_sync(
         str(config.get("base_url") or ""),
         tls_config=config,
-        allow_browser_refresh=False,
     )
     return True
 
