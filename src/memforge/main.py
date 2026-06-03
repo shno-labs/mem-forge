@@ -1439,18 +1439,6 @@ def adapter_auth():
     pass
 
 
-def _run_session_op(ctx, async_factory):
-    async def _run():
-        config: AppConfig = ctx.obj["config"]
-        db = await _get_db(config)
-        try:
-            return await async_factory(db)
-        finally:
-            await db.close()
-
-    return asyncio.run(_run())
-
-
 def _principal_change_payload(upload_result: dict) -> dict:
     """Translate a 409 upload response into the principal-changed signal the CLI emits."""
     inner: dict = {}
