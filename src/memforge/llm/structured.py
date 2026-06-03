@@ -2,14 +2,57 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Literal, Protocol, get_args, get_origin
 
 import litellm
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-class SourceSupportDecision(BaseModel):
+def _expects_container(annotation: object) -> bool:
+    """True when a field annotation resolves to a list/tuple/set or nested model."""
+    origin = get_origin(annotation)
+    if origin in (list, tuple, set, frozenset):
+        return True
+    if origin is not None:  # Optional[...] / Union[...]
+        return any(_expects_container(arg) for arg in get_args(annotation))
+    return isinstance(annotation, type) and issubclass(annotation, BaseModel)
+
+
+class GatewayStructuredModel(BaseModel):
+    """Base for LLM structured-output schemas.
+
+    Tool-use gateways do not strictly type-check tool arguments, so a list or
+    nested object is sometimes returned as a JSON-encoded string (for example
+    ``{"memories": "[...]"}``). Decode those strings before field validation so a
+    stringified container still satisfies the declared schema.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _decode_stringified_containers(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        decoded: dict[str, object] | None = None
+        for name, field in cls.model_fields.items():
+            key = field.alias if field.alias and field.alias in data else name
+            value = data.get(key)
+            if not isinstance(value, str) or not _expects_container(field.annotation):
+                continue
+            try:
+                parsed = json.loads(value)
+            except (TypeError, ValueError):
+                continue
+            if decoded is None:
+                decoded = dict(data)
+            decoded[key] = parsed
+        return decoded if decoded is not None else data
+
+
+class SourceSupportDecision(GatewayStructuredModel):
     """One verifier decision for an existing memory candidate."""
 
     model_config = ConfigDict(extra="ignore")
@@ -20,7 +63,7 @@ class SourceSupportDecision(BaseModel):
     reason: str | None = None
 
 
-class SourceSupportResponse(BaseModel):
+class SourceSupportResponse(GatewayStructuredModel):
     """Schema returned by the source-support verifier."""
 
     model_config = ConfigDict(extra="ignore")
@@ -28,7 +71,7 @@ class SourceSupportResponse(BaseModel):
     decisions: list[SourceSupportDecision]
 
 
-class EnrichmentEntity(BaseModel):
+class EnrichmentEntity(GatewayStructuredModel):
     """One entity identified during document enrichment."""
 
     model_config = ConfigDict(extra="ignore")
@@ -40,7 +83,7 @@ class EnrichmentEntity(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
-class EnrichmentRelationship(BaseModel):
+class EnrichmentRelationship(GatewayStructuredModel):
     """One document relationship identified during enrichment."""
 
     model_config = ConfigDict(extra="ignore")
@@ -50,7 +93,7 @@ class EnrichmentRelationship(BaseModel):
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
-class EnrichmentAliasGroup(BaseModel):
+class EnrichmentAliasGroup(GatewayStructuredModel):
     """Legacy alias group shape preserved for enrichment compatibility."""
 
     model_config = ConfigDict(extra="ignore")
@@ -60,7 +103,7 @@ class EnrichmentAliasGroup(BaseModel):
     evidence: str = ""
 
 
-class EnrichmentResponse(BaseModel):
+class EnrichmentResponse(GatewayStructuredModel):
     """Schema returned by document enrichment."""
 
     model_config = ConfigDict(extra="ignore")
@@ -86,7 +129,7 @@ class EnrichmentResponse(BaseModel):
     entity_aliases: list[EnrichmentAliasGroup] = Field(default_factory=list)
 
 
-class MemoryCandidate(BaseModel):
+class MemoryCandidate(GatewayStructuredModel):
     """One memory candidate extracted from a source document."""
 
     model_config = ConfigDict(extra="ignore")
@@ -103,7 +146,7 @@ class MemoryCandidate(BaseModel):
     evidence_anchor: Literal["unit", "glossary", "preamble", "outline", "document", "unknown"] = "unknown"
 
 
-class MemoryExtractionResponse(BaseModel):
+class MemoryExtractionResponse(GatewayStructuredModel):
     """Schema returned by memory extraction."""
 
     model_config = ConfigDict(extra="ignore")
@@ -111,7 +154,7 @@ class MemoryExtractionResponse(BaseModel):
     memories: list[MemoryCandidate]
 
 
-class ReconciliationDecision(BaseModel):
+class ReconciliationDecision(GatewayStructuredModel):
     """One same-document memory reconciliation decision."""
 
     model_config = ConfigDict(extra="ignore")
@@ -124,7 +167,7 @@ class ReconciliationDecision(BaseModel):
     flag_for_review: bool = False
 
 
-class ReconciliationResponse(BaseModel):
+class ReconciliationResponse(GatewayStructuredModel):
     """Schema returned by same-document memory reconciliation."""
 
     model_config = ConfigDict(extra="ignore")
@@ -132,7 +175,7 @@ class ReconciliationResponse(BaseModel):
     decisions: list[ReconciliationDecision]
 
 
-class ContradictionDecision(BaseModel):
+class ContradictionDecision(GatewayStructuredModel):
     """One cross-document memory relationship classification."""
 
     model_config = ConfigDict(extra="ignore")
@@ -142,7 +185,7 @@ class ContradictionDecision(BaseModel):
     reason: str = ""
 
 
-class ContradictionResponse(BaseModel):
+class ContradictionResponse(GatewayStructuredModel):
     """Schema returned by cross-document contradiction detection."""
 
     model_config = ConfigDict(extra="ignore")
@@ -150,7 +193,7 @@ class ContradictionResponse(BaseModel):
     decisions: list[ContradictionDecision]
 
 
-class EntityValidationResponse(BaseModel):
+class EntityValidationResponse(GatewayStructuredModel):
     """Schema returned by entity-match validation."""
 
     model_config = ConfigDict(extra="ignore")
@@ -161,7 +204,7 @@ class EntityValidationResponse(BaseModel):
     reason: str | None = None
 
 
-class QueryEntityDetectionResponse(BaseModel):
+class QueryEntityDetectionResponse(GatewayStructuredModel):
     """Schema returned by query entity detection."""
 
     model_config = ConfigDict(extra="ignore")
@@ -169,7 +212,7 @@ class QueryEntityDetectionResponse(BaseModel):
     entity_ids: list[int] = Field(default_factory=list)
 
 
-class RerankResponse(BaseModel):
+class RerankResponse(GatewayStructuredModel):
     """Schema returned by memory reranking."""
 
     model_config = ConfigDict(extra="ignore")
@@ -177,7 +220,7 @@ class RerankResponse(BaseModel):
     ranking: list[int] = Field(default_factory=list)
 
 
-class AgentSessionPackageResponse(BaseModel):
+class AgentSessionPackageResponse(GatewayStructuredModel):
     """Schema returned by agent-session window package generation."""
 
     model_config = ConfigDict(extra="ignore")
@@ -304,8 +347,47 @@ def litellm_model_name(model: str) -> str:
     return f"anthropic/{model}"
 
 
+def _supports_response_schema(model_name: str) -> bool:
+    """True when the model natively enforces a response json_schema.
+
+    Models the registry does not recognize (custom gateway aliases) report
+    False, so the client requests JSON text instead of a tool-use schema.
+    """
+    try:
+        return bool(litellm.supports_response_schema(model=model_name))
+    except Exception:
+        return False
+
+
+def _json_text_prompt(prompt: str, response_format: type[BaseModel]) -> str:
+    """Append the schema as a text instruction for the no-tool JSON path."""
+    schema = json.dumps(response_format.model_json_schema(), ensure_ascii=False)
+    return (
+        f"{prompt}\n\nReturn ONLY a single JSON object that matches this JSON Schema, "
+        f"with no markdown fences and no commentary:\n{schema}"
+    )
+
+
+def _strip_json_fences(text: str) -> str:
+    """Drop a leading ```/```json fence and trailing ``` if the model adds them."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        newline = stripped.find("\n")
+        stripped = stripped[newline + 1 :] if newline != -1 else stripped[3:]
+        if stripped.rstrip().endswith("```"):
+            stripped = stripped.rstrip()[: -len("```")]
+    return stripped.strip()
+
+
 class LiteLlmStructuredClient:
-    """LiteLLM-backed structured client using response_format schemas."""
+    """LiteLLM-backed structured client.
+
+    Models that natively enforce a response json_schema use tool-based
+    structured output. For gateways without that support, the client requests
+    JSON text with the schema in the prompt, which avoids tool-use serializing
+    array arguments as malformed JSON strings. Either path validates against the
+    same pydantic schema, and each falls back to the other once on failure.
+    """
 
     def __init__(self, config: StructuredLlmConfig) -> None:
         self.config = config
@@ -443,24 +525,54 @@ class LiteLlmStructuredClient:
         max_tokens: int,
         model: str | None = None,
     ):
+        model_name = litellm_model_name(model or self.config.model)
+        native_schema = _supports_response_schema(model_name)
         try:
-            response = await litellm.acompletion(
-                model=litellm_model_name(model or self.config.model),
-                messages=[{"role": "user", "content": prompt}],
+            return await self._attempt_schema(
+                prompt=prompt,
                 response_format=response_format,
-                api_base=self.config.base_url,
-                api_key=self.config.api_key,
-                timeout=self.config.timeout_s,
+                model_name=model_name,
                 max_tokens=max_tokens,
-                num_retries=self.config.num_retries,
+                native_schema=native_schema,
             )
-            raw_content = _message_content(response)
-            if isinstance(raw_content, response_format):
-                return raw_content
-            if isinstance(raw_content, dict):
-                return response_format.model_validate(raw_content)
-            return response_format.model_validate_json(str(raw_content))
-        except StructuredLlmError:
-            raise
-        except Exception as exc:
-            raise StructuredLlmError(str(exc)) from exc
+        except Exception:
+            # Each strategy can fail in gateway-specific ways: tool-use may
+            # serialize arrays as malformed JSON strings, and text mode may wrap
+            # output unexpectedly. Try the other strategy once before giving up.
+            try:
+                return await self._attempt_schema(
+                    prompt=prompt,
+                    response_format=response_format,
+                    model_name=model_name,
+                    max_tokens=max_tokens,
+                    native_schema=not native_schema,
+                )
+            except Exception as exc:
+                raise StructuredLlmError(str(exc)) from exc
+
+    async def _attempt_schema(
+        self,
+        *,
+        prompt: str,
+        response_format: type[BaseModel],
+        model_name: str,
+        max_tokens: int,
+        native_schema: bool,
+    ):
+        request_prompt = prompt if native_schema else _json_text_prompt(prompt, response_format)
+        response = await litellm.acompletion(
+            model=model_name,
+            messages=[{"role": "user", "content": request_prompt}],
+            api_base=self.config.base_url,
+            api_key=self.config.api_key,
+            timeout=self.config.timeout_s,
+            max_tokens=max_tokens,
+            num_retries=self.config.num_retries,
+            **({"response_format": response_format} if native_schema else {}),
+        )
+        raw_content = _message_content(response)
+        if isinstance(raw_content, response_format):
+            return raw_content
+        if isinstance(raw_content, dict):
+            return response_format.model_validate(raw_content)
+        return response_format.model_validate_json(_strip_json_fences(str(raw_content)))
