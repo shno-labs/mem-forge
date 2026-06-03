@@ -72,3 +72,15 @@ async def test_tick_flags_principal_conflict():
         last_hash=None, capture=_capture_good, log=lambda m: None,
     )
     assert action == "principal_conflict"
+
+
+async def test_tick_reports_transport_error_on_upload_failure():
+    from memforge.main import run_watch_tick
+    client = _Client(upload_result={"error": "MemForge API unavailable", "detail": "connection refused"})
+    action, new_hash = await run_watch_tick(
+        base_url="https://jira.example.test", browser=None, client=client,
+        last_hash="abc", capture=_capture_good, log=lambda m: None,
+    )
+    assert action == "transport_error"
+    # On a failed upload the old hash is retained so the next tick retries.
+    assert new_hash == "abc"

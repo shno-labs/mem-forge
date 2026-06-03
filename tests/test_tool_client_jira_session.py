@@ -38,6 +38,12 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self._send(404, {"error": "nope"})
 
+    def do_DELETE(self):
+        if self.path.startswith("/api/auth/jira-session"):
+            self._send(200, {"ok": True, "forgotten": True})
+        else:
+            self._send(404, {"error": "nope"})
+
 
 @pytest.fixture
 def server():
@@ -55,3 +61,4 @@ def test_tool_client_jira_session_round_trip(server):
     up = client.upload_jira_session(base_url="https://jira.example.test", cookie_header="SESSION=x", browser="Chrome")
     assert up["status"] == "active"
     assert client.mark_jira_session_expired(base_url="https://jira.example.test", error="dead")["ok"] is True
+    assert client.forget_jira_session("https://jira.example.test")["forgotten"] is True
