@@ -40,10 +40,11 @@ Search MemForge for "<topic>". If a result has content_url or pdf_url, call
 get_resource with mode="file" and show the local_path.
 ```
 
-The plugin adds context during `SessionStart` and `UserPromptSubmit`, records
-hook lifecycle receipts during `PreCompact`, `Stop`, and `SubagentStop`, and
-queues bounded, redacted transcript-window uploads to
-`/api/agent-sessions/windows`.
+The plugin adds context during `SessionStart`, records hook lifecycle receipts
+during `PreCompact`, `Stop`, and `SubagentStop`, and queues bounded, redacted
+transcript-window uploads to `/api/agent-sessions/windows`. Per-prompt memory
+retrieval is left to the MCP `search` tool, which fetches query-aware context
+on demand.
 
 Default capture flow:
 
