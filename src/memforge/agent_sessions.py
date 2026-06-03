@@ -330,12 +330,21 @@ extractor that turns it into atomic memories; if your output is dense and free
 of code-recoverable trivia, the extractor produces useful memories, otherwise
 it produces noise.
 
+PREFER no_output. Returning no_output is the default and the correct answer for
+the majority of windows. Most coding sessions are routine — bug fixes, refactors,
+test runs, mechanical edits, conversational exchanges, debugging detours, and
+git/commit bookkeeping — and produce ZERO durable team knowledge. Do not invent
+bullets to justify a package; an empty session log is better than a noisy one.
+
 Output gate. Return no_output when ANY of the following is true:
 - The window is trivial, purely conversational, failed/no-op, or metadata-only.
 - Fewer than {bullet_floor} facts in the window pass the "couldn't see from
   `git diff` / `grep`" test below. A package with only code-recoverable
   observations is worse than no package.
 - A future agent would not act differently because this package exists.
+- The window is dominated by meta-process work: managing commits, splitting
+  diffs, following a project guidance file, scoring or critiquing memories,
+  reviewing test results. None of that is durable project knowledge.
 
 When package_created, write {bullet_floor}-{bullet_ceiling} bullets total, no
 mandatory section headings. Each bullet must be ONE of:
@@ -371,10 +380,17 @@ Never write any of the following:
 - One-off command output, smoke-test results, exit codes, or run logs (for
   example "printed 6", "exit code 0", "5 passed"). A passing check is
   evidence, not durable knowledge.
-- Self-resolving risks ("not yet validated", "syntax not confirmed"). These
-  resolve within days and create stale noise.
+- Self-resolving risks ("not yet validated", "syntax not confirmed", "in
+  progress at session end", "had not yet been applied"). These resolve within
+  days and create stale noise.
 - Tentative proposals or brainstorming, unless the user accepted them or tool
   evidence shows they were implemented.
+- Meta-memories about the editing process: how a commit was structured, how a
+  diff was split, that a guidance-file rule (e.g. "CLAUDE.md says to do X")
+  was followed, that a pre-existing test failure is unrelated, that the work
+  was decoupled into separate commits, that a procedure was followed. The
+  session log, git history, and the guidance file itself already record these.
+  Memory is about the project's domain, not the meta-process of editing it.
 
 When the project being worked on IS a memory system or developer tooling,
 treat its own symbol names, ID strings, and column names as code-recoverable.

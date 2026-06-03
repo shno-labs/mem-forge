@@ -54,7 +54,7 @@ MEMORY_EXTRACTION_PROMPT = """You are extracting atomic knowledge from a documen
 {content}
 </document>
 
-Extract durable atomic knowledge units justified by the document. Return an empty "memories" array if the document contains no durable team memory. Each memory must be a JSON object with:
+Extract durable atomic knowledge units justified by the document. Returning an empty "memories" array IS the correct answer when the document contains no durable team memory; do not invent memories to fill output. Each memory must be a JSON object with:
 - "content": self-contained factual sentence (understandable without the source document)
 - "memory_type": one of "fact", "decision", "convention", "procedure"
 - "confidence": 0.0-1.0 (use high confidence only when the source directly states durable domain knowledge)
@@ -66,6 +66,8 @@ Extract durable atomic knowledge units justified by the document. Return an empt
 
 Top rules (apply these first; reject candidates that fail any of them):
 
+0. PREFER EMPTY. Returning {{"memories": []}} is the default. The bar for emitting a memory is high: it must teach a future developer something they would otherwise miss, six months from now, after the code has been refactored. Sessions full of routine work, mechanical edits, debugging detours, version-control bookkeeping, conversational exchanges, and meta-discussion of the work itself produce ZERO memories — that is the expected outcome, not a failure.
+
 1. CODE-RECOVERABLE FACTS ARE NOT MEMORIES. Reject any candidate a developer could verify by reading the current code, schema, types, configuration, or running `grep` / `git log -p` in under a minute. Specifically, do not emit memories that restate function or method names, class names, type signatures, prop names, parameter lists, ID or constant string values, file paths, schema column names, migration numbers, framework configuration values, or "X passes Y to Z" wiring sentences. Keep a candidate only when it states a constraint, reason, rule, or invariant that survives a future refactor and is NOT visible in any single file.
 
 2. ONE CLAIM, ONE MEMORY. If the document restates the same underlying claim more than once (e.g., "X must be populated for icons" and "without X, icons fall back to dots"), pick the single most general phrasing and emit one memory. Do not emit reworded duplicates of the same fact, decision, or procedure.
@@ -73,6 +75,8 @@ Top rules (apply these first; reject candidates that fail any of them):
 3. FOLD REJECTED ALTERNATIVES INTO THE CHOSEN DECISION. When a discussion records that path A was picked over B and C, emit ONE decision memory of the form "picked A over B and C because <reason>". Do not emit B and C as their own "rejected" memories.
 
 4. FUTURE USEFULNESS CHECK. Before emitting any memory, ask: "Will a developer six months from now act better because this memory exists, after the code has been refactored?" If the answer is no — for example, the claim is true only because of how the code is currently written, or the claim self-resolves within days (a not-yet-validated risk, a temporary caveat) — skip it.
+
+5. NO META-MEMORIES. Do NOT emit memories about the act of working: how a commit was structured, how a diff was split, that a procedure was followed, that a tool was used, that a test failure was pre-existing, that work was in progress at session end, that a rule from a project guidance file was respected. The session log, git history, and the guidance file itself already record all of this. Memory is about the project's domain, not the meta-process of editing it.
 
 Standard rules:
 - Each memory must be SELF-CONTAINED (understandable without the source document).
@@ -112,7 +116,7 @@ MEMORY_CHANGE_EXTRACTION_PROMPT = """You are extracting memory changes from an u
 The changed hunks show what changed between the previous and updated normalized document.
 Use the full updated document only as context and for validating exact quotes.
 
-Return an empty "memories" array if the changes do not introduce, refine, replace, or remove durable team knowledge.
+Returning an empty "memories" array IS the correct answer when the changes do not introduce, refine, replace, or remove durable team knowledge; do not invent memories to fill output.
 For changed durable knowledge, return JSON objects with:
 - "content": self-contained factual sentence (understandable without the source document)
 - "memory_type": one of "fact", "decision", "convention", "procedure"
@@ -125,6 +129,8 @@ For changed durable knowledge, return JSON objects with:
 
 Top rules (apply these first; reject candidates that fail any of them):
 
+0. PREFER EMPTY. Returning {{"memories": []}} is the default. The bar for emitting a memory is high. Routine refactors, formatting changes, dependency bumps, mechanical renames, and metadata-only edits produce ZERO memories — that is the expected outcome.
+
 1. CODE-RECOVERABLE FACTS ARE NOT MEMORIES. Reject any candidate a developer could verify by reading the current code, schema, types, configuration, or running `grep` / `git log -p` in under a minute (function/class names, type signatures, prop names, ID/constant values, file paths, schema columns, migration numbers, "X passes Y to Z" wiring). Keep a candidate only when it states a constraint, reason, rule, or invariant that survives a future refactor.
 
 2. ONE CLAIM, ONE MEMORY. Pick the single most general phrasing and emit one memory; do not output reworded duplicates of the same claim.
@@ -132,6 +138,8 @@ Top rules (apply these first; reject candidates that fail any of them):
 3. FOLD REJECTED ALTERNATIVES INTO THE CHOSEN DECISION. Emit one "picked A over B and C because <reason>" decision memory rather than separate "rejected B" / "rejected C" memories.
 
 4. FUTURE USEFULNESS CHECK. Skip claims that will be obvious after the next refactor, or that self-resolve within days (a not-yet-validated risk, a temporary caveat).
+
+5. NO META-MEMORIES. Do not emit memories about the editing process itself: commit structure, diff splitting, that a guidance-file rule was followed, that a test failure was pre-existing, that work was in progress. Memory is about the project's domain, not the meta-process.
 
 Standard rules:
 - Focus ONLY on durable memory changes caused by <changed_hunks>.
@@ -188,6 +196,8 @@ Each memory must be a JSON object with:
 
 Top rules (apply these first; reject candidates that fail any of them):
 
+0. PREFER EMPTY. Returning {{"memories": []}} is the default. Most units do not contain durable team knowledge worth keeping; emit zero rather than weak memories.
+
 1. CODE-RECOVERABLE FACTS ARE NOT MEMORIES. Reject any candidate a developer could verify by reading the current code, schema, types, configuration, or running `grep` / `git log -p` in under a minute. Keep a candidate only when it states a constraint, reason, rule, or invariant that survives a future refactor.
 
 2. ONE CLAIM, ONE MEMORY. Pick the most general phrasing for each underlying claim; do not output reworded duplicates.
@@ -195,6 +205,8 @@ Top rules (apply these first; reject candidates that fail any of them):
 3. FOLD REJECTED ALTERNATIVES INTO THE CHOSEN DECISION. Emit one "picked A over B because <reason>" decision rather than separate "rejected" memories.
 
 4. FUTURE USEFULNESS CHECK. Skip claims that self-resolve within days or that will be obvious after the next refactor.
+
+5. NO META-MEMORIES. Do not emit memories about the editing process itself: commit structure, diff splitting, that a guidance-file rule was followed, that a test failure was pre-existing, that work was in progress.
 
 Standard rules:
 - Extract only durable team knowledge grounded in <unit_markdown>.
