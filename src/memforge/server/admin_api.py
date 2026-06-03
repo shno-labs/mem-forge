@@ -379,10 +379,16 @@ class TeamsBrowseResponse(BaseModel):
     individual_chats: list[TeamsChatResponse] = []
 
 
-class JiraSessionRefreshRequest(BaseModel):
+class JiraSessionUploadRequest(BaseModel):
     base_url: str
+    cookie_header: str
     browser: str | None = None
     confirm_principal_change: bool = False
+
+
+class JiraSessionExpireRequest(BaseModel):
+    base_url: str
+    error: str = "client reported the session expired"
 
 
 class JiraSessionStatusResponse(BaseModel):
@@ -1236,11 +1242,17 @@ async def _cancel_running_jira_browser_sources_for_origin(
             await sync_service.cancel_source(source["id"])
 
 
-def _require_local_admin_request(request: Request) -> None:
+def _require_secure_or_loopback(request: Request) -> None:
+    """A Jira session cookie is a live credential: only accept it over HTTPS or from loopback."""
     host = request.client.host if request.client else ""
     if host in {"127.0.0.1", "::1", "localhost", "testclient"}:
         return
-    raise HTTPException(status_code=403, detail="Jira browser-session refresh is only available from localhost")
+    # x-forwarded-proto is meaningful only when a trusted TLS-terminating proxy sets it;
+    # a direct plaintext client falls back to request.url.scheme ("http") and is rejected.
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    if proto == "https":
+        return
+    raise HTTPException(status_code=400, detail="Upload a Jira session only over HTTPS or from localhost")
 
 
 def _validate_required_source_fields(
@@ -1662,24 +1674,23 @@ def create_admin_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JiraSessionStatusResponse(**status)
 
-    @auth_router.post("/jira-session/refresh", response_model=JiraSessionStatusResponse)
-    async def refresh_jira_session(
-        req: JiraSessionRefreshRequest,
+    @auth_router.post("/jira-session", response_model=JiraSessionStatusResponse)
+    async def upload_jira_session(
+        req: JiraSessionUploadRequest,
         request: Request,
         db: Database = Depends(get_db),
         sync_service: SyncService = Depends(get_sync_service),
     ):
-        """Refresh one shared Jira browser session from the local browser."""
-        _require_local_admin_request(request)
+        """Store a client-captured Jira session cookie. The server validates it."""
+        _require_secure_or_loopback(request)
         try:
             if req.confirm_principal_change:
                 await _cancel_running_jira_browser_sources_for_origin(
-                    db=db,
-                    sync_service=sync_service,
-                    base_url=req.base_url,
+                    db=db, sync_service=sync_service, base_url=req.base_url,
                 )
-            result = await JiraAuthSessionService(db).refresh_from_browser(
+            result = await JiraAuthSessionService(db).store_uploaded_session(
                 base_url=req.base_url,
+                cookie_header=req.cookie_header,
                 browser=req.browser,
                 confirm_principal_change=req.confirm_principal_change,
             )
@@ -1696,6 +1707,29 @@ def create_admin_app(
         except (JiraAuthSessionError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JiraSessionStatusResponse(**result)
+
+    @auth_router.get("/jira-origins")
+    async def list_jira_origins(db: Database = Depends(get_db)):
+        """Known Jira origins: authenticated sessions plus configured sources."""
+        origins = await browser_session.list_origins(db, "jira")
+        return {"origins": origins}
+
+    @auth_router.delete("/jira-session")
+    async def forget_jira_session(base_url: str, db: Database = Depends(get_db)):
+        """Delete the stored Jira session for an origin."""
+        try:
+            return await browser_session.forget(db, "jira", base_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @auth_router.post("/jira-session/expire")
+    async def expire_jira_session(req: JiraSessionExpireRequest, db: Database = Depends(get_db)):
+        """Mark a Jira session expired (the client found the browser session dead)."""
+        try:
+            await JiraAuthSessionService(db).mark_expired(req.base_url, req.error)
+            return {"ok": True}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # -- Exception handlers --
 
