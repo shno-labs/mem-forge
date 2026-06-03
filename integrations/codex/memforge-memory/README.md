@@ -26,6 +26,9 @@ codex plugin add memory@memforge
 
 Start a new Codex session after install.
 
+To push a local folder as a source, open the MemForge Admin UI, choose
+**Add Source -> Local Repository**, and run the printed CLI command.
+
 ```bash
 # optional
 codex mcp get memforge --json

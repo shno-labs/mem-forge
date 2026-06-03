@@ -93,11 +93,14 @@ The adapter converts native hook names into a small normalized vocabulary:
 
 | Normalized capture policy | Typical native hooks | Why it exists |
 | --- | --- | --- |
-| `CONTEXT` | `UserPromptSubmit`, context hook | Read path. Inject memory context and opportunistically drain pending work. |
 | `REQUIRED_CAPTURE` | `PreCompact` | Context may be lost, so capture regardless of the cheap gate. |
 | `GATED_CAPTURE` | `Stop`, `SubagentStop` | A turn or unit ended. Capture only when the uncaptured tail has durable signals. |
 | `RECOVER` | `SessionStart` | Retry pending work and re-arm an idle session whose transcript grew. |
 | `IGNORE` | unsupported hooks | Leave the session untouched. |
+
+Per-prompt memory retrieval is not in this table. The plugin no longer wires a
+`UserPromptSubmit` hook; the agent calls the MCP `search` tool on demand for
+query-aware context.
 
 The point of normalized capture policies is not abstraction for its own sake. It
 keeps Codex, Claude Code, and future clients on one capture algorithm while

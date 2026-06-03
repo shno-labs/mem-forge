@@ -26,6 +26,9 @@ claude plugin install memory@memforge
 
 Start a new Claude Code session after install.
 
+To push a local folder as a source, open the MemForge Admin UI, choose
+**Add Source -> Local Repository**, and run the printed CLI command.
+
 Try a search:
 
 ```text
