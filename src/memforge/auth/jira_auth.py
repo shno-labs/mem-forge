@@ -35,6 +35,12 @@ JIRA_SESSION_EXPIRED = "expired"
 JIRA_SESSION_MISSING = "missing"
 JIRA_SESSION_FAILED = "failed"
 
+# A cold connection to a slow corporate Jira can exceed a tight read timeout on
+# the first call, so the read budget is generous and one retry warms it up.
+JIRA_VALIDATE_CONNECT_TIMEOUT_SECONDS = 10.0
+JIRA_VALIDATE_READ_TIMEOUT_SECONDS = 60.0
+JIRA_VALIDATE_ATTEMPTS = 2
+
 SessionValidator = Callable[[str, str, dict[str, Any] | None], Any]
 
 
@@ -314,6 +320,29 @@ def _redacted_status(stored: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _probe_jira_myself(client: httpx.AsyncClient, origin: str) -> httpx.Response:
+    """GET ``/myself``, retrying once on a transient timeout (cold connections are slow).
+
+    A timeout is worth one retry because the first call often just has to warm up
+    the TLS/proxy path. A non-timeout transport error (connection refused, DNS, TLS
+    failure) will not improve on retry, so it fails fast with a clear message.
+    """
+    last_exc: Exception | None = None
+    for _attempt in range(JIRA_VALIDATE_ATTEMPTS):
+        try:
+            return await client.get("/rest/api/2/myself")
+        except httpx.TimeoutException as exc:
+            last_exc = exc
+            continue
+        except httpx.TransportError as exc:
+            last_exc = exc
+            break
+    detail = str(last_exc) or type(last_exc).__name__
+    raise JiraAuthSessionError(
+        f"Could not reach Jira at {canonical_jira_origin(origin)} to validate the session ({detail})."
+    ) from last_exc
+
+
 async def validate_jira_cookie_session(
     origin: str,
     cookie_header: str,
@@ -333,17 +362,11 @@ async def validate_jira_cookie_session(
     async with httpx.AsyncClient(
         base_url=canonical_jira_origin(origin),
         headers=headers,
-        timeout=30.0,
+        timeout=httpx.Timeout(JIRA_VALIDATE_READ_TIMEOUT_SECONDS, connect=JIRA_VALIDATE_CONNECT_TIMEOUT_SECONDS),
         follow_redirects=True,
         verify=tls_verify(tls_config or {}),
     ) as client:
-        try:
-            response = await client.get("/rest/api/2/myself")
-        except httpx.TransportError as exc:
-            detail = str(exc) or type(exc).__name__
-            raise JiraAuthSessionError(
-                f"Could not reach Jira at {canonical_jira_origin(origin)} to validate the session ({detail})."
-            ) from exc
+        response = await _probe_jira_myself(client, origin)
         if response.status_code == 401:
             raise JiraAuthSessionMissingError("Jira browser session is expired or not accepted")
         response.raise_for_status()

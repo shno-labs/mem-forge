@@ -530,3 +530,29 @@ async def test_validate_reports_unreachable_origin_clearly(monkeypatch):
     message = str(excinfo.value)
     assert message  # never blank, even when the transport error carries no message
     assert "jira.example.test" in message
+
+
+async def test_validate_retries_once_on_timeout_then_succeeds(monkeypatch):
+    from memforge.auth import jira_auth
+    from memforge.auth.jira_auth import validate_jira_cookie_session
+
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # A cold connection times out on the first call.
+            raise httpx.ReadTimeout("slow", request=request)
+        return httpx.Response(200, json={"accountId": "user-1", "displayName": "Ann"})
+
+    real_async_client = httpx.AsyncClient
+
+    def patched_async_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_async_client(*args, **kwargs)
+
+    monkeypatch.setattr(jira_auth.httpx, "AsyncClient", patched_async_client)
+
+    principal = await validate_jira_cookie_session("https://jira.example.test", "JSESSIONID=x")
+    assert principal["accountId"] == "user-1"
+    assert calls["n"] == 2  # timed out once, retried, then succeeded

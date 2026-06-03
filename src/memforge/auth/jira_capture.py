@@ -98,7 +98,8 @@ def extract_browser_cookie_header(origin: str, browser: str | None = None) -> tu
 
     detail = "; ".join(failures) if failures else "no matching cookies found"
     raise JiraAuthSessionMissingError(
-        f"No active Jira browser session cookies were found for {hostname}. {detail}"
+        f"No active Jira browser session cookies were found for {hostname}. {detail}. "
+        "If your OS asked to allow keychain or keyring access to read the browser, approve it and retry."
     )
 
 
