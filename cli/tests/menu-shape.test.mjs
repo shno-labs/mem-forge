@@ -30,6 +30,7 @@ const requiredLabels = [
   "Check session status",
   "Authenticate browser session",
   "Forget a session",
+  "Start background refresh",
   "Run diagnostics",
   "← Back",
 ];
@@ -68,6 +69,10 @@ assert.ok(
   !/\[\s*"auth",\s*"jira"/.test(source),
   "interactive UI must use `adapter auth jira`, never the removed `auth jira`",
 );
+
+// The Jira area offers a foreground watch daemon that keeps the session fresh.
+assert.match(source, /value:\s*"watch"/);
+assert.match(source, /adapter auth jira watch/);
 
 assert.ok(
   !source.includes("spawnSync"),
