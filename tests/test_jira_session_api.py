@@ -108,3 +108,13 @@ def test_gate_allows_https_and_loopback():
     _require_secure_or_loopback(_fake_request("203.0.113.5", "https"))
     _require_secure_or_loopback(_fake_request("203.0.113.5", "http", {"x-forwarded-proto": "https"}))
     _require_secure_or_loopback(_fake_request("127.0.0.1", "http"))
+
+
+def test_gate_allows_plaintext_when_trusted_flag_set(monkeypatch):
+    # Behind Docker the client IP can be the host's own public address, so a trusted
+    # local/dev deployment opts in explicitly. Default (flag unset) still rejects.
+    request = _fake_request("130.214.163.68", "http")
+    with pytest.raises(HTTPException):
+        _require_secure_or_loopback(request)
+    monkeypatch.setenv("MEMFORGE_ALLOW_PLAINTEXT_SESSION_UPLOAD", "1")
+    _require_secure_or_loopback(request)  # no exception now

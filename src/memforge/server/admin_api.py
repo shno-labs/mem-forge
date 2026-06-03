@@ -10,6 +10,7 @@ import asyncio
 from dataclasses import asdict, is_dataclass
 import json
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -1248,17 +1249,37 @@ async def _cancel_running_jira_browser_sources_for_origin(
             await sync_service.cancel_source(source["id"])
 
 
+def _plaintext_session_upload_allowed() -> bool:
+    """Whether the deployment trusts its network enough to accept a session cookie over plaintext.
+
+    Behind a container the source IP is not a reliable "local" signal (Docker can
+    present a private gateway or the host's own public address), so a trusted local
+    or dev deployment opts in explicitly instead of relying on the client IP.
+    """
+    return os.getenv("MEMFORGE_ALLOW_PLAINTEXT_SESSION_UPLOAD", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _require_secure_or_loopback(request: Request) -> None:
-    """A Jira session cookie is a live credential: only accept it over HTTPS or from loopback."""
-    host = request.client.host if request.client else ""
-    if host in {"127.0.0.1", "::1", "localhost", "testclient"}:
-        return
+    """A Jira session cookie is a live credential: accept it over HTTPS, from loopback,
+    or when the deployment explicitly trusts its network. Reject plaintext otherwise."""
     # x-forwarded-proto is meaningful only when a trusted TLS-terminating proxy sets it;
-    # a direct plaintext client falls back to request.url.scheme ("http") and is rejected.
+    # a direct plaintext client falls back to request.url.scheme ("http").
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     if proto == "https":
         return
-    raise HTTPException(status_code=400, detail="Upload a Jira session only over HTTPS or from localhost")
+    host = request.client.host if request.client else ""
+    if host in {"127.0.0.1", "::1", "localhost", "testclient"}:
+        return
+    if _plaintext_session_upload_allowed():
+        return
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Refusing a Jira session cookie over plaintext from a non-local client. Use HTTPS, "
+            "or set MEMFORGE_ALLOW_PLAINTEXT_SESSION_UPLOAD=1 for a trusted local or dev deployment "
+            "(for example a server reached through Docker's localhost port mapping)."
+        ),
+    )
 
 
 def _validate_required_source_fields(

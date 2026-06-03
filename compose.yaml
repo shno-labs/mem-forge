@@ -17,6 +17,10 @@ services:
       MEMFORGE_BASE_DIR: /data
       MEMFORGE_ADMIN_API_PORT: 8765
       MEMFORGE_CORS_ORIGINS: http://localhost:5174,http://127.0.0.1:5174
+      # A Jira session cookie is uploaded over this API. Behind Docker the client
+      # IP is not a reliable "local" signal, so set this to 1 only for a trusted
+      # local or dev deployment. Leave empty and serve over HTTPS in production.
+      MEMFORGE_ALLOW_PLAINTEXT_SESSION_UPLOAD: ${MEMFORGE_ALLOW_PLAINTEXT_SESSION_UPLOAD:-}
     ports:
       - "${MEMFORGE_API_HOST_PORT:-8765}:8765"
     volumes:
