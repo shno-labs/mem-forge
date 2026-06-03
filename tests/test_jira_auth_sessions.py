@@ -507,3 +507,26 @@ async def test_validate_treats_html_login_page_as_not_accepted(monkeypatch):
 
     with pytest.raises(JiraAuthSessionMissingError):
         await validate_jira_cookie_session("https://jira.example.test", "SESSION=dead")
+
+
+async def test_validate_reports_unreachable_origin_clearly(monkeypatch):
+    from memforge.auth import jira_auth
+    from memforge.auth.jira_auth import JiraAuthSessionError, validate_jira_cookie_session
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # A real DNS/connect failure surfaces as a ConnectError with an empty message.
+        raise httpx.ConnectError("")
+
+    real_async_client = httpx.AsyncClient
+
+    def patched_async_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_async_client(*args, **kwargs)
+
+    monkeypatch.setattr(jira_auth.httpx, "AsyncClient", patched_async_client)
+
+    with pytest.raises(JiraAuthSessionError) as excinfo:
+        await validate_jira_cookie_session("https://jira.example.test", "JSESSIONID=x")
+    message = str(excinfo.value)
+    assert message  # never blank, even when the transport error carries no message
+    assert "jira.example.test" in message

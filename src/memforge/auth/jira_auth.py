@@ -337,7 +337,13 @@ async def validate_jira_cookie_session(
         follow_redirects=True,
         verify=tls_verify(tls_config or {}),
     ) as client:
-        response = await client.get("/rest/api/2/myself")
+        try:
+            response = await client.get("/rest/api/2/myself")
+        except httpx.TransportError as exc:
+            detail = str(exc) or type(exc).__name__
+            raise JiraAuthSessionError(
+                f"Could not reach Jira at {canonical_jira_origin(origin)} to validate the session ({detail})."
+            ) from exc
         if response.status_code == 401:
             raise JiraAuthSessionMissingError("Jira browser session is expired or not accepted")
         response.raise_for_status()
