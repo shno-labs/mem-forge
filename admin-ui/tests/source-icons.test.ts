@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { BRAND_MARKS, SOURCE_TYPE_MARKS } from "../src/views/sources/sourceBrand.js";
+import { AGENT_SESSION_CLIENT_MARK, BRAND_MARKS, SOURCE_TYPE_MARKS } from "../src/views/sources/sourceBrand.js";
 
 // Every brand mark must carry an accessible label and a complete SVG path:
 // a self-closed <path> with a non-empty `d`, so a truncated copy/paste fails.
@@ -9,8 +9,8 @@ for (const [key, mark] of Object.entries(BRAND_MARKS)) {
   assert.match(mark.markup, /<path\b[^>]*\bd="[^"]+"\s*\/>/, `${key} mark should embed a complete SVG path`);
 }
 
-// Each real source type maps to marks, and every mark key resolves.
-const SOURCE_TYPES = ["confluence", "jira", "github_pages", "teams", "local_markdown", "agent_session"];
+// Source-type-keyed marks. agent_session resolves per-client; see below.
+const SOURCE_TYPES = ["confluence", "jira", "github_pages", "teams", "local_markdown"];
 for (const type of SOURCE_TYPES) {
   const keys = SOURCE_TYPE_MARKS[type];
   assert.ok(keys && keys.length > 0, `${type} should have at least one brand mark`);
@@ -20,11 +20,13 @@ for (const type of SOURCE_TYPES) {
 }
 
 // Source-specific routing the UI depends on.
-assert.deepEqual(
+assert.equal(
   SOURCE_TYPE_MARKS.agent_session,
-  ["codex", "claude"],
-  "agent-session rows aggregate both coding-agent clients",
+  undefined,
+  "agent_session brand is resolved via AGENT_SESSION_CLIENT_MARK, not SOURCE_TYPE_MARKS",
 );
+assert.equal(AGENT_SESSION_CLIENT_MARK.codex, "codex");
+assert.equal(AGENT_SESSION_CLIENT_MARK["claude-code"], "claude");
 assert.deepEqual(SOURCE_TYPE_MARKS.local_markdown, ["obsidian"], "local markdown should show the Obsidian mark");
 assert.deepEqual(SOURCE_TYPE_MARKS.github_pages, ["github"], "GitHub Pages should show the GitHub mark");
 
