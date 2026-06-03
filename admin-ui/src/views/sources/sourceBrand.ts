@@ -70,8 +70,9 @@ export const BRAND_MARKS = {
 export type BrandKey = keyof typeof BRAND_MARKS;
 
 /**
- * Source type to its ordered brand marks. `agent_session` aggregates both
- * coding-agent clients (Codex and Claude Code), so its row shows both marks.
+ * Source type to its ordered brand marks. Agent session types are not listed
+ * here; SourceIcon resolves those per-client via the `client` prop so each
+ * source row and memory icon shows exactly one brand mark.
  */
 export const SOURCE_TYPE_MARKS: Record<string, BrandKey[]> = {
   confluence: ["confluence"],
@@ -79,7 +80,15 @@ export const SOURCE_TYPE_MARKS: Record<string, BrandKey[]> = {
   github_pages: ["github"],
   teams: ["teams"],
   local_markdown: ["obsidian"],
-  agent_session: ["codex", "claude"],
+};
+
+/**
+ * Maps the agent-session `client` value to a single brand key. "codex" maps to
+ * the OpenAI/Codex mark; "claude-code" maps to the Claude Code mark.
+ */
+export const AGENT_SESSION_CLIENT_MARK: Record<string, BrandKey> = {
+  codex: "codex",
+  "claude-code": "claude",
 };
 
 /**

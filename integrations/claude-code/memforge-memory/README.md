@@ -17,11 +17,11 @@ Claude Code MCP stdio -> plugin-local proxy -> HTTP(S) MemForge API
 get_resource(mode=file) -> ~/.memforge-agent/artifacts -> local_path
 ```
 
-Install from the repository root:
+Install from GitHub (run inside an active Claude Code session):
 
-```bash
-claude plugin marketplace add ./
-claude plugin install memory@memforge
+```text
+/plugin marketplace add shno-labs/mem-forge
+/plugin install memory@memforge
 ```
 
 Start a new Claude Code session after install.

@@ -19,11 +19,58 @@ from memforge.config import AppConfig
 from memforge.models import AgentHookReceipt, AgentSessionReceipt, content_hash, slugify
 from memforge.storage.database import Database
 
+# Legacy singleton source id - kept for migration compatibility; new writes use
+# the per-client source derived by agent_session_source_id().
 AGENT_SESSION_SOURCE_ID = "src-agent-sessions"
-AGENT_SESSION_SOURCE_NAME = "Agent Session Summaries"
 AGENT_SESSION_SOURCE_TYPE = "agent_session"
 AGENT_SESSION_SOURCE_KIND = "generated_agent_summary"
 AGENT_SESSION_WINDOW_SOURCE_KIND = "generated_agent_window_summary"
+
+# Whitelisted clients with well-known source ids and display names.
+_KNOWN_CLIENT_SOURCE_IDS: dict[str, str] = {
+    "codex": "src-agent-sessions-codex",
+    "claude-code": "src-agent-sessions-claude-code",
+}
+_KNOWN_CLIENT_SOURCE_NAMES: dict[str, str] = {
+    "codex": "Codex Session",
+    "claude-code": "Claude Code Session",
+}
+
+
+def agent_session_source_id(client: str) -> str:
+    """Return the canonical source id for the given client.
+
+    Whitelisted clients ('codex', 'claude-code') map to their well-known ids.
+    Any other client falls back to 'src-agent-sessions-<slug>'.
+    """
+    return _KNOWN_CLIENT_SOURCE_IDS.get(client, f"src-agent-sessions-{slugify(client)}")
+
+
+def agent_session_source_name(client: str) -> str:
+    """Return the display name for the given client's agent-session source."""
+    return _KNOWN_CLIENT_SOURCE_NAMES.get(client, f"{client.title()} Session")
+
+
+# Reverse-lookup: given a per-client source id, return the originating client.
+# Used by /api/sources to attach `client` to each row so the UI can pick a brand.
+_AGENT_SESSION_ID_TO_CLIENT: dict[str, str] = {
+    source_id: client for client, source_id in _KNOWN_CLIENT_SOURCE_IDS.items()
+}
+_AGENT_SESSION_ID_PREFIX = "src-agent-sessions-"
+
+
+def agent_session_client_for_source_id(source_id: str) -> str | None:
+    """Return the client slug for an agent-session source id, or None.
+
+    Returns the whitelisted client for known ids; for unknown agent-session
+    sources prefixed with 'src-agent-sessions-' returns the trailing slug.
+    Returns None for any other source id (jira, local_markdown, etc.).
+    """
+    if source_id in _AGENT_SESSION_ID_TO_CLIENT:
+        return _AGENT_SESSION_ID_TO_CLIENT[source_id]
+    if source_id.startswith(_AGENT_SESSION_ID_PREFIX):
+        return source_id[len(_AGENT_SESSION_ID_PREFIX):] or None
+    return None
 
 _SECRET_PATTERNS = [
     ("assignment", re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*([^\s`'\"]+)")),
@@ -448,19 +495,22 @@ async def ensure_agent_session_source(
     db: Database,
     config: AppConfig,
     *,
+    client: str,
     documents_dir: str | None = None,
 ) -> dict:
-    """Ensure the generated agent session source exists and return it."""
+    """Ensure the per-client agent-session source exists and return it."""
+    source_id = agent_session_source_id(client)
+    source_name = agent_session_source_name(client)
     inbox = Path(documents_dir) if documents_dir else default_agent_session_documents_dir(config)
     inbox.mkdir(parents=True, exist_ok=True)
     source_config = {"documents_dir": str(inbox)}
     await db.upsert_source(
-        id=AGENT_SESSION_SOURCE_ID,
+        id=source_id,
         type=AGENT_SESSION_SOURCE_TYPE,
-        name=AGENT_SESSION_SOURCE_NAME,
+        name=source_name,
         config_json=json.dumps(source_config),
     )
-    source = await db.get_source(AGENT_SESSION_SOURCE_ID)
+    source = await db.get_source(source_id)
     assert source is not None
     return source
 
@@ -498,7 +548,7 @@ async def submit_agent_session_document(
     if not document_markdown.strip():
         raise ValueError("document_markdown is required")
 
-    source = await ensure_agent_session_source(db, config)
+    source = await ensure_agent_session_source(db, config, client=client)
     documents_dir = Path(source["config"]["documents_dir"])
 
     submitted_at = submitted_at or _now_iso()
@@ -514,6 +564,7 @@ async def submit_agent_session_document(
         history_window_end=history_window_end,
         window_hash=window_hash,
     )
+    per_client_source_id = agent_session_source_id(client)
     source_url = f"agent-session://{slugify(client)}/{slugify(session_id)}/{slugify(trigger)}/{doc_id}"
     doc_title = title or f"Agent Session: {client} {session_id} {trigger}"
     project = repo or Path(workspace).name or "agent-session"
@@ -522,7 +573,7 @@ async def submit_agent_session_document(
 
     receipt = AgentSessionReceipt(
         doc_id=doc_id,
-        source_id=AGENT_SESSION_SOURCE_ID,
+        source_id=per_client_source_id,
         client=client,
         session_id=session_id,
         trigger=trigger,
@@ -580,7 +631,7 @@ async def submit_agent_session_document(
 
     return {
         "doc_id": doc_id,
-        "source_id": AGENT_SESSION_SOURCE_ID,
+        "source_id": per_client_source_id,
         "source_type": AGENT_SESSION_SOURCE_TYPE,
         "document_uri": str(package_path),
         "document_hash": document_hash,
@@ -626,7 +677,7 @@ async def _record_window_outcome(
     )
     receipt_record = AgentSessionReceipt(
         doc_id=doc_id,
-        source_id=AGENT_SESSION_SOURCE_ID,
+        source_id=agent_session_source_id(client),
         client=client,
         session_id=session_id,
         trigger=trigger,

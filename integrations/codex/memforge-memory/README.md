@@ -17,10 +17,10 @@ Codex MCP stdio -> plugin-local proxy -> HTTP(S) MemForge API
 get_resource(mode=file) -> ~/.memforge-agent/artifacts -> local_path
 ```
 
-Install from the repository root:
+Install from GitHub (no checkout required):
 
 ```bash
-codex plugin marketplace add ./
+codex plugin marketplace add shno-labs/mem-forge
 codex plugin add memory@memforge
 ```
 

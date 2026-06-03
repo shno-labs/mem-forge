@@ -26,6 +26,12 @@ export interface Memory {
   sources: MemorySource[];
   /** Source type for the leading glyph: extraction origin, else first source. */
   origin_source_type: string | null;
+  /**
+   * For agent_session memories, the plugin client that produced the source
+   * document ("codex" or "claude-code"). Passed to SourceIcon to pick the
+   * correct single brand mark.
+   */
+  origin_client?: string | null;
 }
 
 export type MemorySourceSupportKind = "extracted" | "corroborated";
@@ -86,6 +92,8 @@ export interface SyncStatus {
 export interface Source {
   id: string;
   type: string;
+  /** For agent_session sources, identifies the plugin client: "codex" or "claude-code". */
+  client?: string | null;
   name: string;
   config: Record<string, unknown>;
   status: "active" | "paused";

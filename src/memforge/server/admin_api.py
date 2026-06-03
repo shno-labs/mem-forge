@@ -223,6 +223,9 @@ class MemoryResponse(BaseModel):
     # Source type for the leading glyph: the memory's extraction origin, else its
     # first attached source. None only when a memory has no remaining provenance.
     origin_source_type: str | None = None
+    # The originating client for agent-session memories (e.g. 'codex' or
+    # 'claude-code'); None for memories extracted from non-agent-session sources.
+    origin_client: str | None = None
 
 
 class MemoryDetailResponse(MemoryResponse):
@@ -1331,31 +1334,35 @@ def _memory_source_detail(
     )
 
 
-def _pick_origin_source_type(pairs: list[tuple[str, str | None]]) -> str | None:
-    """Pick a memory's display source from its (source_type, support_kind) pairs,
+def _pick_origin_source_type(pairs: list[tuple[str, str | None, str | None]]) -> tuple[str | None, str | None]:
+    """Pick a memory's display source and client from its (source_type, support_kind, client) triples,
     ordered oldest-first: the extraction origin if any, else the first source.
-    None when there are no sources."""
+    Returns (source_type, client). Both are None when there are no sources."""
     if not pairs:
-        return None
-    for source_type, support_kind in pairs:
+        return None, None
+    for source_type, support_kind, client in pairs:
         if support_kind == "extracted":
-            return source_type
-    return pairs[0][0]
+            return source_type, client
+    return pairs[0][0], pairs[0][2]
 
 
-async def _origin_source_types(db: Database, memory_ids: list[str]) -> dict[str, str]:
-    """Map memory id -> origin source_type for a batch of memories in one query.
+async def _origin_source_types(db: Database, memory_ids: list[str]) -> dict[str, tuple[str, str | None]]:
+    """Map memory id -> (origin_source_type, origin_client) for a batch of memories in one query.
     Memories with no source are omitted."""
     grouped = await db.get_origin_source_pairs(memory_ids)
-    origins: dict[str, str] = {}
+    origins: dict[str, tuple[str, str | None]] = {}
     for mid, pairs in grouped.items():
-        origin = _pick_origin_source_type(pairs)
-        if origin is not None:
-            origins[mid] = origin
+        source_type, client = _pick_origin_source_type(pairs)
+        if source_type is not None:
+            origins[mid] = (source_type, client)
     return origins
 
 
-def _memory_to_response(mem: Memory, origin_source_type: str | None = None) -> MemoryResponse:
+def _memory_to_response(
+    mem: Memory,
+    origin_source_type: str | None = None,
+    origin_client: str | None = None,
+) -> MemoryResponse:
     """Convert a Memory dataclass to a Pydantic response model."""
     return MemoryResponse(
         id=mem.id,
@@ -1380,6 +1387,7 @@ def _memory_to_response(mem: Memory, origin_source_type: str | None = None) -> M
         created_at=_dt_iso(mem.created_at),
         updated_at=_dt_iso(mem.updated_at),
         origin_source_type=origin_source_type,
+        origin_client=origin_client,
     )
 
 
@@ -2083,7 +2091,8 @@ def create_admin_app(
                 if row:
                     entity_names.append(row[0])
 
-        origin_source_type = (await _origin_source_types(db, [memory_id])).get(memory_id)
+        origin_info = (await _origin_source_types(db, [memory_id])).get(memory_id, (None, None))
+        origin_source_type, origin_client = origin_info
 
         return MemoryDetailResponse(
             id=mem.id,
@@ -2110,6 +2119,7 @@ def create_admin_app(
             entity_refs=entity_names,
             sources=source_details,
             origin_source_type=origin_source_type,
+            origin_client=origin_client,
         )
 
     # -- Memory update (admin actions) --
@@ -2307,7 +2317,10 @@ def create_admin_app(
 
         origins = await _origin_source_types(db, [m.id for m in memories])
         return MemoryListResponse(
-            data=[_memory_to_response(m, origins.get(m.id)) for m in memories],
+            data=[
+                _memory_to_response(m, *origins.get(m.id, (None, None)))
+                for m in memories
+            ],
             total=total,
             limit=limit,
             offset=offset,
@@ -2918,6 +2931,11 @@ def create_admin_app(
                     latest_history[d["source"]] = d
 
         # Attach memory_count and sync status to each source
+        from memforge.agent_sessions import (
+            AGENT_SESSION_SOURCE_TYPE,
+            agent_session_client_for_source_id,
+        )
+
         jira_auth_service = JiraAuthSessionService(db)
         for s in sources:
             original_config = s.get("config", {})
@@ -2929,6 +2947,12 @@ def create_admin_app(
             )
             s["memory_count"] = memory_counts.get(s["id"], 0)
             s["doc_count"] = doc_counts.get(s["id"], s.get("doc_count", 0))
+            # Surface the originating client for agent-session sources so the UI
+            # can pick a per-client brand mark without re-deriving from the id.
+            if s["type"] == AGENT_SESSION_SOURCE_TYPE:
+                s["client"] = agent_session_client_for_source_id(s["id"])
+            else:
+                s["client"] = None
             if s["type"] == "jira" and jira_auth_mode == "browser_cookie":
                 try:
                     s["auth_session"] = await jira_auth_service.get_status(

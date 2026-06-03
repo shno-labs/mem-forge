@@ -311,7 +311,7 @@ export function MemoriesPage() {
                       <TableCell>
                         <div className="flex items-center gap-1.5">
                           {origin ? (
-                            <SourceIcon type={origin} className="size-4" />
+                            <SourceIcon type={origin} client={memory.origin_client} className="size-4" />
                           ) : (
                             <MemoryTypeIcon type={memory.memory_type} className="size-4" />
                           )}

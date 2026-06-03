@@ -95,7 +95,7 @@ export function MemoryDetailPage() {
             <div className="flex items-center gap-3">
               <StatusDot status={memory.status} />
               {origin ? (
-                <SourceIcon type={origin} className="size-4" />
+                <SourceIcon type={origin} client={memory.origin_client} className="size-4" />
               ) : (
                 <MemoryTypeIcon type={memory.memory_type} className="size-4" />
               )}
