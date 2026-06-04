@@ -20,13 +20,12 @@ def _expects_container(annotation: object) -> bool:
     return isinstance(annotation, type) and issubclass(annotation, BaseModel)
 
 
-class GatewayStructuredModel(BaseModel):
+class StructuredResponseModel(BaseModel):
     """Base for LLM structured-output schemas.
 
-    Tool-use gateways do not strictly type-check tool arguments, so a list or
-    nested object is sometimes returned as a JSON-encoded string (for example
-    ``{"memories": "[...]"}``). Decode those strings before field validation so a
-    stringified container still satisfies the declared schema.
+    Some gateway/tool-use responses encode list or nested-object fields as JSON
+    strings, for example ``{"memories": "[...]"}``. Normalize those containers
+    before field validation so the declared schema still owns correctness.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -52,7 +51,7 @@ class GatewayStructuredModel(BaseModel):
         return decoded if decoded is not None else data
 
 
-class SourceSupportDecision(GatewayStructuredModel):
+class SourceSupportDecision(StructuredResponseModel):
     """One verifier decision for an existing memory candidate."""
 
     model_config = ConfigDict(extra="ignore")
@@ -63,7 +62,7 @@ class SourceSupportDecision(GatewayStructuredModel):
     reason: str | None = None
 
 
-class SourceSupportResponse(GatewayStructuredModel):
+class SourceSupportResponse(StructuredResponseModel):
     """Schema returned by the source-support verifier."""
 
     model_config = ConfigDict(extra="ignore")
@@ -71,7 +70,7 @@ class SourceSupportResponse(GatewayStructuredModel):
     decisions: list[SourceSupportDecision]
 
 
-class EnrichmentEntity(GatewayStructuredModel):
+class EnrichmentEntity(StructuredResponseModel):
     """One entity identified during document enrichment."""
 
     model_config = ConfigDict(extra="ignore")
@@ -83,7 +82,7 @@ class EnrichmentEntity(GatewayStructuredModel):
     tags: list[str] = Field(default_factory=list)
 
 
-class EnrichmentRelationship(GatewayStructuredModel):
+class EnrichmentRelationship(StructuredResponseModel):
     """One document relationship identified during enrichment."""
 
     model_config = ConfigDict(extra="ignore")
@@ -93,7 +92,7 @@ class EnrichmentRelationship(GatewayStructuredModel):
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
-class EnrichmentAliasGroup(GatewayStructuredModel):
+class EnrichmentAliasGroup(StructuredResponseModel):
     """Legacy alias group shape preserved for enrichment compatibility."""
 
     model_config = ConfigDict(extra="ignore")
@@ -103,7 +102,7 @@ class EnrichmentAliasGroup(GatewayStructuredModel):
     evidence: str = ""
 
 
-class EnrichmentResponse(GatewayStructuredModel):
+class EnrichmentResponse(StructuredResponseModel):
     """Schema returned by document enrichment."""
 
     model_config = ConfigDict(extra="ignore")
@@ -129,7 +128,7 @@ class EnrichmentResponse(GatewayStructuredModel):
     entity_aliases: list[EnrichmentAliasGroup] = Field(default_factory=list)
 
 
-class MemoryCandidate(GatewayStructuredModel):
+class MemoryCandidate(StructuredResponseModel):
     """One memory candidate extracted from a source document."""
 
     model_config = ConfigDict(extra="ignore")
@@ -146,7 +145,7 @@ class MemoryCandidate(GatewayStructuredModel):
     evidence_anchor: Literal["unit", "glossary", "preamble", "outline", "document", "unknown"] = "unknown"
 
 
-class MemoryExtractionResponse(GatewayStructuredModel):
+class MemoryExtractionResponse(StructuredResponseModel):
     """Schema returned by memory extraction."""
 
     model_config = ConfigDict(extra="ignore")
@@ -154,7 +153,7 @@ class MemoryExtractionResponse(GatewayStructuredModel):
     memories: list[MemoryCandidate]
 
 
-class ReconciliationDecision(GatewayStructuredModel):
+class ReconciliationDecision(StructuredResponseModel):
     """One same-document memory reconciliation decision."""
 
     model_config = ConfigDict(extra="ignore")
@@ -167,7 +166,7 @@ class ReconciliationDecision(GatewayStructuredModel):
     flag_for_review: bool = False
 
 
-class ReconciliationResponse(GatewayStructuredModel):
+class ReconciliationResponse(StructuredResponseModel):
     """Schema returned by same-document memory reconciliation."""
 
     model_config = ConfigDict(extra="ignore")
@@ -175,7 +174,7 @@ class ReconciliationResponse(GatewayStructuredModel):
     decisions: list[ReconciliationDecision]
 
 
-class ContradictionDecision(GatewayStructuredModel):
+class ContradictionDecision(StructuredResponseModel):
     """One cross-document memory relationship classification."""
 
     model_config = ConfigDict(extra="ignore")
@@ -185,7 +184,7 @@ class ContradictionDecision(GatewayStructuredModel):
     reason: str = ""
 
 
-class ContradictionResponse(GatewayStructuredModel):
+class ContradictionResponse(StructuredResponseModel):
     """Schema returned by cross-document contradiction detection."""
 
     model_config = ConfigDict(extra="ignore")
@@ -193,7 +192,7 @@ class ContradictionResponse(GatewayStructuredModel):
     decisions: list[ContradictionDecision]
 
 
-class EntityValidationResponse(GatewayStructuredModel):
+class EntityValidationResponse(StructuredResponseModel):
     """Schema returned by entity-match validation."""
 
     model_config = ConfigDict(extra="ignore")
@@ -204,7 +203,7 @@ class EntityValidationResponse(GatewayStructuredModel):
     reason: str | None = None
 
 
-class QueryEntityDetectionResponse(GatewayStructuredModel):
+class QueryEntityDetectionResponse(StructuredResponseModel):
     """Schema returned by query entity detection."""
 
     model_config = ConfigDict(extra="ignore")
@@ -212,7 +211,7 @@ class QueryEntityDetectionResponse(GatewayStructuredModel):
     entity_ids: list[int] = Field(default_factory=list)
 
 
-class RerankResponse(GatewayStructuredModel):
+class RerankResponse(StructuredResponseModel):
     """Schema returned by memory reranking."""
 
     model_config = ConfigDict(extra="ignore")
@@ -220,7 +219,7 @@ class RerankResponse(GatewayStructuredModel):
     ranking: list[int] = Field(default_factory=list)
 
 
-class AgentSessionPackageResponse(GatewayStructuredModel):
+class AgentSessionPackageResponse(StructuredResponseModel):
     """Schema returned by agent-session window package generation."""
 
     model_config = ConfigDict(extra="ignore")
