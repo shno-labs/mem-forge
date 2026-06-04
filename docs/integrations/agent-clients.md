@@ -131,7 +131,7 @@ on the agent machine.
   "client": "codex",
   "session_id": "session-123",
   "workspace": "/workspace/mem-forge",
-  "repo": "dodoman-sun/mem-forge",
+  "repo": "shno-labs/mem-forge",
   "branch": "main",
   "trigger": "GATED_CAPTURE",
   "window": {
