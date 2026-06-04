@@ -19,9 +19,10 @@ from memforge.models import (
     RawContent,
     RawMemory,
     SyncState,
+    FailedDoc,
     content_hash,
 )
-from memforge.pipeline.sync import GeneSyncOrchestrator
+from memforge.pipeline.sync import GeneSyncOrchestrator, summarize_failed_documents
 from memforge.runtime import SyncService
 from memforge.config import AppConfig
 from memforge.storage.database import Database
@@ -42,6 +43,39 @@ class EmptyGene:
     async def discover(self, since=None):
         if False:
             yield ContentItem(item_id="never", title="never", updated_at=datetime.now(timezone.utc))
+
+
+def test_failed_document_summary_identifies_embedding_provider_outage():
+    message = summarize_failed_documents(
+        2,
+        [
+            FailedDoc(doc_id="doc-1", title="Doc 1", error="Embedding provider unreachable: [Errno 111] Connection refused"),
+            FailedDoc(doc_id="doc-2", title="Doc 2", error="Embedding provider unreachable: [Errno 111] Connection refused"),
+        ],
+    )
+
+    assert message == (
+        "2 documents could not be synced. Embedding provider was unreachable for 2 documents. "
+        "Check the provider endpoint, network access, and service status, then retry the sync."
+    )
+
+
+def test_failed_document_summary_identifies_llm_provider_outage():
+    message = summarize_failed_documents(
+        1,
+        [
+            FailedDoc(
+                doc_id="doc-1",
+                title="Doc 1",
+                error="litellm.InternalServerError: AnthropicException - Cannot connect to host provider.example:443",
+            ),
+        ],
+    )
+
+    assert message == (
+        "1 document could not be synced. LLM provider was unreachable for 1 document. "
+        "Check the provider endpoint, network access, and service status, then retry the sync."
+    )
 
 
 class SinceRecordingEmptyGene(EmptyGene):
@@ -1833,6 +1867,47 @@ async def test_unchanged_stale_vector_fails_when_embedding_config_is_incomplete(
 
     assert state.last_sync_status == "failed"
     assert "embedding config is missing" in state.failed_docs[0].error
+
+
+@pytest.mark.asyncio
+async def test_embedding_connection_failure_is_reported_as_provider_unreachable(
+    db: Database,
+    monkeypatch,
+):
+    release = asyncio.Event()
+    release.set()
+
+    def fake_embed_texts(texts, *args, **kwargs):
+        raise OSError("[Errno 111] Connection refused")
+
+    async def no_retry_delay(delay):
+        return None
+
+    monkeypatch.setattr("memforge.retrieval.embeddings.embed_texts", fake_embed_texts)
+    monkeypatch.setattr("memforge.pipeline.sync.asyncio.sleep", no_retry_delay)
+    orchestrator = GeneSyncOrchestrator(
+        db=db,
+        doc_store=StubDocumentStore(),
+        enricher=DocumentVisibleEnricher(db, "src-embedding-refused"),
+        memory_extractor=NoopMemoryExtractor(),
+        memory_engine=NoopMemoryEngine(),
+        memory_store=None,
+        vector_store=FalseyVectorStore(),
+        embed_cfg={"base_url": "https://embedding.example", "api_key": "test-key", "model": "test"},
+        max_concurrent=1,
+    )
+
+    state = await orchestrator.sync_gene(
+        gene=BlockingFetchGene(item_count=1, release=release),
+        source_name="Jira Board",
+        source_id="src-embedding-refused",
+    )
+
+    assert state.last_sync_status == "failed"
+    assert state.docs_failed == 1
+    assert "Embedding provider unreachable" in state.failed_docs[0].error
+    assert state.error_message is not None
+    assert "Embedding provider was unreachable for 1 document" in state.error_message
 
 
 @pytest.mark.asyncio
