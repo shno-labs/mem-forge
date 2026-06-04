@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Literal, Protocol, get_args, get_origin
 
 import litellm
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 def _expects_container(annotation: object) -> bool:
@@ -346,18 +349,6 @@ def litellm_model_name(model: str) -> str:
     return f"anthropic/{model}"
 
 
-def _supports_response_schema(model_name: str) -> bool:
-    """True when the model natively enforces a response json_schema.
-
-    Models the registry does not recognize (custom gateway aliases) report
-    False, so the client requests JSON text instead of a tool-use schema.
-    """
-    try:
-        return bool(litellm.supports_response_schema(model=model_name))
-    except Exception:
-        return False
-
-
 def _json_text_prompt(prompt: str, response_format: type[BaseModel]) -> str:
     """Append the schema as a text instruction for the no-tool JSON path."""
     schema = json.dumps(response_format.model_json_schema(), ensure_ascii=False)
@@ -381,11 +372,11 @@ def _strip_json_fences(text: str) -> str:
 class LiteLlmStructuredClient:
     """LiteLLM-backed structured client.
 
-    Models that natively enforce a response json_schema use tool-based
-    structured output. For gateways without that support, the client requests
-    JSON text with the schema in the prompt, which avoids tool-use serializing
-    array arguments as malformed JSON strings. Either path validates against the
-    same pydantic schema, and each falls back to the other once on failure.
+    Native response schemas are the preferred path because gateway aliases can
+    enforce them even when LiteLLM's model registry does not recognize the
+    alias. If a gateway rejects schema output, the client falls back once to a
+    plain JSON prompt with the same schema. Both paths validate against the same
+    pydantic model before returning to callers.
     """
 
     def __init__(self, config: StructuredLlmConfig) -> None:
@@ -525,29 +516,34 @@ class LiteLlmStructuredClient:
         model: str | None = None,
     ):
         model_name = litellm_model_name(model or self.config.model)
-        native_schema = _supports_response_schema(model_name)
         try:
             return await self._attempt_schema(
                 prompt=prompt,
                 response_format=response_format,
                 model_name=model_name,
                 max_tokens=max_tokens,
-                native_schema=native_schema,
+                native_schema=True,
             )
-        except Exception:
-            # Each strategy can fail in gateway-specific ways: tool-use may
-            # serialize arrays as malformed JSON strings, and text mode may wrap
-            # output unexpectedly. Try the other strategy once before giving up.
+        except Exception as schema_exc:
+            logger.warning(
+                "Structured LLM response_schema attempt failed for model %s and schema %s; "
+                "retrying with JSON-text schema",
+                model_name,
+                response_format.__name__,
+                exc_info=True,
+            )
             try:
                 return await self._attempt_schema(
                     prompt=prompt,
                     response_format=response_format,
                     model_name=model_name,
                     max_tokens=max_tokens,
-                    native_schema=not native_schema,
+                    native_schema=False,
                 )
             except Exception as exc:
-                raise StructuredLlmError(str(exc)) from exc
+                raise StructuredLlmError(
+                    f"{exc} (response_schema attempt failed first: {schema_exc})"
+                ) from exc
 
     async def _attempt_schema(
         self,
