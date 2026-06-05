@@ -467,7 +467,10 @@ class TestProcessMemoriesIntegration:
 
         from memforge.memory.engine import MemoryEngine
 
+        seam = build_sqlite_seam(db, StubChromaCollection())
         engine = MemoryEngine(
+            relational=seam.relational,
+            vector=seam.vector,
             db=db,
             memory_store=mock_store,
             structured_llm_client=structured_llm_client,

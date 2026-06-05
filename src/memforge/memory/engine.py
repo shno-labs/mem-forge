@@ -27,6 +27,8 @@ from memforge.models import (
     generate_review_id,
 )
 
+from memforge.storage.seam.protocols import RelationalStore, VectorStore
+
 if TYPE_CHECKING:
     from memforge.memory.store import MemoryStore
     from memforge.models import EnrichmentResult
@@ -47,12 +49,16 @@ class MemoryEngine:
 
     def __init__(
         self,
+        relational: RelationalStore,
+        vector: VectorStore,
         db: Database,
         memory_store: MemoryStore,
         embed_cfg: dict | None = None,
         structured_llm_client: Any = None,
         llm_model: str = "claude-sonnet-4-20250514",
     ) -> None:
+        self.relational = relational
+        self.vector = vector
         self.db = db
         self.memory_store = memory_store
         self.structured_llm_client = structured_llm_client

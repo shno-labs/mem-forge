@@ -187,6 +187,8 @@ async def build_sync_runtime(db: "Database", config: AppConfig) -> SyncRuntime:
         document_index=DocumentVectorIndex(doc_collection),
     )
     memory_engine = MemoryEngine(
+        relational=seam.relational,
+        vector=seam.vector,
         db=db,
         memory_store=memory_store,
         embed_cfg=embed_cfg,

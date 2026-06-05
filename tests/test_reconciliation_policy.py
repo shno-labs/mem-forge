@@ -207,7 +207,9 @@ async def test_reconciliation_llm_failure_is_audited_and_fails_closed(db):
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=FailingClient())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=FailingClient()
+    )
 
     stats = await engine.reconcile_and_persist(
         doc_id="doc-runbook",
@@ -249,7 +251,9 @@ async def test_flagged_supersede_inserts_challenger_pending_review_and_keeps_inc
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
 
     challenger = RawMemory(content="PostgreSQL version is 16", memory_type="fact", confidence=0.9)
 
@@ -300,7 +304,9 @@ async def test_reconcile_delete_removes_only_updated_document_support(db, monkey
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
 
     async def fake_reconcile_memories(**kwargs):
         return [
@@ -345,7 +351,9 @@ async def test_reconcile_delete_retires_memory_when_current_doc_is_only_support(
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
 
     async def fake_reconcile_memories(**kwargs):
         return [
@@ -400,7 +408,9 @@ async def test_high_corroboration_delete_removes_current_support_when_other_supp
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
 
     async def fake_reconcile_memories(**kwargs):
         return [
@@ -447,7 +457,9 @@ async def test_diff_guided_reconciliation_context_is_passed_to_reconciler(db, mo
         embed_cfg={},
     )
     store._embed = AsyncMock(return_value=[0.1])
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
     seen_kwargs: dict = {}
 
     async def fake_reconcile_memories(**kwargs):
@@ -498,7 +510,9 @@ async def test_reconciliation_decisions_are_audited_before_mutation(db, monkeypa
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
 
     async def fake_reconcile_memories(**kwargs):
         return [
@@ -554,7 +568,9 @@ async def test_reconciliation_rejects_update_without_current_doc_extracted_suppo
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
 
     async def fake_reconcile_memories(**kwargs):
         return [
@@ -611,7 +627,9 @@ async def test_reconciliation_rejects_delete_for_corroborated_only_current_doc_s
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
 
     async def fake_reconcile_memories(**kwargs):
         return [
@@ -662,7 +680,9 @@ async def test_reconciliation_routes_supersede_with_other_support_to_review(db, 
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
 
     async def fake_reconcile_memories(**kwargs):
         return [
@@ -719,7 +739,9 @@ async def test_reconciliation_routes_update_with_other_extracted_support_to_revi
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
 
     async def fake_reconcile_memories(**kwargs):
         return [

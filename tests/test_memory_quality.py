@@ -245,7 +245,8 @@ def test_classifier_keeps_useful_memory_with_link_list_context():
 
 @pytest.mark.asyncio
 async def test_engine_skips_metadata_only_candidate(db: Database):
-    engine = MemoryEngine(db=db, memory_store=DirectInsertStore(db))
+    seam = build_sqlite_seam(db, FakeCollection())
+    engine = MemoryEngine(relational=seam.relational, vector=seam.vector, db=db, memory_store=DirectInsertStore(db))
 
     stats = await engine.process_memories(
         doc_id="doc-acd",
@@ -259,7 +260,8 @@ async def test_engine_skips_metadata_only_candidate(db: Database):
 
 @pytest.mark.asyncio
 async def test_engine_skips_open_question_candidate(db: Database):
-    engine = MemoryEngine(db=db, memory_store=DirectInsertStore(db))
+    seam = build_sqlite_seam(db, FakeCollection())
+    engine = MemoryEngine(relational=seam.relational, vector=seam.vector, db=db, memory_store=DirectInsertStore(db))
 
     stats = await engine.process_memories(
         doc_id="doc-acd",
@@ -273,7 +275,8 @@ async def test_engine_skips_open_question_candidate(db: Database):
 
 @pytest.mark.asyncio
 async def test_engine_keeps_conditional_ap_rule(db: Database):
-    engine = MemoryEngine(db=db, memory_store=DirectInsertStore(db))
+    seam = build_sqlite_seam(db, FakeCollection())
+    engine = MemoryEngine(relational=seam.relational, vector=seam.vector, db=db, memory_store=DirectInsertStore(db))
 
     stats = await engine.process_memories(
         doc_id="doc-acd",
@@ -296,7 +299,14 @@ async def test_reconciliation_skips_bad_replacement_candidate_instead_of_superse
         content="Payroll Processing V2 uses the Payroll Processing concept as its reference design.",
     )
     await db.add_memory_source(old_memory.id, doc.doc_id, "confluence")
-    engine = MemoryEngine(db=db, memory_store=DirectInsertStore(db), structured_llm_client=object())
+    seam = build_sqlite_seam(db, FakeCollection())
+    engine = MemoryEngine(
+        relational=seam.relational,
+        vector=seam.vector,
+        db=db,
+        memory_store=DirectInsertStore(db),
+        structured_llm_client=object(),
+    )
     good_extraction = _raw("Payroll Processing V2 validates changed regular pay dates.", "accepted rule")
     bad_replacement = _raw(LINK_CONTENT, LINK_CONTEXT)
 
@@ -332,7 +342,10 @@ async def test_reconciliation_action_failure_is_audited_without_fallback(db: Dat
     old_memory = await _insert_memory(db, mem_id="mem-fallback-old", content="Old fact")
     await db.add_memory_source(old_memory.id, doc.doc_id, "confluence")
     store = FailingUpdateAuditStore(db)
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    seam = build_sqlite_seam(db, FakeCollection())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
     replacement = _raw("New fact", "new excerpt")
 
     async def fake_reconcile_memories(**kwargs):
@@ -382,7 +395,9 @@ async def test_reconciliation_all_filtered_update_retires_sole_source_memory(db:
         vector=seam.vector,
         embed_cfg={},
     )
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
 
     stats = await engine.reconcile_and_persist(
         doc_id=doc.doc_id,
@@ -419,7 +434,9 @@ async def test_reconciliation_all_filtered_update_removes_one_source_but_keeps_s
         vector=seam.vector,
         embed_cfg={},
     )
-    engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
+    engine = MemoryEngine(
+        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+    )
 
     stats = await engine.reconcile_and_persist(
         doc_id=doc.doc_id,
