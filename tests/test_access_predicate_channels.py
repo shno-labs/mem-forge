@@ -93,3 +93,82 @@ async def test_temporal_hides_other_users_private_memory(db):
         memory_types=None, limit=10,
     )
     assert {mid for mid, _ in hits} == {"t-shared"}
+
+
+class _Coll:
+    """Minimal Chroma fake: stores items with metadata, supports a where-filter."""
+
+    def __init__(self):
+        self.items: dict[str, dict] = {}
+
+    def upsert(self, *, ids, embeddings, metadatas, **_):
+        for i, mid in enumerate(ids):
+            self.items[mid] = {"embedding": embeddings[i],
+                                "metadata": dict(metadatas[i])}
+
+    def query(self, *, query_embeddings, n_results, where=None, **_):
+        # Trivial cosine-equal match: return all ids that satisfy where.
+        def matches(meta, clause):
+            if "$and" in clause:
+                return all(matches(meta, c) for c in clause["$and"])
+            if "$or" in clause:
+                return any(matches(meta, c) for c in clause["$or"])
+            for k, v in clause.items():
+                if isinstance(v, dict) and "$in" in v:
+                    if meta.get(k) not in v["$in"]:
+                        return False
+                else:
+                    if meta.get(k) != v:
+                        return False
+            return True
+
+        ids, dists = [], []
+        for mid, rec in self.items.items():
+            if where is None or matches(rec["metadata"], where):
+                ids.append(mid)
+                dists.append(0.1)  # any monotonic distance
+        return {"ids": [ids[:n_results]], "distances": [dists[:n_results]]}
+
+
+@pytest.mark.asyncio
+async def test_vector_hides_other_users_private_memory(db):
+    from memforge.storage.adapters.sqlite.vector import SqliteVectorStore
+    coll = _Coll()
+    coll.upsert(
+        ids=["v-shared"], embeddings=[[0.1, 0.1, 0.1]],
+        metadatas=[{"status": "active", "visibility": WORKSPACE,
+                    "owner_user_id": "", "project_key": SHARED_PROJECT_KEY,
+                    "memory_type": "fact"}],
+    )
+    coll.upsert(
+        ids=["v-priv"], embeddings=[[0.1, 0.1, 0.1]],
+        metadatas=[{"status": "active", "visibility": PRIVATE,
+                    "owner_user_id": "u-2", "project_key": SHARED_PROJECT_KEY,
+                    "memory_type": "fact"}],
+    )
+    vs = SqliteVectorStore(coll)
+    hits = await vs.query([0.1, 0.1, 0.1],
+                          _scope(user_id="u-1", include_private=False),
+                          memory_types=None, limit=10)
+    assert {mid for mid, _ in hits} == {"v-shared"}
+
+
+@pytest.mark.asyncio
+async def test_vector_pre_filter_does_not_drop_dangling_project_workspace_memory(db):
+    # The vector tier intentionally does not narrow by project_key (Chroma cannot
+    # express the dangling-project fail-safe). A workspace memory whose project
+    # key has no row in the projects table must still be a vector candidate;
+    # the relational post-fusion re-check is the authority on project openness.
+    from memforge.storage.adapters.sqlite.vector import SqliteVectorStore
+    coll = _Coll()
+    coll.upsert(
+        ids=["v-dangling"], embeddings=[[0.1, 0.1, 0.1]],
+        metadatas=[{"status": "active", "visibility": WORKSPACE,
+                    "owner_user_id": "", "project_key": "DANGLING-X",
+                    "memory_type": "fact"}],
+    )
+    vs = SqliteVectorStore(coll)
+    hits = await vs.query([0.1, 0.1, 0.1],
+                          _scope(user_id="u-1", include_private=False),
+                          memory_types=None, limit=10)
+    assert {mid for mid, _ in hits} == {"v-dangling"}
