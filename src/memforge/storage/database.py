@@ -28,6 +28,7 @@ from memforge.models import (
     MemoryReviewRelatedChallenger,
     MemorySource,
     SyncState,
+    Visibility,
 )
 from memforge.memory.audit import MemoryAuditEvent
 from memforge.memory.lifecycle import allowed_search_statuses, normalize_memory_status
@@ -66,6 +67,22 @@ def _parse_dt(s: str | None) -> datetime | None:
     if not s:
         return None
     return datetime.fromisoformat(s)
+
+
+_VALID_VISIBILITIES = frozenset({Visibility.WORKSPACE.value, Visibility.PRIVATE.value})
+
+
+def _validate_visibility(visibility: str, owner_user_id: str | None) -> None:
+    """Enforce the owner/visibility invariant before any memory write."""
+    if visibility not in _VALID_VISIBILITIES:
+        raise ValueError(
+            f"visibility must be one of {sorted(_VALID_VISIBILITIES)}, got {visibility!r}"
+        )
+    if (visibility == Visibility.PRIVATE.value) != (owner_user_id is not None):
+        raise ValueError(
+            "owner_user_id must be set iff visibility is private "
+            f"(visibility={visibility!r}, owner_user_id={owner_user_id!r})"
+        )
 
 
 def _entity_from_row(d: dict) -> Entity:
@@ -1160,21 +1177,22 @@ class Database:
 
     async def insert_memory(self, mem: Memory) -> str:
         """Insert a memory and its FTS5 row. Returns the memory id."""
+        _validate_visibility(mem.visibility, mem.owner_user_id)
         async with self._write_lock:
             now = _now_iso()
             status = normalize_memory_status(mem.status)
             await self.db.execute(
                 """INSERT INTO memories (
-                    id, memory_type, content, content_hash, tags, scope,
+                    id, memory_type, content, content_hash, tags, visibility, owner_user_id,
                     project_key, confidence, corroboration_count,
                     contradiction_count, valid_from, valid_until,
                     superseded_by, status, retirement_reason, retired_at,
                     superseded_at, replacement_reason, extraction_context,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     mem.id, mem.memory_type, mem.content, mem.content_hash,
-                    json.dumps(mem.tags), mem.scope, mem.project_key,
+                    json.dumps(mem.tags), mem.visibility, mem.owner_user_id, mem.project_key,
                     mem.confidence, mem.corroboration_count,
                     mem.contradiction_count,
                     mem.valid_from.isoformat() if mem.valid_from else None,
@@ -1441,6 +1459,7 @@ class Database:
         search_visible_statuses: set[str],
     ) -> None:
         """Restore one memory row and its FTS visibility from a captured snapshot."""
+        _validate_visibility(memory.visibility, memory.owner_user_id)
         entity_names = await self.get_memory_entity_names(memory.id)
         tags_text = " ".join(memory.tags)
         entities_text = " ".join(entity_names)
@@ -1449,7 +1468,7 @@ class Database:
             await self.db.execute(
                 """UPDATE memories SET
                     memory_type = ?, content = ?, content_hash = ?, tags = ?,
-                    scope = ?, project_key = ?, confidence = ?,
+                    visibility = ?, owner_user_id = ?, project_key = ?, confidence = ?,
                     corroboration_count = ?, contradiction_count = ?,
                     valid_from = ?, valid_until = ?, superseded_by = ?,
                     status = ?, retirement_reason = ?, retired_at = ?,
@@ -1461,7 +1480,8 @@ class Database:
                     memory.content,
                     memory.content_hash,
                     json.dumps(memory.tags),
-                    memory.scope,
+                    memory.visibility,
+                    memory.owner_user_id,
                     memory.project_key,
                     memory.confidence,
                     memory.corroboration_count,
@@ -1562,22 +1582,23 @@ class Database:
         replacement_reason: str | None = None,
     ) -> None:
         """Mark old memory as superseded and insert the new one."""
+        _validate_visibility(new_memory.visibility, new_memory.owner_user_id)
         async with self._write_lock:
             now = _now_iso()
             new_status = normalize_memory_status(new_memory.status)
             await self.db.execute(
                 """INSERT INTO memories (
-                    id, memory_type, content, content_hash, tags, scope,
+                    id, memory_type, content, content_hash, tags, visibility, owner_user_id,
                     project_key, confidence, corroboration_count,
                     contradiction_count, valid_from, valid_until,
                     superseded_by, status, retirement_reason, retired_at,
                     superseded_at, replacement_reason, extraction_context,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     new_memory.id, new_memory.memory_type, new_memory.content,
                     new_memory.content_hash, json.dumps(new_memory.tags),
-                    new_memory.scope, new_memory.project_key,
+                    new_memory.visibility, new_memory.owner_user_id, new_memory.project_key,
                     new_memory.confidence, new_memory.corroboration_count,
                     new_memory.contradiction_count,
                     new_memory.valid_from.isoformat() if new_memory.valid_from else None,
