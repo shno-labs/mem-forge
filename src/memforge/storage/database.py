@@ -387,8 +387,9 @@ CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(canonical_name);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type);
 CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
 CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_key);
-CREATE INDEX IF NOT EXISTS idx_memories_access ON memories(status, visibility);
-CREATE INDEX IF NOT EXISTS idx_memories_owner ON memories(owner_user_id);
+-- idx_memories_access and idx_memories_owner index the visibility and owner_user_id
+-- columns and are created in migration 14, which adds those columns. SCHEMA runs
+-- before migrations, so an upgrading database does not have those columns here yet.
 CREATE INDEX IF NOT EXISTS idx_memories_hash ON memories(content_hash);
 CREATE INDEX IF NOT EXISTS idx_memory_sources_doc ON memory_sources(doc_id);
 CREATE INDEX IF NOT EXISTS idx_memory_entities_entity ON memory_entities(entity_id);
