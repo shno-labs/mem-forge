@@ -88,7 +88,6 @@ async def _insert_null_visibility_row(db: Database, mid: str, content: str) -> N
     db_path = db.db_path
     await db._db.close()
     import aiosqlite
-    import sqlite3
     db._db = await aiosqlite.connect(db_path)
     db._db.row_factory = aiosqlite.Row
     await db.db.execute(
