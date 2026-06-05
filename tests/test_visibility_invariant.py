@@ -89,3 +89,11 @@ async def test_relational_adapter_delegates_invariant(db):
     adapters = build_sqlite_adapters(db, memory_collection=None)  # insert path never touches the vector
     with pytest.raises(ValueError, match="owner_user_id"):
         await adapters.relational.insert_memory(_mem(visibility=PRIVATE, owner_user_id=None))
+
+
+@pytest.mark.asyncio
+async def test_row_to_memory_has_no_scope_attr(db):
+    await db.insert_memory(_mem(id="mem-r", visibility=WORKSPACE))
+    stored = await db.get_memory("mem-r")
+    assert not hasattr(stored, "scope")
+    assert stored.visibility == WORKSPACE
