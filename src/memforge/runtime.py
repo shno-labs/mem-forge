@@ -25,6 +25,7 @@ from memforge.pipeline.sync import GeneSyncOrchestrator
 from memforge.retrieval.embeddings import get_chroma_collection
 from memforge.source_secrets import decrypt_source_config_for_runtime, source_secret_fields
 from memforge.storage.document_store import LocalDocumentStore
+from memforge.storage.seam.sqlite import build_sqlite_seam
 
 if TYPE_CHECKING:
     from memforge.storage.database import Database
@@ -119,9 +120,11 @@ async def build_search_engine(db: "Database", config: AppConfig) -> Any:
                 timeout_s=llm.request_timeout_s,
             )
         )
+    seam = build_sqlite_seam(db, memory_collection)
     return SearchEngine(
-        db=db,
-        memory_collection=memory_collection,
+        relational=seam.relational,
+        keyword=seam.keyword,
+        vector=seam.vector,
         embed_cfg=embed_cfg,
         config=config.retrieval,
         structured_llm_client=structured_llm_client,
