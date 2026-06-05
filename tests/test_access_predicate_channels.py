@@ -62,3 +62,34 @@ async def test_bm25_hides_other_users_private_memory(db):
         memory_types=None, limit=10,
     )
     assert {mid for mid, _ in personalized} == {"m-shared"}
+
+
+@pytest.mark.asyncio
+async def test_graph_hides_other_users_private_memory(db):
+    e1_id = await db.upsert_entity("argocd", "tool")
+    await db.insert_memory(_mem("g-shared", "deploys via argocd"))
+    await db.link_memory_entity("g-shared", e1_id)
+    await db.insert_memory(_mem("g-priv", "deploys via argocd",
+                                 visibility=PRIVATE, owner="u-2"))
+    await db.link_memory_entity("g-priv", e1_id)
+    adapters = build_sqlite_adapters(db, memory_collection=None)
+    hits = await adapters.relational.graph_search(
+        [e1_id], _scope(user_id="u-1", include_private=False),
+        memory_types=None, limit=10,
+    )
+    assert {mid for mid, _ in hits} == {"g-shared"}
+
+
+@pytest.mark.asyncio
+async def test_temporal_hides_other_users_private_memory(db):
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    await db.insert_memory(_mem("t-shared", "x"))
+    await db.insert_memory(_mem("t-priv", "x", visibility=PRIVATE, owner="u-2"))
+    adapters = build_sqlite_adapters(db, memory_collection=None)
+    hits = await adapters.relational.temporal_search(
+        after=now - timedelta(days=1), before=None,
+        scope=_scope(user_id="u-1", include_private=False),
+        memory_types=None, limit=10,
+    )
+    assert {mid for mid, _ in hits} == {"t-shared"}
