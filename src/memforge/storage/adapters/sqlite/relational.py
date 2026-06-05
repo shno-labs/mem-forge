@@ -82,20 +82,22 @@ class SqliteRelationalStore:
     async def filter_visible_ids(
         self, ids: Sequence[str], scope: AccessScope
     ) -> set[str]:
-        allowed = set(scope.allowed_statuses)
         visible: set[str] = set()
         memory_ids = list(ids)
+        if not memory_ids:
+            return visible
+        pred_sql, pred_params = visible_sql(scope, "m")
         for start in range(0, len(memory_ids), _BATCH_SIZE):
             batch = memory_ids[start : start + _BATCH_SIZE]
             placeholders = ",".join("?" for _ in batch)
+            sql = (
+                "SELECT m.id FROM memories m "
+                f"WHERE m.id IN ({placeholders}) AND {pred_sql}"
+            )
             try:
-                async with self._db.db.execute(
-                    f"SELECT id, status FROM memories WHERE id IN ({placeholders})",
-                    batch,
-                ) as cursor:
+                async with self._db.db.execute(sql, [*batch, *pred_params]) as cursor:
                     async for row in cursor:
-                        if row["status"] in allowed:
-                            visible.add(row["id"])
+                        visible.add(row["id"])
             except Exception:
                 logger.exception("Failed to filter visible memory ids")
                 return set()
