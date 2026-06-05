@@ -1262,6 +1262,9 @@ class MemoryStore:
             raise
 
     async def _memory_ids_for_doc(self, doc_id: str) -> list[str]:
+        """Document-cascade row lookup. Reads provenance rows through the bound
+        connection: a row helper, not a retrieval channel, so it stays outside
+        the seam in this phase."""
         ids: list[str] = []
         async with self.db.db.execute(
             "SELECT memory_id FROM memory_sources WHERE doc_id = ?",
@@ -1416,15 +1419,10 @@ class MemoryStore:
                 raise
             return
 
-        kwargs: dict[str, Any] = {
-            "ids": [snapshot["id"]],
-            "metadatas": [snapshot.get("metadata") or {}],
-        }
-        if snapshot.get("embedding") is not None:
-            kwargs["embeddings"] = [snapshot["embedding"]]
+        embedding = snapshot.get("embedding")
         # A snapshot with no stored embedding cannot be re-upserted, so the
         # vector record is dropped instead, matching the None-snapshot branch.
-        if "embeddings" not in kwargs:
+        if embedding is None:
             await self.vector.delete([memory_id])
             return
         try:
@@ -1436,9 +1434,9 @@ class MemoryStore:
                 payload={"operation": label},
             )
             await self.vector.upsert(
-                ids=kwargs["ids"],
-                embeddings=kwargs.get("embeddings", []),
-                metadatas=kwargs["metadatas"],
+                ids=[snapshot["id"]],
+                embeddings=[embedding],
+                metadatas=[snapshot.get("metadata") or {}],
             )
             await self._emit(
                 "chroma_upsert_committed",
