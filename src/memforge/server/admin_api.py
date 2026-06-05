@@ -1512,7 +1512,7 @@ async def _build_memory_store(db: Database, config: AppConfig) -> MemoryStore:
     from memforge.retrieval.document_index import DocumentVectorIndex
     from memforge.retrieval.embeddings import get_chroma_collection
     from memforge.runtime import get_effective_llm_config
-    from memforge.storage.seam.sqlite import build_sqlite_seam
+    from memforge.storage.adapters.sqlite import build_sqlite_adapters
 
     llm = await get_effective_llm_config(db, config)
     memory_collection = get_chroma_collection(
@@ -1528,11 +1528,11 @@ async def _build_memory_store(db: Database, config: AppConfig) -> MemoryStore:
         "api_key": llm.embedding_api_key,
         "model": llm.embedding_model,
     }
-    seam = build_sqlite_seam(db, memory_collection)
+    adapters = build_sqlite_adapters(db, memory_collection)
     return MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg=embed_cfg,
         audit_logger=MemoryAuditLogger(db, default_context=AuditContext(actor_type="admin")),
         document_index=DocumentVectorIndex(document_collection),

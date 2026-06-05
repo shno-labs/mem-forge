@@ -27,7 +27,7 @@ from memforge.models import (
     generate_review_id,
 )
 
-from memforge.storage.seam.protocols import RelationalStore, VectorStore
+from memforge.storage.adapters.protocols import RelationalStore, VectorStore
 
 if TYPE_CHECKING:
     from memforge.memory.store import MemoryStore

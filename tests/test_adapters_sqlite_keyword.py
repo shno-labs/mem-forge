@@ -8,9 +8,9 @@ import pytest
 
 from memforge.models import Memory, content_hash
 from memforge.storage.database import Database
-from memforge.storage.seam.context import AccessScope, LOCAL_DEV_USER_ID
-from memforge.storage.seam.protocols import KeywordSearch
-from memforge.storage.seam.sqlite.keyword import SqliteKeywordSearch
+from memforge.storage.adapters.context import AccessScope, LOCAL_DEV_USER_ID
+from memforge.storage.adapters.protocols import KeywordSearch
+from memforge.storage.adapters.sqlite.keyword import SqliteKeywordSearch
 
 
 def _scope(statuses=("active",)) -> AccessScope:

@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from memforge.storage.seam.context import AccessScope, LOCAL_DEV_USER_ID
-from memforge.storage.seam.protocols import VectorStore
-from memforge.storage.seam.sqlite.vector import SqliteVectorStore
+from memforge.storage.adapters.context import AccessScope, LOCAL_DEV_USER_ID
+from memforge.storage.adapters.protocols import VectorStore
+from memforge.storage.adapters.sqlite.vector import SqliteVectorStore
 
 
 def _scope() -> AccessScope:

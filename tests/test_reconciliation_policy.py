@@ -14,7 +14,7 @@ from memforge.llm.structured import ReconciliationDecision, ReconciliationRespon
 from memforge.models import Memory, RawMemory, ReconcileAction, ReconcileOperation, content_hash
 from memforge.pipeline.reconciler import _parse_decisions, reconcile_memories
 from memforge.storage.database import Database
-from memforge.storage.seam.sqlite import build_sqlite_seam
+from memforge.storage.adapters.sqlite import build_sqlite_adapters
 
 
 class FakeCollection:
@@ -199,16 +199,16 @@ async def test_reconciliation_llm_failure_is_audited_and_fails_closed(db):
     await db.insert_memory(old)
     await db.add_memory_source(old.id, "doc-runbook", "confluence", support_kind="extracted")
 
-    seam = build_sqlite_seam(db, FakeCollection())
+    adapters = build_sqlite_adapters(db, FakeCollection())
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )
     engine = MemoryEngine(
-        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=FailingClient()
+        relational=adapters.relational, vector=adapters.vector, db=db, memory_store=store, structured_llm_client=FailingClient()
     )
 
     stats = await engine.reconcile_and_persist(
@@ -242,17 +242,17 @@ async def test_flagged_supersede_inserts_challenger_pending_review_and_keeps_inc
     await db.add_memory_source(old.id, "doc-runbook", "confluence")
 
     collection = FakeCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
     engine = MemoryEngine(
-        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+        relational=adapters.relational, vector=adapters.vector, db=db, memory_store=store, structured_llm_client=object()
     )
 
     challenger = RawMemory(content="PostgreSQL version is 16", memory_type="fact", confidence=0.9)
@@ -295,17 +295,17 @@ async def test_reconcile_delete_removes_only_updated_document_support(db, monkey
     await db.add_memory_source(old.id, "doc-other", "confluence")
 
     collection = FakeCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
     engine = MemoryEngine(
-        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+        relational=adapters.relational, vector=adapters.vector, db=db, memory_store=store, structured_llm_client=object()
     )
 
     async def fake_reconcile_memories(**kwargs):
@@ -342,17 +342,17 @@ async def test_reconcile_delete_retires_memory_when_current_doc_is_only_support(
     await db.add_memory_source(old.id, "doc-runbook", "confluence", support_kind="extracted")
 
     collection = FakeCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
     engine = MemoryEngine(
-        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+        relational=adapters.relational, vector=adapters.vector, db=db, memory_store=store, structured_llm_client=object()
     )
 
     async def fake_reconcile_memories(**kwargs):
@@ -399,17 +399,17 @@ async def test_high_corroboration_delete_removes_current_support_when_other_supp
     await db.add_memory_source(old.id, "doc-third", "confluence")
 
     collection = FakeCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
     engine = MemoryEngine(
-        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+        relational=adapters.relational, vector=adapters.vector, db=db, memory_store=store, structured_llm_client=object()
     )
 
     async def fake_reconcile_memories(**kwargs):
@@ -449,16 +449,16 @@ async def test_diff_guided_reconciliation_context_is_passed_to_reconciler(db, mo
     await db.add_memory_source(old.id, "doc-runbook", "confluence")
 
     collection = FakeCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
     )
     store._embed = AsyncMock(return_value=[0.1])
     engine = MemoryEngine(
-        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+        relational=adapters.relational, vector=adapters.vector, db=db, memory_store=store, structured_llm_client=object()
     )
     seen_kwargs: dict = {}
 
@@ -501,17 +501,17 @@ async def test_reconciliation_decisions_are_audited_before_mutation(db, monkeypa
     await db.add_memory_source(old.id, "doc-other", "confluence")
 
     collection = FakeCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
     engine = MemoryEngine(
-        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+        relational=adapters.relational, vector=adapters.vector, db=db, memory_store=store, structured_llm_client=object()
     )
 
     async def fake_reconcile_memories(**kwargs):
@@ -559,17 +559,17 @@ async def test_reconciliation_rejects_update_without_current_doc_extracted_suppo
     await db.add_memory_source(anchor.id, "doc-current", "confluence", support_kind="extracted")
 
     collection = FakeCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
     engine = MemoryEngine(
-        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+        relational=adapters.relational, vector=adapters.vector, db=db, memory_store=store, structured_llm_client=object()
     )
 
     async def fake_reconcile_memories(**kwargs):
@@ -618,17 +618,17 @@ async def test_reconciliation_rejects_delete_for_corroborated_only_current_doc_s
     await db.add_memory_source(anchor.id, "doc-current", "confluence", support_kind="extracted")
 
     collection = FakeCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
     engine = MemoryEngine(
-        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+        relational=adapters.relational, vector=adapters.vector, db=db, memory_store=store, structured_llm_client=object()
     )
 
     async def fake_reconcile_memories(**kwargs):
@@ -671,17 +671,17 @@ async def test_reconciliation_routes_supersede_with_other_support_to_review(db, 
     await db.add_memory_source(old.id, "doc-support", "jira", support_kind="corroborated")
 
     collection = FakeCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
     engine = MemoryEngine(
-        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+        relational=adapters.relational, vector=adapters.vector, db=db, memory_store=store, structured_llm_client=object()
     )
 
     async def fake_reconcile_memories(**kwargs):
@@ -730,17 +730,17 @@ async def test_reconciliation_routes_update_with_other_extracted_support_to_revi
     await db.add_memory_source(old.id, "doc-support", "jira", support_kind="extracted")
 
     collection = FakeCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )
     store._embed = AsyncMock(return_value=[0.1])
     engine = MemoryEngine(
-        relational=seam.relational, vector=seam.vector, db=db, memory_store=store, structured_llm_client=object()
+        relational=adapters.relational, vector=adapters.vector, db=db, memory_store=store, structured_llm_client=object()
     )
 
     async def fake_reconcile_memories(**kwargs):

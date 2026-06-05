@@ -19,8 +19,8 @@ from memforge.memory.lifecycle import allowed_search_statuses
 from memforge.models import Memory
 from memforge.retrieval.document_index import DocumentVectorIndex
 from memforge.retrieval.embeddings import EmbeddingCache, embed_texts
-from memforge.storage.seam.context import AccessScope, LOCAL_DEV_USER_ID
-from memforge.storage.seam.protocols import KeywordSearch, RelationalStore, VectorStore
+from memforge.storage.adapters.context import AccessScope, LOCAL_DEV_USER_ID
+from memforge.storage.adapters.protocols import KeywordSearch, RelationalStore, VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -1264,7 +1264,7 @@ class MemoryStore:
     async def _memory_ids_for_doc(self, doc_id: str) -> list[str]:
         """Document-cascade row lookup. Reads provenance rows through the bound
         connection: a row helper, not a retrieval channel, so it stays outside
-        the seam in this phase."""
+        the adapters in this phase."""
         ids: list[str] = []
         async with self.db.db.execute(
             "SELECT memory_id FROM memory_sources WHERE doc_id = ?",

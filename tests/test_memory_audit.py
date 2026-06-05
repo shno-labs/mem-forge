@@ -10,7 +10,7 @@ from memforge.memory.audit import MemoryAuditEvent, MemoryAuditLogger
 from memforge.memory.store import MemoryStore
 from memforge.models import Memory, content_hash
 from memforge.storage.database import Database
-from memforge.storage.seam.sqlite import build_sqlite_seam
+from memforge.storage.adapters.sqlite import build_sqlite_adapters
 
 
 class RecordingCollection:
@@ -130,11 +130,11 @@ async def test_store_operation_events_share_operation_id(db: Database):
         created_at=now,
         updated_at=now,
     )
-    seam = build_sqlite_seam(db, RecordingCollection())
+    adapters = build_sqlite_adapters(db, RecordingCollection())
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(db),
     )

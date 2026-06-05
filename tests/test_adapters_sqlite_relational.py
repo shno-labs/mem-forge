@@ -12,9 +12,9 @@ from memforge.models import (
     content_hash,
 )
 from memforge.storage.database import Database
-from memforge.storage.seam.context import AccessScope, LOCAL_DEV_USER_ID
-from memforge.storage.seam.protocols import RelationalStore
-from memforge.storage.seam.sqlite.relational import SqliteRelationalStore
+from memforge.storage.adapters.context import AccessScope, LOCAL_DEV_USER_ID
+from memforge.storage.adapters.protocols import RelationalStore
+from memforge.storage.adapters.sqlite.relational import SqliteRelationalStore
 
 
 def _scope(statuses=("active",)) -> AccessScope:

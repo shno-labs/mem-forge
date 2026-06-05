@@ -1,4 +1,4 @@
-"""MemoryEngine accepts seam handles and drives the seam-bound store."""
+"""MemoryEngine accepts adapters handles and drives the adapters-bound store."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from memforge.memory.engine import MemoryEngine
 from memforge.memory.store import MemoryStore
 from memforge.models import DocumentRecord, RawMemory
 from memforge.storage.database import Database
-from memforge.storage.seam.sqlite import build_sqlite_seam
+from memforge.storage.adapters.sqlite import build_sqlite_adapters
 
 
 class RecordingCollection:
@@ -51,20 +51,20 @@ async def _document(db: Database, doc_id: str) -> None:
 
 @pytest.fixture
 async def db(tmp_path):
-    database = Database(str(tmp_path / "engine-seam.db"))
+    database = Database(str(tmp_path / "engine-adapters.db"))
     await database.connect()
     yield database
     await database.close()
 
 
 @pytest.mark.asyncio
-async def test_process_memories_inserts_through_the_seam(db, monkeypatch):
+async def test_process_memories_inserts_through_the_adapters(db, monkeypatch):
     collection = RecordingCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
     )
 
@@ -75,8 +75,8 @@ async def test_process_memories_inserts_through_the_seam(db, monkeypatch):
     await _document(db, "doc1")
 
     engine = MemoryEngine(
-        relational=seam.relational,
-        vector=seam.vector,
+        relational=adapters.relational,
+        vector=adapters.vector,
         db=db,
         memory_store=store,
     )

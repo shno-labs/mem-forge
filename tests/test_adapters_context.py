@@ -6,7 +6,7 @@ import dataclasses
 
 import pytest
 
-from memforge.storage.seam.context import AccessScope, LOCAL_DEV_USER_ID
+from memforge.storage.adapters.context import AccessScope, LOCAL_DEV_USER_ID
 
 
 def test_local_dev_user_id_is_the_single_local_caller():

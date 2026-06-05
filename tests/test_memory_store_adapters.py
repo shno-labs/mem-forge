@@ -1,4 +1,4 @@
-"""MemoryStore accepts seam handles and routes vector/FTS through them."""
+"""MemoryStore accepts adapters handles and routes vector/FTS through them."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 from memforge.memory.store import MemoryStore
 from memforge.models import DocumentRecord, Memory, content_hash
 from memforge.storage.database import Database
-from memforge.storage.seam.sqlite import build_sqlite_seam
+from memforge.storage.adapters.sqlite import build_sqlite_adapters
 
 
 class RecordingCollection:
@@ -68,7 +68,7 @@ async def _document(db: Database, doc_id: str) -> None:
 
 @pytest.fixture
 async def db(tmp_path):
-    database = Database(str(tmp_path / "store-seam.db"))
+    database = Database(str(tmp_path / "store-adapters.db"))
     await database.connect()
     yield database
     await database.close()
@@ -77,24 +77,24 @@ async def db(tmp_path):
 @pytest.mark.asyncio
 async def test_collection_property_points_at_the_vector_handle(db):
     collection = RecordingCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
     )
     assert store.collection is collection
 
 
 @pytest.mark.asyncio
-async def test_insert_then_purge_routes_through_seam(db, monkeypatch):
+async def test_insert_then_purge_routes_through_adapters(db, monkeypatch):
     collection = RecordingCollection()
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
     )
 

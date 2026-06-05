@@ -1,8 +1,8 @@
-"""The storage seam: three narrow protocols the core binds to.
+"""Storage adapter protocols: the three narrow contracts the core binds to.
 
 RelationalStore is the source-of-truth rows, KeywordSearch is the BM25/FTS5
 channel, VectorStore is the embedding channel. Enforcement is each
-implementation's job, never the caller's.
+adapter's job, never the caller's.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from memforge.models import (
     Memory,
     MemorySource,
 )
-from memforge.storage.seam.context import AccessScope
+from memforge.storage.adapters.context import AccessScope
 
 
 @runtime_checkable

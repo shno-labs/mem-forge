@@ -12,7 +12,7 @@ from memforge.memory.store import MemoryStore
 from memforge.models import Memory, content_hash
 from memforge.retrieval.document_index import DocumentVectorIndex
 from memforge.storage.database import Database
-from memforge.storage.seam.sqlite import build_sqlite_seam
+from memforge.storage.adapters.sqlite import build_sqlite_adapters
 
 
 class RecordingCollection:
@@ -300,11 +300,11 @@ def _store(
     document_collection: RecordingCollection | None = None,
 ) -> MemoryStore:
     logger = MemoryAuditLogger(db, default_context=AuditContext(actor_type="test", run_id="run-1"))
-    seam = build_sqlite_seam(db, collection)
+    adapters = build_sqlite_adapters(db, collection)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         document_index=DocumentVectorIndex(document_collection),
         embed_cfg={},
         audit_logger=logger,

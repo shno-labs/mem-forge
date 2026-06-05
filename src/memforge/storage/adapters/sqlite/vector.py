@@ -11,7 +11,7 @@ import asyncio
 from typing import Any, Sequence
 
 from memforge.retrieval.vector_metadata import upsert_with_stored_vector_hash
-from memforge.storage.seam.context import AccessScope
+from memforge.storage.adapters.context import AccessScope
 
 __all__ = ["SqliteVectorStore", "SIMILARITY_FLOOR"]
 

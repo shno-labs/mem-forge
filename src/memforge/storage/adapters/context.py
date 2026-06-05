@@ -1,4 +1,4 @@
-"""The per-request caller context consumed by the storage seam."""
+"""The per-request caller context consumed by the storage adapters."""
 
 from __future__ import annotations
 

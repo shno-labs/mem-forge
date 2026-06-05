@@ -1,4 +1,4 @@
-"""SearchEngine accepts seam handles and routes channels through them."""
+"""SearchEngine accepts adapters handles and routes channels through them."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from memforge.models import DocumentRecord, Memory, content_hash
 from memforge.retrieval.search import SearchEngine
 from memforge.retrieval.query_analyzer import QueryAnalysis
 from memforge.storage.database import Database
-from memforge.storage.seam.sqlite import build_sqlite_seam
+from memforge.storage.adapters.sqlite import build_sqlite_adapters
 
 
 class FakeCollection:
@@ -58,14 +58,14 @@ async def _document(db: Database, doc_id: str, source: str) -> None:
 
 @pytest.fixture
 async def db(tmp_path):
-    database = Database(str(tmp_path / "search-seam.db"))
+    database = Database(str(tmp_path / "search-adapters.db"))
     await database.connect()
     yield database
     await database.close()
 
 
 @pytest.mark.asyncio
-async def test_search_routes_vector_and_bm25_through_the_seam(db, monkeypatch):
+async def test_search_routes_vector_and_bm25_through_the_adapters(db, monkeypatch):
     active = _memory("m-active", "PostgreSQL pooling memory")
     await db.insert_memory(active)
 
@@ -74,11 +74,11 @@ async def test_search_routes_vector_and_bm25_through_the_seam(db, monkeypatch):
 
     monkeypatch.setattr("memforge.retrieval.search.analyze_query", fake_analyze_query)
 
-    seam = build_sqlite_seam(db, FakeCollection([active.id]))
+    adapters = build_sqlite_adapters(db, FakeCollection([active.id]))
     engine = SearchEngine(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         config=RetrievalConfig(),
     )
@@ -108,11 +108,11 @@ async def test_source_filter_applies_to_vector_hits(db, monkeypatch):
 
     monkeypatch.setattr("memforge.retrieval.search.analyze_query", fake_analyze_query)
 
-    seam = build_sqlite_seam(db, FakeCollection(["m-backed", "m-unbacked"]))
+    adapters = build_sqlite_adapters(db, FakeCollection(["m-backed", "m-unbacked"]))
     engine = SearchEngine(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         config=RetrievalConfig(),
     )

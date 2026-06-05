@@ -27,7 +27,7 @@ from memforge.memory.store import MemoryStore
 from memforge.models import Memory, RawMemory, content_hash
 from memforge.pipeline.contradiction_detector import detect_cross_doc_contradictions
 from memforge.storage.database import Database
-from memforge.storage.seam.sqlite import build_sqlite_seam
+from memforge.storage.adapters.sqlite import build_sqlite_adapters
 
 LLM_BASE_URL = os.environ.get(
     "MEMFORGE_E2E_ANTHROPIC_BASE_URL",
@@ -117,11 +117,11 @@ class StubChromaCollection:
 
 
 def _test_memory_store(db: Database) -> MemoryStore:
-    seam = build_sqlite_seam(db, StubChromaCollection())
+    adapters = build_sqlite_adapters(db, StubChromaCollection())
     return MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
     )
 
@@ -467,10 +467,10 @@ class TestProcessMemoriesIntegration:
 
         from memforge.memory.engine import MemoryEngine
 
-        seam = build_sqlite_seam(db, StubChromaCollection())
+        adapters = build_sqlite_adapters(db, StubChromaCollection())
         engine = MemoryEngine(
-            relational=seam.relational,
-            vector=seam.vector,
+            relational=adapters.relational,
+            vector=adapters.vector,
             db=db,
             memory_store=mock_store,
             structured_llm_client=structured_llm_client,

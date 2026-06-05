@@ -26,8 +26,8 @@ from memforge.models import Memory, SearchResult
 from memforge.provenance import document_content_url, document_pdf_url
 from memforge.retrieval.embeddings import EmbeddingCache, embed_texts
 from memforge.retrieval.query_analyzer import QueryAnalysis, analyze_query
-from memforge.storage.seam.context import AccessScope, LOCAL_DEV_USER_ID
-from memforge.storage.seam.protocols import KeywordSearch, RelationalStore, VectorStore
+from memforge.storage.adapters.context import AccessScope, LOCAL_DEV_USER_ID
+from memforge.storage.adapters.protocols import KeywordSearch, RelationalStore, VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ def _default_access_scope(include_superseded: bool) -> AccessScope:
 class SearchEngine:
     """Hybrid retrieval engine: vector + BM25 + graph + temporal, fused via RRF.
 
-    Bound to the storage seam, never to a database connection or a Chroma
+    Bound to the storage adapters, never to a database connection or a Chroma
     collection directly. Per-request visibility rides on the ``AccessScope``
     each channel builds; the engine instance carries no caller identity.
 

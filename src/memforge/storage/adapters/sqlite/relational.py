@@ -20,7 +20,7 @@ from memforge.models import (
     MemorySource,
 )
 from memforge.storage.database import Database
-from memforge.storage.seam.context import AccessScope
+from memforge.storage.adapters.context import AccessScope
 
 logger = logging.getLogger(__name__)
 

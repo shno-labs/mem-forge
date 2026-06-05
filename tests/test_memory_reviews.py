@@ -28,7 +28,7 @@ from memforge.models import (
     generate_review_id,
 )
 from memforge.storage.database import Database
-from memforge.storage.seam.sqlite import build_sqlite_seam
+from memforge.storage.adapters.sqlite import build_sqlite_adapters
 
 
 # ---------------------------------------------------------------------------
@@ -93,11 +93,11 @@ def chroma() -> StubChromaCollection:
 @pytest.fixture
 def memory_store(db, chroma) -> MemoryStore:
     audit_logger = MemoryAuditLogger(db, default_context=AuditContext(actor_type="test", run_id="run-review"))
-    seam = build_sqlite_seam(db, chroma)
+    adapters = build_sqlite_adapters(db, chroma)
     store = MemoryStore(
-        relational=seam.relational,
-        keyword=seam.keyword,
-        vector=seam.vector,
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
         embed_cfg={},
         audit_logger=audit_logger,
     )

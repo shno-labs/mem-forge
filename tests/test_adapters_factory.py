@@ -1,16 +1,16 @@
-"""build_sqlite_seam wires a Database plus collection into the three impls."""
+"""build_sqlite_adapters wires a Database plus collection into the three impls."""
 
 from __future__ import annotations
 
 import pytest
 
 from memforge.storage.database import Database
-from memforge.storage.seam.protocols import (
+from memforge.storage.adapters.protocols import (
     KeywordSearch,
     RelationalStore,
     VectorStore,
 )
-from memforge.storage.seam.sqlite.factory import build_sqlite_seam
+from memforge.storage.adapters.sqlite.factory import build_sqlite_adapters
 
 
 class FakeCollection:
@@ -36,15 +36,15 @@ async def db(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_build_sqlite_seam_returns_protocol_conforming_impls(db):
-    seam = build_sqlite_seam(db, FakeCollection())
-    assert isinstance(seam.relational, RelationalStore)
-    assert isinstance(seam.keyword, KeywordSearch)
-    assert isinstance(seam.vector, VectorStore)
+async def test_build_sqlite_adapters_returns_protocol_conforming_impls(db):
+    adapters = build_sqlite_adapters(db, FakeCollection())
+    assert isinstance(adapters.relational, RelationalStore)
+    assert isinstance(adapters.keyword, KeywordSearch)
+    assert isinstance(adapters.vector, VectorStore)
 
 
 @pytest.mark.asyncio
 async def test_vector_handle_wraps_the_passed_collection(db):
     collection = FakeCollection()
-    seam = build_sqlite_seam(db, collection)
-    assert seam.vector.collection is collection
+    adapters = build_sqlite_adapters(db, collection)
+    assert adapters.vector.collection is collection
