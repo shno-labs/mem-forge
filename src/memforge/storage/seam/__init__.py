@@ -7,5 +7,16 @@ boundary a different storage backend plugs in behind.
 from __future__ import annotations
 
 from memforge.storage.seam.context import AccessScope, LOCAL_DEV_USER_ID
+from memforge.storage.seam.protocols import (
+    KeywordSearch,
+    RelationalStore,
+    VectorStore,
+)
 
-__all__ = ["AccessScope", "LOCAL_DEV_USER_ID"]
+__all__ = [
+    "AccessScope",
+    "LOCAL_DEV_USER_ID",
+    "KeywordSearch",
+    "RelationalStore",
+    "VectorStore",
+]
