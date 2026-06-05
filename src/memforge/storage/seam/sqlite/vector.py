@@ -102,10 +102,12 @@ class SqliteVectorStore:
         returned = raw.get("ids") or []
         if not returned:
             return None
-        embeddings = raw.get("embeddings") or []
+        # Embeddings can arrive as a NumPy array whose truthiness is ambiguous,
+        # so length is the only safe emptiness test here.
+        embeddings = raw.get("embeddings")
         metadatas = raw.get("metadatas") or []
         return {
             "id": returned[0],
-            "embedding": embeddings[0] if len(embeddings) else None,
+            "embedding": embeddings[0] if embeddings is not None and len(embeddings) else None,
             "metadata": (metadatas[0] if len(metadatas) else {}) or {},
         }
