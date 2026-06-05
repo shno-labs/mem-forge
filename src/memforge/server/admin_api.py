@@ -474,6 +474,7 @@ class AgentSessionDocumentRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     submitted_at: str | None = None
     process_now: bool = True
+    user_id: str | None = None
 
 
 class LocalAdapterDocumentRequest(BaseModel):
@@ -512,6 +513,7 @@ class AgentSessionWindowRequest(BaseModel):
     retention: str = "none"
     submitted_at: str | None = None
     process_now: bool = False
+    user_id: str | None = None
 
 
 class AgentHookReceiptRequest(BaseModel):
@@ -3453,6 +3455,7 @@ def create_admin_app(
                 title=req.title,
                 metadata=req.metadata,
                 submitted_at=req.submitted_at,
+                user_id=req.user_id,
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -3518,6 +3521,7 @@ def create_admin_app(
                 retention=req.retention,
                 submitted_at=req.submitted_at,
                 process_now=req.process_now,
+                user_id=req.user_id,
             )
         except ValueError as e:
             detail = str(e)
