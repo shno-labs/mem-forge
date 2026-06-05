@@ -25,6 +25,7 @@ from memforge.pipeline.sync import GeneSyncOrchestrator
 from memforge.runtime import SyncService
 from memforge.config import AppConfig
 from memforge.storage.database import Database
+from memforge.storage.seam.sqlite import build_sqlite_seam
 
 
 @pytest.fixture
@@ -570,9 +571,11 @@ async def _insert_document_with_metadata(
 
 
 def _audited_memory_store(db: Database) -> MemoryStore:
+    seam = build_sqlite_seam(db, object())
     return MemoryStore(
-        db=db,
-        memory_collection=object(),
+        relational=seam.relational,
+        keyword=seam.keyword,
+        vector=seam.vector,
         embed_cfg={},
         audit_logger=MemoryAuditLogger(
             db,

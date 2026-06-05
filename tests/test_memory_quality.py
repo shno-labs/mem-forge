@@ -13,6 +13,7 @@ from memforge.memory.engine import MemoryEngine
 from memforge.memory.store import MemoryStore
 from memforge.models import DocumentRecord, Memory, RawMemory, ReconcileAction, ReconcileOperation, content_hash
 from memforge.storage.database import Database
+from memforge.storage.seam.sqlite import build_sqlite_seam
 
 
 METADATA_CONTENT = (
@@ -374,7 +375,13 @@ async def test_reconciliation_all_filtered_update_retires_sole_source_memory(db:
     )
     await db.add_memory_source(old_memory.id, doc.doc_id, "confluence")
     collection = FakeCollection()
-    store = MemoryStore(db=db, memory_collection=collection, embed_cfg={})
+    seam = build_sqlite_seam(db, collection)
+    store = MemoryStore(
+        relational=seam.relational,
+        keyword=seam.keyword,
+        vector=seam.vector,
+        embed_cfg={},
+    )
     engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
 
     stats = await engine.reconcile_and_persist(
@@ -405,7 +412,13 @@ async def test_reconciliation_all_filtered_update_removes_one_source_but_keeps_s
     await db.add_memory_source(old_memory.id, doc.doc_id, "confluence")
     await db.add_memory_source(old_memory.id, other_doc.doc_id, "confluence")
     collection = FakeCollection()
-    store = MemoryStore(db=db, memory_collection=collection, embed_cfg={})
+    seam = build_sqlite_seam(db, collection)
+    store = MemoryStore(
+        relational=seam.relational,
+        keyword=seam.keyword,
+        vector=seam.vector,
+        embed_cfg={},
+    )
     engine = MemoryEngine(db=db, memory_store=store, structured_llm_client=object())
 
     stats = await engine.reconcile_and_persist(
@@ -441,7 +454,13 @@ async def test_store_document_delete_cleans_indexes_for_last_corroborated_source
         support_kind="corroborated",
     )
     collection = FakeCollection()
-    store = MemoryStore(db=db, memory_collection=collection, embed_cfg={})
+    seam = build_sqlite_seam(db, collection)
+    store = MemoryStore(
+        relational=seam.relational,
+        keyword=seam.keyword,
+        vector=seam.vector,
+        embed_cfg={},
+    )
 
     retired_ids = await store.delete_document(doc.doc_id)
 
@@ -468,7 +487,13 @@ async def test_store_source_cascade_cleans_indexes_for_retired_memories(db: Data
         excerpt="A source cascade should remove retired memories from search.",
     )
     collection = FakeCollection()
-    store = MemoryStore(db=db, memory_collection=collection, embed_cfg={})
+    seam = build_sqlite_seam(db, collection)
+    store = MemoryStore(
+        relational=seam.relational,
+        keyword=seam.keyword,
+        vector=seam.vector,
+        embed_cfg={},
+    )
 
     retired_ids = await store.delete_source_cascade(doc.source)
 

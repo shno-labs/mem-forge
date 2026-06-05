@@ -22,6 +22,7 @@ from memforge.pipeline.enricher import Enricher
 from memforge.pipeline.memory_extractor import MemoryExtractor
 from memforge.pipeline.source_support_detector import SourceSupportDetector
 from memforge.pipeline.sync import GeneSyncOrchestrator
+from memforge.retrieval.document_index import DocumentVectorIndex
 from memforge.retrieval.embeddings import get_chroma_collection
 from memforge.source_secrets import decrypt_source_config_for_runtime, source_secret_fields
 from memforge.storage.document_store import LocalDocumentStore
@@ -176,12 +177,14 @@ async def build_sync_runtime(db: "Database", config: AppConfig) -> SyncRuntime:
         "api_key": llm.embedding_api_key,
         "model": llm.embedding_model,
     }
+    seam = build_sqlite_seam(db, memory_collection)
     memory_store = MemoryStore(
-        db=db,
-        memory_collection=memory_collection,
+        relational=seam.relational,
+        keyword=seam.keyword,
+        vector=seam.vector,
         embed_cfg=embed_cfg,
         audit_logger=MemoryAuditLogger(db, default_context=AuditContext(actor_type="sync")),
-        document_collection=doc_collection,
+        document_index=DocumentVectorIndex(doc_collection),
     )
     memory_engine = MemoryEngine(
         db=db,
