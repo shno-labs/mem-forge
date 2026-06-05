@@ -5,6 +5,13 @@ This guards the production write path: receipt metadata alone is not enough,
 because the gene re-reads the package and feeds the sync pipeline. The
 normalized source_semantics has to expose the uploader so the sync pipeline can
 forward it to the memory engine, instead of falling back to LOCAL_DEV_USER_ID.
+
+The orchestrator-driven test below is the regression gate: it runs the real
+GeneSyncOrchestrator against a real AgentSessionGene and watches what the
+orchestrator forwards to the memory engine. Removing the ``user_id=...`` kwarg
+from either branch of ``_process_item`` (the new-document ``process_memories``
+call or the existing-document ``reconcile_and_persist`` call) makes the
+spy-engine assertions fail.
 """
 
 from __future__ import annotations
@@ -17,34 +24,20 @@ import pytest
 from memforge.agent_sessions import submit_agent_session_document
 from memforge.config import AppConfig
 from memforge.genes.agent_session_gene import AgentSessionGene
-from memforge.memory.audit import MemoryAuditLogger
-from memforge.memory.engine import MemoryEngine
-from memforge.memory.store import MemoryStore
 from memforge.models import (
-    DocumentRecord,
+    EnrichmentResult,
+    MemoryExtractionResult,
     RawMemory,
     SHARED_PROJECT_KEY,
     UNSORTED_PROJECT_KEY,
-    Visibility,
 )
-from memforge.storage.adapters.context import LOCAL_DEV_USER_ID, AccessScope
-from memforge.storage.adapters.sqlite import build_sqlite_adapters
+from memforge.pipeline.sync import GeneSyncOrchestrator
+from memforge.storage.adapters.context import AccessScope
 from memforge.storage.database import Database
 
 
 U1_USER = "u-1"
 U2_USER = "u-2"
-
-
-class FakeCollection:
-    def query(self, **kwargs):
-        return {"ids": [[]], "distances": [[]]}
-
-    def upsert(self, ids=None, embeddings=None, metadatas=None, **kwargs):
-        pass
-
-    def delete(self, ids=None, **kwargs):
-        pass
 
 
 def _config(tmp_path: Path) -> AppConfig:
@@ -66,54 +59,111 @@ def _personalized_scope(user_id: str) -> AccessScope:
     )
 
 
-async def _document_for(database: Database, doc_id: str, source_id: str, source_url: str) -> None:
-    now = datetime.now(timezone.utc)
-    await database.upsert_document(DocumentRecord(
-        doc_id=doc_id,
-        source=source_id,
-        source_url=source_url,
-        title="t",
-        space_or_project="PROJ",
-        author="codex",
-        last_modified=now,
-        labels=[],
-        version="1",
-        content_hash=f"h-{doc_id}",
-        token_count=1,
-        raw_content_uri=None,
-        raw_content_type="application/json",
-        normalized_content_uri=None,
-        pdf_content_uri=None,
-        last_synced=now,
-    ))
-
-
 @pytest.fixture
-async def engine_fixture(tmp_path, monkeypatch):
+async def database_fixture(tmp_path):
     database = Database(str(tmp_path / "sync_uploader.db"))
     await database.connect()
-    adapters = build_sqlite_adapters(database, FakeCollection())
-    store = MemoryStore(
-        relational=adapters.relational,
-        keyword=adapters.keyword,
-        vector=adapters.vector,
-        embed_cfg={},
-        audit_logger=MemoryAuditLogger(database),
-    )
-
-    async def _fake_embed(text: str) -> list[float]:
-        return [0.0]
-
-    monkeypatch.setattr(store, "_embed", _fake_embed)
-    engine = MemoryEngine(
-        relational=adapters.relational,
-        vector=adapters.vector,
-        db=database,
-        memory_store=store,
-        structured_llm_client=None,
-    )
-    yield engine, database, adapters
+    yield database
     await database.close()
+
+
+# ---------------------------------------------------------------------------
+# Test doubles for the orchestrator-driven test
+# ---------------------------------------------------------------------------
+
+
+class _StubDocumentStore:
+    def store_raw(self, *, source_name, title, content, content_type, extension=None):
+        suffix = extension or ".raw"
+        return f"file:///tmp/{source_name}/{title}{suffix}"
+
+    def store_normalized(self, *, source_name, title, markdown):
+        return f"file:///tmp/{source_name}/{title}.md"
+
+    def delete_document_files(self, *, source_name, title):
+        return None
+
+
+class _StubEnricher:
+    """Returns an empty enrichment so the orchestrator advances to memory extraction."""
+
+    async def enrich_document(self, *, doc_id, content, source_type):
+        return EnrichmentResult(
+            summary="agent session summary",
+            tags=[],
+            entities=[],
+            relationships=[],
+            doc_type="agent_session_summary",
+            complexity="low",
+        )
+
+
+class _SingleMemoryExtractor:
+    """Yields one RawMemory per call so the orchestrator reaches process_memories."""
+
+    async def extract_memories(self, **kwargs):
+        return MemoryExtractionResult(
+            memories=[
+                RawMemory(
+                    memory_type="fact",
+                    content="durable design fact",
+                    entity_refs=[],
+                    tags=[],
+                    confidence=0.9,
+                )
+            ],
+        )
+
+    async def extract_memory_changes(self, **kwargs):
+        return MemoryExtractionResult(
+            memories=[
+                RawMemory(
+                    memory_type="fact",
+                    content="durable design fact",
+                    entity_refs=[],
+                    tags=[],
+                    confidence=0.9,
+                )
+            ],
+        )
+
+    async def extract_unit_memories(self, context, **kwargs):
+        return MemoryExtractionResult(
+            memories=[
+                RawMemory(
+                    memory_type="fact",
+                    content="durable design fact",
+                    entity_refs=[],
+                    tags=[],
+                    confidence=0.9,
+                )
+            ],
+        )
+
+
+class _SpyMemoryEngine:
+    """Records every kwarg the orchestrator forwards on memory persistence calls.
+
+    The assertions read from these recordings, never from values the test passed
+    in itself. Deleting ``user_id=uploader_user_id`` from either branch of
+    ``GeneSyncOrchestrator._process_item`` flips ``user_id`` to ``None`` here
+    and the test fails.
+    """
+
+    def __init__(self) -> None:
+        self.process_memories_calls: list[dict] = []
+        self.reconcile_calls: list[dict] = []
+
+    async def process_enrichment(self, *, doc_id, enrichment, doc_context=None):
+        return []
+
+    async def process_memories(self, **kwargs):
+        self.process_memories_calls.append(kwargs)
+        return {"inserted": len(kwargs.get("raw_memories") or []), "corroborated": 0, "skipped": 0}
+
+    async def reconcile_and_persist(self, **kwargs):
+        self.reconcile_calls.append(kwargs)
+        return {"added": 1, "updated": 0, "superseded": 0, "deleted": 0, "noop": 0}
 
 
 async def _submit_and_normalize(
@@ -124,8 +174,9 @@ async def _submit_and_normalize(
     session_id: str,
     user_id: str,
     fact: str,
+    submitted_at: str | None = None,
 ):
-    """Run the production write path and return (item, normalized, fact)."""
+    """Run the production write path and return (submitted, item, normalized)."""
     submitted = await submit_agent_session_document(
         db=db,
         config=cfg,
@@ -139,6 +190,7 @@ async def _submit_and_normalize(
         commit_sha="abc",
         history_window_kind="session",
         user_id=user_id,
+        submitted_at=submitted_at,
     )
     source = await db.get_source(submitted["source_id"])
     gene = AgentSessionGene(config=source["config"], source_id=source["id"])
@@ -151,14 +203,18 @@ async def _submit_and_normalize(
 
 
 @pytest.mark.asyncio
-async def test_sync_carries_uploader_from_gene_normalize_into_persistence(
-    engine_fixture, tmp_path
+async def test_agent_session_gene_exposes_uploader_on_normalize(
+    database_fixture, tmp_path
 ):
-    """Each uploader's row stamps its own owner; LOCAL_DEV_USER_ID is never used."""
-    engine, database, adapters = engine_fixture
+    """Gene boundary: ``normalize()`` must surface the uploader hint.
+
+    Without this hint on ``source_semantics``, the sync pipeline has nothing to
+    forward downstream and the memory silently falls back to LOCAL_DEV_USER_ID.
+    """
+    database = database_fixture
     cfg = _config(tmp_path)
 
-    submitted_u1, item_u1, normalized_u1 = await _submit_and_normalize(
+    _, _, normalized_u1 = await _submit_and_normalize(
         db=database,
         cfg=cfg,
         client="codex",
@@ -166,7 +222,7 @@ async def test_sync_carries_uploader_from_gene_normalize_into_persistence(
         user_id=U1_USER,
         fact="u1 deploys via argo",
     )
-    submitted_u2, item_u2, normalized_u2 = await _submit_and_normalize(
+    _, _, normalized_u2 = await _submit_and_normalize(
         db=database,
         cfg=cfg,
         client="claude-code",
@@ -175,72 +231,167 @@ async def test_sync_carries_uploader_from_gene_normalize_into_persistence(
         fact="u2 deploys via flux",
     )
 
-    # The normalize step must surface the uploader hint. Without this, the sync
-    # pipeline cannot forward user_id to the memory engine, and the memory
-    # silently falls back to LOCAL_DEV_USER_ID for both rows.
     assert normalized_u1.source_semantics.get("uploader_user_id") == U1_USER
     assert normalized_u2.source_semantics.get("uploader_user_id") == U2_USER
 
-    # Stand in for the sync pipeline's persistence step: it reads the uploader
-    # hint from source_semantics and passes it as user_id to process_memories.
-    await _document_for(
-        database, item_u1.item_id, submitted_u1["source_id"], item_u1.source_url
-    )
-    await _document_for(
-        database, item_u2.item_id, submitted_u2["source_id"], item_u2.source_url
-    )
 
-    raw_u1 = [RawMemory(
-        memory_type="fact",
-        content="u1 deploys via argo",
-        entity_refs=[],
-        tags=[],
-        confidence=0.9,
-    )]
-    raw_u2 = [RawMemory(
-        memory_type="fact",
-        content="u2 deploys via flux",
-        entity_refs=[],
-        tags=[],
-        confidence=0.9,
-    )]
+@pytest.mark.asyncio
+async def test_orchestrator_forwards_uploader_user_id_on_new_documents(
+    database_fixture, tmp_path
+):
+    """First sync (new docs): the orchestrator MUST forward each uploader's id
+    on its ``process_memories`` call.
 
-    await engine.process_memories(
-        doc_id=item_u1.item_id,
-        raw_memories=raw_u1,
-        source_type="agent_session",
-        user_id=normalized_u1.source_semantics.get("uploader_user_id"),
+    The spy engine records the kwargs the orchestrator passed; the assertion
+    reads them back. If ``user_id=uploader_user_id`` is removed from the
+    new-document branch (sync.py around line 1048), the recorded ``user_id``
+    becomes ``None`` and this test fails.
+    """
+    database = database_fixture
+    cfg = _config(tmp_path)
+
+    submitted_u1, item_u1, _ = await _submit_and_normalize(
+        db=database,
+        cfg=cfg,
+        client="codex",
+        session_id="sess-u1",
+        user_id=U1_USER,
+        fact="u1 deploys via argo",
     )
-    await engine.process_memories(
-        doc_id=item_u2.item_id,
-        raw_memories=raw_u2,
-        source_type="agent_session",
-        user_id=normalized_u2.source_semantics.get("uploader_user_id"),
+    submitted_u2, item_u2, _ = await _submit_and_normalize(
+        db=database,
+        cfg=cfg,
+        client="claude-code",
+        session_id="sess-u2",
+        user_id=U2_USER,
+        fact="u2 deploys via flux",
     )
 
-    rows = await database.list_memories()
-    by_content = {row.content: row for row in rows}
-    u1_row = by_content["u1 deploys via argo"]
-    u2_row = by_content["u2 deploys via flux"]
-
-    assert u1_row.visibility == Visibility.PRIVATE.value
-    assert u1_row.owner_user_id == U1_USER
-    assert u1_row.owner_user_id != LOCAL_DEV_USER_ID
-    assert u2_row.visibility == Visibility.PRIVATE.value
-    assert u2_row.owner_user_id == U2_USER
-    assert u2_row.owner_user_id != LOCAL_DEV_USER_ID
-
-    # PERSONALIZED keyword search by U1 sees its own row but never U2's private row.
-    u1_hits = await adapters.keyword.search(
-        "deploys", _personalized_scope(U1_USER), memory_types=None, limit=10,
+    # Two clients map to two per-client sources; sync each through the real
+    # orchestrator with a spy engine on the persistence boundary.
+    spy = _SpyMemoryEngine()
+    orchestrator = GeneSyncOrchestrator(
+        db=database,
+        doc_store=_StubDocumentStore(),
+        enricher=_StubEnricher(),
+        memory_extractor=_SingleMemoryExtractor(),
+        memory_engine=spy,
+        memory_store=None,
+        max_concurrent=1,
     )
-    u1_ids = {mid for mid, _ in u1_hits}
-    assert u1_row.id in u1_ids
-    assert u2_row.id not in u1_ids
 
-    u2_hits = await adapters.keyword.search(
-        "deploys", _personalized_scope(U2_USER), memory_types=None, limit=10,
+    src_u1 = await database.get_source(submitted_u1["source_id"])
+    src_u2 = await database.get_source(submitted_u2["source_id"])
+    gene_u1 = AgentSessionGene(config=src_u1["config"], source_id=src_u1["id"])
+    gene_u2 = AgentSessionGene(config=src_u2["config"], source_id=src_u2["id"])
+
+    state_u1 = await orchestrator.sync_gene(
+        gene=gene_u1,
+        source_name=src_u1["name"],
+        source_id=src_u1["id"],
     )
-    u2_ids = {mid for mid, _ in u2_hits}
-    assert u2_row.id in u2_ids
-    assert u1_row.id not in u2_ids
+    state_u2 = await orchestrator.sync_gene(
+        gene=gene_u2,
+        source_name=src_u2["name"],
+        source_id=src_u2["id"],
+    )
+
+    assert state_u1.last_sync_status == "success"
+    assert state_u2.last_sync_status == "success"
+
+    # New documents -> the orchestrator goes through process_memories, not
+    # reconcile_and_persist. Both calls must carry the uploader's user_id.
+    by_doc = {call["doc_id"]: call for call in spy.process_memories_calls}
+    assert item_u1.item_id in by_doc
+    assert item_u2.item_id in by_doc
+    assert by_doc[item_u1.item_id]["user_id"] == U1_USER
+    assert by_doc[item_u2.item_id]["user_id"] == U2_USER
+    assert spy.reconcile_calls == []
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_forwards_uploader_user_id_on_document_updates(
+    database_fixture, tmp_path
+):
+    """Second sync (existing doc, new content): the orchestrator MUST forward
+    the uploader's id on its ``reconcile_and_persist`` call.
+
+    If ``user_id=uploader_user_id`` is removed from the update branch (sync.py
+    around line 1036), the recorded ``user_id`` becomes ``None`` and this test
+    fails.
+    """
+    database = database_fixture
+    cfg = _config(tmp_path)
+
+    # First submission: seeds the document so the second sync hits the update path.
+    submitted_first, item_first, _ = await _submit_and_normalize(
+        db=database,
+        cfg=cfg,
+        client="codex",
+        session_id="sess-update",
+        user_id=U1_USER,
+        fact="initial deploy via argo",
+        submitted_at="2026-01-01T00:00:00+00:00",
+    )
+
+    src = await database.get_source(submitted_first["source_id"])
+    initial_spy = _SpyMemoryEngine()
+    initial_orchestrator = GeneSyncOrchestrator(
+        db=database,
+        doc_store=_StubDocumentStore(),
+        enricher=_StubEnricher(),
+        memory_extractor=_SingleMemoryExtractor(),
+        memory_engine=initial_spy,
+        memory_store=None,
+        max_concurrent=1,
+    )
+    initial_state = await initial_orchestrator.sync_gene(
+        gene=AgentSessionGene(config=src["config"], source_id=src["id"]),
+        source_name=src["name"],
+        source_id=src["id"],
+    )
+    assert initial_state.last_sync_status == "success"
+    assert initial_spy.process_memories_calls
+    assert initial_spy.reconcile_calls == []
+
+    # Second submission: same client + session + trigger -> same doc_id, with
+    # different markdown (and therefore a different content_hash). The next
+    # sync must take the update branch (reconcile_and_persist).
+    submitted_second, item_second, _ = await _submit_and_normalize(
+        db=database,
+        cfg=cfg,
+        client="codex",
+        session_id="sess-update",
+        user_id=U1_USER,
+        fact="updated deploy via flux",
+        submitted_at="2026-01-02T00:00:00+00:00",
+    )
+    assert submitted_second["doc_id"] == submitted_first["doc_id"]
+    assert item_second.item_id == item_first.item_id
+
+    update_spy = _SpyMemoryEngine()
+    update_orchestrator = GeneSyncOrchestrator(
+        db=database,
+        doc_store=_StubDocumentStore(),
+        enricher=_StubEnricher(),
+        memory_extractor=_SingleMemoryExtractor(),
+        memory_engine=update_spy,
+        memory_store=None,
+        max_concurrent=1,
+    )
+    update_state = await update_orchestrator.sync_gene(
+        gene=AgentSessionGene(config=src["config"], source_id=src["id"]),
+        source_name=src["name"],
+        source_id=src["id"],
+        force_full_sync=True,
+    )
+
+    assert update_state.last_sync_status == "success"
+    # Existing document with changed content -> reconcile_and_persist branch.
+    assert update_spy.reconcile_calls, (
+        "expected the orchestrator to take the reconcile_and_persist branch "
+        "for an existing document with changed content"
+    )
+    forwarded = update_spy.reconcile_calls[0]
+    assert forwarded["doc_id"] == item_second.item_id
+    assert forwarded["user_id"] == U1_USER
