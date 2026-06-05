@@ -718,7 +718,7 @@ class SearchEngine:
             if len(results) >= remaining_slots:
                 break
 
-            similarity = max(1.0 - dist, 0.0)
+            similarity = self._document_vector.similarity(dist)
 
             # Fetch document metadata
             title = doc_id
