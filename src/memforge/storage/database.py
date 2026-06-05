@@ -177,7 +177,8 @@ CREATE TABLE IF NOT EXISTS memories (
     content             TEXT NOT NULL,
     content_hash        TEXT NOT NULL,
     tags                TEXT NOT NULL DEFAULT '[]',
-    scope               TEXT NOT NULL DEFAULT 'team',
+    visibility          TEXT NOT NULL DEFAULT 'workspace',
+    owner_user_id       TEXT,
     project_key         TEXT,
     confidence          REAL NOT NULL DEFAULT 0.7,
     corroboration_count INTEGER NOT NULL DEFAULT 1,
@@ -192,7 +193,9 @@ CREATE TABLE IF NOT EXISTS memories (
     replacement_reason  TEXT,
     extraction_context  TEXT,
     created_at          TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK (visibility IN ('private','workspace')),
+    CHECK ((visibility = 'private') = (owner_user_id IS NOT NULL))
 );
 
 CREATE TABLE IF NOT EXISTS memory_sources (
@@ -366,8 +369,9 @@ CREATE INDEX IF NOT EXISTS idx_sync_history_finished ON sync_history(finished_at
 CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(canonical_name);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type);
 CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
-CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope);
 CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_key);
+CREATE INDEX IF NOT EXISTS idx_memories_access ON memories(status, visibility);
+CREATE INDEX IF NOT EXISTS idx_memories_owner ON memories(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_memories_hash ON memories(content_hash);
 CREATE INDEX IF NOT EXISTS idx_memory_sources_doc ON memory_sources(doc_id);
 CREATE INDEX IF NOT EXISTS idx_memory_entities_entity ON memory_entities(entity_id);
@@ -739,6 +743,22 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
                  SELECT 1 FROM documents WHERE source = 'src-agent-sessions'
              )""",
     ]),
+    (14, "Add visibility and owner columns to memories", [
+        "ALTER TABLE memories ADD COLUMN visibility TEXT NOT NULL DEFAULT 'workspace'",
+        "ALTER TABLE memories ADD COLUMN owner_user_id TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_memories_access ON memories(status, visibility)",
+        "CREATE INDEX IF NOT EXISTS idx_memories_owner ON memories(owner_user_id)",
+        "DROP INDEX IF EXISTS idx_memories_scope",
+    ]),
+    (15, "Backfill visibility and project_key from legacy scope", [
+        "UPDATE memories SET visibility = 'workspace' WHERE visibility IS NULL OR visibility = ''",
+        "UPDATE memories SET owner_user_id = NULL WHERE visibility = 'workspace'",
+        "UPDATE memories SET project_key = substr(scope, 9) "
+        "WHERE project_key IS NULL AND scope LIKE 'project:%'",
+        "UPDATE memories SET project_key = 'SHARED' "
+        "WHERE project_key IS NULL AND scope = 'team'",
+        "UPDATE memories SET project_key = 'UNSORTED' WHERE project_key IS NULL",
+    ]),
 ]
 
 
@@ -785,9 +805,15 @@ class Database:
                 try:
                     await self.db.execute(sql)
                 except Exception as e:
-                    if "duplicate column" in str(e).lower():
+                    message = str(e).lower()
+                    legacy_scope_backfill = (
+                        version == 15
+                        and "no such column" in message
+                        and "scope" in sql.lower()
+                    )
+                    if "duplicate column" in message or legacy_scope_backfill:
                         logger.debug(
-                            "Migration %d: column already exists, skipping: %s",
+                            "Migration %d: expected-absent column on this DB, skipping: %s",
                             version, sql,
                         )
                     else:
