@@ -75,8 +75,8 @@ class Visibility(str, Enum):
     PRIVATE = "private"
 
 
-# Reserved project keys (Section 7.1). SHARED is the team-wide bucket; UNSORTED is
-# the down-weighted backlog for memories with no resolvable project. Named here so
+# Reserved project keys. SHARED is the team-wide bucket; UNSORTED is the
+# down-weighted backlog for memories with no resolvable project. Named here so
 # helper code and tests never repeat the literal; the SQL migrations may inline them.
 SHARED_PROJECT_KEY = "SHARED"
 UNSORTED_PROJECT_KEY = "UNSORTED"

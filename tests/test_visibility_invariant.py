@@ -61,6 +61,28 @@ async def test_fresh_check_rejects_private_without_owner(db):
 
 
 @pytest.mark.asyncio
+async def test_fresh_check_rejects_workspace_with_owner(db):
+    # Layer 1: the CHECK rejects a workspace row that carries an owner.
+    import sqlite3
+    with pytest.raises(sqlite3.IntegrityError):
+        await db.db.execute(
+            "INSERT INTO memories (id, memory_type, content, content_hash, visibility, owner_user_id) "
+            f"VALUES ('raw-ws-owner','fact','c','h','{WORKSPACE}','u-1')"
+        )
+
+
+@pytest.mark.asyncio
+async def test_fresh_check_rejects_unknown_visibility(db):
+    # Layer 1: the CHECK rejects a visibility value outside the allowed set.
+    import sqlite3
+    with pytest.raises(sqlite3.IntegrityError):
+        await db.db.execute(
+            "INSERT INTO memories (id, memory_type, content, content_hash, visibility, owner_user_id) "
+            "VALUES ('raw-bad-vis','fact','c','h','org',NULL)"
+        )
+
+
+@pytest.mark.asyncio
 async def test_supersede_rejects_invalid_new_memory(db):
     # Layer 2: supersede_memory validates the incoming new memory.
     await db.insert_memory(_mem(id="old-1", visibility=WORKSPACE))
