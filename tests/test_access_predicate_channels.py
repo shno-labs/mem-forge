@@ -234,3 +234,100 @@ async def test_search_engine_team_search_excludes_private(db, monkeypatch):
     ids = {row.memory_id for row in result["results"]}
     assert "se-priv" not in ids
     assert "se-shared" in ids
+
+
+@pytest.mark.asyncio
+async def test_agent_hook_uses_personalized_predicate(db, monkeypatch):
+    # U1 calls the hook with their own user_id; the hook must surface U1's own
+    # private memories AND workspace memories, but NOT U2's private memories.
+    from memforge.agent_hooks import (
+        AgentHookContextRequest,
+        build_agent_hook_context,
+    )
+    from memforge.retrieval.search import SearchEngine
+    from memforge.config import RetrievalConfig
+    from memforge.retrieval.query_analyzer import QueryAnalysis
+
+    async def fake_analyze_query(*args, **kwargs):
+        return QueryAnalysis()
+
+    monkeypatch.setattr(
+        "memforge.retrieval.search.analyze_query", fake_analyze_query
+    )
+
+    coll = _Coll()
+    coll.upsert(
+        ids=["h-shared"], embeddings=[[0.1, 0.1, 0.1]],
+        metadatas=[{"status": "active", "visibility": WORKSPACE,
+                    "owner_user_id": "", "project_key": SHARED_PROJECT_KEY,
+                    "memory_type": "fact"}],
+    )
+    coll.upsert(
+        ids=["h-u1-priv"], embeddings=[[0.1, 0.1, 0.1]],
+        metadatas=[{"status": "active", "visibility": PRIVATE,
+                    "owner_user_id": "u-1", "project_key": SHARED_PROJECT_KEY,
+                    "memory_type": "fact"}],
+    )
+    coll.upsert(
+        ids=["h-u2-priv"], embeddings=[[0.1, 0.1, 0.1]],
+        metadatas=[{"status": "active", "visibility": PRIVATE,
+                    "owner_user_id": "u-2", "project_key": SHARED_PROJECT_KEY,
+                    "memory_type": "fact"}],
+    )
+    await db.insert_memory(_mem("h-shared", "deploy decision",
+                                 visibility=WORKSPACE))
+    await db.insert_memory(_mem("h-u1-priv", "deploy decision",
+                                 visibility=PRIVATE, owner="u-1"))
+    await db.insert_memory(_mem("h-u2-priv", "deploy decision",
+                                 visibility=PRIVATE, owner="u-2"))
+
+    adapters = build_sqlite_adapters(db, coll)
+    engine = SearchEngine(
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
+        embed_cfg={},
+        config=RetrievalConfig(),
+    )
+    engine._get_or_compute_embedding = lambda query: [0.1, 0.1, 0.1]
+
+    request = AgentHookContextRequest(
+        client="codex", hook="UserPromptSubmit",
+        workspace="ws", repo=None, branch=None,
+        prompt="why this deploy decision", touched_files=[],
+        include_recent_changes=False, max_memories=10,
+    )
+    ctx = await build_agent_hook_context(
+        db, request, principal_user_id="u-1", search_engine=engine,
+    )
+    ids = {row["id"] for row in ctx.get("memories", [])}
+    assert "h-u2-priv" not in ids
+    assert "h-shared" in ids
+    assert "h-u1-priv" in ids
+
+
+@pytest.mark.asyncio
+async def test_agent_hook_recent_changes_excludes_other_users_private(db):
+    # build_agent_hook_context also returns _recent_memory_changes when memory
+    # context is enabled. It currently reads memories directly with only
+    # status='active' and an optional repo filter, which would leak U2's private
+    # rows into U1's hook context. The recent-changes path must apply the same
+    # access predicate as _search_memories. The hook receives the principal
+    # explicitly: a non-HTTP caller cannot fall back to body-derived identity.
+    from memforge.agent_hooks import (
+        AgentHookContextRequest,
+        build_agent_hook_context,
+    )
+
+    await db.insert_memory(_mem("rc-shared", "team change", visibility=WORKSPACE))
+    await db.insert_memory(_mem("rc-priv", "private change",
+                                 visibility=PRIVATE, owner="u-2"))
+    request = AgentHookContextRequest(
+        client="codex", hook="SessionStart",
+        workspace="ws", repo=None, branch=None,
+        include_recent_changes=True, max_memories=5,
+    )
+    ctx = await build_agent_hook_context(db, request, principal_user_id="u-1")
+    ids = {row["id"] for row in ctx.get("recent_changes", [])}
+    assert "rc-priv" not in ids
+    assert "rc-shared" in ids

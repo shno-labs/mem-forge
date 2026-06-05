@@ -3573,13 +3573,19 @@ def create_admin_app(
     @hook_router.post("/context")
     async def build_hook_context(
         req: AgentHookContextRequest,
+        request: Request,
         db: Database = Depends(get_db),
+        config: AppConfig = Depends(get_config),
     ):
         """Return compact memory context for Codex/Claude lifecycle hooks."""
         from memforge.agent_hooks import (
             AgentHookContextRequest as HookContextRequest,
             build_agent_hook_context,
         )
+        from memforge.server.principal import resolve_principal
+
+        principal_user_id = resolve_principal(request)
+        engine = await get_search_engine(request, db, config)
 
         hook_request = HookContextRequest(
             client=req.client,
@@ -3592,7 +3598,12 @@ def create_admin_app(
             max_memories=req.max_memories,
             include_recent_changes=req.include_recent_changes,
         )
-        return await build_agent_hook_context(db, hook_request)
+        return await build_agent_hook_context(
+            db,
+            hook_request,
+            principal_user_id=principal_user_id,
+            search_engine=engine,
+        )
 
     # ===================================================================
     # 5. Schedule Endpoints
