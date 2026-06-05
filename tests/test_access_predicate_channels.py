@@ -1,5 +1,11 @@
 import pytest
-from memforge.models import Memory, Visibility, content_hash, SHARED_PROJECT_KEY
+from memforge.models import (
+    Memory,
+    Visibility,
+    content_hash,
+    SHARED_PROJECT_KEY,
+    UNSORTED_PROJECT_KEY,
+)
 from memforge.storage.database import Database
 from memforge.storage.adapters.sqlite import build_sqlite_adapters
 from memforge.storage.adapters.context import AccessScope
@@ -172,3 +178,59 @@ async def test_vector_pre_filter_does_not_drop_dangling_project_workspace_memory
                           _scope(user_id="u-1", include_private=False),
                           memory_types=None, limit=10)
     assert {mid for mid, _ in hits} == {"v-dangling"}
+
+
+@pytest.mark.asyncio
+async def test_search_engine_team_search_excludes_private(db, monkeypatch):
+    # Reuses the construction shape from tests/test_search_engine_adapters.py:
+    # build a SearchEngine over the adapters with a stubbed embedding.
+    from memforge.retrieval.search import SearchEngine
+    from memforge.config import RetrievalConfig
+    from memforge.retrieval.query_analyzer import QueryAnalysis
+
+    async def fake_analyze_query(*args, **kwargs):
+        return QueryAnalysis()
+
+    monkeypatch.setattr(
+        "memforge.retrieval.search.analyze_query", fake_analyze_query
+    )
+
+    coll = _Coll()
+    coll.upsert(
+        ids=["se-shared"], embeddings=[[0.1, 0.1, 0.1]],
+        metadatas=[{"status": "active", "visibility": WORKSPACE,
+                    "owner_user_id": "", "project_key": SHARED_PROJECT_KEY,
+                    "memory_type": "fact"}],
+    )
+    coll.upsert(
+        ids=["se-priv"], embeddings=[[0.1, 0.1, 0.1]],
+        metadatas=[{"status": "active", "visibility": PRIVATE,
+                    "owner_user_id": "u-2", "project_key": SHARED_PROJECT_KEY,
+                    "memory_type": "fact"}],
+    )
+    await db.insert_memory(_mem("se-shared", "team thing", visibility=WORKSPACE))
+    await db.insert_memory(_mem("se-priv", "private thing",
+                                 visibility=PRIVATE, owner="u-2"))
+    adapters = build_sqlite_adapters(db, coll)
+    engine = SearchEngine(
+        relational=adapters.relational,
+        keyword=adapters.keyword,
+        vector=adapters.vector,
+        embed_cfg={},
+        config=RetrievalConfig(),
+    )
+    engine._get_or_compute_embedding = lambda query: [0.1, 0.1, 0.1]
+
+    team_scope = AccessScope(
+        user_id="u-1",
+        open_projects=frozenset({SHARED_PROJECT_KEY, UNSORTED_PROJECT_KEY}),
+        member_projects=frozenset(),
+        include_private=False,
+        allowed_statuses=("active",),
+        active_project=None,
+        scope_mode="project-first",
+    )
+    result = await engine.search("thing", top_k=10, request_scope=team_scope)
+    ids = {row.memory_id for row in result["results"]}
+    assert "se-priv" not in ids
+    assert "se-shared" in ids

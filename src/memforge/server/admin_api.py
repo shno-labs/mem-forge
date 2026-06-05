@@ -262,6 +262,11 @@ class MemorySearchRequest(BaseModel):
     entities: list[str] | None = None
     include_superseded: bool = False
     top_k: int = Field(default=10, ge=1, le=50)
+    active_project: str | None = None
+    include_private: bool = False
+    # NO user_id field. The caller's identity is server-derived from
+    # resolve_principal(request); a body-supplied user_id is never used as
+    # access authority.
 
 
 # -- Entities --
@@ -2078,8 +2083,23 @@ def create_admin_app(
         config: AppConfig = Depends(get_config),
     ):
         """Service-owned memory search used by local agent MCP proxies."""
+        from memforge.memory.lifecycle import allowed_search_statuses
+        from memforge.models import SHARED_PROJECT_KEY, UNSORTED_PROJECT_KEY
+        from memforge.server.principal import resolve_principal
+        from memforge.storage.adapters.context import AccessScope
+
         try:
             engine = await get_search_engine(request, db, config)
+            user_id = resolve_principal(request)
+            scope = AccessScope(
+                user_id=user_id,
+                open_projects=frozenset({SHARED_PROJECT_KEY, UNSORTED_PROJECT_KEY}),
+                member_projects=frozenset(),
+                include_private=req.include_private,
+                allowed_statuses=allowed_search_statuses(req.include_superseded),
+                active_project=req.active_project,
+                scope_mode="project-first",
+            )
             result = await engine.search(
                 query=req.query,
                 memory_types=req.memory_types,
@@ -2088,6 +2108,7 @@ def create_admin_app(
                 entities=req.entities,
                 include_superseded=req.include_superseded,
                 top_k=req.top_k,
+                request_scope=scope,
             )
             return _json_ready(result)
         except Exception as e:
