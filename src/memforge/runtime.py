@@ -177,7 +177,13 @@ async def build_sync_runtime(db: "Database", config: AppConfig) -> SyncRuntime:
         "api_key": llm.embedding_api_key,
         "model": llm.embedding_model,
     }
-    adapters = build_sqlite_adapters(db, memory_collection)
+    adapters = build_sqlite_adapters(
+        db,
+        memory_collection,
+        audit_logger=MemoryAuditLogger(
+            db, default_context=AuditContext(actor_type="sync")
+        ),
+    )
     memory_store = MemoryStore(
         relational=adapters.relational,
         keyword=adapters.keyword,

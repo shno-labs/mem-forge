@@ -1567,7 +1567,13 @@ async def _build_memory_store(db: Database, config: AppConfig) -> MemoryStore:
         "api_key": llm.embedding_api_key,
         "model": llm.embedding_model,
     }
-    adapters = build_sqlite_adapters(db, memory_collection)
+    adapters = build_sqlite_adapters(
+        db,
+        memory_collection,
+        audit_logger=MemoryAuditLogger(
+            db, default_context=AuditContext(actor_type="admin")
+        ),
+    )
     return MemoryStore(
         relational=adapters.relational,
         keyword=adapters.keyword,
