@@ -16,7 +16,13 @@ from memforge.memory.index_payloads import (
     memory_embedding_text,
 )
 from memforge.memory.lifecycle import allowed_search_statuses
-from memforge.models import Memory, Visibility
+from memforge.models import (
+    Memory,
+    MemoryStatus,
+    SHARED_PROJECT_KEY,
+    UNSORTED_PROJECT_KEY,
+    Visibility,
+)
 from memforge.retrieval.document_index import DocumentVectorIndex
 from memforge.retrieval.embeddings import EmbeddingCache, embed_texts
 from memforge.storage.adapters.context import AccessScope, LOCAL_DEV_USER_ID
@@ -29,19 +35,34 @@ __all__ = ["MemoryStore"]
 DEDUP_CANDIDATE_LIMIT = 10
 
 
-def _dedup_access_scope() -> AccessScope:
-    """The permissive single-datastore scope for dedup candidate selection.
+def _writer_access_scope(memory: Memory) -> AccessScope:
+    """The dedup scope a writer of this memory must use.
 
-    In Phase 0 this matches the historical where={"status":"active"} filter;
-    the per-writer access narrowing activates in a later phase.
+    A private writer's pool is its own private set; a workspace writer's
+    pool is workspace rows in the same project. Cross-visibility merges
+    are blocked by the access predicate plus the visibility-mismatch
+    guard in deduplicate_and_insert.
     """
+    open_projects = {SHARED_PROJECT_KEY, UNSORTED_PROJECT_KEY}
+    if memory.project_key:
+        open_projects.add(memory.project_key)
+    if memory.visibility == Visibility.PRIVATE.value:
+        return AccessScope(
+            user_id=memory.owner_user_id or LOCAL_DEV_USER_ID,
+            open_projects=frozenset(open_projects),
+            member_projects=frozenset(),
+            include_private=True,
+            allowed_statuses=(MemoryStatus.ACTIVE.value,),
+            active_project=memory.project_key,
+            scope_mode="project-first",
+        )
     return AccessScope(
         user_id=LOCAL_DEV_USER_ID,
-        open_projects=frozenset(),
+        open_projects=frozenset(open_projects),
         member_projects=frozenset(),
         include_private=False,
-        allowed_statuses=("active",),
-        active_project=None,
+        allowed_statuses=(MemoryStatus.ACTIVE.value,),
+        active_project=memory.project_key,
         scope_mode="project-first",
     )
 
@@ -160,7 +181,7 @@ class MemoryStore:
 
         # Query the vector channel for near-duplicates.
         try:
-            dedup_scope = scope or _dedup_access_scope()
+            dedup_scope = scope or _writer_access_scope(memory)
             candidates = await self.vector.query(
                 embedding, dedup_scope, None, DEDUP_CANDIDATE_LIMIT
             )
@@ -202,6 +223,25 @@ class MemoryStore:
                     "Ignoring stale Chroma dedup candidate %s for %s (status=%s)",
                     existing_id, memory.id, existing.status if existing else "missing",
                 )
+                continue
+
+            # The predicate decides what the writer can SEE; dedup is a write-side
+            # decision that adds two narrower rules on top of "visible candidates":
+            #   1. Same visibility tier: a private write must not corroborate a team row,
+            #      and vice versa, even when the predicate exposes both.
+            #   2. Same project scope:
+            #      - workspace candidates must share project_key with the writer
+            #        (vector channel does not pre-filter by project; cross-project
+            #        merges would otherwise leak across project boundaries).
+            #      - private candidates must share owner_user_id with the writer
+            #        (private dedups against the same user's set only).
+            if existing.visibility != memory.visibility:
+                continue
+            if (memory.visibility == Visibility.WORKSPACE.value
+                    and existing.project_key != memory.project_key):
+                continue
+            if (memory.visibility == Visibility.PRIVATE.value
+                    and existing.owner_user_id != memory.owner_user_id):
                 continue
 
             # Near-duplicate found, corroborate instead of creating.
