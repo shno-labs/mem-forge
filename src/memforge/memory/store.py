@@ -252,6 +252,9 @@ class MemoryStore:
                 excerpt,
                 support_kind="extracted",
                 context=context,
+                writer_visibility=memory.visibility,
+                writer_owner_user_id=memory.owner_user_id,
+                writer_project_key=memory.project_key,
             )
             logger.debug(
                 "Memory corroborated: %s (score=%.4f, doc=%s)",
@@ -714,9 +717,35 @@ class MemoryStore:
         *,
         support_kind: str = "extracted",
         context: AuditContext | None = None,
+        writer_visibility: str | None = None,
+        writer_owner_user_id: str | None = None,
+        writer_project_key: str | None = None,
     ) -> str:
-        """Add or update source support for an existing memory."""
+        """Add or update source support for an existing memory.
+
+        The mutating boundary for support edges. Outcomes are
+        ``"inserted"``, ``"updated"``, ``"unchanged"``, ``"missing"``,
+        or ``"rejected"`` when the writer's visibility, owner, or
+        project does not match the target. Support edges never cross
+        a visibility, owner, or project boundary.
+        """
         context = context or self._operation_context(doc_id=doc_id)
+        target = await self.db.get_memory(memory_id)
+        if target is None:
+            return "missing"
+        if writer_visibility is not None and writer_visibility != target.visibility:
+            return "rejected"
+        if (
+            writer_visibility == Visibility.PRIVATE.value
+            and writer_owner_user_id != target.owner_user_id
+        ):
+            return "rejected"
+        if (
+            writer_visibility == Visibility.WORKSPACE.value
+            and writer_project_key is not None
+            and writer_project_key != target.project_key
+        ):
+            return "rejected"
         await self._emit(
             "source_support_add_attempted",
             "attempted",
