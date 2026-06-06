@@ -5,7 +5,6 @@ from memforge.models import (
     Memory,
     MemoryStatus,
     SHARED_PROJECT_KEY,
-    UNSORTED_PROJECT_KEY,
     Visibility,
     content_hash,
 )
