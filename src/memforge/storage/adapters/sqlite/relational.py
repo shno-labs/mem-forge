@@ -96,11 +96,12 @@ class SqliteRelationalStore:
         """Flip a private memory to workspace visibility.
 
         The full flip-and-redo flow (re-stamping vector metadata in place and
-        re-running dedup against the team set) is a later spec. This method
-        locks the contract: it verifies the row exists and is private, that
-        the actor owns it, audits the attempt, and then refuses with
-        NotImplementedError. A non-owner caller is rejected before any audit
-        row is written, so a hostile attempt leaves no trail.
+        re-running dedup against the team set) is designed but not yet
+        implemented. This method locks the contract: it verifies the row
+        exists and is private, that the actor owns it, audits the attempt,
+        and then refuses with NotImplementedError. A non-owner caller is
+        rejected before any audit row is written, so a hostile attempt
+        leaves no trail.
         """
         target = await self.get_memory(memory_id)
         if target is None:
