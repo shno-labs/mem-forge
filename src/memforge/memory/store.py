@@ -237,9 +237,14 @@ class MemoryStore:
             #        (private dedups against the same user's set only).
             if existing.visibility != memory.visibility:
                 continue
-            if (memory.visibility == Visibility.WORKSPACE.value
-                    and existing.project_key != memory.project_key):
-                continue
+            if memory.visibility == Visibility.WORKSPACE.value:
+                # NULL project_key is normalized to UNSORTED at persistence time,
+                # so apply the same normalization on both sides of the comparison
+                # to keep same-project candidates eligible for corroboration.
+                writer_project = memory.project_key or UNSORTED_PROJECT_KEY
+                candidate_project = existing.project_key or UNSORTED_PROJECT_KEY
+                if writer_project != candidate_project:
+                    continue
             if (memory.visibility == Visibility.PRIVATE.value
                     and existing.owner_user_id != memory.owner_user_id):
                 continue
