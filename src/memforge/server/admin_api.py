@@ -1863,11 +1863,18 @@ def create_admin_app(
     llm_router = APIRouter(prefix="/api/llm-config", tags=["llm-config"])
 
     async def get_search_engine(request: Request, db: Database, config: AppConfig):
+        from memforge.memory.audit import AuditContext, MemoryAuditLogger
         from memforge.runtime import build_search_engine
 
         engine = getattr(request.app.state, "memory_search_engine", None)
         if engine is None:
-            engine = await build_search_engine(db, config)
+            engine = await build_search_engine(
+                db,
+                config,
+                audit_logger=MemoryAuditLogger(
+                    db, default_context=AuditContext(actor_type="admin")
+                ),
+            )
             request.app.state.memory_search_engine = engine
         return engine
 
