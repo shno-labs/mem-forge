@@ -21,6 +21,7 @@ falling back to the doc_id prefix shape produced by
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from typing import Iterable
 
@@ -171,7 +172,48 @@ async def repair_agent_session_source_attribution(db: Database) -> dict:
         "before_counts": before_counts,
         "after_counts": after_counts,
         "agent_session_doc_total": len(doc_clients),
+        "configs_backfilled": await _backfill_source_configs(db),
     }
+
+
+async def _backfill_source_configs(db: Database) -> dict[str, str]:
+    """Stamp `client` into every per-client agent-session source's config_json.
+
+    The gene only filters by client when self.config["client"] is set; rows
+    that predate the filter still ship with `{"documents_dir": ...}` and
+    nothing else, so the scheduled-sync path would build an unfiltered gene
+    and re-pollute documents on the next cycle. This backfill rewrites every
+    such row's config_json with the inferred client (recovered from the
+    source_id shape `src-agent-sessions-<client>`), idempotently.
+
+    Returns a mapping of {source_id: backfilled_client} for the report.
+    """
+    backfilled: dict[str, str] = {}
+    async with db.db.execute(
+        "SELECT id, config FROM sources WHERE id LIKE 'src-agent-sessions-%'"
+    ) as cursor:
+        rows = [(row[0], row[1]) async for row in cursor]
+    for source_id, config_json in rows:
+        client = agent_session_client_for_source_id(source_id)
+        if client is None:
+            # The legacy singleton row `src-agent-sessions` has no client; the
+            # gene's empty-means-all fallback is the right behavior there.
+            continue
+        try:
+            config = json.loads(config_json) if config_json else {}
+        except json.JSONDecodeError:
+            config = {}
+        if config.get("client") == client:
+            continue  # already correct
+        config["client"] = client
+        await db.db.execute(
+            "UPDATE sources SET config = ? WHERE id = ?",
+            (json.dumps(config), source_id),
+        )
+        backfilled[source_id] = client
+    if backfilled:
+        await db.db.commit()
+    return backfilled
 
 
 def _format_report(report: dict) -> str:
@@ -186,6 +228,14 @@ def _format_report(report: dict) -> str:
     else:
         lines.append("Misfiled documents detected: 0")
     lines.append(f"Documents corrected this run: {report['corrected']}")
+    lines.append("")
+    backfilled = report.get("configs_backfilled") or {}
+    if backfilled:
+        lines.append(f"Source configs backfilled with `client`: {len(backfilled)}")
+        for source_id, client in sorted(backfilled.items()):
+            lines.append(f"  {source_id} -> client={client!r}")
+    else:
+        lines.append("Source configs backfilled with `client`: 0")
     lines.append("")
     lines.append("Per-source doc_count (before -> after):")
     for source_id in sorted(set(report["before_counts"]) | set(report["after_counts"])):

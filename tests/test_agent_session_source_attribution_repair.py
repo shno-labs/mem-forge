@@ -208,3 +208,66 @@ async def test_repair_leaves_non_agent_session_sources_untouched(tmp_path: Path)
         assert await _doc_source(db, codex_doc) == "src-jira-PROJ"
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_repair_backfills_missing_client_key_in_source_config(tmp_path):
+    """Pre-fix sources have config_json without `client`; the scheduled-sync
+    path then builds an unfiltered gene from that stored config and re-pollutes
+    documents on the next cycle. The repair must rewrite each per-client
+    source's config_json so the inferred client is stamped, and a second run
+    must be a no-op."""
+    db = Database(str(tmp_path / "backfill.db"))
+    await db.connect()
+    try:
+        # Seed two per-client agent-session sources with PRE-FIX config (no `client`).
+        await db.db.execute(
+            "INSERT OR REPLACE INTO sources (id, type, name, config, status, last_sync, doc_count, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "src-agent-sessions-codex",
+                AGENT_SESSION_SOURCE_TYPE,
+                "Codex Session",
+                json.dumps({"documents_dir": "/tmp/codex"}),
+                "active",
+                None,
+                0,
+                _LAST_MODIFIED.isoformat(),
+            ),
+        )
+        await db.db.execute(
+            "INSERT OR REPLACE INTO sources (id, type, name, config, status, last_sync, doc_count, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "src-agent-sessions-claude-code",
+                AGENT_SESSION_SOURCE_TYPE,
+                "Claude Code Session",
+                json.dumps({"documents_dir": "/tmp/claude"}),
+                "active",
+                None,
+                0,
+                _LAST_MODIFIED.isoformat(),
+            ),
+        )
+        await db.db.commit()
+
+        report = await repair_agent_session_source_attribution(db)
+        backfilled = report["configs_backfilled"]
+        assert backfilled == {
+            "src-agent-sessions-codex": "codex",
+            "src-agent-sessions-claude-code": "claude-code",
+        }
+
+        # Confirm the configs are now stamped.
+        async with db.db.execute(
+            "SELECT id, config FROM sources WHERE id LIKE 'src-agent-sessions-%' ORDER BY id"
+        ) as cursor:
+            rows = [(r[0], json.loads(r[1])) async for r in cursor]
+        assert rows[0][1]["client"] == "claude-code"
+        assert rows[1][1]["client"] == "codex"
+
+        # Idempotency: a second run finds nothing to backfill.
+        second = await repair_agent_session_source_attribution(db)
+        assert second["configs_backfilled"] == {}
+    finally:
+        await db.close()
