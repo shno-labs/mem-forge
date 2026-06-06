@@ -1960,12 +1960,12 @@ class Database:
             ):
                 scope_clauses.append("AND m.owner_user_id = ?")
                 scope_params.append(writer_owner_user_id)
-            if (
-                writer_visibility == Visibility.WORKSPACE.value
-                and writer_project_key is not None
-            ):
+            if writer_visibility == Visibility.WORKSPACE.value:
+                # NULL project_key is normalized to UNSORTED at persistence
+                # time; resolve the writer side the same way so the candidate
+                # pool stays inside one project boundary.
                 scope_clauses.append("AND m.project_key = ?")
-                scope_params.append(writer_project_key)
+                scope_params.append(writer_project_key or UNSORTED_PROJECT_KEY)
         scope_sql = ("\n              " + "\n              ".join(scope_clauses)) if scope_clauses else ""
         sql = f"""
             SELECT m.*,

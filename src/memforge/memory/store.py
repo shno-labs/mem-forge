@@ -745,12 +745,15 @@ class MemoryStore:
             and writer_owner_user_id != target.owner_user_id
         ):
             return "rejected"
-        if (
-            writer_visibility == Visibility.WORKSPACE.value
-            and writer_project_key is not None
-            and writer_project_key != target.project_key
-        ):
-            return "rejected"
+        if writer_visibility == Visibility.WORKSPACE.value:
+            # NULL project_key is normalized to UNSORTED at persistence time, so
+            # apply the same normalization on both sides of the comparison to
+            # keep the workspace-project boundary symmetric across writers and
+            # targets.
+            expected = writer_project_key or UNSORTED_PROJECT_KEY
+            actual = target.project_key or UNSORTED_PROJECT_KEY
+            if expected != actual:
+                return "rejected"
         await self._emit(
             "source_support_add_attempted",
             "attempted",

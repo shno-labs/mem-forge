@@ -114,3 +114,35 @@ async def test_add_source_support_does_not_cross_workspace_project(tmp_path):
         assert stored.corroboration_count == 1
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_add_source_support_rejects_workspace_writer_with_none_project_against_real_project_target(tmp_path):
+    """A workspace writer with project_key=None gets normalized to UNSORTED on
+    persistence, so it must NOT corroborate a target with project_key="PAY".
+    Currently the writer-None path skips the check, allowing the cross-project edge."""
+    target = Memory(
+        id="m-pay", memory_type="fact", content="x", content_hash=content_hash("x"),
+        visibility=Visibility.WORKSPACE.value, owner_user_id=None,
+        project_key="PAY", tags=[],
+    )
+    db = Database(str(tmp_path / "c2.db"))
+    await db.connect()
+    try:
+        await db.insert_memory(target)
+        adapters = build_sqlite_adapters(db, memory_collection=None)
+        store = MemoryStore(adapters.relational, adapters.keyword, adapters.vector,
+                            embed_cfg={}, dedup_threshold=0.08)
+        outcome = await store.add_source_support(
+            memory_id="m-pay",
+            doc_id="d-noproj",
+            source_type="confluence",
+            writer_visibility=Visibility.WORKSPACE.value,
+            writer_owner_user_id=None,
+            writer_project_key=None,
+        )
+        assert outcome == "rejected"
+        stored = await db.get_memory("m-pay")
+        assert stored.corroboration_count == 1
+    finally:
+        await db.close()
