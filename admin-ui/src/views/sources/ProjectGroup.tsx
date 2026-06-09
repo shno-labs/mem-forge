@@ -11,9 +11,9 @@ import { projectGroupKey } from "./projectGrouping";
 
 const UNMAPPED_GROUP_TITLE = "Unmapped";
 const UNMAPPED_GROUP_DESCRIPTION =
-  "These sources have no project assigned. Open Configure to pick one.";
+  "No project assigned yet. Memories stay searchable until configured.";
 const UNSORTED_GROUP_DESCRIPTION =
-  "Catch-all for memories whose document field didn't match any mapped value.";
+  "Searchable catch-all for memories without a project assignment.";
 
 export function ProjectGroup({
   group,
@@ -30,7 +30,11 @@ export function ProjectGroup({
   const isUnmapped = project === null;
   const isShared = project?.key === SHARED_PROJECT_KEY;
   const isUnsorted = project?.key === UNSORTED_PROJECT_KEY;
-  const title = project ? project.name : UNMAPPED_GROUP_TITLE;
+  const title = isUnsorted
+    ? "Unmapped fallback"
+    : project
+      ? project.name
+      : UNMAPPED_GROUP_TITLE;
   const description = isUnmapped
     ? UNMAPPED_GROUP_DESCRIPTION
     : isUnsorted

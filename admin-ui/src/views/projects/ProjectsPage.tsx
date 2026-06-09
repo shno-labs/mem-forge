@@ -2,16 +2,15 @@ import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, FolderKanban, Loader2, Lock, Plus, Trash2 } from "lucide-react";
+import { Check, FolderKanban, Loader2, Plus, Trash2 } from "lucide-react";
 import client from "@/api/client";
-import { RESERVED_PROJECT_KEYS, isReservedProjectKey } from "@/api/projectKeys";
+import { isReservedProjectKey } from "@/api/projectKeys";
 import type { Project, ProjectKind } from "@/api/types";
 import { AsyncBoundary } from "@/components/admin/AsyncBoundary";
 import { DataSurface } from "@/components/admin/DataSurface";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { CrossProjectBanner } from "@/components/layout/CrossProjectBanner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -42,7 +41,7 @@ import type { ProjectCreateFormState } from "./projectCreateForm";
 
 /**
  * The DELETE /api/projects/{id} response reports how many memories were
- * moved into the unsorted bucket. We read it via a runtime key so the
+ * moved back to the unmapped backlog. We read it via a runtime key so the
  * snake_case wire name never appears as user-facing copy.
  */
 const REBUCKETED_COUNT_FIELD = "rebucketed" + "_count";
@@ -223,20 +222,12 @@ export function ProjectsPage() {
     () => allProjects.filter((project) => !isReservedProjectKey(project.key)),
     [allProjects],
   );
-  const systemProjects = useMemo(
-    () =>
-      RESERVED_PROJECT_KEYS.map((key) =>
-        allProjects.find((project) => project.key === key),
-      ).filter((project): project is Project => project !== undefined),
-    [allProjects],
-  );
-
   return (
     <div className="space-y-4">
       <CrossProjectBanner />
       <PageHeader
         title="Projects"
-        description="Group memories by what you're working on. Pick one as your active project to keep its memories at the top of search."
+        description="Create project labels for the work you want to organize. Sources can stay unmapped until you assign them."
         actions={
           <Button type="button" onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
@@ -252,7 +243,7 @@ export function ProjectsPage() {
         >
           {`Project "${lastDeleteSummary.name}" deleted. ${lastDeleteSummary.movedCount} ${
             lastDeleteSummary.movedCount === 1 ? "memory" : "memories"
-          } moved to the unsorted bucket.`}
+          } moved back to the unmapped backlog.`}
         </div>
       )}
 
@@ -355,47 +346,6 @@ export function ProjectsPage() {
           </div>
         </AsyncBoundary>
       </DataSurface>
-
-      {systemProjects.length > 0 && (
-        <details className="rounded-md border border-border/60 bg-muted/20">
-          <summary className="cursor-pointer list-none px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">
-            <span className="inline-flex items-center gap-2">
-              <Lock className="size-3.5" />
-              System buckets (built-in)
-            </span>
-          </summary>
-          <div className="space-y-2 px-4 pt-1 pb-3">
-            <p className="text-xs text-muted-foreground">
-              Built-in buckets used internally. They cannot be edited or deleted.
-            </p>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="w-32">Created</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {systemProjects.map((project) => (
-                    <TableRow key={project.id} className="text-muted-foreground">
-                      <TableCell className="font-mono text-xs font-medium">
-                        {project.key}
-                      </TableCell>
-                      <TableCell className="flex items-center gap-2">
-                        <span>{project.name}</span>
-                        <Badge variant="secondary">Built-in</Badge>
-                      </TableCell>
-                      <TableCell>{timeAgo(project.created_at)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        </details>
-      )}
 
       <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
