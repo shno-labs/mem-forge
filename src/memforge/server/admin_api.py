@@ -90,6 +90,10 @@ from memforge.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
+SOURCE_ACTIVE_STATUS = "active"
+SOURCE_PAUSED_STATUS = "paused"
+SOURCE_STATUSES = {SOURCE_ACTIVE_STATUS, SOURCE_PAUSED_STATUS}
+
 
 def _workspace_default_scope(request: Request, *, include_private: bool):
     """Build the workspace-default AccessScope for an admin-API HTTP read.
@@ -570,6 +574,19 @@ def _validate_source_project_binding(binding: dict | None) -> None:
             raise ValueError("field project binding requires field and default")
         return
     raise ValueError("project binding mode must be fixed or by_field")
+
+
+def _validate_source_status(status: str | None) -> None:
+    if status is None:
+        return
+    if status not in SOURCE_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid source status: "
+                f"{status}. Expected one of {', '.join(sorted(SOURCE_STATUSES))}"
+            ),
+        )
 
 
 class AgentSessionDocumentRequest(BaseModel):
@@ -3240,6 +3257,7 @@ def create_admin_app(
         if not existing:
             raise HTTPException(status_code=404, detail="Source not found")
 
+        _validate_source_status(req.status)
         name = req.name or existing["name"]
         if req.config is not None:
             try:
@@ -3284,6 +3302,7 @@ def create_admin_app(
             type=existing["type"],
             name=name,
             config_json=json.dumps(src_config),
+            status=req.status if _request_includes_field(req, "status") else None,
             project_binding=(
                 req.project_binding
                 if _request_includes_field(req, "project_binding")
@@ -3337,6 +3356,8 @@ def create_admin_app(
         source = await db.get_source(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
+        if source.get("status") == SOURCE_PAUSED_STATUS:
+            raise HTTPException(status_code=400, detail="Source is paused")
 
         try:
             sync_service.start_source(source_id, force_full_sync=bool(req and req.force_full_sync))
@@ -3354,6 +3375,8 @@ def create_admin_app(
         source = await db.get_source(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
+        if source.get("status") == SOURCE_PAUSED_STATUS:
+            raise HTTPException(status_code=400, detail="Source is paused")
 
         if sync_service.is_running(source_id):
             raise HTTPException(status_code=409, detail="Sync already running for this source")
@@ -3385,6 +3408,8 @@ def create_admin_app(
         source = await db.get_source(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
+        if source.get("status") == SOURCE_PAUSED_STATUS:
+            raise HTTPException(status_code=400, detail="Source is paused")
 
         try:
             result = await submit_local_markdown_document(

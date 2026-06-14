@@ -52,6 +52,8 @@ export function SourceRow({
   onShowDetails: () => void;
   actionsMenu: ReactNode;
 }) {
+  const isPaused = source.status === "paused";
+
   return (
     <div className="space-y-3 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -127,20 +129,20 @@ export function SourceRow({
             </Button>
           )}
           {!isManaged && (
-            <Button type="button" disabled={isSyncing || isDeleting} onClick={onSync}>
+            <Button type="button" disabled={isSyncing || isDeleting || isPaused} onClick={onSync}>
               {isSyncing ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <Play className="size-4" />
               )}
-              {isSyncing ? "Syncing" : sourceActionLayout.primary[1].label}
+              {isSyncing ? "Syncing" : isPaused ? "Paused" : sourceActionLayout.primary[1].label}
             </Button>
           )}
           {actionsMenu}
         </div>
       </div>
 
-      <SyncStatusBar sync={source.sync} itemLabel={itemLabel} onRetry={onSync} />
+      <SyncStatusBar sync={source.sync} itemLabel={itemLabel} onRetry={isPaused ? undefined : onSync} />
     </div>
   );
 }

@@ -413,6 +413,102 @@ def test_admin_source_update_preserves_encrypted_pat_when_blank(tmp_path, monkey
     assert source_payload["config"]["pat_configured"] is True
 
 
+def test_admin_source_update_persists_status(tmp_path, monkeypatch):
+    from memforge.server.admin_api import create_admin_app
+
+    monkeypatch.setenv("MEMFORGE_SECRET_KEY", TEST_SOURCE_KEY)
+    cfg = _config(tmp_path)
+    app = create_admin_app(config=cfg)
+
+    with TestClient(app) as client:
+        create_response = client.post(
+            "/api/sources",
+            json={
+                "type": "confluence",
+                "name": "Engineering Wiki",
+                "config": {
+                    "base_url": "https://wiki.example.test",
+                    "spaces": ["PAY"],
+                    "pat": "wiki-pat-secret",
+                },
+            },
+        )
+        assert create_response.status_code == 200
+        source_id = create_response.json()["id"]
+
+        update_response = client.put(
+            f"/api/sources/{source_id}",
+            json={"status": "paused"},
+        )
+        sources_response = client.get("/api/sources")
+
+    assert update_response.status_code == 200
+    source_payload = next(s for s in sources_response.json()["data"] if s["id"] == source_id)
+    assert source_payload["status"] == "paused"
+
+
+def test_admin_source_update_rejects_unknown_status(tmp_path, monkeypatch):
+    from memforge.server.admin_api import create_admin_app
+
+    monkeypatch.setenv("MEMFORGE_SECRET_KEY", TEST_SOURCE_KEY)
+    cfg = _config(tmp_path)
+    app = create_admin_app(config=cfg)
+
+    with TestClient(app) as client:
+        create_response = client.post(
+            "/api/sources",
+            json={
+                "type": "confluence",
+                "name": "Engineering Wiki",
+                "config": {
+                    "base_url": "https://wiki.example.test",
+                    "spaces": ["PAY"],
+                    "pat": "wiki-pat-secret",
+                },
+            },
+        )
+        assert create_response.status_code == 200
+        source_id = create_response.json()["id"]
+
+        update_response = client.put(
+            f"/api/sources/{source_id}",
+            json={"status": "disabled"},
+        )
+
+    assert update_response.status_code == 400
+    assert "Invalid source status" in update_response.json()["detail"]
+
+
+def test_admin_source_sync_rejects_paused_source(tmp_path, monkeypatch):
+    from memforge.server.admin_api import create_admin_app
+
+    monkeypatch.setenv("MEMFORGE_SECRET_KEY", TEST_SOURCE_KEY)
+    cfg = _config(tmp_path)
+    app = create_admin_app(config=cfg)
+
+    with TestClient(app) as client:
+        create_response = client.post(
+            "/api/sources",
+            json={
+                "type": "confluence",
+                "name": "Engineering Wiki",
+                "config": {
+                    "base_url": "https://wiki.example.test",
+                    "spaces": ["PAY"],
+                    "pat": "wiki-pat-secret",
+                },
+            },
+        )
+        assert create_response.status_code == 200
+        source_id = create_response.json()["id"]
+        assert client.put(f"/api/sources/{source_id}", json={"status": "paused"}).status_code == 200
+
+        sync_response = client.post(f"/api/sources/{source_id}/sync")
+
+    assert sync_response.status_code == 400
+    assert sync_response.json()["detail"] == "Source is paused"
+
+
 def test_admin_source_save_rejects_missing_tls_ca_bundle(tmp_path, monkeypatch):
     from memforge.server.admin_api import create_admin_app
 
