@@ -1100,6 +1100,37 @@ def test_post_json_accepts_admin_api_url_with_or_without_api_suffix(monkeypatch)
     ]
 
 
+def test_post_json_targets_hosted_workspace_when_configured(monkeypatch):
+    from memforge import hook_adapter
+
+    urls: list[str] = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self) -> bytes:
+            return b"{}"
+
+    def fake_urlopen(request, timeout: float):
+        urls.append(request.full_url)
+        return FakeResponse()
+
+    monkeypatch.setenv("MEMFORGE_WORKSPACE_ID", "mount_tai")
+    monkeypatch.setattr(hook_adapter.urllib.request, "urlopen", fake_urlopen)
+
+    hook_adapter._post_json("/api/hooks/context", {}, api_url="https://memforge.example", timeout=1)
+    hook_adapter._post_json("/api/agent-sessions/windows", {}, api_url="https://memforge.example/api", timeout=1)
+
+    assert urls == [
+        "https://memforge.example/api/workspaces/mount_tai/api/hooks/context",
+        "https://memforge.example/api/workspaces/mount_tai/api/agent-sessions/windows",
+    ]
+
+
 def test_post_json_includes_configured_bearer_token(monkeypatch):
     from memforge import hook_adapter
 
