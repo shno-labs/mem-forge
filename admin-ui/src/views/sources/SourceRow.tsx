@@ -250,23 +250,35 @@ function SubscriptionToggle({
   pending: boolean;
   onChange: (enabled: boolean) => void;
 }) {
+  const label = pending ? "Saving..." : enabled ? "Enabled for me" : "Disabled for me";
+
   return (
-    <label
-      className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-1 text-xs"
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={`${enabled ? "Disable" : "Enable"} "${sourceName}" for me`}
+      disabled={pending}
+      onClick={() => onChange(!enabled)}
+      className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       title={`Toggle whether memories from "${sourceName}" appear in your views`}
     >
-      <input
-        type="checkbox"
-        className="size-3.5"
-        aria-label={`Enable "${sourceName}" for me`}
-        checked={enabled}
-        disabled={pending}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      <span className="text-muted-foreground">
-        {pending ? "Saving..." : "Enabled for me"}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "relative inline-flex h-4 w-7 shrink-0 rounded-full border transition-colors",
+          enabled ? "border-emerald-600 bg-emerald-600" : "border-border bg-muted",
+        )}
+      >
+        <span
+          className={cn(
+            "absolute top-0.5 size-3 rounded-full bg-background shadow-sm transition-transform",
+            enabled ? "translate-x-3.5" : "translate-x-0.5",
+          )}
+        />
       </span>
-    </label>
+      <span>{label}</span>
+    </button>
   );
 }
 
