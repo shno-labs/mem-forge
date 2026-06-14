@@ -266,14 +266,14 @@ function SubscriptionToggle({
       <span
         aria-hidden="true"
         className={cn(
-          "relative inline-flex h-4 w-7 shrink-0 rounded-full border transition-colors",
+          "relative inline-flex h-4 w-8 shrink-0 rounded-full border transition-colors",
           enabled ? "border-emerald-600 bg-emerald-600" : "border-border bg-muted",
         )}
       >
         <span
           className={cn(
-            "absolute top-0.5 size-3 rounded-full bg-background shadow-sm transition-transform",
-            enabled ? "translate-x-3.5" : "translate-x-0.5",
+            "absolute left-0.5 top-0.5 size-3 rounded-full bg-background shadow-sm transition-transform",
+            enabled && "translate-x-4",
           )}
         />
       </span>
