@@ -509,6 +509,118 @@ def test_admin_source_sync_rejects_paused_source(tmp_path, monkeypatch):
     assert sync_response.json()["detail"] == "Source is paused"
 
 
+@pytest.mark.asyncio
+async def test_agent_session_document_intake_rejects_paused_source(db, tmp_path):
+    from memforge.agent_sessions import agent_session_source_id
+    from memforge.server.admin_api import create_admin_app
+
+    source_id = agent_session_source_id("codex")
+    await db.upsert_source(
+        id=source_id,
+        type="agent_session",
+        name="Codex Session",
+        config_json=json.dumps({"documents_dir": str(tmp_path / "sessions"), "client": "codex"}),
+        status="paused",
+    )
+
+    app = create_admin_app(db=db, config=_config(tmp_path))
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/agent-sessions/documents",
+            json={
+                "client": "codex",
+                "session_id": "session-1",
+                "trigger": "compact",
+                "workspace": "/repo",
+                "document_markdown": "# Summary\n\nUseful durable notes.",
+                "process_now": True,
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Source is paused"
+
+
+@pytest.mark.asyncio
+async def test_agent_session_window_intake_rejects_paused_source_before_llm(
+    db,
+    tmp_path,
+):
+    from memforge.agent_sessions import agent_session_source_id
+    from memforge.server.admin_api import create_admin_app
+
+    source_id = agent_session_source_id("claude-code")
+    await db.upsert_source(
+        id=source_id,
+        type="agent_session",
+        name="Claude Code Session",
+        config_json=json.dumps({"documents_dir": str(tmp_path / "sessions"), "client": "claude-code"}),
+        status="paused",
+    )
+
+    class FailingWindowClient:
+        async def generate_agent_session_package(self, *args, **kwargs):
+            raise AssertionError("paused source should be rejected before LLM work")
+
+    app = create_admin_app(db=db, config=_config(tmp_path))
+    app.state.agent_session_window_client = FailingWindowClient()
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/agent-sessions/windows",
+            json={
+                "client": "claude-code",
+                "session_id": "session-1",
+                "trigger": "compact",
+                "workspace": "/repo",
+                "events": [{"kind": "decision", "text": "Keep the source paused."}],
+                "process_now": False,
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Source is paused"
+
+
+@pytest.mark.asyncio
+async def test_sync_service_rejects_paused_source_at_start_boundary(db, tmp_path):
+    from memforge.runtime import SourcePausedError, SyncService
+
+    source_id = "src-paused-boundary"
+    await db.upsert_source(
+        id=source_id,
+        type="confluence",
+        name="Paused Boundary",
+        config_json=json.dumps({"base_url": "https://wiki.example.test", "spaces": ["PAY"]}),
+        status="paused",
+    )
+
+    sync_service = SyncService(db, _config(tmp_path))
+
+    with pytest.raises(SourcePausedError):
+        await sync_service.start_source(source_id)
+
+    assert not sync_service.is_running(source_id)
+
+
+@pytest.mark.asyncio
+async def test_sync_service_does_not_queue_paused_source(db, tmp_path):
+    from memforge.runtime import SyncService
+
+    source_id = "src-paused-queued"
+    await db.upsert_source(
+        id=source_id,
+        type="confluence",
+        name="Paused Queued",
+        config_json=json.dumps({"base_url": "https://wiki.example.test", "spaces": ["PAY"]}),
+        status="paused",
+    )
+
+    sync_service = SyncService(db, _config(tmp_path))
+
+    assert await sync_service.request_source_sync(source_id) is False
+    assert source_id not in sync_service.queued_tasks
+
+
 def test_admin_source_save_rejects_missing_tls_ca_bundle(tmp_path, monkeypatch):
     from memforge.server.admin_api import create_admin_app
 
@@ -1832,7 +1944,7 @@ async def test_force_resync_resets_cursor_and_starts_source_sync(db, tmp_path):
         def is_running(self, source_id: str):
             return False
 
-        def start_source(self, started_source_id: str):
+        async def start_source(self, started_source_id: str):
             self.started.append(started_source_id)
 
         async def shutdown(self):

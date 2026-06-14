@@ -71,6 +71,7 @@ from memforge.runtime import (
     RuntimeProvider,
     SyncAlreadyRunningError,
     SyncService,
+    SourcePausedError,
 )
 from memforge.scheduler import SyncScheduler
 from memforge.source_secrets import (
@@ -92,6 +93,8 @@ logger = logging.getLogger(__name__)
 
 SOURCE_ACTIVE_STATUS = "active"
 SOURCE_PAUSED_STATUS = "paused"
+# Source lifecycle is deliberately closed for now. A paused source keeps its
+# configuration and existing memories but cannot accept new sync work.
 SOURCE_STATUSES = {SOURCE_ACTIVE_STATUS, SOURCE_PAUSED_STATUS}
 
 
@@ -587,6 +590,16 @@ def _validate_source_status(status: str | None) -> None:
                 f"{status}. Expected one of {', '.join(sorted(SOURCE_STATUSES))}"
             ),
         )
+
+
+def _source_paused_http_error() -> HTTPException:
+    return HTTPException(status_code=400, detail="Source is paused")
+
+
+async def _raise_if_source_paused(db: Database, source_id: str) -> None:
+    source = await db.get_source(source_id)
+    if source and source.get("status") == SOURCE_PAUSED_STATUS:
+        raise _source_paused_http_error()
 
 
 class AgentSessionDocumentRequest(BaseModel):
@@ -3356,13 +3369,15 @@ def create_admin_app(
         source = await db.get_source(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
-        if source.get("status") == SOURCE_PAUSED_STATUS:
-            raise HTTPException(status_code=400, detail="Source is paused")
-
         try:
-            sync_service.start_source(source_id, force_full_sync=bool(req and req.force_full_sync))
+            await sync_service.start_source(
+                source_id,
+                force_full_sync=bool(req and req.force_full_sync),
+            )
         except SyncAlreadyRunningError:
             raise HTTPException(status_code=409, detail="Sync already running for this source")
+        except SourcePausedError:
+            raise _source_paused_http_error()
         return {"ok": True, "message": "Sync started", "source_id": source_id}
 
     @source_router.post("/{source_id}/force-resync")
@@ -3375,17 +3390,16 @@ def create_admin_app(
         source = await db.get_source(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
-        if source.get("status") == SOURCE_PAUSED_STATUS:
-            raise HTTPException(status_code=400, detail="Source is paused")
-
         if sync_service.is_running(source_id):
             raise HTTPException(status_code=409, detail="Sync already running for this source")
 
         await db.reset_source_sync_cursor(source_id)
         try:
-            sync_service.start_source(source_id)
+            await sync_service.start_source(source_id)
         except SyncAlreadyRunningError:
             raise HTTPException(status_code=409, detail="Sync already running for this source")
+        except SourcePausedError:
+            raise _source_paused_http_error()
         return {"ok": True, "message": "Force resync started", "source_id": source_id}
 
     @source_router.post("/{source_id}/adapter/documents")
@@ -3431,10 +3445,12 @@ def create_admin_app(
         sync_started = False
         if req.process_now:
             try:
-                sync_service.start_source(source_id)
+                await sync_service.start_source(source_id)
                 sync_started = True
             except SyncAlreadyRunningError:
                 sync_started = True
+            except SourcePausedError:
+                raise _source_paused_http_error()
 
         return {**result, "sync_started": sync_started}
 
@@ -3450,7 +3466,9 @@ def create_admin_app(
         sync_service: SyncService = Depends(get_sync_service),
     ):
         """Submit a client-generated agent session summary document."""
-        from memforge.agent_sessions import submit_agent_session_document
+        from memforge.agent_sessions import agent_session_source_id, submit_agent_session_document
+
+        await _raise_if_source_paused(db, agent_session_source_id(req.client))
 
         try:
             result = await submit_agent_session_document(
@@ -3478,10 +3496,12 @@ def create_admin_app(
         sync_started = False
         if req.process_now:
             try:
-                sync_service.start_source(result["source_id"])
+                await sync_service.start_source(result["source_id"])
                 sync_started = True
             except SyncAlreadyRunningError:
                 sync_started = True
+            except SourcePausedError:
+                raise _source_paused_http_error()
 
         return {
             **result,
@@ -3508,10 +3528,12 @@ def create_admin_app(
         sync_service: SyncService = Depends(get_sync_service),
     ):
         """Submit a client transcript window for server-side package generation."""
-        from memforge.agent_sessions import submit_agent_session_window
+        from memforge.agent_sessions import agent_session_source_id, submit_agent_session_window
 
         if req.schema_version != "agent-session-window/v1":
             raise HTTPException(status_code=400, detail=f"unsupported schema_version: {req.schema_version}")
+
+        await _raise_if_source_paused(db, agent_session_source_id(req.client))
 
         structured_client = getattr(request.app.state, "agent_session_window_client", None)
         if structured_client is None:
@@ -3548,12 +3570,14 @@ def create_admin_app(
         sync_queued = False
         if result.get("result") == "package_created" and req.process_now:
             try:
-                sync_service.start_source(result["source_id"])
+                await sync_service.start_source(result["source_id"])
                 sync_started = True
             except SyncAlreadyRunningError:
                 sync_started = True
+            except SourcePausedError:
+                raise _source_paused_http_error()
         elif result.get("result") == "package_created":
-            sync_queued = sync_service.request_source_sync(result["source_id"])
+            sync_queued = await sync_service.request_source_sync(result["source_id"])
 
         return {
             **result,

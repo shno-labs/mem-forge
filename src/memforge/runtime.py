@@ -39,6 +39,10 @@ class SyncAlreadyRunningError(RuntimeError):
     """Raised when a source already has an active sync task."""
 
 
+class SourcePausedError(RuntimeError):
+    """Raised when sync is requested for a paused source."""
+
+
 @dataclass
 class EffectiveLlmConfig:
     enrichment_model: str
@@ -369,15 +373,28 @@ class SyncService:
         task = self.tasks.get(source_id)
         return bool(task and not task.done())
 
-    def start_source(self, source_id: str, *, force_full_sync: bool = False) -> asyncio.Task:
+    async def _ensure_source_can_sync(self, source_id: str) -> dict:
+        source = await self.db.get_source(source_id)
+        if source is None:
+            raise ValueError(f"Source not found: {source_id}")
+        if source.get("status") == "paused":
+            raise SourcePausedError(f"Source is paused: {source_id}")
+        return source
+
+    async def start_source(self, source_id: str, *, force_full_sync: bool = False) -> asyncio.Task:
+        await self._ensure_source_can_sync(source_id)
         if self.is_running(source_id):
             raise SyncAlreadyRunningError(f"Sync already running for {source_id}")
         task = asyncio.create_task(self._run_source_task(source_id, force_full_sync=force_full_sync))
         self.tasks[source_id] = task
         return task
 
-    def request_source_sync(self, source_id: str, *, delay_seconds: float = 1.0) -> bool:
+    async def request_source_sync(self, source_id: str, *, delay_seconds: float = 1.0) -> bool:
         """Queue one service-owned sync pass for a source, coalescing duplicates."""
+        try:
+            await self._ensure_source_can_sync(source_id)
+        except SourcePausedError:
+            return False
         queued = self.queued_tasks.get(source_id)
         if queued and not queued.done():
             return False
@@ -392,7 +409,7 @@ class SyncService:
             if active and not active.done():
                 await active
             try:
-                self.start_source(source_id)
+                await self.start_source(source_id)
             except SyncAlreadyRunningError:
                 return
         except asyncio.CancelledError:
@@ -409,7 +426,8 @@ class SyncService:
                 continue
             if self.is_running(source["id"]):
                 continue
-            await self.start_source(source["id"])
+            task = await self.start_source(source["id"])
+            await task
 
     async def retire_expired_memories(self) -> int:
         runtime = await self.runtime_provider.build_sync_runtime(self.db, self.config)

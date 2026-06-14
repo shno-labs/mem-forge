@@ -299,6 +299,7 @@ export function SourcesPage() {
                         perGroupMemoryCount={memory_count}
                         isSyncing={isSyncing}
                         isDeleting={isDeleting}
+                        isUpdatingStatus={isUpdatingStatus}
                         canConfigure={canConfigure}
                         isManaged={isManaged}
                         sourceLabel={sourceLabel}
@@ -312,6 +313,9 @@ export function SourcesPage() {
                           })
                         }
                         onSync={() => syncSource.mutate({ sourceId: source.id })}
+                        onResume={() =>
+                          setSourceStatus.mutate({ sourceId: source.id, status: "active" })
+                        }
                         onShowDetails={() => setDetailsSource(source)}
                         actionsMenu={
                           <SourceActionsMenu
@@ -337,6 +341,7 @@ export function SourcesPage() {
                             }}
                             disableForceResync={isSyncing || isDeleting || source.status === "paused"}
                             disableToggleStatus={isSyncing || isDeleting || isUpdatingStatus}
+                            isUpdatingStatus={isUpdatingStatus}
                           />
                         }
                       />
@@ -417,6 +422,7 @@ function SourceActionsMenu({
   onToggleStatus,
   disableForceResync,
   disableToggleStatus,
+  isUpdatingStatus,
 }: {
   source: Source;
   open: boolean;
@@ -426,6 +432,7 @@ function SourceActionsMenu({
   onToggleStatus: () => void;
   disableForceResync: boolean;
   disableToggleStatus: boolean;
+  isUpdatingStatus: boolean;
 }) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -437,6 +444,9 @@ function SourceActionsMenu({
   const isPaused = source.status === "paused";
   const toggleStatusLabel = isPaused ? "Resume source" : "Pause source";
   const ToggleStatusIcon = isPaused ? Play : Pause;
+  const forceResyncDisabledHint = isPaused
+    ? "Resume the source first to refresh."
+    : undefined;
 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current || !menuRef.current) return;
@@ -515,7 +525,11 @@ function SourceActionsMenu({
             className="flex w-full cursor-pointer items-start gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
             onClick={onToggleStatus}
           >
-            <ToggleStatusIcon className="mt-0.5 size-4" />
+            {isUpdatingStatus ? (
+              <Loader2 className="mt-0.5 size-4 animate-spin" />
+            ) : (
+              <ToggleStatusIcon className="mt-0.5 size-4" />
+            )}
             <span>
               <span className="block font-medium text-foreground">{toggleStatusLabel}</span>
               <span className="mt-0.5 block text-xs">{toggleStatus?.description}</span>
@@ -525,13 +539,18 @@ function SourceActionsMenu({
             type="button"
             role="menuitem"
             disabled={disableForceResync}
+            title={forceResyncDisabledHint}
             className="flex w-full cursor-pointer items-start gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
             onClick={onForceResync}
           >
             <RefreshCw className="mt-0.5 size-4" />
             <span>
               <span className="block font-medium text-foreground">{forceResync?.label}</span>
-              <span className="mt-0.5 block text-xs">{forceResync?.description}</span>
+              <span className="mt-0.5 block text-xs">
+                {isPaused
+                  ? "Resume the source first to look for new, changed, or removed documents."
+                  : forceResync?.description}
+              </span>
             </span>
           </button>
           {canDelete && (
