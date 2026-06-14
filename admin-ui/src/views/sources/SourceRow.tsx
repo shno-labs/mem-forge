@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SourceIcon } from "@/components/sources/SourceIcon";
+import { cn } from "@/lib/utils";
 import { timeAgo } from "@/utils/date";
 import { sourceActionLayout } from "./sourceActions";
 
