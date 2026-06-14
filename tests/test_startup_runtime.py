@@ -621,6 +621,46 @@ async def test_sync_service_does_not_queue_paused_source(db, tmp_path):
     assert source_id not in sync_service.queued_tasks
 
 
+@pytest.mark.asyncio
+async def test_queued_sync_stops_quietly_if_source_is_paused_before_execution(
+    db, tmp_path, monkeypatch
+):
+    import memforge.runtime as runtime
+    from memforge.runtime import SyncService
+
+    source_id = "src-paused-after-queue"
+    await db.upsert_source(
+        id=source_id,
+        type="confluence",
+        name="Paused After Queue",
+        config_json=json.dumps({"base_url": "https://wiki.example.test", "spaces": ["PAY"]}),
+        status="active",
+    )
+
+    logged_errors: list[tuple] = []
+    monkeypatch.setattr(
+        runtime.logger,
+        "exception",
+        lambda *args, **kwargs: logged_errors.append((args, kwargs)),
+    )
+    sync_service = SyncService(db, _config(tmp_path))
+
+    assert await sync_service.request_source_sync(source_id, delay_seconds=0) is True
+    await db.upsert_source(
+        id=source_id,
+        type="confluence",
+        name="Paused After Queue",
+        config_json=json.dumps({"base_url": "https://wiki.example.test", "spaces": ["PAY"]}),
+        status="paused",
+    )
+    queued = sync_service.queued_tasks[source_id]
+    await queued
+
+    assert logged_errors == []
+    assert source_id not in sync_service.queued_tasks
+    assert not sync_service.is_running(source_id)
+
+
 def test_admin_source_save_rejects_missing_tls_ca_bundle(tmp_path, monkeypatch):
     from memforge.server.admin_api import create_admin_app
 

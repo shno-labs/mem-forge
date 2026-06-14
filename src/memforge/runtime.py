@@ -595,7 +595,7 @@ class SyncService:
                 await active
             try:
                 await self.start_source(source_id)
-            except SyncAlreadyRunningError:
+            except (SourcePausedError, SyncAlreadyRunningError):
                 return
         except asyncio.CancelledError:
             raise
