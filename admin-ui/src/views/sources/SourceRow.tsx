@@ -5,8 +5,8 @@ import { StatusDot } from "@/components/admin/StatusBadge";
 import { SyncStatusBar } from "@/components/admin/SyncStatusBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { SourceIcon } from "@/components/sources/SourceIcon";
-import { cn } from "@/lib/utils";
 import { timeAgo } from "@/utils/date";
 import { sourceActionLayout } from "./sourceActions";
 
@@ -253,32 +253,18 @@ function SubscriptionToggle({
   const label = pending ? "Saving..." : enabled ? "Enabled for me" : "Disabled for me";
 
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={enabled}
-      aria-label={`${enabled ? "Disable" : "Enable"} "${sourceName}" for me`}
-      disabled={pending}
-      onClick={() => onChange(!enabled)}
-      className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+    <label
+      className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 has-data-[disabled]:cursor-not-allowed has-data-[disabled]:opacity-60"
       title={`Toggle whether memories from "${sourceName}" appear in your views`}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "relative inline-flex h-4 w-8 shrink-0 rounded-full border transition-colors",
-          enabled ? "border-emerald-600 bg-emerald-600" : "border-border bg-muted",
-        )}
-      >
-        <span
-          className={cn(
-            "absolute left-0.5 top-0.5 size-3 rounded-full bg-background shadow-sm transition-transform",
-            enabled && "translate-x-4",
-          )}
-        />
-      </span>
+      <Switch
+        aria-label={`${enabled ? "Disable" : "Enable"} "${sourceName}" for me`}
+        checked={enabled}
+        disabled={pending}
+        onCheckedChange={onChange}
+      />
       <span>{label}</span>
-    </button>
+    </label>
   );
 }
 
