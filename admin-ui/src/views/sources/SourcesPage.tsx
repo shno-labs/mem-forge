@@ -149,6 +149,58 @@ export function SourcesPage() {
     },
   });
 
+  const updateSourceSubscription = useMutation({
+    mutationFn: ({ sourceId, enabled }: { sourceId: string; enabled: boolean }) =>
+      client.put(`/api/sources/${sourceId}/subscription`, { enabled }),
+    onMutate: async ({ sourceId, enabled }) => {
+      await queryClient.cancelQueries({ queryKey: ["sources"] });
+      const previous = queryClient.getQueryData<SourcesResponse | Source[]>(["sources"]);
+      const previousSources = normalizeSources(previous);
+      const previousEnabled = previousSources.find((source) => source.id === sourceId)?.enabled_for_me;
+
+      queryClient.setQueryData<SourcesResponse | Source[] | undefined>(
+        ["sources"],
+        (current) => {
+          if (!current) return current;
+          const apply = (sources: Source[]): Source[] =>
+            sources.map((source) =>
+              source.id === sourceId ? { ...source, enabled_for_me: enabled } : source,
+            );
+          if (Array.isArray(current)) return apply(current);
+          if (Array.isArray(current.data)) return { ...current, data: apply(current.data) };
+          return current;
+        },
+      );
+      return { sourceId, previousEnabled };
+    },
+    onError: (_error, _variables, context) => {
+      if (!context || context.previousEnabled === undefined) {
+        return;
+      }
+      const restoredEnabled = context.previousEnabled;
+      queryClient.setQueryData<SourcesResponse | Source[] | undefined>(
+        ["sources"],
+        (current) => {
+          if (!current) return current;
+          const apply = (sources: Source[]): Source[] =>
+            sources.map((source) =>
+              source.id === context.sourceId
+                ? { ...source, enabled_for_me: restoredEnabled }
+                : source,
+            );
+          if (Array.isArray(current)) return apply(current);
+          if (Array.isArray(current.data)) return { ...current, data: apply(current.data) };
+          return current;
+        },
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["sources"] });
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+
   const sources = normalizeSources(sourcesQuery.data);
   const genes = genesQuery.data ?? [];
   const geneByName = new Map(genes.map((gene) => [gene.name, gene]));
@@ -287,6 +339,10 @@ export function SourcesPage() {
                         perGroupMemoryCount={memory_count}
                         isSyncing={isSyncing}
                         isDeleting={isDeleting}
+                        isUpdatingSubscription={
+                          updateSourceSubscription.isPending &&
+                          updateSourceSubscription.variables?.sourceId === source.id
+                        }
                         canConfigure={canConfigure}
                         isManaged={isManaged}
                         sourceLabel={sourceLabel}
@@ -300,6 +356,9 @@ export function SourcesPage() {
                           })
                         }
                         onSync={() => syncSource.mutate({ sourceId: source.id })}
+                        onToggleSubscription={(enabled) =>
+                          updateSourceSubscription.mutate({ sourceId: source.id, enabled })
+                        }
                         onShowDetails={() => setDetailsSource(source)}
                         actionsMenu={
                           <SourceActionsMenu

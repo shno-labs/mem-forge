@@ -28,6 +28,7 @@ export function SourceRow({
   perGroupMemoryCount,
   isSyncing,
   isDeleting,
+  isUpdatingSubscription,
   canConfigure,
   isManaged,
   sourceLabel,
@@ -35,6 +36,7 @@ export function SourceRow({
   authSessionLabel,
   onConfigure,
   onSync,
+  onToggleSubscription,
   onShowDetails,
   actionsMenu,
 }: {
@@ -42,6 +44,7 @@ export function SourceRow({
   perGroupMemoryCount: number;
   isSyncing: boolean;
   isDeleting: boolean;
+  isUpdatingSubscription: boolean;
   canConfigure: boolean;
   isManaged: boolean;
   sourceLabel: SourceRowLabels;
@@ -49,9 +52,12 @@ export function SourceRow({
   authSessionLabel: (status: string) => string;
   onConfigure: () => void;
   onSync: () => void;
+  onToggleSubscription: (enabled: boolean) => void;
   onShowDetails: () => void;
   actionsMenu: ReactNode;
 }) {
+  const enabledLabel = source.enabled_for_me ? "Enabled for me" : "Disabled for me";
+
   return (
     <div className="space-y-3 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -64,6 +70,7 @@ export function SourceRow({
               <Badge variant={source.status === "active" ? "secondary" : "outline"}>
                 {source.status}
               </Badge>
+              {!source.enabled_for_me && <Badge variant="outline">Disabled for me</Badge>}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               {sourceLabel.name}
@@ -101,7 +108,44 @@ export function SourceRow({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 sm:shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:shrink-0">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={source.enabled_for_me}
+            aria-busy={isUpdatingSubscription}
+            aria-label={source.enabled_for_me ? "Disable source for me" : "Enable source for me"}
+            title={
+              source.enabled_for_me
+                ? "This shared source is part of your memory and search context. Turn off to mute it for yourself only — your teammates are not affected."
+                : "This shared source is muted for you only. Turn on to include it in your memory and search context — your teammates are not affected."
+            }
+            disabled={isDeleting || isUpdatingSubscription}
+            onClick={() => onToggleSubscription(!source.enabled_for_me)}
+            className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2 text-xs font-medium text-muted-foreground transition-colors outline-none hover:border-foreground/20 hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span
+              aria-hidden="true"
+              className={
+                source.enabled_for_me
+                  ? "relative inline-flex h-4 w-7 items-center rounded-full bg-emerald-500 transition-colors"
+                  : "relative inline-flex h-4 w-7 items-center rounded-full bg-muted-foreground/30 transition-colors"
+              }
+            >
+              {isUpdatingSubscription ? (
+                <Loader2 className="absolute left-1/2 top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 animate-spin text-background" />
+              ) : (
+                <span
+                  className={
+                    source.enabled_for_me
+                      ? "absolute right-0.5 top-0.5 size-3 rounded-full bg-background shadow-sm transition-transform"
+                      : "absolute left-0.5 top-0.5 size-3 rounded-full bg-background shadow-sm transition-transform"
+                  }
+                />
+              )}
+            </span>
+            <span className="hidden lg:inline">{enabledLabel}</span>
+          </button>
           {isManaged && (
             <Button
               type="button"

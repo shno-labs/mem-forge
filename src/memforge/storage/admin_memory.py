@@ -14,6 +14,7 @@ class MemoryAdminListFilters:
     memory_type: str | None = None
     status: str | None = None
     source: str | None = None
+    disabled_source_ids: tuple[str, ...] = ()
     project: str | None = None
     search: str | None = None
 

@@ -15,10 +15,14 @@ def _config(tmp_path) -> AppConfig:
 
 def test_source_list_route_uses_storage_neutral_admin_reader(tmp_path):
     class FakeSourceReader:
+        def __init__(self) -> None:
+            self.user_id: str | None = None
+
         async def get_schedule_config(self) -> dict:
             return {"enabled": False}
 
-        async def list_sources(self) -> list[dict]:
+        async def list_sources_for_user(self, user_id: str) -> list[dict]:
+            self.user_id = user_id
             return [
                 {
                     "id": "src-neutral",
@@ -30,6 +34,7 @@ def test_source_list_route_uses_storage_neutral_admin_reader(tmp_path):
                     "doc_count": 99,
                     "created_at": "2026-06-13T00:00:00+00:00",
                     "updated_at": "2026-06-13T00:00:00+00:00",
+                    "enabled_for_me": False,
                 }
             ]
 
@@ -60,14 +65,21 @@ def test_source_list_route_uses_storage_neutral_admin_reader(tmp_path):
                 }
             ]
 
-    app = create_admin_app(db=FakeSourceReader(), config=_config(tmp_path))
+    reader = FakeSourceReader()
+    app = create_admin_app(
+        db=reader,
+        config=_config(tmp_path),
+        principal_resolver=lambda request: request.headers["x-cloud-user-id"],
+    )
 
     with TestClient(app) as client:
-        response = client.get("/api/sources")
+        response = client.get("/api/sources", headers={"x-cloud-user-id": "user-a"})
 
     assert response.status_code == 200
+    assert reader.user_id == "user-a"
     source = response.json()["data"][0]
     assert source["id"] == "src-neutral"
+    assert source["enabled_for_me"] is False
     assert source["config"] == {
         "base_url": "https://wiki.example.test",
         "pat_configured": True,
@@ -86,6 +98,45 @@ def test_source_list_route_uses_storage_neutral_admin_reader(tmp_path):
         "error_message": "one failed",
         "failed_docs": [{"doc_id": "doc-1", "error": "boom"}],
     }
+
+
+def test_source_subscription_route_updates_current_principal_only(tmp_path):
+    class FakeSourceReader:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, bool]] = []
+
+        async def get_schedule_config(self) -> dict:
+            return {"enabled": False}
+
+        async def get_source(self, source_id: str) -> dict | None:
+            return {"id": source_id, "type": "confluence", "name": "Neutral Source"}
+
+        async def set_source_user_preference(
+            self, source_id: str, user_id: str, enabled: bool
+        ) -> None:
+            self.calls.append((source_id, user_id, enabled))
+
+    reader = FakeSourceReader()
+    app = create_admin_app(
+        db=reader,
+        config=_config(tmp_path),
+        principal_resolver=lambda request: request.headers["x-cloud-user-id"],
+    )
+
+    with TestClient(app) as client:
+        response = client.put(
+            "/api/sources/src-neutral/subscription",
+            headers={"x-cloud-user-id": "user-a"},
+            json={"enabled": False},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "source_id": "src-neutral",
+        "enabled_for_me": False,
+    }
+    assert reader.calls == [("src-neutral", "user-a", False)]
 
 
 def test_source_projects_route_uses_storage_neutral_admin_reader(tmp_path):

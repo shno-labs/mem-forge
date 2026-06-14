@@ -294,6 +294,15 @@ CREATE TABLE IF NOT EXISTS sources (
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS source_user_preferences (
+    source_id  TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    user_id    TEXT NOT NULL,
+    enabled    INTEGER NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (source_id, user_id),
+    CHECK (enabled IN (0, 1))
+);
+
 CREATE TABLE IF NOT EXISTS auth_sessions (
     provider            TEXT NOT NULL,
     origin              TEXT NOT NULL,
@@ -866,6 +875,16 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
         ),
         # The sources table gains project_binding. Legacy rows read NULL.
         "ALTER TABLE sources ADD COLUMN project_binding TEXT",
+    ]),
+    (18, "Add per-user source subscription preferences", [
+        """CREATE TABLE IF NOT EXISTS source_user_preferences (
+            source_id  TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+            user_id    TEXT NOT NULL,
+            enabled    INTEGER NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (source_id, user_id),
+            CHECK (enabled IN (0, 1))
+        )""",
     ]),
 ]
 
@@ -1874,6 +1893,26 @@ class Database:
                     )"""
                 )
                 params.append(filters.source)
+            if filters.disabled_source_ids:
+                source_placeholders = ",".join("?" for _ in filters.disabled_source_ids)
+                conditions.append(
+                    f"""(
+                        NOT EXISTS (
+                            SELECT 1
+                            FROM memory_sources ms_any
+                            JOIN documents d_any ON ms_any.doc_id = d_any.doc_id
+                            WHERE ms_any.memory_id = m.id
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM memory_sources ms_enabled
+                            JOIN documents d_enabled ON ms_enabled.doc_id = d_enabled.doc_id
+                            WHERE ms_enabled.memory_id = m.id
+                              AND d_enabled.source NOT IN ({source_placeholders})
+                        )
+                    )"""
+                )
+                params.extend(filters.disabled_source_ids)
             if filters.memory_type:
                 conditions.append("m.memory_type = ?")
                 params.append(filters.memory_type)
@@ -1912,6 +1951,26 @@ class Database:
             joins.append("JOIN documents d ON ms.doc_id = d.doc_id")
             conditions.append("d.source = ?")
             params.append(filters.source)
+        if filters.disabled_source_ids:
+            source_placeholders = ",".join("?" for _ in filters.disabled_source_ids)
+            conditions.append(
+                f"""(
+                    NOT EXISTS (
+                        SELECT 1
+                        FROM memory_sources ms_any
+                        JOIN documents d_any ON ms_any.doc_id = d_any.doc_id
+                        WHERE ms_any.memory_id = m.id
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM memory_sources ms_enabled
+                        JOIN documents d_enabled ON ms_enabled.doc_id = d_enabled.doc_id
+                        WHERE ms_enabled.memory_id = m.id
+                          AND d_enabled.source NOT IN ({source_placeholders})
+                    )
+                )"""
+            )
+            params.extend(filters.disabled_source_ids)
         if filters.memory_type:
             conditions.append("m.memory_type = ?")
             params.append(filters.memory_type)
@@ -2630,6 +2689,99 @@ class Database:
                 results.append(d)
         return results
 
+    async def get_source_user_preference(
+        self, source_id: str, user_id: str
+    ) -> bool | None:
+        async with self.db.execute(
+            "SELECT enabled FROM source_user_preferences WHERE source_id = ? AND user_id = ?",
+            (source_id, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        return bool(row["enabled"])
+
+    async def set_source_user_preference(
+        self, source_id: str, user_id: str, enabled: bool
+    ) -> None:
+        async with self._write_lock:
+            await self.db.execute(
+                """INSERT INTO source_user_preferences
+                   (source_id, user_id, enabled, updated_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(source_id, user_id) DO UPDATE SET
+                   enabled=excluded.enabled,
+                   updated_at=excluded.updated_at""",
+                (source_id, user_id, 1 if enabled else 0, _now_iso()),
+            )
+            await self.db.commit()
+
+    async def list_sources_for_user(self, user_id: str) -> list[dict]:
+        results: list[dict] = []
+        async with self.db.execute(
+            """SELECT s.*, COALESCE(sup.enabled, 1) AS enabled_for_me
+               FROM sources s
+               LEFT JOIN source_user_preferences sup
+                 ON sup.source_id = s.id AND sup.user_id = ?
+               ORDER BY s.created_at""",
+            (user_id,),
+        ) as cursor:
+            async for row in cursor:
+                d = dict(row)
+                d["config"] = json.loads(d["config"])
+                d["project_binding"] = (
+                    json.loads(d["project_binding"]) if d.get("project_binding") else None
+                )
+                d["enabled_for_me"] = bool(d["enabled_for_me"])
+                results.append(d)
+        return results
+
+    async def list_disabled_source_ids_for_user(self, user_id: str) -> list[str]:
+        async with self.db.execute(
+            """SELECT s.id
+               FROM sources s
+               JOIN source_user_preferences sup
+                 ON sup.source_id = s.id AND sup.user_id = ?
+               WHERE sup.enabled = 0
+               ORDER BY s.created_at""",
+            (user_id,),
+        ) as cursor:
+            return [str(row["id"]) async for row in cursor]
+
+    async def filter_ids_allowed_by_source_preferences(
+        self, memory_ids: Sequence[str], disabled_source_ids: Sequence[str]
+    ) -> set[str]:
+        ids = list(memory_ids)
+        disabled = list(disabled_source_ids)
+        if not ids:
+            return set()
+        if not disabled:
+            return set(ids)
+        id_placeholders = ",".join("?" for _ in ids)
+        source_placeholders = ",".join("?" for _ in disabled)
+        rows = await self.db.execute_fetchall(
+            f"""SELECT M.ID
+                FROM memories M
+                WHERE M.ID IN ({id_placeholders})
+                  AND (
+                    NOT EXISTS (
+                        SELECT 1
+                        FROM memory_sources ms_any
+                        JOIN documents d_any ON ms_any.doc_id = d_any.doc_id
+                        WHERE ms_any.memory_id = M.ID
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM memory_sources ms_enabled
+                        JOIN documents d_enabled ON ms_enabled.doc_id = d_enabled.doc_id
+                        WHERE ms_enabled.memory_id = M.ID
+                          AND d_enabled.source NOT IN ({source_placeholders})
+                    )
+                  )""",
+            [*ids, *disabled],
+        )
+        return {str(row["id"]) for row in rows}
+
     async def count_source_memories(self, source_id: str) -> int:
         async with self.db.execute(
             """
@@ -2906,6 +3058,9 @@ class Database:
                 )
                 await self.db.execute(
                     "DELETE FROM sync_history WHERE source = ?", (source_id,)
+                )
+                await self.db.execute(
+                    "DELETE FROM source_user_preferences WHERE source_id = ?", (source_id,)
                 )
                 await self.db.execute(
                     "DELETE FROM sources WHERE id = ?", (source_id,)

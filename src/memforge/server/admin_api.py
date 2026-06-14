@@ -112,6 +112,19 @@ def _workspace_default_scope(request: Request, *, include_private: bool):
     )
 
 
+def _workspace_stats_scope(request: Request):
+    """Build the lifecycle-wide workspace scope used by stats cards."""
+    from memforge.storage.adapters.context import AccessScope
+
+    return AccessScope(
+        user_id=resolve_request_principal(request),
+        include_private=False,
+        allowed_statuses=("active", "superseded", "retired", "pending_review"),
+        active_project=None,
+        scope_mode="project-first",
+    )
+
+
 def resolve_request_principal(request: Request) -> str:
     """Resolve the request principal through the app-scoped resolver."""
     resolver = getattr(request.app.state, "principal_resolver", None)
@@ -120,6 +133,39 @@ def resolve_request_principal(request: Request) -> str:
 
         resolver = resolve_principal
     return resolver(request)
+
+
+async def _disabled_source_ids_for_request(db: Database, request: Request) -> tuple[str, ...]:
+    user_id = resolve_request_principal(request)
+    return tuple(await db.list_disabled_source_ids_for_user(user_id))
+
+
+def _empty_search_result(query: str) -> dict[str, Any]:
+    return {
+        "query_analysis": {
+            "is_temporal": False,
+            "detected_entities": [],
+            "strategies_used": [],
+        },
+        "results": [],
+        "total_candidates": 0,
+        "retrieval_time_ms": 0,
+    }
+
+
+async def _count_memory_admin_rows(
+    db: Database,
+    *,
+    scope: AccessScope,
+    filters: MemoryAdminListFilters,
+) -> int:
+    page = await db.query_memory_admin_page(
+        scope=scope,
+        filters=filters,
+        limit=0,
+        offset=0,
+    )
+    return page.total
 
 
 async def _filter_visible_ids(db: Database, ids, scope) -> set[str]:
@@ -475,6 +521,11 @@ class SourceResponse(BaseModel):
     doc_count: int = 0
     created_at: str | None = None
     project_binding: dict | None = None
+    enabled_for_me: bool = True
+
+
+class SourceSubscriptionRequest(BaseModel):
+    enabled: bool
 
 
 class SourceProjectResponse(BaseModel):
@@ -2139,28 +2190,42 @@ def create_admin_app(
         )
 
     @health_router.get("/api/stats", response_model=StatsResponse)
-    async def stats(db: Database = Depends(get_db)):
+    async def stats(request: Request, db: Database = Depends(get_db)):
         """Overall system statistics: memory counts, entity counts, source counts."""
+        scope = _workspace_stats_scope(request)
+        disabled_source_ids = await _disabled_source_ids_for_request(db, request)
+
+        async def count_with_filters(**kwargs) -> int:
+            return await _count_memory_admin_rows(
+                db,
+                scope=scope,
+                filters=MemoryAdminListFilters(
+                    disabled_source_ids=disabled_source_ids,
+                    **kwargs,
+                ),
+            )
+
         # Memory counts by type
         type_counts: list[MemoryStatEntry] = []
         for mt in ["fact", "decision", "convention", "procedure"]:
-            count = await db.count_memories(type=mt)
+            count = await count_with_filters(memory_type=mt)
             type_counts.append(MemoryStatEntry(key=mt, count=count))
 
         # Memory counts by status
         status_counts: list[MemoryStatEntry] = []
         for st in ["active", "superseded", "retired", "pending_review"]:
-            count = await db.count_memories(status=st)
+            count = await count_with_filters(status=st)
             status_counts.append(MemoryStatEntry(key=st, count=count))
 
-        total_memories = await db.count_memories()
+        total_memories = await count_with_filters()
 
         # Entity count
         entities = await db.get_all_entities()
         total_entities = len(entities)
 
-        # Source count
-        sources = await db.list_sources()
+        # Source count keeps disabled rows visible because the Sources page
+        # remains the place where members re-enable them.
+        sources = await db.list_sources_for_user(resolve_request_principal(request))
         total_sources = len(sources)
 
         return StatsResponse(
@@ -2267,19 +2332,32 @@ def create_admin_app(
     # ===================================================================
 
     @memory_router.get("/stats", response_model=MemoryStatsResponse)
-    async def memory_stats(db: Database = Depends(get_db)):
+    async def memory_stats(request: Request, db: Database = Depends(get_db)):
         """Memory counts broken down by type and status."""
+        scope = _workspace_stats_scope(request)
+        disabled_source_ids = await _disabled_source_ids_for_request(db, request)
+
+        async def count_with_filters(**kwargs) -> int:
+            return await _count_memory_admin_rows(
+                db,
+                scope=scope,
+                filters=MemoryAdminListFilters(
+                    disabled_source_ids=disabled_source_ids,
+                    **kwargs,
+                ),
+            )
+
         by_type: list[MemoryStatEntry] = []
         for mt in ["fact", "decision", "convention", "procedure"]:
-            count = await db.count_memories(type=mt)
+            count = await count_with_filters(memory_type=mt)
             by_type.append(MemoryStatEntry(key=mt, count=count))
 
         by_status: list[MemoryStatEntry] = []
         for st in ["active", "superseded", "retired", "pending_review"]:
-            count = await db.count_memories(status=st)
+            count = await count_with_filters(status=st)
             by_status.append(MemoryStatEntry(key=st, count=count))
 
-        total = await db.count_memories()
+        total = await count_with_filters()
 
         return MemoryStatsResponse(by_type=by_type, by_status=by_status, total=total)
 
@@ -2297,6 +2375,17 @@ def create_admin_app(
         try:
             engine = await get_search_engine(request, db, config)
             user_id = resolve_request_principal(request)
+            disabled_source_ids = await _disabled_source_ids_for_request(db, request)
+            requested_sources = req.sources or None
+            if requested_sources:
+                disabled_set = set(disabled_source_ids)
+                effective_sources = [
+                    source_id for source_id in requested_sources if source_id not in disabled_set
+                ]
+                if not effective_sources:
+                    return _empty_search_result(req.query)
+            else:
+                effective_sources = None
             # `project-first` and `workspace` modes weight cross-project hits
             # but keep them visible at the predicate. `project` mode is the
             # only mode that narrows the workspace branch, and it narrows to
@@ -2311,13 +2400,22 @@ def create_admin_app(
             result = await engine.search(
                 query=req.query,
                 memory_types=req.memory_types,
-                sources=req.sources,
+                sources=effective_sources,
                 time_range=req.time_range,
                 entities=req.entities,
                 include_superseded=req.include_superseded,
                 top_k=req.top_k,
                 request_scope=scope,
             )
+            if disabled_source_ids and not requested_sources:
+                allowed_ids = await db.filter_ids_allowed_by_source_preferences(
+                    [r.memory_id for r in result["results"]],
+                    disabled_source_ids,
+                )
+                result["results"] = [
+                    r for r in result["results"] if r.memory_id in allowed_ids
+                ]
+                result["total_candidates"] = len(result["results"])
             # Row-status filter is applied post-rank so the GET and POST
             # routes share the same status semantics without coupling the
             # ranker to lifecycle filtering.
@@ -2522,6 +2620,9 @@ def create_admin_app(
         when ``include_private=True``.
         """
         scope = _workspace_default_scope(request, include_private=include_private)
+        disabled_source_ids = await _disabled_source_ids_for_request(db, request)
+        if source and source in disabled_source_ids:
+            return MemoryListResponse(data=[], total=0, limit=limit, offset=offset)
         page = await list_memory_admin_page(
             db,
             scope=scope,
@@ -2529,6 +2630,7 @@ def create_admin_app(
                 memory_type=type,
                 status=status,
                 source=source,
+                disabled_source_ids=disabled_source_ids,
                 project=project,
                 search=search,
             ),
@@ -3012,11 +3114,16 @@ def create_admin_app(
 
     @source_router.get("")
     async def list_sources(
+        request: Request,
         db: Database = Depends(get_db),
         sync_service: SyncService = Depends(get_sync_service),
     ):
         """List all configured sources with per-source memory counts and sync status."""
-        sources = await list_source_admin_rows(db, sync_service=sync_service)
+        sources = await list_source_admin_rows(
+            db,
+            user_id=resolve_request_principal(request),
+            sync_service=sync_service,
+        )
 
         # Attach memory_count and sync status to each source
         from memforge.agent_sessions import (
@@ -3053,6 +3160,24 @@ def create_admin_app(
                     }
 
         return {"data": sources}
+
+    @source_router.put("/{source_id}/subscription")
+    async def update_source_subscription(
+        source_id: str,
+        req: SourceSubscriptionRequest,
+        request: Request,
+        db: Database = Depends(get_db),
+    ):
+        """Enable or disable one shared source for the current caller."""
+        source = await db.get_source(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+        await db.set_source_user_preference(
+            source_id,
+            resolve_request_principal(request),
+            req.enabled,
+        )
+        return {"ok": True, "source_id": source_id, "enabled_for_me": req.enabled}
 
     @source_router.get("/{source_id}/projects", response_model=SourceProjectsResponse)
     async def list_source_projects(

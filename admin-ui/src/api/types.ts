@@ -107,6 +107,7 @@ export interface Source {
   last_sync: string | null;
   doc_count: number;
   memory_count?: number;
+  enabled_for_me: boolean;
   sync?: SyncStatus | null;
   auth_session?: JiraAuthSession | null;
   created_at: string;

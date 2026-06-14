@@ -14,10 +14,11 @@ def _sync_is_running(sync_service: Any, source_id: str) -> bool:
 async def list_source_admin_rows(
     reader: SourceAdminReader,
     *,
+    user_id: str,
     sync_service: Any,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for source in await reader.list_sources():
+    for source in await reader.list_sources_for_user(user_id):
         row = dict(source)
         source_id = str(row.get("id") or "")
         row["memory_count"] = await reader.count_source_memories(source_id)
