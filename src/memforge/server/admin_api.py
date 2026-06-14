@@ -68,6 +68,7 @@ from memforge.provenance import (
 )
 from memforge.runtime import (
     DefaultRuntimeProvider,
+    RuntimeHealthComponent,
     RuntimeProvider,
     SyncAlreadyRunningError,
     SyncService,
@@ -139,56 +140,6 @@ async def _filter_visible_ids(db: Database, ids, scope) -> set[str]:
     return await SqliteRelationalStore(db).filter_visible_ids(list(ids), scope)
 
 
-AUDIT_HEALTH_FAILURE_EVENTS = (
-    "source_support_verification_failed",
-    "contradiction_detection_failed",
-    "reconciliation_failed",
-    "reconciliation_action_failed",
-    "index_operation_failed",
-    "review_resolution_failed",
-)
-AUDIT_HEALTH_WINDOW_HOURS = 24
-
-
-async def _recent_audit_failure_health(db: Database) -> ComponentHealth:
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=AUDIT_HEALTH_WINDOW_HOURS)
-    since = cutoff.isoformat()
-    placeholders = ", ".join("?" for _ in AUDIT_HEALTH_FAILURE_EVENTS)
-    params: list[Any] = [*AUDIT_HEALTH_FAILURE_EVENTS, since]
-    async with db.db.execute(
-        f"""SELECT event_type, COUNT(*), MAX(occurred_at)
-            FROM memory_audit_events
-            WHERE event_type IN ({placeholders})
-              AND occurred_at >= ?
-              AND (status = 'failed' OR error IS NOT NULL)
-            GROUP BY event_type
-            ORDER BY event_type""",
-        params,
-    ) as cursor:
-        rows = await cursor.fetchall()
-
-    counts_by_event_type = {str(row[0]): int(row[1]) for row in rows}
-    payload = {
-        "window_hours": AUDIT_HEALTH_WINDOW_HOURS,
-        "since": since,
-        "counts_by_event_type": counts_by_event_type,
-        "total": sum(counts_by_event_type.values()),
-        "last_seen_at": max((row[2] for row in rows if row[2]), default=None),
-    }
-    if not rows:
-        return ComponentHealth(
-            status="ok",
-            detail=f"No audit failures in the last {AUDIT_HEALTH_WINDOW_HOURS}h",
-            payload=payload,
-        )
-    summary = ", ".join(f"{row[0]}={row[1]}" for row in rows)
-    return ComponentHealth(
-        status="warning",
-        detail=f"Recent audit failures in the last {AUDIT_HEALTH_WINDOW_HOURS}h: {summary}",
-        payload=payload,
-    )
-
-
 # ---------------------------------------------------------------------------
 # Pydantic request / response models
 # ---------------------------------------------------------------------------
@@ -209,6 +160,14 @@ class HealthResponse(BaseModel):
     index_consistency: ComponentHealth | None = None
     audit_failures: ComponentHealth | None = None
     genes: dict[str, ComponentHealth] = {}
+
+
+def _runtime_component_to_response(component: RuntimeHealthComponent) -> ComponentHealth:
+    return ComponentHealth(
+        status=component.status,
+        detail=component.detail,
+        payload=component.payload,
+    )
 
 
 class MemoryStatEntry(BaseModel):
@@ -2076,96 +2035,28 @@ def create_admin_app(
     # ===================================================================
 
     @health_router.get("/api/health", response_model=HealthResponse)
-    async def health(db: Database = Depends(get_db)):
-        """System health check: database, ChromaDB, and gene connectivity."""
-        overall = "healthy"
-
-        # Database health
-        db_health = ComponentHealth(status="ok")
-        try:
-            memory_count = await db.count_memories()
-            db_health.detail = f"{memory_count} memories"
-        except Exception as e:
-            db_health = ComponentHealth(status="error", detail=str(e))
-            overall = "degraded"
-
-        # ChromaDB / vector store health
-        vector_health = ComponentHealth(status="ok")
-        try:
-            import chromadb
-            chroma_path = config.storage.chroma_path
-            if Path(chroma_path).exists():
-                client = chromadb.PersistentClient(path=chroma_path)
-                collections = client.list_collections()
-                vector_health.detail = f"{len(collections)} collection(s)"
-            else:
-                vector_health = ComponentHealth(status="not_configured", detail="ChromaDB path does not exist")
-        except ImportError:
-            vector_health = ComponentHealth(status="not_available", detail="chromadb not installed")
-        except Exception as e:
-            vector_health = ComponentHealth(status="error", detail=str(e))
-            overall = "degraded"
-
-        index_health: ComponentHealth | None = None
-        try:
-            from memforge.memory.health import MemoryIndexHealthChecker
-            from memforge.retrieval.embeddings import get_chroma_collection
-
-            if Path(config.storage.chroma_path).exists():
-                memory_collection = get_chroma_collection(config.storage.chroma_path, name="memories")
-                document_collection = get_chroma_collection(config.storage.chroma_path, name="documents")
-                report = await MemoryIndexHealthChecker(
-                    db=db,
-                    memory_collection=memory_collection,
-                    document_collection=document_collection,
-                ).check()
-                if report.ok:
-                    index_health = ComponentHealth(status="ok", detail="No index consistency issues")
-                else:
-                    overall = "degraded"
-                    index_health = ComponentHealth(
-                        status="error",
-                        detail=f"{len(report.issues)} consistency issue(s)",
-                    )
-            else:
-                index_health = ComponentHealth(status="not_configured", detail="ChromaDB path does not exist")
-        except Exception as e:
-            overall = "degraded"
-            index_health = ComponentHealth(status="error", detail=str(e))
-
-        audit_health: ComponentHealth | None = None
-        try:
-            audit_health = await _recent_audit_failure_health(db)
-        except Exception as e:
-            audit_health = ComponentHealth(status="warning", detail=str(e))
-
-        # Gene connectivity (check sync state for each configured source)
-        gene_health: dict[str, ComponentHealth] = {}
-        try:
-            sources = await db.list_sources()
-            for src in sources:
-                source_id = src["id"]
-                source_name = src.get("name", source_id)
-                sync_state = await db.get_sync_state(source_id)
-                if sync_state and sync_state.last_sync_status:
-                    gene_health[source_name] = ComponentHealth(
-                        status=sync_state.last_sync_status,
-                        detail=_dt_iso(sync_state.last_sync_at),
-                    )
-                else:
-                    gene_health[source_name] = ComponentHealth(
-                        status="never_synced",
-                    )
-        except Exception as e:
-            logger.warning("Failed to check gene connectivity: %s", e)
-
+    async def health(request: Request, db: Database = Depends(get_db)):
+        """System health check through the active runtime provider."""
+        runtime_provider = request.app.state.runtime_provider
+        report = await runtime_provider.check_health(db, config)
         return HealthResponse(
-            status=overall,
-            database=db_health,
-            vector_store=vector_health,
-            index_consistency=index_health,
-            audit_failures=audit_health,
-            genes=gene_health,
+            status=report.status,
+            database=_runtime_component_to_response(report.database),
+            vector_store=_runtime_component_to_response(report.vector_store),
+            index_consistency=(
+                _runtime_component_to_response(report.index_consistency)
+                if report.index_consistency
+                else None
+            ),
+            audit_failures=(
+                _runtime_component_to_response(report.audit_failures)
+                if report.audit_failures
+                else None
+            ),
+            genes={
+                name: _runtime_component_to_response(component)
+                for name, component in report.genes.items()
+            },
         )
 
     @health_router.get("/api/stats", response_model=StatsResponse)
