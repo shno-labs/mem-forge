@@ -24,7 +24,7 @@ from memforge.models import (
 )
 from memforge.pipeline.sync import GeneSyncOrchestrator, summarize_failed_documents
 from memforge.runtime import SyncService
-from memforge.config import AppConfig
+from memforge.config import AppConfig, SyncConfig
 from memforge.storage.database import Database
 from memforge.storage.adapters.sqlite import build_sqlite_adapters
 
@@ -969,6 +969,103 @@ async def test_sync_service_passes_force_full_sync_to_source_task(db: Database, 
     await task
 
     assert captured == {"source_id": source_id, "force_full_sync": True}
+
+
+@pytest.mark.asyncio
+async def test_sync_service_limits_active_sources_without_rejecting_queued_sources(
+    db: Database,
+    monkeypatch,
+):
+    await db.upsert_source(
+        id="src-a",
+        type="jira",
+        name="Source A",
+        config_json="{}",
+    )
+    await db.upsert_source(
+        id="src-b",
+        type="jira",
+        name="Source B",
+        config_json="{}",
+    )
+    service = SyncService(
+        db,
+        AppConfig(sync=SyncConfig(max_active_sources=1)),
+    )
+    release = asyncio.Event()
+    started: list[str] = []
+
+    async def fake_run_source_task(running_source_id: str, *, force_full_sync: bool = False):
+        del force_full_sync
+        started.append(running_source_id)
+        try:
+            await release.wait()
+        finally:
+            service.tasks.pop(running_source_id, None)
+            service.progress.pop(running_source_id, None)
+
+    monkeypatch.setattr(service, "_run_source_task", fake_run_source_task)
+
+    task_a = await service.start_source("src-a")
+    task_b = await service.start_source("src-b")
+    await asyncio.sleep(0)
+
+    assert service.is_running("src-a")
+    assert service.is_running("src-b")
+    assert started == ["src-a"]
+    assert service.progress["src-b"]["phase"] == "queued"
+
+    release.set()
+    await asyncio.gather(task_a, task_b)
+    assert started == ["src-a", "src-b"]
+
+
+@pytest.mark.asyncio
+async def test_cancel_queued_source_clears_progress(db: Database, monkeypatch):
+    await db.upsert_source(
+        id="src-active",
+        type="jira",
+        name="Active Source",
+        config_json="{}",
+    )
+    await db.upsert_source(
+        id="src-queued",
+        type="jira",
+        name="Queued Source",
+        config_json="{}",
+    )
+    service = SyncService(
+        db,
+        AppConfig(sync=SyncConfig(max_active_sources=1)),
+    )
+    release = asyncio.Event()
+
+    async def fake_run_source_task(running_source_id: str, *, force_full_sync: bool = False):
+        del force_full_sync
+        if running_source_id == "src-active":
+            await release.wait()
+
+    monkeypatch.setattr(service, "_run_source_task", fake_run_source_task)
+
+    task_active = await service.start_source("src-active")
+    await service.start_source("src-queued")
+    await asyncio.sleep(0)
+
+    assert service.progress["src-queued"]["phase"] == "queued"
+
+    await service.cancel_source("src-queued")
+
+    assert "src-queued" not in service.tasks
+    assert "src-queued" not in service.progress
+
+    release.set()
+    await task_active
+
+
+def test_sync_max_active_sources_can_be_set_from_env(monkeypatch):
+    monkeypatch.setenv("MEMFORGE_SYNC_MAX_ACTIVE_SOURCES", "2")
+
+    assert AppConfig().sync.max_active_sources == 2
 
 
 @pytest.mark.asyncio

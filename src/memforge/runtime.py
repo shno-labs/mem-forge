@@ -553,6 +553,10 @@ class SyncService:
         self.tasks: dict[str, asyncio.Task] = {}
         self.queued_tasks: dict[str, asyncio.Task] = {}
         self.progress: dict[str, dict] = {}
+        max_active_sources = max(0, int(config.sync.max_active_sources))
+        self._source_slots = (
+            asyncio.Semaphore(max_active_sources) if max_active_sources else None
+        )
 
     def is_running(self, source_id: str) -> bool:
         task = self.tasks.get(source_id)
@@ -570,9 +574,50 @@ class SyncService:
         await self._ensure_source_can_sync(source_id)
         if self.is_running(source_id):
             raise SyncAlreadyRunningError(f"Sync already running for {source_id}")
-        task = asyncio.create_task(self._run_source_task(source_id, force_full_sync=force_full_sync))
+        task = asyncio.create_task(
+            self._run_source_task_with_slot(
+                source_id,
+                force_full_sync=force_full_sync,
+            )
+        )
         self.tasks[source_id] = task
         return task
+
+    async def _run_source_task_with_slot(
+        self,
+        source_id: str,
+        *,
+        force_full_sync: bool = False,
+    ) -> SyncState | None:
+        if self._source_slots is None:
+            return await self._run_source_task(
+                source_id,
+                force_full_sync=force_full_sync,
+            )
+
+        started_at = datetime.now(timezone.utc).isoformat()
+        self.progress[source_id] = {
+            "started_at": started_at,
+            "phase": "queued",
+            "docs_processed": 0,
+            "docs_total": 0,
+            "docs_updated": 0,
+            "docs_failed": 0,
+            "memories_extracted": 0,
+            "title": None,
+        }
+        entered_slot = False
+        try:
+            async with self._source_slots:
+                entered_slot = True
+                return await self._run_source_task(
+                    source_id,
+                    force_full_sync=force_full_sync,
+                )
+        finally:
+            if not entered_slot:
+                self.tasks.pop(source_id, None)
+                self.progress.pop(source_id, None)
 
     async def request_source_sync(self, source_id: str, *, delay_seconds: float = 1.0) -> bool:
         """Queue one service-owned sync pass for a source, coalescing duplicates."""

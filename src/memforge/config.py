@@ -12,7 +12,7 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 
-__all__ = ["AppConfig", "load_config"]
+__all__ = ["AppConfig", "SyncConfig", "load_config"]
 
 DEFAULT_BASE_DIR = Path.home() / ".memforge"
 DEFAULT_ENRICHMENT_MAX_TOKENS = 8192
@@ -88,6 +88,11 @@ class ServerConfig:
 
 
 @dataclass
+class SyncConfig:
+    max_active_sources: int = 0
+
+
+@dataclass
 class AppConfig:
     base_dir: Path = field(default_factory=lambda: DEFAULT_BASE_DIR)
     storage: StorageConfig = field(default_factory=StorageConfig)
@@ -95,6 +100,7 @@ class AppConfig:
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
+    sync: SyncConfig = field(default_factory=SyncConfig)
 
     def __post_init__(self) -> None:
         if os.environ.get("MEMFORGE_BASE_DIR"):
@@ -155,6 +161,13 @@ class AppConfig:
                 os.environ["MEMFORGE_LLM_CONFIG_WRITABLE"].strip().lower()
                 in {"1", "true", "yes", "on"}
             )
+        self.sync.max_active_sources = max(
+            0,
+            int(
+                os.environ.get("MEMFORGE_SYNC_MAX_ACTIVE_SOURCES")
+                or self.sync.max_active_sources
+            ),
+        )
         self.server.jwt_secret = (
             os.environ.get("MEMFORGE_JWT_SECRET")
             or self.server.jwt_secret
