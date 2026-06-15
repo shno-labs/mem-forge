@@ -1021,6 +1021,48 @@ async def test_sync_service_limits_active_sources_without_rejecting_queued_sourc
 
 
 @pytest.mark.asyncio
+async def test_sync_service_queues_ten_requested_sources_with_two_active(
+    db: Database,
+    monkeypatch,
+):
+    source_ids = [f"src-{idx}" for idx in range(10)]
+    for source_id in source_ids:
+        await db.upsert_source(
+            id=source_id,
+            type="jira",
+            name=f"Source {source_id}",
+            config_json="{}",
+        )
+    service = SyncService(
+        db,
+        AppConfig(sync=SyncConfig(max_active_sources=2)),
+    )
+    release = asyncio.Event()
+    started: list[str] = []
+
+    async def fake_run_source_task(running_source_id: str, *, force_full_sync: bool = False):
+        del force_full_sync
+        started.append(running_source_id)
+        try:
+            await release.wait()
+        finally:
+            service.tasks.pop(running_source_id, None)
+            service.progress.pop(running_source_id, None)
+
+    monkeypatch.setattr(service, "_run_source_task", fake_run_source_task)
+
+    tasks = [await service.start_source(source_id) for source_id in source_ids]
+    await asyncio.sleep(0)
+
+    assert started == source_ids[:2]
+    assert all(service.progress[source_id]["phase"] == "queued" for source_id in source_ids[2:])
+
+    release.set()
+    await asyncio.gather(*tasks)
+    assert started == source_ids
+
+
+@pytest.mark.asyncio
 async def test_cancel_queued_source_clears_progress(db: Database, monkeypatch):
     await db.upsert_source(
         id="src-active",
