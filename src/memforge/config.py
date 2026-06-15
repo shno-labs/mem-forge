@@ -15,6 +15,7 @@ else:
 __all__ = ["AppConfig", "load_config"]
 
 DEFAULT_BASE_DIR = Path.home() / ".memforge"
+DEFAULT_ENRICHMENT_MAX_TOKENS = 8192
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +51,7 @@ class LlmConfig:
     enrichment_model: str = "claude-sonnet-4-20250514"
     enrichment_base_url: str = "https://api.anthropic.com"
     enrichment_api_key: str = ""
-    enrichment_max_tokens: int = 64000
+    enrichment_max_tokens: int = DEFAULT_ENRICHMENT_MAX_TOKENS
     enrichment_max_concurrent: int = 3
     request_timeout_s: float = 300.0
     llm_calls_per_minute: int = 30
@@ -120,6 +121,10 @@ class AppConfig:
         self.llm.enrichment_api_key = env_override(
             "MEMFORGE_ENRICHMENT_API_KEY",
             self.llm.enrichment_api_key,
+        )
+        self.llm.enrichment_max_tokens = int(
+            os.environ.get("MEMFORGE_ENRICHMENT_MAX_TOKENS")
+            or self.llm.enrichment_max_tokens
         )
         self.llm.request_timeout_s = float(
             os.environ.get("MEMFORGE_LLM_REQUEST_TIMEOUT_SECONDS")

@@ -928,6 +928,7 @@ class GeneSyncOrchestrator:
         # ------------------------------------------------------------------
         # 5. Store document record before expensive enrichment/memory work
         # ------------------------------------------------------------------
+        document_vector_snapshot = await self._document_vector_snapshot(doc_id)
         async with self._db_lock:
             await self.db.upsert_document(doc_record)
 
@@ -963,7 +964,6 @@ class GeneSyncOrchestrator:
             raise RuntimeError(f"Cannot index document vector for {doc_id}: embedding config is missing")
 
         if self.document_index.enabled:
-            document_vector_snapshot = await self._document_vector_snapshot(doc_id)
             try:
                 await self._upsert_document_embedding(
                     doc_id=doc_id,
@@ -1042,6 +1042,17 @@ class GeneSyncOrchestrator:
             )
 
         raw_memories = extraction_result.memories
+        if extraction_result.error_type:
+            await self._restore_document_processing_snapshot(
+                doc_id=doc_id,
+                existing_doc=existing_doc,
+                document_vector_snapshot=document_vector_snapshot,
+            )
+            error_detail = extraction_result.error or ""
+            raise RuntimeError(
+                f"memory extraction failed for {doc_id}: "
+                f"{extraction_result.error_type}: {error_detail}"
+            )
         logger.debug(
             "Extracted %d raw memories from %s",
             len(raw_memories),
@@ -1084,13 +1095,7 @@ class GeneSyncOrchestrator:
         # write-time signal only: read-time visibility is decided by the access
         # predicate, never by this hint.
         uploader_user_id = normalized.source_semantics.get("uploader_user_id")
-        if extraction_result.error_type:
-            logger.warning(
-                "Skipping memory persistence for %s after extraction failure: %s",
-                doc_id,
-                extraction_result.error_type,
-            )
-        elif change_type == "updated":
+        if change_type == "updated":
             memory_stats = await self.memory_engine.reconcile_and_persist(
                 doc_id=doc_id,
                 raw_memories=raw_memories,
@@ -1868,6 +1873,20 @@ class GeneSyncOrchestrator:
         if not self.document_index.enabled:
             return
         await asyncio.to_thread(self.document_index.restore, doc_id, snapshot)
+
+    async def _restore_document_processing_snapshot(
+        self,
+        *,
+        doc_id: str,
+        existing_doc: DocumentRecord | None,
+        document_vector_snapshot: dict | None,
+    ) -> None:
+        await self._restore_document_vector_snapshot(doc_id, document_vector_snapshot)
+        async with self._db_lock:
+            if existing_doc:
+                await self.db.restore_document_snapshot(existing_doc)
+            else:
+                await self.db.delete_document(doc_id)
 
     def _has_embedding_config(self) -> bool:
         if not self.embed_cfg:

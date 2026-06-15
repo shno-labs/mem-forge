@@ -1096,9 +1096,13 @@ async def test_full_document_extraction_failure_is_audited(db: Database):
     )
 
     rows = await db.list_memory_audit_events(event_type="memory_extraction_failed")
-    assert state.last_sync_status == "success"
-    assert state.docs_updated == 1
-    assert len(rows) == 1
+    assert state.last_sync_status == "failed"
+    assert state.docs_updated == 0
+    assert state.docs_failed == 1
+    assert state.failed_docs
+    assert "json_parse_error" in state.failed_docs[0].error
+    assert await db.count_documents(source=source_id) == 0
+    assert len(rows) == 3
     assert rows[0].doc_id == "doc-1"
     assert rows[0].source_id == source_id
     assert rows[0].reason == "json_parse_error"
@@ -1416,10 +1420,13 @@ async def test_partial_unit_extraction_failure_skips_reconciliation(db: Database
     audit_rows = await db.list_memory_audit_events(
         event_type="memory_extraction_failed",
     )
-    assert state.last_sync_status == "success"
-    assert state.docs_updated == 1
+    assert state.last_sync_status == "failed"
+    assert state.docs_updated == 0
+    assert state.docs_failed == 1
+    assert state.failed_docs
+    assert "partial_unit_failure" in state.failed_docs[0].error
     assert len(memory_engine.reconcile_calls) == 0
-    assert len(audit_rows) == 1
+    assert len(audit_rows) == 3
     assert audit_rows[0].reason == "partial_unit_failure"
     assert audit_rows[0].payload["failed_unit_count"] == 1
     assert audit_rows[0].payload["extracted_count"] == 0
