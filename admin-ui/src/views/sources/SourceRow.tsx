@@ -125,7 +125,7 @@ export function SourceRow({
               <span>
                 {source.sync?.status === "running"
                   ? "Syncing now"
-                  : formatLastSyncSummary(source, itemLabel)}
+                  : `Last synced: ${timeAgo(source.last_sync)}`}
               </span>
               {source.type === "jira" && source.auth_session && hasManagementControl && (
                 <span
@@ -238,26 +238,6 @@ export function SourceRow({
       )}
     </div>
   );
-}
-
-function formatLastSyncSummary(source: Source, itemLabel: string) {
-  const age = timeAgo(source.last_sync);
-  const sync = source.sync;
-
-  if (!sync || sync.status !== "success") {
-    return `Last synced: ${age}`;
-  }
-
-  if (sync.docs_processed <= 0) {
-    return `Last sync: up to date · ${age}`;
-  }
-
-  return [
-    `Last sync: ${sync.docs_processed} ${itemLabel} checked`,
-    `${sync.docs_updated} updated`,
-    `${sync.memories_extracted} new memories`,
-    age,
-  ].join(" · ");
 }
 
 function SubscriptionToggle({
