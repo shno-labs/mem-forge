@@ -23,7 +23,7 @@ from memforge.models import SyncState
 from memforge.pipeline.enricher import Enricher
 from memforge.pipeline.memory_extractor import MemoryExtractor
 from memforge.pipeline.source_support_detector import SourceSupportDetector
-from memforge.pipeline.sync import GeneSyncOrchestrator
+from memforge.pipeline.sync import ExtractionWorkPool, GeneSyncOrchestrator
 from memforge.retrieval.document_index import DocumentVectorIndex
 from memforge.retrieval.embeddings import get_chroma_collection
 from memforge.source_secrets import decrypt_source_config_for_runtime, source_secret_fields
@@ -86,6 +86,7 @@ class SyncRuntime:
     structured_llm_client: LiteLlmStructuredClient | None
     llm_model: str
     source_support_detector: SourceSupportDetector | None
+    extraction_pool: ExtractionWorkPool | None = None
     orchestrator_factory: Callable[["SyncRuntime"], GeneSyncOrchestrator] | None = None
 
     def orchestrator(self) -> GeneSyncOrchestrator:
@@ -102,6 +103,7 @@ class SyncRuntime:
             embed_cfg=self.embed_cfg,
             source_support_detector=self.source_support_detector,
             max_concurrent=self.config.llm.enrichment_max_concurrent,
+            extraction_pool=self.extraction_pool,
         )
 
 
@@ -126,7 +128,13 @@ class RuntimeProvider(Protocol):
 
     async def check_health(self, db: "Database", config: AppConfig) -> RuntimeHealthReport: ...
 
-    async def build_sync_runtime(self, db: "Database", config: AppConfig) -> SyncRuntime: ...
+    async def build_sync_runtime(
+        self,
+        db: "Database",
+        config: AppConfig,
+        *,
+        extraction_pool: ExtractionWorkPool | None = None,
+    ) -> SyncRuntime: ...
 
     async def run_source_sync(
         self,
@@ -164,8 +172,18 @@ class DefaultRuntimeProvider:
             audit_logger=audit_logger,
         )
 
-    async def build_sync_runtime(self, db: "Database", config: AppConfig) -> SyncRuntime:
-        return await build_sync_runtime(db=db, config=config)
+    async def build_sync_runtime(
+        self,
+        db: "Database",
+        config: AppConfig,
+        *,
+        extraction_pool: ExtractionWorkPool | None = None,
+    ) -> SyncRuntime:
+        return await build_sync_runtime(
+            db=db,
+            config=config,
+            extraction_pool=extraction_pool,
+        )
 
     async def check_health(self, db: "Database", config: AppConfig) -> RuntimeHealthReport:
         return await check_runtime_health(db, config)
@@ -422,7 +440,12 @@ async def build_search_engine(
     )
 
 
-async def build_sync_runtime(db: "Database", config: AppConfig) -> SyncRuntime:
+async def build_sync_runtime(
+    db: "Database",
+    config: AppConfig,
+    *,
+    extraction_pool: ExtractionWorkPool | None = None,
+) -> SyncRuntime:
     llm = await get_effective_llm_config(db, config)
     structured_llm_client = None
     if _has_structured_llm_credentials(llm):
@@ -509,6 +532,7 @@ async def build_sync_runtime(db: "Database", config: AppConfig) -> SyncRuntime:
         structured_llm_client=structured_llm_client,
         llm_model=llm.enrichment_model,
         source_support_detector=source_support_detector,
+        extraction_pool=extraction_pool,
     )
 
 
@@ -556,6 +580,12 @@ class SyncService:
         max_active_sources = max(0, int(config.sync.max_active_sources))
         self._source_slots = (
             asyncio.Semaphore(max_active_sources) if max_active_sources else None
+        )
+        max_extraction_workers = max(0, int(config.sync.max_extraction_workers))
+        self._extraction_pool = (
+            ExtractionWorkPool(max_extraction_workers)
+            if max_extraction_workers
+            else None
         )
 
     def is_running(self, source_id: str) -> bool:
@@ -715,7 +745,11 @@ class SyncService:
             if not source:
                 raise ValueError(f"Source not found: {source_id}")
 
-            runtime = await self.runtime_provider.build_sync_runtime(self.db, self.config)
+            runtime = await self.runtime_provider.build_sync_runtime(
+                self.db,
+                self.config,
+                extraction_pool=self._extraction_pool,
+            )
 
             def on_progress(progress: dict) -> None:
                 current = progress.get("current", 0)

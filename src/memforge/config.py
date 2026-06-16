@@ -90,6 +90,7 @@ class ServerConfig:
 @dataclass
 class SyncConfig:
     max_active_sources: int = 0
+    max_extraction_workers: int = 0
 
 
 @dataclass
@@ -166,6 +167,13 @@ class AppConfig:
             int(
                 os.environ.get("MEMFORGE_SYNC_MAX_ACTIVE_SOURCES")
                 or self.sync.max_active_sources
+            ),
+        )
+        self.sync.max_extraction_workers = max(
+            0,
+            int(
+                os.environ.get("MEMFORGE_SYNC_MAX_EXTRACTION_WORKERS")
+                or self.sync.max_extraction_workers
             ),
         )
         self.server.jwt_secret = (
