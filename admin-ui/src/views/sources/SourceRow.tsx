@@ -269,7 +269,7 @@ function LastSyncDetails({
           <button
             type="button"
             className={cn(
-              "inline-flex items-center gap-1 rounded-sm text-muted-foreground underline-offset-4 outline-none transition-colors hover:text-foreground hover:underline",
+              "inline-flex cursor-pointer items-center gap-1 rounded-sm text-muted-foreground outline-none transition-colors hover:text-foreground",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
             )}
             aria-label={`Show last sync details for ${source.name}`}
