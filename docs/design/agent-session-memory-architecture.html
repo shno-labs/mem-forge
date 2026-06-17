@@ -372,6 +372,7 @@ td:first-child { font-weight: 500; }
 <!-- ============================================================ -->
 <h2>Repository Identity vs. Project Mapping</h2>
 <p><code>repo_identifier</code> is the stable context key for coding-session memories. It is stored on memory rows and vector metadata as a ranking/grouping signal, not an access-control signal.</p>
+<p>The Codex and Claude Code local adapters send this normalized remote-derived identity in the upload payload's <code>repo</code> field. The service normalizes again before storing <code>repo_identifier</code>, so older plugins that still send a plain slug continue to land on a deterministic key.</p>
 
 <div class="card-grid">
   <div class="card blue">

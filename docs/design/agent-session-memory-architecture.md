@@ -127,6 +127,11 @@ Preferred derivation order:
 3. existing receipt `repo` value;
 4. workspace basename only as a display fallback, never as a project key.
 
+The Codex and Claude Code local adapters send this normalized remote-derived
+identity in the upload payload's `repo` field. The service normalizes again
+before storing `repo_identifier`, so old plugins that still send a plain slug
+continue to land on a deterministic key.
+
 For agent-session memories:
 
 ```text
