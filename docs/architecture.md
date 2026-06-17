@@ -2191,9 +2191,12 @@ Current sync sets `project_key` from `ContentItem.space_or_project`. Genes
 should populate that field with their best source-native scope, such as a
 Confluence space, Jira project, Teams configured scope, or future Outlook
 folder mapping. If the item has no scope, the memory is scoped to `"team"`
-(global). Agent hooks currently derive `repo` from the local git root folder
-name; the plugin beta must replace that with a canonical workspace-to-project
-mapping before broad rollout.
+(global). Agent hooks derive `repo` from the local Git checkout by preferring
+the normalized `origin` remote URL, for example `github.com/org/repo`, with the
+Git root folder name only as a fallback for local-only repositories. Coding
+session memories treat this repo identity as their primary context, while
+project mapping remains optional relevance metadata rather than the source of
+truth for the session.
 
 ---
 
