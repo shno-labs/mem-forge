@@ -70,7 +70,8 @@ sequenceDiagram
 Hook traffic is separate from MCP tool calls. Hooks use the Admin API directly
 for compact prompt context, receipts, and agent-session windows:
 `/api/hooks/context`, `/api/hooks/receipts`, and
-`/api/agent-sessions/windows`.
+`/api/agent-sessions/windows`. MCP is the read path and explicit-tool path; it
+is not the reliable automatic sync trigger for lifecycle capture.
 
 The human CLI follows the same read path for local checks:
 
@@ -110,11 +111,13 @@ The MemForge service owns:
 
 - validating the window schema and client metadata
 - redacting again because client-side redaction is not a trust boundary
-- canonicalizing evidence into a durable agent-session package
+- canonicalizing evidence into a bounded agent-session window
 - deciding whether a gated turn contains enough signal to process
-- queuing and running the `agent_session` source sync
-- applying quality gates, reconciliation, review, storage, search, and lifecycle
-  policies
+- retrieving same-user, same-repo private concepts for patch context
+- asking the structured LLM client for an Agent Knowledge Bundle patch proposal
+- validating the proposal against owner, visibility, repo, and claim scope
+- writing private concept, claim, citation, and memory rows
+- applying quality gates, reconciliation, storage, search, and lifecycle policies
 
 This is the same adapter boundary for local self-hosting and a future hosted
 service. `MEMFORGE_API_URL` defaults to `http://127.0.0.1:8765` for the
@@ -122,6 +125,11 @@ self-hosted stack and can point at a hosted MemForge service. `MEMFORGE_API_TOKE
 is optional for local no-auth deployments and becomes the bearer/API-token hook
 for SaaS. The MCP proxy itself stays local so `local_path` always means a path
 on the agent machine.
+
+The server-side database is authoritative for agent-session memory state. The
+human-readable concept markdown is rendered from database records after a patch
+is accepted; clients should not upload markdown as the transactional source of
+truth for automatic lifecycle capture.
 
 ## Window Shape
 
