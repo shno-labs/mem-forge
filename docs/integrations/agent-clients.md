@@ -61,7 +61,6 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | `search` | Forward query | `POST /api/memories/search` | None |
 | `get_memory` | Fetch memory detail | `GET /api/memories/{memory_id}` | None |
-| `list_recent_changes` | Fetch temporal changes | `GET /api/recent-changes` | None |
 | `submit_agent_session_document` | Submit generated summary | `POST /api/agent-sessions/documents` | None |
 | `get_resource(mode="text")` | Fetch artifact text | Service `content_url` | None |
 | `get_resource(mode="base64")` | Fetch artifact bytes | Service artifact URL | None |

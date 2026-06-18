@@ -155,7 +155,6 @@ All distance thresholds are calibrated for **text-embedding-3-small** with cosin
 |  +---------------------+      +----------------------------+        |
 |  | search              |      | POST /api/hooks/context    |        |
 |  | get_memory          |      | POST /api/agent-sessions/  |        |
-|  | list_recent_changes |      | windows                    |        |
 |  | submit_agent_session|      | POST /api/agent-sessions/  |        |
 |  | _document           |      | documents (explicit only)  |        |
 |  +---------+-----------+      +----------------------------+        |
@@ -481,8 +480,9 @@ and receipt-only metadata are removed. Receipt provenance remains available in
 Codex, Claude Code, and similar coding agents use MemForge through two
 separate paths:
 
-- MCP is the model-visible read path. Agents call `search`, `get_memory`, and
-  `list_recent_changes` when they need memory evidence while reasoning.
+- MCP is the model-visible read path. Agents call `search` and `get_memory`
+  when they need memory evidence while reasoning. Recent-memory questions use
+  `search` with a `time_range`, not a separate recent-changes memory tool.
 - Hooks are lifecycle automation. Hooks call the Admin API for compact context
   injection, optional lifecycle receipt write-back, and agent-session window
   upload.
@@ -1625,11 +1625,6 @@ get_resource       "Read this source artifact"
                     -> accepts content_url/pdf_url from search or get_memory
                     -> returns text, a local cache file path, or base64 bytes
 
-list_recent_changes "What's new?"
-                    -> document changes + memory changes
-                    -> temporal, not semantic
-                    -> for "catch me up" queries
-
 submit_agent_session_document
                     -> stores an explicit already-generated markdown summary
                     -> writes a thin receipt for lineage and dedupe
@@ -1638,10 +1633,10 @@ submit_agent_session_document
 
 MCP remains the model-visible memory interface. In Codex and Claude Code
 plugins, MCP is implemented as a local thin proxy: `search`, `get_memory`,
-`list_recent_changes`, and `submit_agent_session_document` are forwarded to the
-MemForge API, while `get_resource(mode="file")` downloads artifacts into a
-client-local cache and returns a real local path. Agent lifecycle hooks use the
-Admin API separately: `POST /api/hooks/context` for compact prompt context and
+and `submit_agent_session_document` are forwarded to the MemForge API, while
+`get_resource(mode="file")` downloads artifacts into a client-local cache and
+returns a real local path. Agent lifecycle hooks use the Admin API separately:
+`POST /api/hooks/context` for compact prompt context and
 `POST /api/hooks/receipts` for lifecycle receipt write-back. Automatic
 agent-session capture uses `POST /api/agent-sessions/windows`; explicit
 already-generated summaries still use `POST /api/agent-sessions/documents`.
@@ -1657,8 +1652,9 @@ Codex / Claude Code
 
 The local proxy is the transport bridge, not a memory engine. It owns MCP stdio,
 service URL/token configuration, artifact URL validation, and agent-local cache
-writes. The service owns search, memory detail, recent changes, session intake,
-artifact bytes, provenance, tenancy, and future SaaS auth.
+writes. The service owns search, memory detail, session intake, artifact bytes,
+provenance, tenancy, and future SaaS auth. The non-MCP `/api/recent-changes`
+endpoint remains an API surface for source-change views.
 
 The CLI exposes the same read flow for humans and scripts:
 `memforge search`, `memforge get-memory`, and `memforge get-resource`. These
@@ -1670,7 +1666,6 @@ directly.
 | --- | --- | --- |
 | `search` | Normalize MCP args and forward | `POST /api/memories/search` |
 | `get_memory` | Forward by memory ID | `GET /api/memories/{memory_id}` |
-| `list_recent_changes` | Forward filters | `GET /api/recent-changes` |
 | `submit_agent_session_document` | Forward generated markdown summary | `POST /api/agent-sessions/documents` |
 | `get_resource(mode="text")` | Fetch and return text inline | `GET` service artifact URL |
 | `get_resource(mode="base64")` | Fetch and return encoded bytes | `GET` service artifact URL |
@@ -1689,14 +1684,33 @@ It does not return host-local, container-local, or SaaS-local file paths.
   "inputSchema": {
     "query": "string (required)",
     "memory_types": "array of: fact|decision|convention|procedure (optional)",
-    "sources": "array of source instance IDs (optional)",
+    "source_filter": {
+      "source_types": "array of exact registered source types (optional)",
+      "clients": "array of exact client ids: codex|claude-code (optional)",
+      "current_repo_only": "boolean, proxy-resolved current git repository filter (optional)"
+    },
     "time_range": {"after": "ISO date", "before": "ISO date"},
     "entities": "array of entity names to focus on (optional)",
+    "include_private": "boolean, default false",
     "include_superseded": "boolean, default false",
+    "active_repo_identifier": "string (optional ranking context)",
+    "status": "active|superseded|retired|decayed|pending_review (optional)",
     "top_k": "integer, default 10"
   }
 }
 ```
+
+`source_filter` is exact and optional. If an agent is unsure, it should omit the
+facet and search all visible memories. The request boundary rejects unknown
+source types or clients instead of guessing, normalizing, or returning an
+accidentally empty result set.
+
+The local MCP proxy may add `active_repo_identifier` from
+`MEMFORGE_ACTIVE_REPO_IDENTIFIER` or the current git remote when the caller
+omits it. That value is only a ranking affinity signal. It never becomes a
+hard `source_filter.repo_identifiers` filter unless the model explicitly sends
+`source_filter.current_repo_only=true`; in that case the proxy resolves the
+exact repo identifier itself.
 
 **Output per result (Level 0 -- memory card):**
 
@@ -1765,22 +1779,6 @@ corroboration, contradictions, entities, or lifecycle metadata. A simple answer
 that only needs the primary source can skip this step and go straight from a
 search result's `content_url` / `pdf_url` to `get_resource`.
 
-### Tool: `list_recent_changes`
-
-```json
-{
-  "name": "list_recent_changes",
-  "inputSchema": {
-    "since": "ISO date (optional, default 7 days)",
-    "source": "string (optional)",
-    "change_type": "created|updated|deleted (optional)",
-    "include_memories": "boolean, default true"
-  }
-}
-```
-
-Returns both document changes and memory changes (created, updated, superseded).
-
 ### Tool: `get_resource`
 
 ```json
@@ -1808,14 +1806,14 @@ remains valid for Docker and future SaaS deployments.
 ```
 Agent receives a question
     |
-    +-- "What's new / what changed?" -> list_recent_changes
-    |
-    +-- Everything else -> search
-    |     |
-    |     +-- Primary source is enough? -> get_resource(content_url/pdf_url)
-    |     |
-    |     +-- Need complete provenance? -> get_memory
-    |           |
+    +-- Needs memory evidence -> search
+          |
+          +-- Recent window? -> include time_range on search
+          |
+          +-- Primary source is enough? -> get_resource(content_url/pdf_url)
+          |
+          +-- Need complete provenance? -> get_memory
+                |
     |           +-- Need backing evidence? -> get_resource(content_url/pdf_url)
     |
     Done. No routing ambiguity.
@@ -1857,7 +1855,7 @@ Agent receives a question
 - Progressive disclosure (Level 0/1/2)
 - Unified `search` MCP tool
 - `get_memory` MCP tool
-- `list_recent_changes` MCP tool (with memory changes)
+- Recent-memory questions through `search` with `time_range`
 - `submit_agent_session_document` MCP tool (explicit generated session-document intake)
 - Document fallback in search results
 - Query expansion with entity aliases
