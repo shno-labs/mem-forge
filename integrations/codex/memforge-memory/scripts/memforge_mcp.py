@@ -20,7 +20,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 DEFAULT_API_URL = "http://127.0.0.1:8765"
 DEFAULT_TIMEOUT_SECONDS = 60.0
 SERVER_NAME = "memforge"
-SERVER_VERSION = "0.1.3"
+SERVER_VERSION = "0.1.4"
 SOURCE_TYPE_VALUES = [
     "agent_session",
     "confluence",
@@ -246,7 +246,7 @@ def _call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         memory_id = str(args.get("memory_id") or "").strip()
         if not memory_id:
             return {"error": "memory_id is required"}
-        return _http_json("GET", f"/api/memories/{quote(memory_id, safe='')}", None)
+        return _http_json("GET", f"/api/memories/{quote(memory_id, safe='')}?include_private=true", None)
     if name == "submit_agent_session_document":
         return _http_json("POST", "/api/agent-sessions/documents", args)
     if name == "get_resource":
