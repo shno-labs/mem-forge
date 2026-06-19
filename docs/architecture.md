@@ -1693,7 +1693,6 @@ It does not return host-local, container-local, or SaaS-local file paths.
     "entities": "array of entity names to focus on (optional)",
     "include_private": "boolean, default false",
     "include_superseded": "boolean, default false",
-    "active_repo_identifier": "string (optional ranking context)",
     "status": "active|superseded|retired|decayed|pending_review (optional)",
     "top_k": "integer, default 10"
   }
@@ -1705,12 +1704,12 @@ facet and search all visible memories. The request boundary rejects unknown
 source types or clients instead of guessing, normalizing, or returning an
 accidentally empty result set.
 
-The local MCP proxy may add `active_repo_identifier` from
-`MEMFORGE_ACTIVE_REPO_IDENTIFIER` or the current git remote when the caller
-omits it. That value is only a ranking affinity signal. It never becomes a
-hard `source_filter.repo_identifiers` filter unless the model explicitly sends
-`source_filter.current_repo_only=true`; in that case the proxy resolves the
-exact repo identifier itself.
+The local MCP proxy may internally add an active repository identifier from
+`MEMFORGE_ACTIVE_REPO_IDENTIFIER` or the current git remote. That value is only
+a ranking affinity signal and is not exposed as an MCP input. It never becomes
+a hard `source_filter.repo_identifiers` filter unless the model explicitly
+sends `source_filter.current_repo_only=true`; in that case the proxy resolves
+the exact repo identifier itself.
 
 **Output per result (Level 0 -- memory card):**
 

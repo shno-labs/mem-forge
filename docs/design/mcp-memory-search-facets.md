@@ -17,9 +17,6 @@ Agents may provide:
 - `include_superseded`: optional lifecycle broadening.
 - `status`: optional lifecycle status.
 - `active_project` / `scope_mode`: optional project ranking context.
-- `active_repo_identifier`: optional repo ranking context. The local MCP proxy
-  fills this from `MEMFORGE_ACTIVE_REPO_IDENTIFIER` or the current git remote
-  when the caller omits it. This is an affinity signal, not a hard filter.
 - `source_filter`: optional source facets:
   - `source_types`: registered source types such as `agent_session`, `jira`, or `confluence`.
   - `clients`: bounded agent-session clients such as `codex` or `claude-code`.
@@ -34,6 +31,8 @@ Agents should omit a facet when unsure. They must not invent source ids, user id
 - No MCP-facing exact source-instance or arbitrary repository-id filter for
   normal search. Source ids and exact repo ids remain internal or advanced API
   concerns.
+- No MCP-facing `active_repo_identifier`. The local proxy may derive it as an
+  internal ranking signal, but the model cannot provide or override it.
 - No `list_recent_changes` MCP memory tool. Recent-memory questions should use `search` with `time_range`.
 
 ## Architecture
@@ -56,9 +55,9 @@ Search channels may over-retrieve, but no channel can bypass visibility or facet
 - Empty lists are treated like omitted facets.
 - `source_types` must match registered source types exactly.
 - `clients` must match known client ids exactly.
-- `active_repo_identifier` may be auto-detected by the local proxy, but
-  auto-detection never populates `source_filter.repo_identifiers` unless the
-  MCP caller explicitly asks for `current_repo_only`.
+- The local proxy may auto-detect an active repo identifier for ranking
+  affinity, but auto-detection never populates `source_filter.repo_identifiers`
+  unless the MCP caller explicitly asks for `current_repo_only`.
 - Request bodies cannot provide `user_id` or `owner_user_id`; private memory access is always server-principal-derived.
 
 ## Examples
