@@ -133,6 +133,11 @@ assert.match(
   /formatRelativeFuture\(source\.sync_schedule\.next_run_at\)/,
   "SourceRow should format the next scheduled sync as a future time instead of using the last-sync formatter",
 );
+assert.doesNotMatch(
+  sourceRowSource,
+  /New memories/,
+  "last-sync details should not label extraction candidates as new durable memories",
+);
 
 assert.match(
   sourcesPageSource,
