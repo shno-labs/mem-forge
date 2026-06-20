@@ -92,6 +92,7 @@ assert.deepEqual(
 
 const sourcesPageSource = readFileSync("src/views/sources/SourcesPage.tsx", "utf8");
 const sourceRowSource = readFileSync("src/views/sources/SourceRow.tsx", "utf8");
+const syncStatusBarSource = readFileSync("src/components/admin/SyncStatusBar.tsx", "utf8");
 
 assert.match(
   sourcesPageSource,
@@ -137,6 +138,11 @@ assert.doesNotMatch(
   sourceRowSource,
   /New memories/,
   "last-sync details should not label extraction candidates as new durable memories",
+);
+assert.doesNotMatch(
+  syncStatusBarSource,
+  /new memories|stored memories/i,
+  "sync status details should avoid memory extraction counters that can differ from durable memory counts",
 );
 
 assert.match(
