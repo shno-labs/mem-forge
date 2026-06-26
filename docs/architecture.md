@@ -44,7 +44,7 @@ MemForge is a **memory layer** that:
 - **Extracts** atomic knowledge units (memories) from documents synced via pluggable connectors (genes)
 - **Deduplicates** across sources using semantic similarity
 - **Evolves** automatically when source documents change (via scheduled sync)
-- **Retrieves** precisely via hybrid search (vector + BM25 + entity graph + temporal filtering)
+- **Retrieves** precisely via hybrid search (vector + BM25 + entity graph) plus explicit source/date filters
 - **Exposes** a unified MCP tool interface through agent-client proxies
 
 ### Key Metrics
@@ -1478,17 +1478,19 @@ different durable entity set.
 ### Two-Tier: Memories (Primary) + Documents (Backing)
 
 ```
-Query -> [Query Analyzer] -> classifies type, extracts entities + temporal signals
+Query + explicit filters -> [Query Analyzer] -> extracts entities
                 |
-    +-----------+-----------+------------------+
-    |           |           |                  |
-    v           v           v                  v
- Vector    BM25/FTS5    Entity-Graph       Temporal SQL
- Search    Keyword      Traversal          Filtering
-    |           |           |                  |
-    +-----------+-----------+------------------+
+    +-----------+-----------+
+    |           |           |
+    v           v           v
+ Vector    BM25/FTS5    Entity-Graph
+ Search    Keyword      Traversal
+    |           |           |
+    +-----------+-----------+
                 |
     [Reciprocal Rank Fusion]
+                |
+    [Relational source/date/visibility checks]
                 |
     [Optional Reranker (top-20, only for ambiguous results)]
                 |
@@ -1502,14 +1504,11 @@ Query -> [Query Analyzer] -> classifies type, extracts entities + temporal signa
 
 ### Query Analysis (Two-Tier Entity Detection)
 
-Two detections, not a 7-type classifier. The agent explicitly passes `memory_types` and
-`entities` via the tool schema — the analyzer doesn't need to guess intent.
+Entity detection, not a 7-type classifier and not temporal-intent inference.
+The agent explicitly passes `memory_types`, `source_filter`, and date-only
+`time_range` via the tool schema — the analyzer doesn't need to guess intent.
 
-**Detection 1: Temporal intent**
-If query contains date keywords ("recently", "last week", "changed", "since March") or
-the `time_range` parameter is set → add SQL date filter on `updated_at`/`created_at`.
-
-**Detection 2: Entity mentions (regex → LLM fallback)**
+**Entity mentions (regex → LLM fallback)**
 
 *Tier 1 — Regex (< 5ms):* The query is canonicalized with `canonicalize_entity_name()`
 (hyphens/underscores → spaces) to match the canonicalized entity names in the database.
@@ -1531,7 +1530,10 @@ and **BM25** (alias expansion of the keyword query). This means entity detection
 sequentially before channel launch — both channels depend on the result.
 
 **All queries** run vector + BM25 in parallel. Graph traversal is additive (only when
-entities are detected). Temporal filtering is additive (only when temporal intent detected).
+entities are detected). Explicit source/date filters are applied after fusion by the
+relational store so no retrieval channel can bypass visibility, source, or date semantics.
+MemForge does not infer date ranges from query text; agents convert phrases such as
+"last week" into explicit `start_date` / `end_date` values before calling the tool.
 
 > **Simplified from earlier design:** A 7-type classifier with per-type strategy routing
 > tables was removed. The `memory_types` filter from the tool schema handles type-specific
@@ -1544,8 +1546,6 @@ final_score = 0.85 * rrf_normalized + 0.15 * recency
 ```
 
 Where `recency = exp(-0.693 * age_days / 90)` (half-life of 90 days).
-
-For `temporal` queries, recency weight boosted: `0.70 * rrf + 0.30 * recency`.
 
 > **Simplified from earlier design:** The original formula had 6 weighted parameters
 > (confidence, source_authority, corroboration, access_frequency). These are deferred.
@@ -1689,7 +1689,11 @@ It does not return host-local, container-local, or SaaS-local file paths.
       "clients": "array of exact client ids: codex|claude-code (optional)",
       "current_repo_only": "boolean, proxy-resolved current git repository filter (optional)"
     },
-    "time_range": {"after": "ISO date", "before": "ISO date"},
+    "time_range": {
+      "date_type": "source_updated_at|memory_updated_at",
+      "start_date": "YYYY-MM-DD (optional)",
+      "end_date": "YYYY-MM-DD (optional)"
+    },
     "entities": "array of entity names to focus on (optional)",
     "include_private": "boolean, default false",
     "include_superseded": "boolean, default false",
@@ -1847,7 +1851,7 @@ Agent receives a question
 
 ### Phase 2: Retrieval (Week 3-4)
 
-- SearchEngine: multi-channel (vector + BM25/FTS5 + entity-graph + temporal)
+- SearchEngine: multi-channel (vector + BM25/FTS5 + entity-graph) plus authoritative relational filters
 - Query analyzer (rule-based classification)
 - RRF fusion implementation
 - Ranking formula with all signals (recency, confidence, authority, corroboration, access)
