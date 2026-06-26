@@ -12,7 +12,11 @@ Agents may provide:
 
 - `query`: required natural-language question.
 - `memory_types`: optional memory-type enum filter.
-- `time_range`: optional ISO `after` / `before` range.
+- `time_range`: optional date-only range. `start_date` and `end_date` are
+  individually optional, but at least one is required when `time_range` is sent.
+  Agents convert phrases such as "last week" into explicit `YYYY-MM-DD` bounds
+  before calling. `date_type` is either `source_updated_at` (default) or
+  `memory_updated_at`.
 - `include_private`: optional flag. The server still decides whose private memories are visible from the authenticated principal.
 - `include_superseded`: optional lifecycle broadening.
 - `status`: optional lifecycle status.
@@ -42,9 +46,9 @@ MCP search tool
   -> ToolClient / plugin proxy forwards structured request
   -> POST /api/memories/search validates bounded facets
   -> server derives AccessScope.user_id from auth principal
-  -> SearchEngine retrieves candidates through vector/BM25/graph/temporal
+  -> SearchEngine retrieves candidates through vector/BM25/graph
   -> RelationalStore applies authoritative post-fusion facet checks
-  -> SQLite, HANA, and future stores implement the same source-facet contract
+  -> SQLite, HANA, and future stores implement the same source/date-facet contract
 ```
 
 Search channels may over-retrieve, but no channel can bypass visibility or facet rules. The final relational check is authoritative because a memory can have multiple supporting sources and one vector row cannot encode that relationship safely.
@@ -59,6 +63,13 @@ Search channels may over-retrieve, but no channel can bypass visibility or facet
   affinity, but auto-detection never populates `source_filter.repo_identifiers`
   unless the MCP caller explicitly asks for `current_repo_only`.
 - Request bodies cannot provide `user_id` or `owner_user_id`; private memory access is always server-principal-derived.
+- `source_updated_at` filters provenance rows. It only matches memories with a
+  source/provenance row whose source facet and date window both match that same
+  row. Memories without provenance rows do not match this mode.
+- `memory_updated_at` filters the MemForge memory lifecycle row. It does not
+  require a provenance row.
+- MemForge does not infer temporal intent from the query string. If the user
+  says "from last week", the agent must convert that phrase to explicit dates.
 
 ## Examples
 
@@ -73,7 +84,11 @@ Search recent agent-session memory from the current repo:
 ```json
 {
   "query": "scheduler fix decisions from the last week",
-  "time_range": {"after": "2026-06-11T00:00:00Z"},
+  "time_range": {
+    "date_type": "memory_updated_at",
+    "start_date": "2026-06-11",
+    "end_date": "2026-06-17"
+  },
   "include_private": true,
   "source_filter": {
     "source_types": ["agent_session"],
