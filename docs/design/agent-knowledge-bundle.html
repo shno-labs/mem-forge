@@ -172,8 +172,8 @@
       <div class="flow">
         <div class="step">Local adapter captures bounded evidence and repo metadata</div>
         <div class="step">POST /api/agent-sessions/windows</div>
-        <div class="step">Server retrieves private same-user same-repo concepts</div>
-        <div class="step">LLM returns AgentKnowledgePatchProposal</div>
+        <div class="step">LLM extracts a durable session outcome or no_output</div>
+        <div class="step">Server reconciles against private same-user same-repo memories</div>
         <div class="step">Service validates owner, visibility, repo, and claim scope</div>
         <div class="step">DB writes concept, claim, citation, and memory row</div>
         <div class="step">Markdown is rendered from DB state</div>
@@ -182,7 +182,7 @@
       <pre><code>Codex / Claude Code
   -&gt; local adapter
   -&gt; /api/agent-sessions/windows
-  -&gt; Agent Knowledge Bundle patch
+  -&gt; Agent Knowledge Bundle patch + memory lifecycle reconciliation
   -&gt; private concept + claim + citation records
   -&gt; private memory row
   -&gt; memory search</code></pre>
@@ -197,7 +197,8 @@
         <tbody>
           <tr><td><code>create_new_concept</code></td><td>The evidence starts a new durable topic.</td><td>Create concept, claim, citation, and memory row.</td></tr>
           <tr><td><code>add_new_claim</code></td><td>The evidence belongs to an existing concept but is a distinct takeaway.</td><td>Add claim, citation, and memory row.</td></tr>
-          <tr><td><code>update_existing_claim</code></td><td>The evidence corrects or refines an existing takeaway.</td><td>Update the claim and the same memory row.</td></tr>
+          <tr><td><code>update_existing_claim</code></td><td>The evidence corrects or refines existing durable knowledge.</td><td>Create a new memory row, supersede the old memory, and move the existing claim projection.</td></tr>
+          <tr><td><code>supersede_existing_claim</code></td><td>The evidence replaces or invalidates existing durable knowledge.</td><td>Create a new memory row, supersede the old memory, and move the existing claim projection.</td></tr>
           <tr><td><code>no_output</code></td><td>The window has no durable memory value.</td><td>Record the processed outcome only.</td></tr>
         </tbody>
       </table>
@@ -216,7 +217,16 @@ agent_claims
 
 agent_claim_citations
   id, claim_id, citation_url, timestamps</code></pre>
-      <p>The stable extraction and update unit is <code>concept_id#claim_id</code>. The claim links to one memory row through <code>agent_claims.memory_id</code>.</p>
+      <p>The stable projection unit is <code>concept_id#claim_id</code>. Search and lifecycle start from memory rows; when a memory supersedes an older memory, the claim projection moves through <code>agent_claims.memory_id</code>.</p>
+    </section>
+
+    <section>
+      <h2>Lifecycle-First Reconciliation</h2>
+      <pre><code>session outcome
+  -&gt; memory candidate
+  -&gt; memory lifecycle
+  -&gt; claim projection</code></pre>
+      <p>The LLM may provide concept and claim ids when the listed context is unambiguous, but the robust path does not depend on the model copying an old <code>claim_id</code>. MemForge resolves the current claim from the matched old memory before moving the projection.</p>
     </section>
 
     <section>
@@ -234,9 +244,10 @@ Proposal: update_existing_claim
 Validation: same user, private concept, same repo, claim belongs to concept
 Result:
   agent_claims.akb_claim_startup is updated
-  memory mem_123 is updated in place
+  memory mem_456 is created
+  memory mem_123 is marked superseded
   a citation to the new window is appended</code></pre>
-      <p>The result is one evolving claim and one evolving memory row, not two conflicting memories.</p>
+      <p>The result is one evolving claim projection pointing at the current memory row, not two active conflicting memories.</p>
     </section>
 
     <section>
@@ -248,7 +259,7 @@ Result:
       <h2>Verification Focus</h2>
       <ul>
         <li>Create private concept, claim, citation, and memory row.</li>
-        <li>Update an existing private claim and reuse the same memory row.</li>
+        <li>Update an existing private claim by creating a new current memory row and superseding the old one.</li>
         <li>Reject another user's private concept.</li>
         <li>Keep same-window retries idempotent.</li>
         <li>Require cloud HANA adapters to implement the same concept and claim contract methods.</li>

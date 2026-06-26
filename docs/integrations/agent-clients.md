@@ -112,10 +112,13 @@ The MemForge service owns:
 - redacting again because client-side redaction is not a trust boundary
 - canonicalizing evidence into a bounded agent-session window
 - deciding whether a gated turn contains enough signal to process
-- retrieving same-user, same-repo private concepts for patch context
-- asking the structured LLM client for an Agent Knowledge Bundle patch proposal
-- validating the proposal against owner, visibility, repo, and claim scope
-- writing private concept, claim, citation, and memory rows
+- asking the structured LLM client for a durable session-outcome patch proposal
+- reconciling the candidate against same-user, same-repo, same-client private
+  agent-session memory rows
+- resolving claim projection from the matched memory when lifecycle updates an
+  existing claim
+- validating the final write against owner, visibility, repo, and claim scope
+- writing private concept, claim, citation, memory, and lifecycle rows
 - applying quality gates, reconciliation, storage, search, and lifecycle policies
 
 This is the same adapter boundary for local self-hosting and a future hosted
