@@ -48,8 +48,11 @@ sequenceDiagram
   Proxy-->>Agent: search, get_memory, get_resource schemas
   Agent->>Proxy: MCP stdio tools/call search
   Proxy->>Service: POST /api/memories/search
-  Service-->>Proxy: ranked memories + content_url/pdf_url
+  Service-->>Proxy: ranked memory cards
   Proxy-->>Agent: MCP text result
+  Agent->>Proxy: MCP stdio tools/call get_memory
+  Proxy->>Service: GET /api/memories/{memory_id}
+  Service-->>Proxy: memory detail + source artifact URLs
   Agent->>Proxy: MCP stdio tools/call get_resource(mode=file)
   Proxy->>Service: GET /api/documents/{doc_id}/pdf
   Service-->>Proxy: artifact bytes
@@ -88,13 +91,11 @@ separate local-database reader.
 
 Agents retrieve memory context progressively:
 
-- Use `search` first for compact memory cards and the primary source's
-  `content_url` / `pdf_url`.
-- Call MCP `get_resource` directly on that URL when the primary source is
-  enough evidence.
-- Call MCP `get_memory(memory_id)` first when complete provenance,
-  corroborating sources, contradiction context, or lifecycle metadata is needed;
-  then call `get_resource` for whichever source artifact is most useful.
+- Use `search` first for compact memory cards.
+- Call MCP `get_memory(memory_id)` when source evidence, provenance,
+  corroborating sources, contradiction context, or lifecycle metadata is needed.
+- Call MCP `get_resource` for whichever `get_memory.sources[]` artifact URL is
+  most useful.
 
 This keeps Codex, Claude Code, and future adapters source-format agnostic. The
 client follows service-provided URLs instead of assuming where MemForge stores
