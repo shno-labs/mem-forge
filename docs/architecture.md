@@ -130,7 +130,7 @@ All distance thresholds are calibrated for **text-embedding-3-small** with cosin
 | **Code-level entity resolution** | Entities are resolved in code (exact match → alias lookup → fuzzy match), not by LLM prompt instructions. The LLM assists by extracting explicit aliases from document text. |
 | **Normalizer carries the weight** | Memory quality is proportional to normalizer quality. Each gene's normalizer must surface ALL meaningful structured data as readable markdown. |
 | **Progressive disclosure** | Level 0 (memory cards, ~60 tokens each) > Level 1 (full detail + provenance) > Level 2 (backing source artifact via `get_resource`). Agents drill down only when needed. |
-| **Unified search** | One `search` MCP tool that returns memories (primary) with document fallback. No routing ambiguity for agents. |
+| **Unified search** | One `search` MCP tool that returns memory cards only. Agents use `get_memory` for provenance and `get_resource` for source artifacts. |
 
 ---
 
@@ -1495,8 +1495,7 @@ Query + explicit filters -> [Query Analyzer] -> extracts entities
     [Optional Reranker (top-20, only for ambiguous results)]
                 |
     Memory Cards (Level 0: ~60 tokens each)
-         | primary source enough? -> get_resource(content_url/pdf_url)
-         | complete provenance needed
+         | source evidence needed
     Memory Detail (Level 1: 100-500 tokens)
          | agent needs backing evidence
     Source Artifact (Level 2: via get_resource on content_url/pdf_url)
@@ -1598,11 +1597,12 @@ for repeated/similar queries within a session. Trivial to implement (dict + hash
 > **Deferred:** Entity name cache and result cache were removed. SQLite queries are fast
 > enough at this scale (< 10ms). Add caching if latency profiling shows need.
 
-### Document Fallback in Unified Search
+### Memory-Only Unified Search
 
-When memory search returns fewer than `top_k` results, fill remaining slots with
-document-level results (flagged with `is_document_result: true`). Documents already
-represented by a memory are excluded to avoid duplication.
+Memory search returns only memory cards. Direct document hits, document vectors,
+and source artifacts remain part of sync, health, repair, and evidence access,
+but they are not mixed into `search` results. Agents drill down through
+`get_memory` before choosing a source artifact.
 
 ---
 
@@ -1622,7 +1622,7 @@ get_memory         "Tell me more about this specific memory"
                     -> only called when agent needs to verify/deep-dive
 
 get_resource       "Read this source artifact"
-                    -> accepts content_url/pdf_url from search or get_memory
+                    -> accepts content_url/pdf_url from get_memory
                     -> returns text, a local cache file path, or base64 bytes
 
 submit_agent_session_document
@@ -1680,7 +1680,7 @@ It does not return host-local, container-local, or SaaS-local file paths.
 ```json
 {
   "name": "search",
-  "description": "Search the team's knowledge base. Returns memories with links to source documents.",
+  "description": "Search visible MemForge memories. Returns memory cards only.",
   "inputSchema": {
     "query": "string (required)",
     "memory_types": "array of: fact|decision|convention|procedure (optional)",
@@ -1717,24 +1717,14 @@ the exact repo identifier itself.
 
 **Output per result (Level 0 -- memory card):**
 
-Note: Level 0 shows only the PRIMARY source (most recently observed).
-Use `get_memory` for ALL sources when a memory has multiple provenance docs.
-
 ```json
 {
   "memory_id": "mem-a7f3b2c1",
   "memory_type": "decision",
-  "is_document_result": false,
   "summary": "Team chose gRPC over REST for inter-service calls...",
   "confidence": 0.90,
   "relevance_score": 0.87,
   "tags": ["grpc", "architecture", "performance"],
-  "source_doc_id": "confluence-12345",
-  "source_doc_title": "PAY Architecture Decision Records",
-  "source_type": "confluence",
-  "content_url": "/api/documents/confluence-12345/content",
-  "pdf_url": "/api/documents/confluence-12345/pdf",
-  "source_url": "https://wiki.example.com/pages/12345",
   "corroborated_by": 2,
   "last_observed_at": "2026-03-15T10:30:00Z",
   "freshness": "current",
@@ -1742,11 +1732,10 @@ Use `get_memory` for ALL sources when a memory has multiple provenance docs.
 }
 ```
 
-`content_url` and `pdf_url` are the portable artifact links for Docker and
-hosted deployments. Agents can pass either URL to the MCP `get_resource` tool
-when the primary source is enough. They should call `get_memory` first when
-they need the complete provenance set, contradiction context, or corroborating
-sources before deciding which artifact to read.
+Search results intentionally omit top-level source and artifact fields. Agents
+call `get_memory` when they need source titles, complete provenance,
+contradiction context, corroborating sources, or artifact URLs before deciding
+which artifact to read.
 
 **`freshness` field values:**
 
@@ -1777,10 +1766,8 @@ contract. They expose service artifact URLs, not service-local storage paths.
 Returns: full content, context, all source documents with service artifact URLs,
 related memories, entity links, confidence, and lifecycle metadata.
 
-Use `get_memory` when an agent needs all source documents for a memory,
-corroboration, contradictions, entities, or lifecycle metadata. A simple answer
-that only needs the primary source can skip this step and go straight from a
-search result's `content_url` / `pdf_url` to `get_resource`.
+Use `get_memory` when an agent needs source documents for a memory,
+corroboration, contradictions, entities, lifecycle metadata, or artifact URLs.
 
 ### Tool: `get_resource`
 
@@ -1796,8 +1783,8 @@ search result's `content_url` / `pdf_url` to `get_resource`.
 }
 ```
 
-`get_resource` reads a MemForge document artifact URL returned by search or
-`get_memory` by fetching it through `MEMFORGE_API_URL` (default
+`get_resource` reads a MemForge document artifact URL returned by `get_memory`
+by fetching it through `MEMFORGE_API_URL` (default
 `http://127.0.0.1:8765`). Text artifacts can be returned inline. PDFs and other
 binary artifacts can be saved to a local cache file for agent runtimes that can
 read files, or returned as base64 when that is more practical. The cache file is
@@ -1813,9 +1800,7 @@ Agent receives a question
           |
           +-- Recent window? -> include time_range on search
           |
-          +-- Primary source is enough? -> get_resource(content_url/pdf_url)
-          |
-          +-- Need complete provenance? -> get_memory
+          +-- Need source evidence? -> get_memory
                 |
     |           +-- Need backing evidence? -> get_resource(content_url/pdf_url)
     |
