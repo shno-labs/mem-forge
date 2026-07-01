@@ -1682,22 +1682,17 @@ It does not return host-local, container-local, or SaaS-local file paths.
   "name": "search",
   "description": "Search visible MemForge memories. Returns memory cards only.",
   "inputSchema": {
-    "query": "string (required)",
-    "memory_types": "array of: fact|decision|convention|procedure (optional)",
+    "query": "string (optional when source_filter or time_range is present)",
     "source_filter": {
-      "source_types": "array of exact registered source types (optional)",
+      "source_ids": "array of exact IDs returned by list_sources (optional)",
       "clients": "array of exact client ids: codex|claude-code (optional)",
-      "current_repo_only": "boolean, proxy-resolved current git repository filter (optional)"
+      "current_repo_only": "boolean, proxy-resolved current git repository filter from MCP roots (optional)"
     },
     "time_range": {
       "date_type": "source_updated_at|memory_updated_at",
       "start_date": "YYYY-MM-DD (optional)",
       "end_date": "YYYY-MM-DD (optional)"
     },
-    "entities": "array of entity names to focus on (optional)",
-    "include_private": "boolean, default false",
-    "include_superseded": "boolean, default false",
-    "status": "active|superseded|retired|decayed|pending_review (optional)",
     "top_k": "integer, default 10"
   }
 }
@@ -1705,15 +1700,13 @@ It does not return host-local, container-local, or SaaS-local file paths.
 
 `source_filter` is exact and optional. If an agent is unsure, it should omit the
 facet and search all visible memories. The request boundary rejects unknown
-source types or clients instead of guessing, normalizing, or returning an
-accidentally empty result set.
-
-The local MCP proxy may internally add an active repository identifier from
-`MEMFORGE_ACTIVE_REPO_IDENTIFIER` or the current git remote. That value is only
-a ranking affinity signal and is not exposed as an MCP input. It never becomes
-a hard `source_filter.repo_identifiers` filter unless the model explicitly
-sends `source_filter.current_repo_only=true`; in that case the proxy resolves
-the exact repo identifier itself.
+source IDs or clients instead of guessing, normalizing, or returning an
+accidentally empty result set. For `current_repo_only`, the local MCP proxy
+requests MCP workspace roots from the client and resolves their `origin` git
+remote. Exactly one remote is required before the proxy can send a hard
+`source_filter.repo_identifiers` filter. If roots are unavailable, roots do not
+resolve to a remote, or roots resolve to multiple remotes, the proxy rejects the
+facet and tells the agent to omit the filter for a broader search.
 
 **Output per result (Level 0 -- memory card):**
 
