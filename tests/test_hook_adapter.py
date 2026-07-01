@@ -144,6 +144,8 @@ def test_hook_adapter_injects_session_start_memforge_usage_guidance_without_api(
     assert "source_types" not in context
     assert "get_memory" in context
     assert "get_resource" in context
+    assert "confirmed content must be the durable memory only" in context
+    assert "why-the-tool-was-called out of content" in context
     assert "Relevant Memories" not in context
 
 
@@ -1222,6 +1224,9 @@ def test_mcp_proxy_search_schema_exposes_validated_facets_not_recent_changes():
     assert "repo_identifier" not in create_schema["properties"]
     assert "readable preview" in tools["create_memory"]["description"]
     assert "request_user_input" in tools["create_memory"]["description"]
+    assert "durable memory content" in tools["create_memory"]["description"]
+    assert "provenance" in tools["create_memory"]["description"]
+    assert "Do not put confirmation details" in create_schema["properties"]["content"]["description"]
 
     retire_schema = tools["retire_memory"]["inputSchema"]
     assert retire_schema["required"] == ["memory_id", "reason", "expected_content_hash"]
