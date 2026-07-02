@@ -1685,8 +1685,7 @@ It does not return host-local, container-local, or SaaS-local file paths.
     "query": "string (optional when source_filter or time_range is present)",
     "source_filter": {
       "source_ids": "array of exact IDs returned by list_sources (optional)",
-      "clients": "array of exact client ids: codex|claude-code (optional)",
-      "current_repo_only": "boolean, proxy-resolved current git repository filter from MCP roots (optional)"
+      "clients": "array of exact client ids: codex|claude-code (optional)"
     },
     "time_range": {
       "date_type": "source_updated_at|memory_updated_at",
@@ -1701,12 +1700,10 @@ It does not return host-local, container-local, or SaaS-local file paths.
 `source_filter` is exact and optional. If an agent is unsure, it should omit the
 facet and search all visible memories. The request boundary rejects unknown
 source IDs or clients instead of guessing, normalizing, or returning an
-accidentally empty result set. For `current_repo_only`, the local MCP proxy
-requests MCP workspace roots from the client and resolves their `origin` git
-remote. Exactly one remote is required before the proxy can send a hard
-`source_filter.repo_identifiers` filter. If roots are unavailable, roots do not
-resolve to a remote, or roots resolve to multiple remotes, the proxy rejects the
-facet and tells the agent to omit the filter for a broader search.
+accidentally empty result set. Repo-scoped MCP search is disabled until MCP
+workspace roots are reliable across supported hosts. The schema does not expose
+`current_repo_only`; if a stale caller still sends it, the proxy rejects the
+request and tells the agent to omit the filter for a broader search.
 
 **Output per result (Level 0 -- memory card):**
 
