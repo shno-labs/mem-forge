@@ -1298,7 +1298,11 @@ class SearchEngine:
         gracefully).
         """
         if self._embedding_provider is not None:
-            return self._embedding_provider(text)
+            try:
+                return self._embedding_provider(text)
+            except Exception:
+                logger.exception("Injected embedding provider failed for query")
+                return None
 
         cached = self._embed_cache.get(text)
         if cached is not None:

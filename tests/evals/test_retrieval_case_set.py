@@ -164,6 +164,16 @@ def test_case_set_validation_rejects_missing_core_case_fields() -> None:
             load_case_set_from_data(manifest, cases)
 
 
+def test_case_set_validation_rejects_path_unsafe_case_id() -> None:
+    from memforge.evals.retrieval import CaseSetValidationError, load_case_set_from_data
+
+    manifest, cases = _minimal_valid_case_set_data()
+    cases["cases.yaml"][0]["id"] = "../unsafe"
+
+    with pytest.raises(CaseSetValidationError, match="Case id"):
+        load_case_set_from_data(manifest, cases)
+
+
 def test_case_set_validation_rejects_boolean_top_k() -> None:
     from memforge.evals.retrieval import CaseSetValidationError, load_case_set_from_data
 
@@ -324,6 +334,20 @@ def test_case_set_validation_rejects_document_source_not_in_fixture() -> None:
     ]
 
     with pytest.raises(CaseSetValidationError, match="src-missing"):
+        load_case_set_from_data(manifest, cases)
+
+
+def test_case_set_validation_rejects_missing_document_source_id_with_doc_id() -> None:
+    from memforge.evals.retrieval import CaseSetValidationError, load_case_set_from_data
+
+    manifest, cases = _minimal_valid_case_set_data()
+    manifest["fixtures"]["default"]["documents"] = [
+        {
+            "doc_id": "doc-without-source",
+        }
+    ]
+
+    with pytest.raises(CaseSetValidationError, match="doc-without-source"):
         load_case_set_from_data(manifest, cases)
 
 

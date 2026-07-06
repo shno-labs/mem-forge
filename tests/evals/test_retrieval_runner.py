@@ -34,6 +34,25 @@ async def test_sqlite_runner_executes_core_hard_cases(tmp_path) -> None:
     assert list(tmp_path.glob("retrieval-eval-*.db")) == []
 
 
+def test_search_engine_embedding_provider_degrades_on_exception() -> None:
+    from memforge.config import RetrievalConfig
+    from memforge.retrieval.search import SearchEngine
+
+    def broken_provider(_query: str) -> list[float]:
+        raise RuntimeError("boom")
+
+    engine = SearchEngine(
+        relational=object(),
+        keyword=object(),
+        vector=object(),
+        embed_cfg={},
+        config=RetrievalConfig(),
+        embedding_provider=broken_provider,
+    )
+
+    assert engine._get_or_compute_embedding("query") is None
+
+
 @pytest.mark.asyncio
 async def test_sqlite_runner_reports_required_channel_failure(tmp_path) -> None:
     from memforge.evals.retrieval import load_case_set

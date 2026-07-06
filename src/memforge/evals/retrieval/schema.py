@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from dataclasses import dataclass, fields, replace
 from importlib import resources
 from pathlib import Path
@@ -17,6 +18,9 @@ from memforge.storage.adapters.context import AccessScope
 
 class CaseSetValidationError(ValueError):
     """Raised when a retrieval golden case set violates its contract."""
+
+
+_CASE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 @dataclass(frozen=True)
@@ -431,6 +435,10 @@ def _validate_case_set(case_set: RetrievalCaseSet) -> None:
 
 
 def _validate_case(case_set: RetrievalCaseSet, case: RetrievalCase) -> None:
+    if not _CASE_ID_RE.fullmatch(case.id):
+        raise CaseSetValidationError(
+            f"Case id {case.id!r} must contain only letters, digits, dots, underscores, or hyphens"
+        )
     if case.fixture_variant not in case_set.manifest.fixtures:
         raise CaseSetValidationError(
             f"Case {case.id} references missing fixture variant {case.fixture_variant}"
@@ -493,6 +501,16 @@ def _validate_fixture_documents(fixture_name: str, fixture: Mapping[str, Any]) -
         str(source["id"]) if isinstance(source, Mapping) else str(source)
         for source in fixture.get("sources") or ()
     }
+    missing_document_source_ids = [
+        str(document.get("doc_id") or "<unknown>")
+        for document in fixture.get("documents") or ()
+        if isinstance(document, Mapping) and "source_id" not in document
+    ]
+    if missing_document_source_ids:
+        raise CaseSetValidationError(
+            f"Fixture {fixture_name} documents are missing source_id: {missing_document_source_ids}"
+        )
+
     missing_source_ids = sorted(
         str(document.get("source_id"))
         for document in fixture.get("documents") or ()
