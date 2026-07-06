@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -40,6 +41,12 @@ class CaseRunResult:
 
 @dataclass(frozen=True)
 class RetrievalEvalReport:
+    """Golden eval report.
+
+    ``run`` uses deterministic rank-derived surrogate scores, not raw
+    SearchEngine model scores. Metrics should treat them as ordering signals.
+    """
+
     case_results: dict[str, CaseRunResult]
     hard_failures: tuple[HardFailure, ...]
     qrels: dict[str, dict[str, int]]
@@ -72,6 +79,7 @@ async def run_sqlite_case_set(
     case_set: RetrievalCaseSet,
     *,
     db_path: Path,
+    keep_databases: bool = False,
 ) -> RetrievalEvalReport:
     """Run all cases in a case set against a deterministic SQLite fixture."""
 
@@ -105,6 +113,8 @@ async def run_sqlite_case_set(
             )
         finally:
             await db.close()
+            if not keep_databases:
+                _remove_sqlite_files(case_db_path)
 
         case_result = _case_run_result(case.id, result)
         case_results[case.id] = case_result
@@ -185,8 +195,6 @@ def _has_required_channel(evidence: dict[str, Any], required_channels: tuple[str
 def _has_channel(evidence: dict[str, Any], required: str) -> bool:
     if required in evidence:
         return True
-    if required == "metadata_lexical" and isinstance(evidence.get("metadata_lexical"), dict):
-        return True
     metadata = evidence.get("metadata_lexical")
     if not isinstance(metadata, dict):
         return False
@@ -234,6 +242,16 @@ def _stable_run_scores(ranked_ids: tuple[str, ...]) -> dict[str, float]:
 
 def _failure(case: RetrievalCase, message: str) -> HardFailure:
     return HardFailure(case_id=case.id, message=message, parity_gate=case.parity_gate)
+
+
+def _remove_sqlite_files(db_path: Path) -> None:
+    for path in (
+        db_path,
+        db_path.with_name(f"{db_path.name}-wal"),
+        db_path.with_name(f"{db_path.name}-shm"),
+    ):
+        with suppress(FileNotFoundError):
+            path.unlink()
 
 
 class _EmptyVectorCollection:

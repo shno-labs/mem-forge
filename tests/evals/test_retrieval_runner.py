@@ -31,6 +31,7 @@ async def test_sqlite_runner_executes_core_hard_cases(tmp_path) -> None:
         "case_count": 4,
         "hard_failures": 0,
     }
+    assert list(tmp_path.glob("retrieval-eval-*.db")) == []
 
 
 @pytest.mark.asyncio
