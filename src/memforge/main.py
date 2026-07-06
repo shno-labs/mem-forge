@@ -359,8 +359,7 @@ def eval_retrieval(
 ) -> None:
     """Run the packaged deterministic retrieval golden eval."""
 
-    if output_format == "json":
-        logging.getLogger().setLevel(logging.WARNING)
+    logging.getLogger().setLevel(logging.WARNING)
     if keep_databases and db_path is None:
         raise click.ClickException("--keep-databases requires --db-path so artifacts have a durable location.")
     exit_code = asyncio.run(

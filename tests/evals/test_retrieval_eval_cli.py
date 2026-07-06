@@ -30,6 +30,23 @@ def test_retrieval_eval_cli_runs_packaged_case_set_as_json() -> None:
     assert payload["qrels"]["exact_external_id_lookup"] == {"mem-blocker-hint": 3}
 
 
+def test_retrieval_eval_cli_text_output_is_quiet_summary() -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "eval",
+            "retrieval",
+            "--case-set",
+            "retrieval-core-v1",
+            "--format",
+            "text",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "retrieval eval retrieval-core-v1: 4 cases, 0 hard failures"
+
+
 def test_retrieval_eval_cli_can_fail_on_hard_failures(monkeypatch) -> None:
     from memforge.evals.retrieval.runner import HardFailure, RetrievalEvalReport
 
