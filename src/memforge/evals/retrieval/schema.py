@@ -165,18 +165,28 @@ class RetrievalCase:
         _require_str("case.id", data.get("id"))
         _require_str("case.family", data.get("family"))
         _require_str("case.description", data.get("description"))
-        query = data["query"] if "query" in data else ""
-        top_k = data["top_k"] if "top_k" in data else 10
+        query = _require_present("case.query", data, "query")
+        top_k = _require_present("case.top_k", data, "top_k")
         offset = data["offset"] if "offset" in data else 0
-        entities = data["entities"] if "entities" in data else ()
-        fixture_variant = data["fixture_variant"] if "fixture_variant" in data else "default"
+        entities = _require_present("case.entities", data, "entities")
+        fixture_variant = _require_present("case.fixture_variant", data, "fixture_variant")
         _require_str("case.query", query)
         _require_positive_int("case.top_k", top_k)
         _require_non_negative_int("case.offset", offset)
         if data.get("source_filter") is not None:
             _require_mapping("case.source_filter", data["source_filter"])
+            _reject_unknown_fields(
+                "case.source_filter",
+                data["source_filter"],
+                {"source_ids", "clients", "repo_identifiers"},
+            )
         if data.get("time_range") is not None:
             _require_mapping("case.time_range", data["time_range"])
+            _reject_unknown_fields(
+                "case.time_range",
+                data["time_range"],
+                {"after", "before", "date_type"},
+            )
         _require_sequence("case.entities", entities)
         _require_str("case.fixture_variant", fixture_variant)
         _require_mapping("case.scope", data.get("scope"))
@@ -251,7 +261,7 @@ class CaseSetManifest:
                 "fixtures",
             },
         )
-        _require_int("manifest.case_schema_version", data.get("case_schema_version"))
+        _require_positive_int("manifest.case_schema_version", data.get("case_schema_version"))
         _require_str("manifest.case_set_id", data.get("case_set_id"))
         _require_str("manifest.case_set_sha", data.get("case_set_sha"))
         _require_sequence("manifest.case_files", data.get("case_files"))
@@ -516,6 +526,12 @@ def _reject_unknown_fields(context: str, data: Mapping[str, Any], allowed: set[s
     unknown = sorted(set(data) - allowed)
     if unknown:
         raise CaseSetValidationError(f"Unknown fields in {context}: {unknown}")
+
+
+def _require_present(field_name: str, data: Mapping[str, Any], key: str) -> Any:
+    if key not in data:
+        raise CaseSetValidationError(f"{field_name} is required")
+    return data[key]
 
 
 def _require_mapping(field_name: str, value: Any) -> Mapping[str, Any]:

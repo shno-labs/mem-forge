@@ -100,6 +100,7 @@ def test_case_set_validation_rejects_missing_fixture_references() -> None:
                 "description": "references a memory absent from the fixture",
                 "query": "known title",
                 "top_k": 10,
+                "entities": [],
                 "fixture_variant": "default",
                 "scope": {
                     "user_id": "eval-user",
@@ -142,6 +143,27 @@ def test_case_set_validation_rejects_wrong_scalar_types() -> None:
         load_case_set_from_data(manifest, cases)
 
 
+def test_case_set_validation_rejects_non_positive_schema_version() -> None:
+    from memforge.evals.retrieval import CaseSetValidationError, load_case_set_from_data
+
+    manifest, cases = _minimal_valid_case_set_data()
+    manifest["case_schema_version"] = 0
+
+    with pytest.raises(CaseSetValidationError, match="case_schema_version"):
+        load_case_set_from_data(manifest, cases)
+
+
+def test_case_set_validation_rejects_missing_core_case_fields() -> None:
+    from memforge.evals.retrieval import CaseSetValidationError, load_case_set_from_data
+
+    for field_name in ("query", "top_k", "fixture_variant", "entities"):
+        manifest, cases = _minimal_valid_case_set_data()
+        del cases["cases.yaml"][0][field_name]
+
+        with pytest.raises(CaseSetValidationError, match=field_name):
+            load_case_set_from_data(manifest, cases)
+
+
 def test_case_set_validation_rejects_boolean_top_k() -> None:
     from memforge.evals.retrieval import CaseSetValidationError, load_case_set_from_data
 
@@ -179,6 +201,22 @@ def test_case_set_validation_rejects_null_query() -> None:
     cases["cases.yaml"][0]["query"] = None
 
     with pytest.raises(CaseSetValidationError, match="query"):
+        load_case_set_from_data(manifest, cases)
+
+
+def test_case_set_validation_rejects_unknown_source_filter_and_time_range_fields() -> None:
+    from memforge.evals.retrieval import CaseSetValidationError, load_case_set_from_data
+
+    manifest, cases = _minimal_valid_case_set_data()
+    cases["cases.yaml"][0]["source_filter"] = {"source_id": "src-payroll"}
+
+    with pytest.raises(CaseSetValidationError, match="source_filter"):
+        load_case_set_from_data(manifest, cases)
+
+    manifest, cases = _minimal_valid_case_set_data()
+    cases["cases.yaml"][0]["time_range"] = {"after_date": "2026-01-01T00:00:00+00:00"}
+
+    with pytest.raises(CaseSetValidationError, match="time_range"):
         load_case_set_from_data(manifest, cases)
 
 
@@ -251,6 +289,7 @@ def test_case_set_validation_rejects_missing_source_subscription_rows() -> None:
                 "description": "valid case except incomplete subscription matrix",
                 "query": "known title",
                 "top_k": 10,
+                "entities": [],
                 "fixture_variant": "default",
                 "scope": {
                     "user_id": "eval-user",
@@ -493,6 +532,7 @@ def _minimal_valid_case_set_data() -> tuple[dict, dict]:
                 "description": "valid minimal case",
                 "query": "known title",
                 "top_k": 10,
+                "entities": [],
                 "fixture_variant": "default",
                 "scope": {
                     "user_id": "eval-user",

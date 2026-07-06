@@ -39,10 +39,10 @@ async def _seed_sources(db: Database, fixture: Mapping[str, Any]) -> None:
     for source in fixture.get("sources") or ():
         await db.upsert_source(
             str(source["id"]),
-            str(source.get("type") or "generic"),
-            str(source.get("name") or source["id"]),
-            json.dumps(source.get("config") or {}),
-            status=str(source.get("status") or "active"),
+            str(_value_or_default(source, "type", "generic")),
+            str(_value_or_default(source, "name", source["id"])),
+            json.dumps(_value_or_default(source, "config", {})),
+            status=str(_value_or_default(source, "status", "active")),
         )
 
 
@@ -53,15 +53,15 @@ async def _seed_documents(db: Database, fixture: Mapping[str, Any]) -> None:
             DocumentRecord(
                 doc_id=doc_id,
                 source=str(document["source_id"]),
-                source_url=str(document.get("source_url") or f"https://eval.example/{doc_id}"),
-                title=str(document.get("title") or doc_id),
-                space_or_project=str(document.get("space_or_project") or ""),
-                author=str(document.get("author") or "eval"),
+                source_url=str(_value_or_default(document, "source_url", f"https://eval.example/{doc_id}")),
+                title=str(_value_or_default(document, "title", doc_id)),
+                space_or_project=str(_value_or_default(document, "space_or_project", "")),
+                author=str(_value_or_default(document, "author", "eval")),
                 last_modified=FIXED_NOW,
-                labels=list(document.get("labels") or ()),
-                version=str(document.get("version") or "1"),
-                content_hash=str(document.get("content_hash") or f"h-{doc_id}"),
-                token_count=int(document.get("token_count") or 1),
+                labels=list(_value_or_default(document, "labels", ())),
+                version=str(_value_or_default(document, "version", "1")),
+                content_hash=str(_value_or_default(document, "content_hash", f"h-{doc_id}")),
+                token_count=int(_value_or_default(document, "token_count", 1)),
                 raw_content_uri=None,
                 raw_content_type="text/plain",
                 normalized_content_uri=None,
@@ -83,12 +83,17 @@ async def _seed_memories(db: Database, fixture: Mapping[str, Any]) -> None:
         await db.insert_memory(
             Memory(
                 id=memory_id,
-                memory_type=str(memory.get("memory_type") or "fact") if isinstance(memory, Mapping) else "fact",
+                memory_type=str(_value_or_default(memory, "memory_type", "fact")) if isinstance(memory, Mapping) else "fact",
                 content=content,
                 content_hash=content_hash(content),
-                confidence=float(memory.get("confidence") or 0.9) if isinstance(memory, Mapping) else 0.9,
+                confidence=float(_value_or_default(memory, "confidence", 0.9)) if isinstance(memory, Mapping) else 0.9,
+                visibility=str(_value_or_default(memory, "visibility", "workspace")) if isinstance(memory, Mapping) else "workspace",
+                owner_user_id=_value_or_default(memory, "owner_user_id", None) if isinstance(memory, Mapping) else None,
                 project_key=memory.get("project_key") if isinstance(memory, Mapping) else None,
-                status=str(memory.get("status") or "active") if isinstance(memory, Mapping) else "active",
+                repo_identifier=_value_or_default(memory, "repo_identifier", None) if isinstance(memory, Mapping) else None,
+                entity_refs=list(_value_or_default(memory, "entity_refs", ())) if isinstance(memory, Mapping) else [],
+                tags=list(_value_or_default(memory, "tags", ())) if isinstance(memory, Mapping) else [],
+                status=str(_value_or_default(memory, "status", "active")) if isinstance(memory, Mapping) else "active",
                 created_at=FIXED_NOW,
                 updated_at=FIXED_NOW,
             )
@@ -100,9 +105,9 @@ async def _seed_memory_sources(db: Database, fixture: Mapping[str, Any]) -> None
         await db.add_memory_source(
             str(support["memory_id"]),
             str(support["doc_id"]),
-            str(support.get("source_type") or "generic"),
+            str(_value_or_default(support, "source_type", "generic")),
             support.get("excerpt"),
-            support_kind=str(support.get("support_kind") or "extracted"),
+            support_kind=str(_value_or_default(support, "support_kind", "extracted")),
             source_updated_at=FIXED_NOW,
         )
 
@@ -114,3 +119,8 @@ async def _seed_source_subscriptions(db: Database, fixture: Mapping[str, Any]) -
             str(row["user_id"]),
             bool(row["enabled"]),
         )
+
+
+def _value_or_default(data: Mapping[str, Any], key: str, default: Any) -> Any:
+    value = data.get(key, default)
+    return default if value is None else value

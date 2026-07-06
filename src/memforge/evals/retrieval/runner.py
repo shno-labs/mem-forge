@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from memforge.config import RetrievalConfig
 from memforge.evals.retrieval.fixtures.corpus import seed_sqlite_fixture
 from memforge.evals.retrieval.schema import RetrievalCase, RetrievalCaseSet
-from memforge.retrieval.filters import MemorySourceFilter
+from memforge.retrieval.filters import MemorySourceFilter, MemoryTimeRange
 from memforge.retrieval.search import SearchEngine
 from memforge.storage.adapters.sqlite import build_sqlite_adapters
 
@@ -18,6 +19,7 @@ from memforge.storage.adapters.sqlite import build_sqlite_adapters
 class HardFailure:
     case_id: str
     message: str
+    parity_gate: str | None = None
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,7 @@ class RetrievalEvalReport:
                 {
                     "case_id": failure.case_id,
                     "message": failure.message,
+                    "parity_gate": failure.parity_gate,
                 }
                 for failure in self.hard_failures
             ],
@@ -89,10 +92,11 @@ async def run_sqlite_case_set(
                 vector=adapters.vector,
                 embed_cfg={},
                 config=RetrievalConfig(enable_reranking=False),
+                embedding_provider=lambda _query: [0.0],
             )
-            engine._get_or_compute_embedding = lambda query: [0.0]  # type: ignore[method-assign]
             result = await engine.search(
                 case.query,
+                time_range=_time_range_from_case(case),
                 top_k=case.top_k,
                 offset=case.offset,
                 entities=list(case.entities),
@@ -122,10 +126,7 @@ def _case_run_result(case_id: str, result: dict[str, Any]) -> CaseRunResult:
     return CaseRunResult(
         case_id=case_id,
         ranked_ids=ranked_ids,
-        scores={
-            item.memory_id: float(item.relevance_score)
-            for item in search_results
-        },
+        scores=_stable_run_scores(ranked_ids),
         total_candidates=int(result["total_candidates"]),
         query_analysis=dict(result["query_analysis"]),
         evidence_by_memory={
@@ -139,9 +140,9 @@ def _assert_case(case: RetrievalCase, result: CaseRunResult) -> list[HardFailure
     failures: list[HardFailure] = []
     if case.expected.total_candidates is not None and result.total_candidates != case.expected.total_candidates:
         failures.append(
-            HardFailure(
-                case_id=case.id,
-                message=(
+            _failure(
+                case,
+                (
                     f"expected total_candidates={case.expected.total_candidates}, "
                     f"got {result.total_candidates}"
                 ),
@@ -151,39 +152,47 @@ def _assert_case(case: RetrievalCase, result: CaseRunResult) -> list[HardFailure
         profile = result.query_analysis.get("ranking_profile")
         if profile != case.expected.required_profile:
             failures.append(
-                HardFailure(
-                    case_id=case.id,
-                    message=f"expected ranking_profile={case.expected.required_profile}, got {profile}",
+                _failure(
+                    case,
+                    f"expected ranking_profile={case.expected.required_profile}, got {profile}",
                 )
             )
     for memory_id, max_rank in case.expected.max_rank.items():
         rank = result.rank(memory_id)
         if rank > max_rank:
             failures.append(
-                HardFailure(
-                    case_id=case.id,
-                    message=f"expected {memory_id} rank <= {max_rank}, got {rank}",
+                _failure(
+                    case,
+                    f"expected {memory_id} rank <= {max_rank}, got {rank}",
                 )
             )
     for memory_id, required_channels in case.expected.required_channels.items():
         evidence = result.evidence_by_memory.get(memory_id) or {}
         if not _has_required_channel(evidence, required_channels):
             failures.append(
-                HardFailure(
-                    case_id=case.id,
-                    message=f"expected {memory_id} evidence channels {list(required_channels)}, got {evidence}",
+                _failure(
+                    case,
+                    f"expected {memory_id} evidence channels {list(required_channels)}, got {evidence}",
                 )
             )
     return failures
 
 
 def _has_required_channel(evidence: dict[str, Any], required_channels: tuple[str, ...]) -> bool:
+    return all(_has_channel(evidence, required) for required in required_channels)
+
+
+def _has_channel(evidence: dict[str, Any], required: str) -> bool:
+    if required in evidence:
+        return True
+    if required == "metadata_lexical" and isinstance(evidence.get("metadata_lexical"), dict):
+        return True
     metadata = evidence.get("metadata_lexical")
     if not isinstance(metadata, dict):
         return False
     channel = metadata.get("channel")
     matched_fields = set(metadata.get("matched_fields") or ())
-    return any(required == channel or required in matched_fields for required in required_channels)
+    return required == channel or required in matched_fields
 
 
 def _source_filter_from_case(case: RetrievalCase) -> MemorySourceFilter | None:
@@ -194,6 +203,37 @@ def _source_filter_from_case(case: RetrievalCase) -> MemorySourceFilter | None:
         clients=tuple(case.source_filter.get("clients") or ()),
         repo_identifiers=tuple(case.source_filter.get("repo_identifiers") or ()),
     )
+
+
+def _time_range_from_case(case: RetrievalCase) -> MemoryTimeRange | None:
+    if case.time_range is None:
+        return None
+    return MemoryTimeRange(
+        after=_parse_datetime(case.time_range.get("after")),
+        before=_parse_datetime(case.time_range.get("before")),
+        date_type=case.time_range.get("date_type") or "source_updated_at",
+    )
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
+        raise ValueError(f"time_range values must be ISO datetime strings, got {type(value).__name__}")
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _stable_run_scores(ranked_ids: tuple[str, ...]) -> dict[str, float]:
+    return {
+        memory_id: round(1.0 / rank, 12)
+        for rank, memory_id in enumerate(ranked_ids, start=1)
+    }
+
+
+def _failure(case: RetrievalCase, message: str) -> HardFailure:
+    return HardFailure(case_id=case.id, message=message, parity_gate=case.parity_gate)
 
 
 class _EmptyVectorCollection:
