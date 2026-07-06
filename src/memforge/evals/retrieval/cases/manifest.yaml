@@ -1,0 +1,48 @@
+case_schema_version: 1
+case_set_id: retrieval-core-v1
+case_set_sha: sha256:3c2b7bce1b6a28fd080369b3b7740ac5e577b26b0926a89a29ed126f98b5e46b
+case_files:
+  - metadata_lexical.yaml
+fixtures:
+  default:
+    workspace_id: ws-eval
+    tenant_id: tenant-eval
+    users:
+      - eval-user
+    sources:
+      - id: src-payroll
+        status: active
+      - id: src-muted
+        status: active
+    source_subscriptions:
+      - user_id: eval-user
+        source_id: src-payroll
+        enabled: true
+      - user_id: eval-user
+        source_id: src-muted
+        enabled: false
+    documents:
+      - doc_id: SFPAY-179397
+        source_id: src-payroll
+      - doc_id: doc-access-review
+        source_id: src-payroll
+    memories:
+      - id: mem-blocker-hint
+      - id: mem-access-review
+      - id: mem-listing-01
+      - id: mem-listing-02
+      - id: mem-listing-03
+      - id: mem-listing-04
+      - id: mem-listing-05
+      - id: mem-listing-06
+      - id: mem-listing-07
+      - id: mem-listing-08
+      - id: mem-listing-09
+      - id: mem-listing-10
+      - id: mem-listing-11
+      - id: mem-listing-12
+      - id: mem-listing-13
+      - id: mem-listing-14
+      - id: mem-listing-15
+      - id: mem-listing-16
+      - id: mem-listing-17
