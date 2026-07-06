@@ -372,9 +372,10 @@ def test_hash_case_set_module_reports_stale_manifest_on_check(tmp_path) -> None:
             encoding="utf-8",
         )
     manifest_path = case_dir / "manifest.yaml"
+    current_sha = _manifest_sha(manifest_path.read_text(encoding="utf-8"))
     manifest_path.write_text(
         manifest_path.read_text(encoding="utf-8").replace(
-            "sha256:3c2b7bce1b6a28fd080369b3b7740ac5e577b26b0926a89a29ed126f98b5e46b",
+            current_sha,
             "sha256:stale",
         ),
         encoding="utf-8",
@@ -414,9 +415,10 @@ def test_hash_case_set_module_writes_manifest_sha(tmp_path, monkeypatch) -> None
             encoding="utf-8",
         )
     manifest_path = case_dir / "manifest.yaml"
+    current_sha = _manifest_sha(manifest_path.read_text(encoding="utf-8"))
     manifest_path.write_text(
         manifest_path.read_text(encoding="utf-8").replace(
-            "sha256:3c2b7bce1b6a28fd080369b3b7740ac5e577b26b0926a89a29ed126f98b5e46b",
+            current_sha,
             "sha256:stale",
         ),
         encoding="utf-8",
@@ -447,8 +449,16 @@ def test_hash_case_set_module_writes_manifest_sha(tmp_path, monkeypatch) -> None
 
     assert completed.returncode == 0
     assert "wrote" in completed.stdout
+    assert "case_files:\n  - metadata_lexical.yaml" in manifest_path.read_text(encoding="utf-8")
     fixed = load_case_set("retrieval-core-v1")
     assert compute_case_set_sha(fixed) == fixed.manifest.case_set_sha
+
+
+def _manifest_sha(manifest_text: str) -> str:
+    for line in manifest_text.splitlines():
+        if line.startswith("case_set_sha: "):
+            return line.removeprefix("case_set_sha: ")
+    raise AssertionError("case_set_sha missing")
 
 
 def _minimal_valid_case_set_data() -> tuple[dict, dict]:

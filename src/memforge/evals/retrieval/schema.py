@@ -49,6 +49,15 @@ class ExpectedSpec:
     required_profile: str | None = None
     total_candidates: int | None = None
 
+    def with_required_channels(
+        self,
+        memory_id: str,
+        channels: tuple[str, ...],
+    ) -> ExpectedSpec:
+        required_channels = dict(self.required_channels)
+        required_channels[memory_id] = channels
+        return replace(self, required_channels=required_channels)
+
     @classmethod
     def from_data(cls, data: Mapping[str, Any] | None) -> ExpectedSpec:
         payload = data or {}

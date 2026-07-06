@@ -5,8 +5,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import yaml
-
 from memforge.evals.retrieval.schema import (
     compute_case_set_sha,
     load_case_set,
@@ -40,12 +38,14 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--write requires --case-root")
 
     manifest_path = args.case_root / "manifest.yaml"
-    manifest_data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-    manifest_data["case_set_sha"] = computed_sha
-    manifest_path.write_text(
-        yaml.safe_dump(manifest_data, sort_keys=False),
-        encoding="utf-8",
-    )
+    lines = manifest_path.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("case_set_sha: "):
+            lines[index] = f"case_set_sha: {computed_sha}"
+            break
+    else:
+        raise SystemExit(f"case_set_sha missing from {manifest_path}")
+    manifest_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"{args.case_set}: wrote {computed_sha} to {manifest_path}")
     return 0
 
