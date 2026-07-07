@@ -61,6 +61,7 @@ const requiredCommands = [
   ['"adapter", "github", "list"', "GitHub profile discovery wraps `memforge adapter github list`"],
   ['"adapter", "github", "preview"', "GitHub preview wraps `memforge adapter github preview`"],
   ['"adapter", "github", "push"', "GitHub sync wraps `memforge adapter github push`"],
+  ['"adapter", "github", "remove"', "GitHub profile removal wraps `memforge adapter github remove`"],
   ['"adapter", "auth", "jira", "status"', "Jira status wraps `adapter auth jira status`"],
   ['"adapter", "auth", "jira", "refresh"', "Jira auth wraps `adapter auth jira refresh`"],
   ['"adapter", "auth", "jira", "forget"', "Forget wraps `adapter auth jira forget`"],

@@ -1053,6 +1053,37 @@ def test_adapter_github_add_help_uses_access_copy_not_internal_mode():
     assert "cloud_pull" not in result.output
 
 
+def test_adapter_github_remove_deletes_profile(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("MEMFORGE_ADAPTER_CONFIG", str(tmp_path / "adapter.toml"))
+
+    add_result = CliRunner().invoke(
+        cli,
+        [
+            "adapter",
+            "github",
+            "add",
+            "matterhorn",
+            "--repo-url",
+            "https://github.wdf.sap.corp/nextgenpayroll-matterhorn/architecture",
+        ],
+    )
+    remove_result = CliRunner().invoke(cli, ["adapter", "github", "remove", "matterhorn"])
+    list_result = CliRunner().invoke(cli, ["adapter", "github", "list"])
+
+    assert add_result.exit_code == 0, add_result.output
+    assert remove_result.exit_code == 0, remove_result.output
+    assert json.loads(remove_result.output) == {"ok": True, "removed": "matterhorn"}
+    assert json.loads(list_result.output)["profiles"] == {}
+
+
+def test_adapter_github_remove_unknown_profile_errors(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("MEMFORGE_ADAPTER_CONFIG", str(tmp_path / "adapter.toml"))
+
+    result = CliRunner().invoke(cli, ["adapter", "github", "remove", "nope"])
+
+    assert result.exit_code != 0
+
+
 def _init_github_local_clone(
     tmp_path: Path,
     *,

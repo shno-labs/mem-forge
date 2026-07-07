@@ -737,6 +737,31 @@ async function getGitHubProfile(name) {
   return parseJson((await runMemforge(["adapter", "github", "list"])).stdout)?.profiles?.[name] ?? null;
 }
 
+function githubProfileAddArgs(name, profile, sourceId) {
+  const args = [
+    "adapter",
+    "github",
+    "add",
+    name,
+    "--repo-url",
+    String(profile.repo_url || ""),
+    "--ref",
+    String(profile.ref || "main"),
+  ];
+  if (profile.repo_path) args.push("--repo-path", String(profile.repo_path));
+  const linkedSourceId = String(sourceId || profile.source_id || "").trim();
+  if (linkedSourceId) args.push("--source-id", linkedSourceId);
+  for (const path of profile.include_paths ?? []) args.push("--include-path", String(path));
+  for (const extension of profile.include_extensions ?? []) args.push("--include-extension", String(extension));
+  return args;
+}
+
+async function saveGitHubSourceId(name, profile, sourceId) {
+  const result = await runMemforge(githubProfileAddArgs(name, profile, sourceId));
+  const payload = reportResult("Saving source link", result);
+  return Boolean(payload?.ok);
+}
+
 async function previewGitHubRepo(name) {
   const limit = ensureNotCancelled(await text({ message: "Max files to list", placeholder: "20" }));
   const args = ["adapter", "github", "preview", name];
@@ -755,6 +780,7 @@ async function syncGitHubRepo(name) {
     sourceId = ensureNotCancelled(
       await text({ message: "MemForge source id", placeholder: "src-...", validate: required }),
     ).trim();
+    await saveGitHubSourceId(name, profile, sourceId);
   }
   const limit = ensureNotCancelled(await text({ message: "Max files to sync (blank for all)", placeholder: "all" }));
   const processNow = ensureNotCancelled(
@@ -770,6 +796,15 @@ async function syncGitHubRepo(name) {
   }
 }
 
+async function removeGitHubRepo(name) {
+  const confirmRemove = ensureNotCancelled(
+    await confirm({ message: `Remove GitHub repository '${name}'? (local profile only; the server source stays)`, initialValue: false }),
+  );
+  if (!confirmRemove) return false;
+  await runStep("Removing GitHub repository", ["adapter", "github", "remove", name]);
+  return true;
+}
+
 async function runGitHubRepoMenu(name) {
   while (true) {
     const profile = await getGitHubProfile(name);
@@ -783,6 +818,7 @@ async function runGitHubRepoMenu(name) {
           options: [
             { value: "sync", label: "Sync now", hint: "push selected files" },
             { value: "preview", label: "Preview selected files", hint: "show what would sync" },
+            { value: "remove", label: "Remove repository", hint: "local profile only" },
             { value: "__back__", label: "← Back" },
           ],
         }),
@@ -795,6 +831,7 @@ async function runGitHubRepoMenu(name) {
     try {
       if (choice === "sync") await syncGitHubRepo(name);
       else if (choice === "preview") await previewGitHubRepo(name);
+      else if (choice === "remove" && (await removeGitHubRepo(name))) return;
     } catch (error) {
       if (error === BACK) continue;
       throw error;
