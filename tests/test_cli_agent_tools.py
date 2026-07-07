@@ -1043,6 +1043,16 @@ def test_adapter_github_add_and_preview_uses_local_gh_tree(monkeypatch, tmp_path
     assert payload["items"][0]["relative_path"] == "Payroll Processing/README.md"
 
 
+def test_adapter_github_add_help_uses_access_copy_not_internal_mode():
+    result = CliRunner().invoke(cli, ["adapter", "github", "add", "--help"])
+    normalized_output = " ".join(result.output.split())
+
+    assert result.exit_code == 0, result.output
+    assert "Internal network / VPN repositories" in normalized_output
+    assert "local_push" not in result.output
+    assert "cloud_pull" not in result.output
+
+
 def _init_github_local_clone(
     tmp_path: Path,
     *,
@@ -1280,6 +1290,8 @@ def test_adapter_github_preview_rejects_truncated_tree(monkeypatch, tmp_path: Pa
     assert add_result.exit_code == 0, add_result.output
     assert preview_result.exit_code != 0
     assert "truncated" in preview_result.output
+    assert "Internal network / VPN" in preview_result.output
+    assert "local_push" not in preview_result.output
 
 
 def test_adapter_github_push_rejects_malformed_base64_content(monkeypatch, tmp_path: Path):
