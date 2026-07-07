@@ -164,6 +164,11 @@ function httpsUrl(value) {
   return value && value.startsWith("https://") ? undefined : "Use an https:// URL";
 }
 
+function optionalInteger(value) {
+  const raw = (value || "").trim();
+  return !raw || /^\d+$/.test(raw) ? undefined : "Use a number, or leave blank";
+}
+
 function expandHome(value) {
   if (value === "~") return homedir();
   if (value.startsWith("~/")) return join(homedir(), value.slice(2));
@@ -253,7 +258,7 @@ function defaultGitHubProfileName(repoUrl) {
   try {
     const url = new URL(repoUrl);
     const parts = url.pathname.replace(/\.git$/i, "").split("/").filter(Boolean);
-    return slugify(parts.at(-1) || parts.at(-2) || "repo");
+    return slugify(parts.at(-1) || "repo");
   } catch {
     return slugify(repoUrl);
   }
@@ -763,26 +768,36 @@ async function saveGitHubSourceId(name, profile, sourceId) {
 }
 
 async function previewGitHubRepo(name) {
-  const limit = ensureNotCancelled(await text({ message: "Max files to list", placeholder: "20" }));
+  const limit = ensureNotCancelled(
+    await text({ message: "Max files to list", placeholder: "20", validate: optionalInteger }),
+  );
   const args = ["adapter", "github", "preview", name];
   if (limit && /^\d+$/.test(limit.trim())) args.push("--limit", limit.trim());
   const payload = await runStep("Previewing selected files", args);
-  if (payload?.counts) note(formatCounts(payload.counts), `${payload.profile} preview counts`);
+  if (payload?.counts) note(formatCounts(payload.counts), `${payload.profile ?? name} preview counts`);
   if (Array.isArray(payload?.items) && payload.items.length) {
     note(payload.items.map((item) => `- ${item.relative_path}`).join("\n"), "Sample files");
   }
 }
 
 async function syncGitHubRepo(name) {
-  const profile = (await getGitHubProfile(name)) ?? {};
+  const profile = await getGitHubProfile(name);
+  if (!profile) {
+    log.warn(`GitHub repository '${name}' is no longer configured.`);
+    return;
+  }
   let sourceId = String(profile.source_id || "").trim();
   if (!sourceId) {
     sourceId = ensureNotCancelled(
       await text({ message: "MemForge source id", placeholder: "src-...", validate: required }),
     ).trim();
-    await saveGitHubSourceId(name, profile, sourceId);
+    if (!(await saveGitHubSourceId(name, profile, sourceId))) {
+      note("Sync will use this source id once, but the local profile was not updated.", "Source link not saved");
+    }
   }
-  const limit = ensureNotCancelled(await text({ message: "Max files to sync (blank for all)", placeholder: "all" }));
+  const limit = ensureNotCancelled(
+    await text({ message: "Max files to sync (blank for all)", placeholder: "all", validate: optionalInteger }),
+  );
   const processNow = ensureNotCancelled(
     await confirm({ message: "Trigger extraction after sync?", initialValue: false }),
   );
