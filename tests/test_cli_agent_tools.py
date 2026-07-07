@@ -1292,6 +1292,7 @@ def test_adapter_github_preview_rejects_truncated_tree(monkeypatch, tmp_path: Pa
     assert "truncated" in preview_result.output
     assert "Internal network / VPN" in preview_result.output
     assert "local_push" not in preview_result.output
+    assert "cloud_pull" not in preview_result.output
 
 
 def test_adapter_github_push_rejects_malformed_base64_content(monkeypatch, tmp_path: Path):
