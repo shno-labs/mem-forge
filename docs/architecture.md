@@ -515,33 +515,43 @@ endpoint contract and query rules.
 
 ### Teams Gene Design (Detailed)
 
-**Content unit:** Thread (root message + all replies). Individual messages are too granular.
+**Content unit:** conversational window. Threaded Teams conversations use one
+root message plus replies as a window. Unthreaded group/direct chat messages
+are projected into stable 60-minute time blocks using a local ledger, so a
+late message can revise a window without changing its window id.
 
-**Significance filter** (the key to handling noise):
+Teams sync uses the Teams chatsvc REST API, not Microsoft Graph. A live probe on
+2026-07-08 against `/conversations` and `/conversations/{id}/messages` confirmed
+the raw shape used by the implementation:
 
-```
-All threads in synced channels
-  |
-  +-- Age filter (> 90 days old? skip)
-  |     |
-  |     +-- Fast-track? (code snippets, @mentions, internal links)
-  |     |     -> YES: sync regardless of engagement
-  |     |
-  |     +-- Engagement check
-  |           +-- Root message < 100 chars? skip ("ok", "thanks")
-  |           +-- < 2 replies? skip (not a discussion)
-  |           +-- < 2 participants? skip (monologue)
-  |           |
-  |           +-- SIGNIFICANT -> sync this thread
-  |
-  +-- Filtered out (70-90% of threads)
-```
+- conversation pages return `_metadata` plus `conversations[]`; each
+  conversation carries `id`, `type`, `threadProperties`, `lastMessage`, and
+  `version`.
+- message pages return `_metadata`, `tenantId`, and `messages[]`; messages carry
+  `conversationid`, `id`, `clientmessageid`, `rootMessageId`,
+  `composetime`, `originalarrivaltime`, `messagetype`, `contenttype`,
+  `content`, sender fields, and `version`.
+- `lastmodifiedtime` was not present in the sampled message page, so edit/delete
+  handling must not rely on that field being available.
 
-**Normalized markdown includes:**
-- Thread title, participants, timestamps
-- Root message content
-- Replies (chronological, with author + timestamp, trivial replies filtered)
-- All structured signals surfaced in the markdown
+The local agent audit log is compact JSONL at
+`~/.memforge/teams-sync-audit.jsonl` by default. It records no message body,
+participant display name, bearer token, or raw Teams id. Opaque ids and
+pagination cursors are hashed by the audit writer. Each run writes:
+
+- `teams_conversation_poll`: raw REST page count, raw message count, unique
+  message-key count, duplicate raw-row count, filtered message count, coverage
+  timestamps, pagination stop reason, and deterministic message receipt actions
+  (`upsert_new`, `upsert_updated`, `upsert_unchanged`).
+- `teams_window_projection`: selected window id hash, revision hash, and whether
+  a prior receipt caused the window to be skipped.
+- `teams_memory_patch`: push result for each new window revision.
+- `teams_sync_run`: run-level selected/pushed/failed/skipped/poll totals.
+
+For next-day incremental checks, `validate_teams_audit_run()` verifies that raw
+message counts reconcile with unique plus duplicate rows, selected message
+receipt actions reconcile with selected message keys, duplicate new window
+projections are absent, and summary totals match projection/patch rows.
 
 ### Outlook Gene Design
 
