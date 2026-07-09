@@ -180,6 +180,102 @@ def test_local_adapter_capability_commands_include_teams():
     assert "teams.sync" in status_payload["capabilities"]
 
 
+def test_teams_browse_job_reauths_when_no_local_session(monkeypatch):
+    calls = {"browse": 0}
+    auth_jobs: list[dict] = []
+
+    async def fake_browse_teams_conversations(*, region: str):
+        calls["browse"] += 1
+        if calls["browse"] == 1:
+            raise ValueError("No Teams session found.")
+        return {"favorites": [], "teams": [], "group_chats": [], "individual_chats": []}
+
+    monkeypatch.setattr(
+        "memforge.local_agent.teams_browse.browse_teams_conversations",
+        fake_browse_teams_conversations,
+    )
+    monkeypatch.setattr(main, "_current_teams_chat_token_hashes", lambda: {"old-token-hash"})
+
+    def fake_auth(job):
+        auth_jobs.append(job)
+        return {"operation": "teams_auth", "authenticated": True, "region": "emea", "token_count": 1}
+
+    monkeypatch.setattr(main, "_run_cloud_teams_auth_job", fake_auth)
+
+    result = main._run_cloud_teams_browse_job(
+        {
+            "job_id": "laj-browse",
+            "operation": "teams_browse",
+            "payload": {"region": "emea", "wait_seconds": 1},
+        }
+    )
+
+    assert result == {
+        "operation": "teams_browse",
+        "region": "emea",
+        "favorites": [],
+        "teams": [],
+        "group_chats": [],
+        "individual_chats": [],
+    }
+    assert calls["browse"] == 2
+    assert auth_jobs[0]["operation"] == "teams_auth"
+    assert auth_jobs[0]["payload"]["rejected_token_hashes"] == ["old-token-hash"]
+
+
+def test_teams_sync_job_reauths_when_no_local_session(monkeypatch, tmp_path):
+    calls = {"collect": 0}
+    auth_jobs: list[dict] = []
+
+    async def fake_collect(job, *, source_id: str, limit: int):
+        calls["collect"] += 1
+        if calls["collect"] == 1:
+            raise ValueError("No Teams session found.")
+        return {"documents": [], "poll_audits": []}
+
+    def fake_auth(job):
+        auth_jobs.append(job)
+        return {"operation": "teams_auth", "authenticated": True, "region": "emea", "token_count": 1}
+
+    class FakeClient:
+        pass
+
+    monkeypatch.setattr(main, "_collect_teams_documents_from_cloud_job", fake_collect)
+    monkeypatch.setattr(main, "_run_cloud_teams_auth_job", fake_auth)
+    monkeypatch.setattr(main, "_current_teams_chat_token_hashes", lambda: set())
+    monkeypatch.setattr(main, "_workspace_tool_client", lambda client, workspace_id: client)
+
+    result = main._run_cloud_teams_sync_job(
+        {
+            "job_id": "laj-sync",
+            "operation": "teams_sync",
+            "source_id": "src-teams",
+            "workspace_id": "workspace-a",
+            "payload": {
+                "source_id": "src-teams",
+                "workspace_id": "workspace-a",
+                "audit_log_path": str(tmp_path / "teams-audit.jsonl"),
+                "ledger_state_path": str(tmp_path / "teams-ledger.json"),
+                "wait_seconds": 1,
+            },
+        },
+        FakeClient(),
+    )
+
+    assert result["operation"] == "teams_sync"
+    assert result["source_id"] == "src-teams"
+    assert result["counts"] == {
+        "selected": 0,
+        "pushed": 0,
+        "failed": 0,
+        "skipped_existing": 0,
+        "polls": 0,
+    }
+    assert result["sync_started"] is False
+    assert calls["collect"] == 2
+    assert auth_jobs[0]["operation"] == "teams_auth"
+
+
 def test_local_agent_state_records_daemon_heartbeat(tmp_path):
     from memforge.local_agent.state import LocalAgentStateStore
 
