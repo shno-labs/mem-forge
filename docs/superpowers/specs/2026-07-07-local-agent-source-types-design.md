@@ -1,5 +1,9 @@
 # Local Agent Source Types Design
 
+> Superseded by `docs/local-repo-sync.md` and the durable source-sync worker
+> design. Local sources are configured in the UI, the daemon uploads raw data
+> for server-issued jobs, and the server owns processing and schedules.
+
 ## Goal
 
 Extend the local-agent Cloud job model beyond GitHub repository sync to cover two local-side source classes:

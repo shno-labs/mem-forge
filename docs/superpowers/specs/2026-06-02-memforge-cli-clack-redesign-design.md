@@ -1,5 +1,9 @@
 # MemForge interactive CLI — clack redesign
 
+> Superseded for local sources by `docs/local-repo-sync.md`: source setup and
+> scheduling now live in the UI/server, and the profile-based `adapter kb` and
+> `adapter github` commands described below have been removed.
+
 Date: 2026-06-02
 Status: implemented (pending review)
 Scope: `cli/index.mjs`, `cli/tests/`, plus a small Python addition for end-to-end vault linking.
