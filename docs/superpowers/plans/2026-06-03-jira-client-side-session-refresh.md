@@ -1,5 +1,9 @@
 # Jira Client-Side Session Capture and Proactive Refresh Implementation Plan
 
+> Historical plan: interactive assets now live under
+> `src/memforge/interactive_cli/`, and local source execution is driven by
+> server-issued daemon jobs rather than the root `cli/` development copy.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Move Jira browser-session capture to the client CLI (with a proactive watch daemon) and make the remote server store/validate/use the cookie it receives over an authenticated upload endpoint, never scraping a browser itself.

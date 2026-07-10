@@ -1,5 +1,9 @@
 # MemForge Local Agent Daemon V1 Implementation Plan
 
+> Superseded by the server-owned local-agent job design in
+> `docs/local-repo-sync.md`. The daemon no longer discovers profile tasks or
+> owns recurring schedules; this file remains only as historical context.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a local MemForge daemon that can run local-folder/GitHub local-push syncs and keep Jira browser sessions fresh through one extensible runtime.
