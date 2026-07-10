@@ -3195,12 +3195,12 @@ def auth():
 @click.option("--region", default="emea", type=click.Choice(["emea", "amer", "apac"]),
               help="Teams API region")
 def auth_teams(region: str):
-    """Authenticate with Microsoft Teams by extracting Chrome session tokens."""
+    """Authenticate with Microsoft Teams from Keychain or Chrome."""
 
     from memforge.auth.teams_auth import TeamsAuthenticator
 
     authenticator = TeamsAuthenticator()
-    console.print("[bold]Extracting Teams tokens from Chrome...[/]\n")
+    console.print("[bold]Loading Teams session...[/]\n")
 
     try:
         token_data = authenticator.authenticate(region=region)
@@ -3252,7 +3252,7 @@ def auth_teams(region: str):
     else:
         console.print("[yellow]No Chat API token found — skipping verification[/]")
 
-    console.print("\n[bold green]Done! Tokens saved to ~/.memforge/tokens/teams.json[/]")
+    console.print("\n[bold green]Done! Teams session saved to the OS keychain.[/]")
 
 
 @auth.command("status")

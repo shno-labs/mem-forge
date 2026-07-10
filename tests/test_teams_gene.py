@@ -74,9 +74,10 @@ class TestMetadata:
         schema = TeamsGene.config_schema()
         field_keys = [f.key for f in schema.fields]
         assert "region" in field_keys
-        assert "channels" in field_keys
-        assert "group_chats" in field_keys
-        assert "individual_chats" in field_keys
+        assert "conversation_ids" in field_keys
+        assert "channels" not in field_keys
+        assert "group_chats" not in field_keys
+        assert "individual_chats" not in field_keys
         assert "max_age_days" in field_keys
         assert "conversation_gap_minutes" in field_keys
         assert "max_block_messages" in field_keys
@@ -219,6 +220,14 @@ class TestMetadata:
             config={"channels": "Team/Channel"},
             source_id="test",
         )
+        assert gene.source_id == "test"
+
+    def test_config_accepts_direct_conversation_ids(self):
+        gene = TeamsGene(
+            config={"conversation_ids": "19:group@thread.v2"},
+            source_id="test",
+        )
+
         assert gene.source_id == "test"
 
 
