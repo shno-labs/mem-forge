@@ -311,7 +311,13 @@ function BrowseSelectStep({
     let changed = false;
     for (const [id, selected] of selections) {
       const browsed = browsedById.get(id);
-      if (browsed && teamsSelectionLabel(browsed) !== teamsSelectionLabel(selected)) {
+      if (
+        browsed
+        && (
+          browsed.type !== selected.type
+          || teamsSelectionLabel(browsed) !== teamsSelectionLabel(selected)
+        )
+      ) {
         next.set(id, browsed);
         changed = true;
       }
@@ -572,5 +578,6 @@ function TypeIcon({
 }) {
   if (type === "channel") return <Hash className={className} />;
   if (type === "group_chat") return <MessageSquare className={className} />;
-  return <User className={className} />;
+  if (type === "individual_chat") return <User className={className} />;
+  return null;
 }

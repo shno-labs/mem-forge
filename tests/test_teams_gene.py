@@ -230,6 +230,27 @@ class TestMetadata:
 
         assert gene.source_id == "test"
 
+    @pytest.mark.asyncio
+    async def test_direct_conversation_ids_infer_type_when_browse_metadata_is_missing(self):
+        gene = TeamsGene(
+            config={
+                "conversation_ids": [
+                    "19:channel@thread.tacv2",
+                    "19:dm@unq.gbl.spaces",
+                    "19:group@thread.v2",
+                ]
+            },
+            source_id="test",
+        )
+
+        resolved = await gene._resolve_configured_conversations({})
+
+        assert [metadata["type"] for _, metadata in resolved] == [
+            "channel",
+            "individual_chat",
+            "group_chat",
+        ]
+
 
 # ---------------------------------------------------------------------------
 # Conversation block grouping

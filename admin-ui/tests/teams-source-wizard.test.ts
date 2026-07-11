@@ -6,6 +6,7 @@ import {
   buildTeamsSourcePayload,
   buildTeamsSourceUpdatePayload,
   editableTeamsSourceState,
+  existingTeamsSelection,
   teamsSelectionLabel,
   type TeamsSelectionItem,
 } from "../src/views/sources/teamsSourceConfig.js";
@@ -57,6 +58,7 @@ assert.deepEqual(payload, {
 assert.equal(teamsSelectionLabel(selections[0]), "Engineering / Architecture");
 assert.equal(teamsSelectionLabel(selections[1]), "Planning Chat");
 assert.equal(teamsSelectionLabel(selections[2]), "Ada Lovelace");
+assert.equal(existingTeamsSelection("19:existing@thread.v2").type, "unknown");
 
 assert.equal(Object.hasOwn(payload.config, "channels"), false);
 assert.equal(Object.hasOwn(payload.config, "group_chats"), false);

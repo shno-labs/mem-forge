@@ -1055,7 +1055,7 @@ class TeamsGene(Gene):
                 result.append((conversation_id, {
                     "id": conversation_id,
                     "topic": "Teams conversation",
-                    "type": "group_chat",
+                    "type": _TeamsAPIClient._infer_conversation_type(conversation_id),
                     "lastActivity": datetime.now(timezone.utc),
                 }))
 

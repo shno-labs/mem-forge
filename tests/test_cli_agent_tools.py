@@ -703,6 +703,34 @@ def test_legacy_auth_jira_is_removed():
     assert "No such command 'jira'" in result.output
 
 
+@pytest.mark.parametrize(
+    ("keychain_available", "expected", "unexpected"),
+    [
+        (True, "Teams session saved to the OS keychain", "local compatibility cache"),
+        (False, "Teams session saved to the local compatibility cache", "saved to the OS keychain"),
+    ],
+)
+def test_auth_teams_reports_actual_keychain_persistence(
+    monkeypatch,
+    keychain_available: bool,
+    expected: str,
+    unexpected: str,
+):
+    from memforge.auth.teams_auth import TeamsAuthenticator
+
+    def fake_authenticate(self, region="emea"):
+        self.keychain_session_available = keychain_available
+        return {"tokens": {}}
+
+    monkeypatch.setattr(TeamsAuthenticator, "authenticate", fake_authenticate)
+
+    result = CliRunner().invoke(cli, ["auth", "teams"])
+
+    assert result.exit_code == 0, result.output
+    assert expected in result.output
+    assert unexpected not in result.output
+
+
 def test_adapter_list_includes_markdown_kb_capability():
     result = CliRunner().invoke(cli, ["adapter", "list"])
 
@@ -1387,7 +1415,8 @@ def test_teams_authenticator_opens_browser_and_waits_for_chrome_session(monkeypa
     monkeypatch.setattr("memforge.auth.teams_auth.TOKEN_DIR", token_dir)
     monkeypatch.setattr("memforge.auth.teams_auth.TOKEN_FILE", token_dir / "teams.json")
 
-    token_data = TeamsAuthenticator().authenticate(
+    authenticator = TeamsAuthenticator()
+    token_data = authenticator.authenticate(
         region="emea",
         wait_seconds=5,
         poll_interval_seconds=0.5,
@@ -1398,6 +1427,7 @@ def test_teams_authenticator_opens_browser_and_waits_for_chrome_session(monkeypa
     assert sleeps == [0.5, 0.5]
     assert token_data["region"] == "emea"
     assert token_data["tokens"]["https://ic3.teams.office.com"]["token"] == "tok"
+    assert authenticator.keychain_session_available is False
 
 
 def test_teams_authenticator_uses_valid_keychain_session_before_chrome_or_browser(monkeypatch, tmp_path: Path):
@@ -1435,9 +1465,11 @@ def test_teams_authenticator_uses_valid_keychain_session_before_chrome_or_browse
     monkeypatch.setattr("memforge.auth.teams_auth.TOKEN_DIR", token_dir)
     monkeypatch.setattr("memforge.auth.teams_auth.TOKEN_FILE", token_dir / "teams.json")
 
-    token_data = TeamsAuthenticator().authenticate(region="emea", wait_seconds=5)
+    authenticator = TeamsAuthenticator()
+    token_data = authenticator.authenticate(region="emea", wait_seconds=5)
 
     assert token_data == keychain_token_data
+    assert authenticator.keychain_session_available is True
 
 
 def test_teams_authenticator_waits_for_rejected_token_to_change(monkeypatch, tmp_path: Path):
@@ -2120,7 +2152,8 @@ def test_collect_teams_documents_from_cloud_job_uses_gene_window_shape(monkeypat
 
         async def authenticate(self):
             assert self.source_id == "src-teams"
-            assert self.config["group_chats"] == ["19:conversation@thread.tacv2"]
+            assert self.config["conversation_ids"] == ["19:conversation@thread.tacv2"]
+            assert "group_chats" not in self.config
             assert self.config["conversation_gap_minutes"] == 60
             assert self.config["ledger_state_path"].endswith("teams-ledger-state.json")
             assert "local_agent_documents_dir" not in self.config
@@ -2250,8 +2283,8 @@ def test_collect_teams_documents_from_cloud_job_maps_cloud_conversation_ids_to_d
 
     class FakeTeamsGene:
         def __init__(self, config, source_id):
-            assert config["group_chats"] == ["19:conversation@thread.tacv2"]
-            assert "conversation_ids" not in config
+            assert config["conversation_ids"] == ["19:conversation@thread.tacv2"]
+            assert "group_chats" not in config
             assert "channels" not in config
             assert "individual_chats" not in config
             self._client = FakeTeamsClient()

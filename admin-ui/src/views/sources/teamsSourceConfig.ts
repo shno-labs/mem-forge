@@ -1,7 +1,7 @@
 export interface TeamsSelectionItem {
   id: string;
   displayName: string;
-  type: "channel" | "group_chat" | "individual_chat";
+  type: "channel" | "group_chat" | "individual_chat" | "unknown";
   teamName?: string;
 }
 
@@ -120,7 +120,7 @@ export function existingTeamsSelection(id: string): TeamsSelectionItem {
   return {
     id,
     displayName: `Existing conversation · ${suffix}`,
-    type: "group_chat",
+    type: "unknown",
   };
 }
 

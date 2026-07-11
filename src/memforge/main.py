@@ -2716,7 +2716,7 @@ def _teams_direct_rest_config_from_cloud_payload(payload: dict[str, Any]) -> dic
     if not direct_ids:
         raise ValueError("teams_sync_requires_direct_conversation_ids")
 
-    config["group_chats"] = _dedupe_preserving_order(direct_ids)
+    config["conversation_ids"] = _dedupe_preserving_order(direct_ids)
     return config
 
 
@@ -3252,7 +3252,13 @@ def auth_teams(region: str):
     else:
         console.print("[yellow]No Chat API token found — skipping verification[/]")
 
-    console.print("\n[bold green]Done! Teams session saved to the OS keychain.[/]")
+    if authenticator.keychain_session_available:
+        console.print("\n[bold green]Done! Teams session saved to the OS keychain.[/]")
+    else:
+        console.print(
+            "\n[bold yellow]Done! Teams session saved to the local compatibility cache; "
+            "the OS keychain was unavailable.[/]"
+        )
 
 
 @auth.command("status")

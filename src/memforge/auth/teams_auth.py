@@ -48,6 +48,9 @@ def _open_teams_login() -> None:
 class TeamsAuthenticator:
     """Extracts Teams OAuth tokens from Chrome cookies or cached files."""
 
+    def __init__(self) -> None:
+        self.keychain_session_available = False
+
     def authenticate(
         self,
         region: str = "emea",
@@ -66,12 +69,13 @@ class TeamsAuthenticator:
         keychain_data = self._load_keychain_token_data()
         tokens = self._valid_tokens_from_data(keychain_data)
         if tokens and not self._has_rejected_token(tokens, rejected_token_hashes):
+            self.keychain_session_available = True
             return keychain_data  # type: ignore[return-value]
 
         file_data = self._load_file_token_data()
         tokens = self._valid_tokens_from_data(file_data)
         if tokens and not self._has_rejected_token(tokens, rejected_token_hashes):
-            self._save_keychain_token_data(file_data)  # type: ignore[arg-type]
+            self.keychain_session_available = self._save_keychain_token_data(file_data)  # type: ignore[arg-type]
             return file_data  # type: ignore[return-value]
 
         tokens = self._extract_from_chrome()
@@ -103,7 +107,7 @@ class TeamsAuthenticator:
             "tokens": tokens,
         }
 
-        self.save_tokens(token_data)
+        self.keychain_session_available = self.save_tokens(token_data)
         logger.info("Saved %d tokens to %s", len(tokens), TOKEN_FILE)
         return token_data
 
@@ -183,12 +187,13 @@ class TeamsAuthenticator:
         return False
 
     @staticmethod
-    def save_tokens(token_data: dict) -> None:
-        """Save token data to the OS keychain and compatibility cache."""
-        TeamsAuthenticator._save_keychain_token_data(token_data)
+    def save_tokens(token_data: dict) -> bool:
+        """Save token data and return whether the OS keychain write succeeded."""
+        keychain_saved = TeamsAuthenticator._save_keychain_token_data(token_data)
         TOKEN_DIR.mkdir(parents=True, exist_ok=True)
         TOKEN_FILE.write_text(json.dumps(token_data, indent=2))
         TOKEN_FILE.chmod(0o600)
+        return keychain_saved
 
     @staticmethod
     def _load_keychain_token_data() -> dict | None:
