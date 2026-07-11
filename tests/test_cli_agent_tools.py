@@ -129,6 +129,13 @@ class FakeToolClient:
         self.calls.append(("health", {"api_url": self.api_url, "api_token": self.api_token}))
         return self.response
 
+    def for_workspace(self, workspace_id: str):
+        return type(self)(
+            target=build_target(origin=self.api_url, workspace_id=workspace_id),
+            api_token=self.api_token,
+            timeout_seconds=self.timeout_seconds,
+        )
+
 
 def _cloud_test_client() -> FakeToolClient:
     return FakeToolClient(
@@ -855,7 +862,7 @@ def test_local_agent_cloud_github_sync_pushes_job_source_and_snapshot(monkeypatc
     push_calls = [call for call in FakeToolClient.calls if call[0] == "push_github_repo_document"]
     assert len(push_calls) == 2
     kwargs = push_calls[0][1]
-    assert kwargs["workspace_id"] == "ws-from-cloud"
+    assert kwargs["workspace_id"] == "ws-from-job-payload"
     assert kwargs["source_id"] == "src-from-cloud"
     assert kwargs["repo_url"] == "https://github.wdf.sap.corp/nextgenpayroll-matterhorn/architecture"
     assert kwargs["relative_path"] == "Payroll Processing V2/README.md"
