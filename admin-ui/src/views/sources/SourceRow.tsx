@@ -198,7 +198,6 @@ export function SourceRow({
           {capabilities.can_sync && !isManaged && (
             <Button
               type="button"
-              variant="outline"
               disabled={isSyncing || isDeleting || isPaused}
               onClick={onSync}
               title={isPaused ? pausedSyncHint : undefined}

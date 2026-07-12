@@ -20,8 +20,8 @@ assert.deepEqual(
 );
 assert.deepEqual(
   Object.values(sourceActionLayout.primary).map((action) => action.tone),
-  ["neutral", "neutral"],
-  "Configure and Sync should share neutral visual weight in the compact source toolbar",
+  ["neutral", "primary"],
+  "Configure should stay neutral while Sync remains the primary source-row action",
 );
 
 assert.deepEqual(
@@ -227,11 +227,6 @@ assert.match(
   sourceRowSource,
   /disabled=\{isSyncing \|\| isDeleting \|\| isPaused\}/,
   "Paused sources should not expose an enabled primary Sync button",
-);
-assert.match(
-  sourceRowSource,
-  /variant="outline"[\s\S]{0,220}disabled=\{isSyncing \|\| isDeleting \|\| isPaused\}/,
-  "Sync should use the same neutral outline treatment as Configure",
 );
 assert.match(
   sourceRowSource,

@@ -12,7 +12,7 @@ export interface SourceAction {
 export const sourceActionLayout = {
   primary: {
     configure: { id: "configure", label: "Configure", tone: "neutral" },
-    sync: { id: "sync", label: "Sync", tone: "neutral" },
+    sync: { id: "sync", label: "Sync", tone: "primary" },
   },
   menu: [
     {
