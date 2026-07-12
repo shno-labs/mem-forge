@@ -11,7 +11,7 @@ Source rows use one readiness model regardless of connector type. The model keep
 | Device Readiness | Can that daemon accept work now? | online, checking, unavailable |
 | Connection Readiness | Can the connector access its upstream system? | ready, sign-in required, account mismatch |
 | Local Source Readiness | Can this device collect this source now? | Local sync ready, Local sync unavailable, Sign in required |
-| Source Readiness | The compact user outcome derived from execution and connection readiness. | Local sync ready, Connection ready, Sign in required |
+| Source Readiness | The compact user outcome derived from execution and connection readiness. | Local sync ready, Sign in required, Finish setup |
 
 Source Lifecycle is always rendered independently. An active source can still be locally unavailable, and a paused source does not become active merely because its daemon is online.
 
@@ -57,7 +57,7 @@ The shared presenter derives one compact badge in this order:
 | connection requires action | Sign in required | warning |
 | connection reason is `configuration` | Finish setup | warning |
 | local execution, daemon online, no connection blocker | Local sync ready | neutral |
-| server execution and connection is ready | Connection ready | neutral |
+| server execution and connection is ready | no readiness badge | lifecycle and last-sync evidence remain visible |
 
 Device availability takes precedence only when collection itself runs locally, because a stopped daemon cannot perform or repair that collection. Server execution does not become locally unavailable merely because the device that originally established its connection is offline. Provider-specific recovery instructions belong in Configure, not in the source row.
 
@@ -65,8 +65,8 @@ Device availability takes precedence only when collection itself runs locally, b
 
 - Render Source Lifecycle and Source Readiness as separate siblings next to the source name.
 - Never replace `active` or `paused` with `Local sync ready`.
-- Do not render provider authentication as another metadata sentence. `Browser session active` and `Teams token active` are implementation details; `Connection ready` is the provider-neutral user outcome.
-- Render healthy and exceptional connection states through the same shared readiness badge.
+- Do not render healthy provider authentication as another metadata sentence or badge. `Browser session active`, `Teams token active`, and `Connection ready` are redundant when a Cloud source is healthy.
+- Render connection readiness only when the user must act: `Sign in required`, `Finish setup`, or `Account mismatch`.
 - Keep technical evidence such as browser profile, Keychain capture time, and principal details inside Configure or a diagnostic surface.
 - On narrow screens the badges may wrap after the source name; they must not create a standalone metadata row or displace the primary Sync action.
 
@@ -86,5 +86,5 @@ Examples:
 | GitHub Repository / local push | required | omitted |
 | Microsoft Teams | required | omitted while the daemon owns silent token renewal |
 | Jira / local daemon sync | required | derived from the stored browser-session status |
-| Jira / Cloud sync with browser session | not required | derived from the stored browser-session status; presents `Connection ready` rather than `Local sync ready` |
+| Jira / Cloud sync with browser session | not required | derived from the stored browser-session status; healthy state is silent and action-required states use the shared warning badge |
 | Future authenticated local connector | required | translate its auth state into the generic contract |
