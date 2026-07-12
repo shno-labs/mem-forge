@@ -2,6 +2,11 @@
 
 ## Source synchronization
 
+- **Source Lifecycle** — Whether a configured source is active or paused. Lifecycle is independent of where collection executes and whether the current device can perform that collection.
+- **Local Execution** — Collection work that must run through the source owner's MemForge daemon on a user-controlled device.
+- **Device Readiness** — Whether the source owner's local daemon is recently connected and able to accept collection work.
+- **Connection Readiness** — Whether a source-specific connection dependency, such as an authenticated browser session, is usable or requires user action.
+- **Local Source Readiness** — The user-facing result derived from Device Readiness and Connection Readiness for a source that uses Local Execution. It never replaces Source Lifecycle.
 - **Source Sync Activity** — The user-visible lifecycle of current or recent work to bring one source up to date. It can cover both collection from the source and processing into memories.
 - **Collection** — Reading source items and, when required, transferring them from the execution device to MemForge.
 - **Processing** — Turning collected source items into stored documents and memories.
