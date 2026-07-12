@@ -235,6 +235,11 @@ assert.match(
 );
 assert.match(
   sourceRowSource,
+  /className="inline-flex min-h-8 cursor-pointer items-center gap-2 px-1 text-xs/,
+  "The inline source preference should not look like a third bordered action button",
+);
+assert.match(
+  sourceRowSource,
   /pending && <Loader2 className="size-3 animate-spin"/,
   "Saving a personal visibility preference should not replace the stable toggle label",
 );

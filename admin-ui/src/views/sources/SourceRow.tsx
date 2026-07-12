@@ -417,7 +417,7 @@ function SubscriptionToggle({
 }) {
   return (
     <label
-      className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 has-data-[disabled]:cursor-not-allowed has-data-[disabled]:opacity-60"
+      className="inline-flex min-h-8 cursor-pointer items-center gap-2 px-1 text-xs text-muted-foreground transition-colors hover:text-foreground has-data-[disabled]:cursor-not-allowed has-data-[disabled]:opacity-60"
       title={`Include memories from "${sourceName}" in your searches and memory views`}
     >
       <Switch
