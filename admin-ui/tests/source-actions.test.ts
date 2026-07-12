@@ -14,9 +14,14 @@ import {
 } from "../src/views/sources/localAgentSources.js";
 
 assert.deepEqual(
-  sourceActionLayout.primary.map((action) => action.id),
+  Object.values(sourceActionLayout.primary).map((action) => action.id),
   ["configure", "sync"],
   "source cards should keep only Configure and Sync as visible primary actions",
+);
+assert.deepEqual(
+  Object.values(sourceActionLayout.primary).map((action) => action.tone),
+  ["neutral", "neutral"],
+  "Configure and Sync should share neutral visual weight in the compact source toolbar",
 );
 
 assert.deepEqual(
@@ -222,6 +227,26 @@ assert.match(
   sourceRowSource,
   /disabled=\{isSyncing \|\| isDeleting \|\| isPaused\}/,
   "Paused sources should not expose an enabled primary Sync button",
+);
+assert.match(
+  sourceRowSource,
+  /variant="outline"[\s\S]{0,220}disabled=\{isSyncing \|\| isDeleting \|\| isPaused\}/,
+  "Sync should use the same neutral outline treatment as Configure",
+);
+assert.match(
+  sourceRowSource,
+  /enabled \? "In my views" : "Not in my views"/,
+  "The subscription toggle should describe personal visibility rather than source lifecycle",
+);
+assert.match(
+  sourceRowSource,
+  /pending && <Loader2 className="size-3 animate-spin"/,
+  "Saving a personal visibility preference should not replace the stable toggle label",
+);
+assert.match(
+  sourceRowSource,
+  /aria-label=\{`Configure \$\{source\.name\}`\}/,
+  "Configure should keep a source-specific accessible label when its text is hidden",
 );
 assert.match(
   sourceRowSource,
