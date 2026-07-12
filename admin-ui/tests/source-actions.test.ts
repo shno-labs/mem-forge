@@ -230,8 +230,8 @@ assert.match(
 );
 assert.match(
   sourceRowSource,
-  /enabled \? "In my views" : "Not in my views"/,
-  "The subscription toggle should describe personal visibility rather than source lifecycle",
+  /<span>Include memories<\/span>/,
+  "The subscription toggle should describe the memories it includes for the current user",
 );
 assert.match(
   sourceRowSource,

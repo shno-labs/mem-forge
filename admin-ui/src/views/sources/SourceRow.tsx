@@ -415,12 +415,10 @@ function SubscriptionToggle({
   pending: boolean;
   onChange: (enabled: boolean) => void;
 }) {
-  const label = enabled ? "In my views" : "Not in my views";
-
   return (
     <label
       className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 has-data-[disabled]:cursor-not-allowed has-data-[disabled]:opacity-60"
-      title={`Toggle whether memories from "${sourceName}" appear in your views`}
+      title={`Include memories from "${sourceName}" in your searches and memory views`}
     >
       <Switch
         aria-label={`${enabled ? "Disable" : "Enable"} "${sourceName}" for me`}
@@ -428,7 +426,7 @@ function SubscriptionToggle({
         disabled={pending}
         onCheckedChange={onChange}
       />
-      <span>{label}</span>
+      <span>Include memories</span>
       {pending && <Loader2 className="size-3 animate-spin" aria-hidden="true" />}
     </label>
   );
