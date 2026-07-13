@@ -47,3 +47,10 @@ _Avoid_: Source priority
 **Source Search**:
 An ephemeral narrowing of the Source List View by Source name, source type, or Project. Searching does not change persisted Source organization.
 _Avoid_: Source query
+
+## GitHub Repository scope
+
+- **Repository Access** — Where GitHub API access executes. `cloud_pull` uses MemForge Cloud credentials and network access; `local_push` uses the source owner's daemon, local `gh` session, VPN, and network access. It never changes the data origin: both modes read the configured remote GitHub repository. Avoid: _Local clone mode, local repository_.
+- **Repository Base Scope** — The positive boundary of a GitHub Repository source. An empty `include_paths` list means the whole repository; otherwise only the selected remote folders and files are candidates. Avoid: _Local folder selection_.
+- **Repository Exclusion** — A selected remote folder or file removed from the Repository Base Scope. Exclusions win over inclusions and apply to all descendants. A child below an excluded path cannot be re-included. Avoid: _Ignore hint, inferred outdated content_.
+- **Effective Repository Scope** — The deterministic set of remote files remaining after base scope, exclusions, and extension filters are applied. Suggested exclusions require explicit user confirmation and never change this set automatically.
