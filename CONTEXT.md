@@ -21,3 +21,29 @@
 - **Teams Browser Session** — A persistent, user-authenticated Teams Web session that can acquire fresh Teams Access Tokens without another visible sign-in while enterprise SSO remains valid.
 - **Silent Session Renewal** — Renewal of a Teams Access Token through the Teams Browser Session without presenting authentication UI to the user.
 - **Interactive Reauthentication** — A visible Teams Web sign-in required when the Teams Browser Session can no longer renew silently because enterprise SSO, MFA, or access policy requires user interaction.
+
+## Source organization
+
+**Project**:
+A semantic relevance grouping for memories and their sources inside a workspace. A Project is not a personal list organization mechanism or an access boundary.
+_Avoid_: Collection, folder, source group
+
+**Source**:
+A configured connection that contributes source items and memories to a workspace.
+_Avoid_: Integration instance, connector row
+
+**Source List View**:
+A user's presentation of Sources in one workspace. It may filter, sort, or prioritize Sources without changing their configuration or Project binding.
+_Avoid_: Collection
+
+**Pinned Source**:
+A Source prioritized for one user within its existing Project group. Pinning neither moves nor duplicates the Source and has no effect on other users.
+_Avoid_: Favorite collection, promoted source
+
+**Source List Sort**:
+A user's ordering preference applied independently inside each Project group after Pinned Sources have been prioritized.
+_Avoid_: Source priority
+
+**Source Search**:
+An ephemeral narrowing of the Source List View by Source name, source type, or Project. Searching does not change persisted Source organization.
+_Avoid_: Source query
