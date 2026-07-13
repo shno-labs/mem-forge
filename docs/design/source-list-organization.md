@@ -9,7 +9,7 @@ Make newly created and frequently used Sources easy to find without replacing Pr
 ## Product rules
 
 1. Project remains the only semantic grouping. A list preference never changes Project binding, retrieval scope, source configuration, or another user's view.
-2. A Pinned Source stays in its Project group. Pinned rows form the first partition of that group; unpinned rows form the second partition. A Source is rendered once.
+2. A Pinned Source stays in its existing Project group. Pinned rows form the first partition of that group; unpinned rows form the second partition. Pinning never creates another copy; sources with an existing `by_field` binding continue to appear once in each resolved Project group.
 3. `Newest added` is the default sort. It uses the persisted Source `created_at`, never `last_sync`, list position, or client observation time.
 4. Search matches normalized Source name, displayed source type, and Project name. It retains Project groups that have matches and reports `matching / total` Source counts.
 5. Search text and `Pinned only` are ephemeral view state. Pin state and sort choice are personal preferences and survive new sessions.
