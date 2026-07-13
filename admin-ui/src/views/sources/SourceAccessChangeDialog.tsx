@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 
@@ -23,16 +23,33 @@ export function SourceAccessChangeDialog({
   source: Source | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const queryClient = useQueryClient();
-  const [targetPolicy, setTargetPolicy] = useState<SourceAccessPolicy | null>(null);
+  return (
+    <Dialog open={Boolean(source)} onOpenChange={onOpenChange}>
+      {source && (
+        <SourceAccessChangeDialogContent
+          key={`${source.id}:${source.access_policy}`}
+          source={source}
+          onClose={() => onOpenChange(false)}
+        />
+      )}
+    </Dialog>
+  );
+}
 
-  useEffect(() => {
-    setTargetPolicy(source ? oppositePolicy(source.access_policy) : null);
-  }, [source]);
+function SourceAccessChangeDialogContent({
+  source,
+  onClose,
+}: {
+  source: Source;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [targetPolicy, setTargetPolicy] = useState<SourceAccessPolicy>(
+    () => oppositePolicy(source.access_policy),
+  );
 
   const changeAccess = useMutation({
     mutationFn: async () => {
-      if (!source || targetPolicy === null) throw new Error("Choose an access level.");
       return resourceClient.post(
         `/sources/${source.id}/access-transitions`,
         { target_policy: targetPolicy },
@@ -41,19 +58,18 @@ export function SourceAccessChangeDialog({
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["sources"] });
-      onOpenChange(false);
+      onClose();
     },
   });
 
-  const currentLabel = source?.access_policy === "private"
+  const currentLabel = source.access_policy === "private"
     ? "Only you can use it now."
     : "Everyone in this workspace can use it now.";
 
   return (
-    <Dialog open={Boolean(source)} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+    <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Change access for {source?.name ?? "source"}</DialogTitle>
+          <DialogTitle>Change access for {source.name}</DialogTitle>
           <DialogDescription>
             {currentLabel} Changing access updates the source and its existing memories as one durable operation.
           </DialogDescription>
@@ -76,7 +92,7 @@ export function SourceAccessChangeDialog({
             type="button"
             variant="outline"
             disabled={changeAccess.isPending}
-            onClick={() => onOpenChange(false)}
+            onClick={onClose}
           >
             Cancel
           </Button>
@@ -84,8 +100,7 @@ export function SourceAccessChangeDialog({
             type="button"
             disabled={
               changeAccess.isPending
-              || targetPolicy === null
-              || targetPolicy === source?.access_policy
+              || targetPolicy === source.access_policy
             }
             onClick={() => changeAccess.mutate()}
           >
@@ -93,8 +108,7 @@ export function SourceAccessChangeDialog({
             Change access
           </Button>
         </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </DialogContent>
   );
 }
 

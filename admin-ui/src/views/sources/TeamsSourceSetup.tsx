@@ -26,8 +26,8 @@ import type { SourceSetupSection, SourceSetupSectionId } from "./SourceSetupShel
 import {
   SourceAccessSelection,
   SourceAccessSummary,
-  sourceAccessSummary,
 } from "./SourceAccessSection";
+import { sourceAccessSummary } from "./sourceAccess";
 import {
   buildDefaultTeamsSourceConfig,
   buildTeamsSourcePayload,

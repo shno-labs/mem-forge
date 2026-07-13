@@ -3582,6 +3582,8 @@ async def test_source_sync_worker_resumes_progress_from_an_expired_lease(db: Dat
         type="github_repo",
         name="Architecture Repo",
         config_json="{}",
+        access_policy="workspace",
+        owner_user_id="owner-worker-recovered-progress",
     )
     enqueued = await db.enqueue_source_sync_run(source_id=source_id, trigger="manual")
     expired_at = datetime(2026, 7, 13, 7, 0, tzinfo=timezone.utc)
