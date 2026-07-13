@@ -76,6 +76,12 @@ export function GitHubRepoFolderPicker({
   const browseTree = async () => {
     setLoading(true);
     setMessage(null);
+    const repoUrl = typeof config.repo_url === "string" ? config.repo_url.trim() : "";
+    if (!repoUrl.startsWith("https://")) {
+      setMessage("Enter a valid HTTPS Repository URL before browsing.");
+      setLoading(false);
+      return;
+    }
     try {
       if (isLocalPush) {
         const created = await createLocalAgentJob({

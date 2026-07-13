@@ -85,4 +85,5 @@ assert.match(
 assert.match(pickerSource, /Sync all supported files in this repository/);
 assert.match(pickerSource, /Choose exclusions/);
 assert.match(pickerSource, /Sync only selected folders instead/);
+assert.match(pickerSource, /Enter a valid HTTPS Repository URL before browsing/);
 assert.doesNotMatch(pickerSource, /Choose local repository clone|github_repo_pick_root/);
