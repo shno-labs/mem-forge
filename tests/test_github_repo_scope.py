@@ -73,7 +73,7 @@ async def test_migration_removes_obsolete_repo_path_from_stored_sources(tmp_path
                 json.dumps({"repo_url": "https://github.example/org/repo", "repo_path": "/tmp/repo"}),
             ),
         )
-        await database.db.execute("DELETE FROM schema_migrations WHERE version = 40")
+        await database.db.execute("DELETE FROM schema_migrations WHERE version = 41")
         await database.db.commit()
 
         await database._run_migrations()
