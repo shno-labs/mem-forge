@@ -8,6 +8,7 @@ policy rather than inferred from a source type.
 from __future__ import annotations
 
 from enum import StrEnum
+from collections.abc import Iterable
 from typing import Any, Mapping
 
 from memforge.models import Visibility
@@ -22,6 +23,52 @@ class SourceAccessState(StrEnum):
     ACTIVE = "active"
     CHANGING = "changing"
     ORPHANED_PRIVATE = "orphaned_private"
+
+
+def infer_legacy_source_access(
+    *,
+    source_id: str,
+    source_type: str,
+    provenance_owner_user_id: str | None,
+    memory_access: Iterable[tuple[str, str | None]],
+) -> tuple[SourceAccessPolicy, str]:
+    """Infer one legacy Source's explicit policy or reject ambiguity.
+
+    This function is deliberately shared by SQLite and external adapters so a
+    migration cannot preserve different effective access in different stores.
+    """
+
+    owner = str(provenance_owner_user_id or "").strip()
+    if not owner:
+        raise ValueError(f"cannot migrate Source access without an owner: {source_id}")
+    if source_type == "agent_session":
+        return SourceAccessPolicy.PRIVATE, owner
+
+    rows = tuple(
+        (str(visibility or "").strip(), str(owner_user_id or "").strip())
+        for visibility, owner_user_id in memory_access
+    )
+    if not rows:
+        return SourceAccessPolicy.WORKSPACE, owner
+
+    policies = {visibility for visibility, _ in rows}
+    private_owners = {
+        owner_user_id
+        for visibility, owner_user_id in rows
+        if visibility == SourceAccessPolicy.PRIVATE.value
+    }
+    if policies == {SourceAccessPolicy.WORKSPACE.value}:
+        return SourceAccessPolicy.WORKSPACE, owner
+    if (
+        policies == {SourceAccessPolicy.PRIVATE.value}
+        and len(private_owners) == 1
+        and "" not in private_owners
+    ):
+        return SourceAccessPolicy.PRIVATE, next(iter(private_owners))
+    raise ValueError(
+        "cannot migrate Source access with mixed or ambiguous "
+        f"Memory visibility: {source_id}"
+    )
 
 
 def source_access_policy(source: Mapping[str, Any]) -> SourceAccessPolicy:

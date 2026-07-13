@@ -13,13 +13,21 @@ from memforge.storage.database import Database
 
 
 class RecordingMemoryStore:
-    def __init__(self, *, fail_once: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        fail_once: bool = False,
+        fail_on_calls: set[int] | None = None,
+    ) -> None:
         self.fail_once = fail_once
+        self.fail_on_calls = set(fail_on_calls or ())
+        self.call_count = 0
         self.reindexed: list[str] = []
 
     async def reindex_memory_access(self, memory_id: str) -> None:
+        self.call_count += 1
         self.reindexed.append(memory_id)
-        if self.fail_once:
+        if self.fail_once or self.call_count in self.fail_on_calls:
             self.fail_once = False
             raise RuntimeError("synthetic vector failure")
 
@@ -303,3 +311,74 @@ async def test_failed_split_revert_merges_source_support_without_duplicate(db: D
     original = await db.get_memory("mem-shared")
     assert original is not None and original.status == "active"
     assert original.visibility == "workspace"
+
+
+@pytest.mark.asyncio
+async def test_failed_split_retry_reindexes_the_stable_original_and_split_pair(db: Database):
+    await _source(db, "src-a", policy="workspace")
+    await _source(db, "src-b", policy="workspace", owner="bob")
+    await _document(db, "src-a", "doc-a")
+    await _document(db, "src-b", "doc-b")
+    await _memory(db, "mem-shared", visibility="workspace", owner_user_id=None)
+    await db.add_memory_source("mem-shared", "doc-a", "confluence", source_updated_at=None)
+    await db.add_memory_source("mem-shared", "doc-b", "confluence", source_updated_at=None)
+    store = RecordingMemoryStore(fail_once=True)
+    service = SourceAccessTransitionService(db=db, memory_store=store)
+    transition = await service.start(
+        source_id="src-a",
+        actor_user_id="alice",
+        target_policy="private",
+        idempotency_key="split-then-retry",
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic vector failure"):
+        await service.run(transition["operation_id"])
+    completed = await service.retry(transition["operation_id"])
+
+    async with db.db.execute(
+        "SELECT target_memory_id FROM source_access_transition_memory_map WHERE operation_id = ?",
+        (transition["operation_id"],),
+    ) as cursor:
+        split_memory_id = str((await cursor.fetchone())["target_memory_id"])
+    assert completed["status"] == "completed"
+    assert completed["processed_memories"] == completed["total_memories"] == 2
+    assert store.reindexed == ["mem-shared", "mem-shared", split_memory_id]
+
+
+@pytest.mark.asyncio
+async def test_failed_split_revert_retry_keeps_the_same_reindex_pair(db: Database):
+    await _source(db, "src-a", policy="workspace")
+    await _source(db, "src-b", policy="workspace", owner="bob")
+    await _document(db, "src-a", "doc-a")
+    await _document(db, "src-b", "doc-b")
+    await _memory(db, "mem-shared", visibility="workspace", owner_user_id=None)
+    await db.add_memory_source("mem-shared", "doc-a", "confluence", source_updated_at=None)
+    await db.add_memory_source("mem-shared", "doc-b", "confluence", source_updated_at=None)
+    store = RecordingMemoryStore(fail_on_calls={1, 2})
+    service = SourceAccessTransitionService(db=db, memory_store=store)
+    transition = await service.start(
+        source_id="src-a",
+        actor_user_id="alice",
+        target_policy="private",
+        idempotency_key="split-revert-retry",
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic vector failure"):
+        await service.run(transition["operation_id"])
+    with pytest.raises(RuntimeError, match="synthetic vector failure"):
+        await service.revert(transition["operation_id"])
+    reverted = await service.revert(transition["operation_id"])
+
+    async with db.db.execute(
+        "SELECT target_memory_id FROM source_access_transition_memory_map WHERE operation_id = ?",
+        (transition["operation_id"],),
+    ) as cursor:
+        split_memory_id = str((await cursor.fetchone())["target_memory_id"])
+    assert reverted["status"] == "reverted"
+    assert reverted["processed_memories"] == reverted["total_memories"] == 2
+    assert store.reindexed == [
+        "mem-shared",
+        "mem-shared",
+        "mem-shared",
+        split_memory_id,
+    ]

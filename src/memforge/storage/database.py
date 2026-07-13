@@ -75,6 +75,7 @@ from memforge.memory.audit import MemoryAuditEvent
 from memforge.memory.lifecycle import allowed_search_statuses, normalize_memory_status
 from memforge.retrieval.access_predicate import visible_sql
 from memforge.retrieval.metadata_text import metadata_alias_text, metadata_compact_text
+from memforge.source_access import infer_legacy_source_access
 from memforge.storage.admin_memory import (
     MemoryAdminListFilters,
     MemoryAdminQueryPage,
@@ -2047,18 +2048,8 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
         "Materialize Source access policy and ownership",
         [
             "ALTER TABLE sources ADD COLUMN owner_user_id TEXT",
-            "ALTER TABLE sources ADD COLUMN access_policy TEXT NOT NULL DEFAULT 'workspace'",
-            "ALTER TABLE sources ADD COLUMN access_state TEXT NOT NULL DEFAULT 'active'",
-            """UPDATE sources
-               SET owner_user_id = COALESCE(
-                       NULLIF(created_by_user_id, ''),
-                       NULLIF(execution_owner_user_id, ''),
-                       'dev'
-                   ),
-                   access_policy = CASE
-                       WHEN type = 'agent_session' THEN 'private'
-                       ELSE 'workspace'
-                   END""",
+            "ALTER TABLE sources ADD COLUMN access_policy TEXT",
+            "ALTER TABLE sources ADD COLUMN access_state TEXT",
             "CREATE INDEX IF NOT EXISTS idx_sources_access ON sources(access_policy, owner_user_id, access_state)",
         ],
     ),
@@ -2204,6 +2195,8 @@ class Database:
                 await self._backfill_relation_run_snapshot_audit()
             if version in (30, 31):
                 await self._rebuild_memory_metadata_fts_unlocked()
+            if version == 42:
+                await self._migrate_source_access_policy_unlocked()
             if version == 45:
                 await self._partition_legacy_agent_session_sources_unlocked()
             await self.db.execute(
@@ -2223,6 +2216,67 @@ class Database:
                     raise RuntimeError("failed to restore SQLite foreign key enforcement")
             logger.info("Applied migration %d: %s", version, description)
         await self._assert_memory_source_ids_resolved()
+
+    async def _migrate_source_access_policy_unlocked(self) -> None:
+        """Materialize legacy Source access without guessing.
+
+        Existing Memory visibility is the effective pre-migration policy. An
+        empty configured Source preserves the old workspace writer behavior.
+        Coding-session Sources are private here and are partitioned by owner in
+        migration 45. Missing ownership or mixed historical access stops the
+        migration so operators can repair the data explicitly.
+        """
+
+        async with self.db.execute("SELECT * FROM sources ORDER BY id") as cursor:
+            sources = [dict(row) async for row in cursor]
+
+        for source in sources:
+            source_id = str(source["id"])
+            explicit_owner = str(source.get("owner_user_id") or "").strip()
+            explicit_policy = str(source.get("access_policy") or "").strip()
+            explicit_state = str(source.get("access_state") or "").strip()
+            if explicit_policy or explicit_owner or explicit_state:
+                if (
+                    explicit_policy not in {"private", "workspace"}
+                    or not explicit_owner
+                    or explicit_state not in {"active", "changing", "orphaned_private"}
+                ):
+                    raise RuntimeError(
+                        f"source access metadata is incomplete or invalid: {source_id}"
+                    )
+                continue
+
+            async with self.db.execute(
+                """SELECT DISTINCT m.visibility, m.owner_user_id
+                     FROM memories m
+                     JOIN memory_sources ms ON ms.memory_id = m.id
+                    WHERE ms.source_id = ? AND m.status = 'active'""",
+                (source_id,),
+            ) as cursor:
+                access_rows = [dict(row) async for row in cursor]
+            try:
+                policy_value, owner_user_id = infer_legacy_source_access(
+                    source_id=source_id,
+                    source_type=str(source.get("type") or ""),
+                    provenance_owner_user_id=(
+                        source.get("created_by_user_id")
+                        or source.get("execution_owner_user_id")
+                    ),
+                    memory_access=(
+                        (str(row.get("visibility") or ""), row.get("owner_user_id"))
+                        for row in access_rows
+                    ),
+                )
+            except ValueError as exc:
+                raise RuntimeError(str(exc)) from exc
+            policy = policy_value.value
+
+            await self.db.execute(
+                """UPDATE sources
+                      SET owner_user_id = ?, access_policy = ?, access_state = 'active'
+                    WHERE id = ?""",
+                (owner_user_id, policy, source_id),
+            )
 
     async def _partition_legacy_agent_session_sources_unlocked(self) -> None:
         """Split pre-access coding Sources into one private Source per owner.
@@ -6991,6 +7045,10 @@ class Database:
                         str(row["target_memory_id"]): str(row["original_memory_id"])
                         async for row in cursor
                     }
+                target_by_original = {
+                    original_memory_id: target_memory_id
+                    for target_memory_id, original_memory_id in split_by_target.items()
+                }
                 async with self.db.execute(
                     "SELECT DISTINCT memory_id FROM memory_sources WHERE source_id = ? ORDER BY memory_id",
                     (source_id,),
@@ -7066,6 +7124,12 @@ class Database:
                             retire_reason="source_access_transition_revert",
                         )
                         affected_ids.extend([original_memory_id, memory_id])
+                        continue
+                    if reverting and memory_id in target_by_original:
+                        affected_ids.extend([memory_id, target_by_original[memory_id]])
+                        continue
+                    if not reverting and memory_id in split_by_target:
+                        affected_ids.extend([split_by_target[memory_id], memory_id])
                         continue
                     context_matches = (
                         memory.visibility == target_visibility
