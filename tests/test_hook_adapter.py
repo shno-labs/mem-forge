@@ -893,6 +893,29 @@ def test_codex_and_claude_plugins_include_hooks_and_adapter_wrappers():
     assert "SubagentStop" in claude_hooks["hooks"]
 
 
+def test_packaged_plugin_version_0_1_28_is_consistent():
+    root = Path(__file__).resolve().parents[1]
+    version = "0.1.28"
+    canonical_mcp = (root / "src" / "memforge" / "plugin_mcp_proxy.py").read_text()
+    canonical_hook = (root / "src" / "memforge" / "hook_adapter.py").read_text()
+
+    assert f'SERVER_VERSION = "{version}"' in canonical_mcp
+    assert f'PLUGIN_VERSION = "{version}"' in canonical_hook
+
+    for client, manifest_dir in (
+        ("codex", ".codex-plugin"),
+        ("claude-code", ".claude-plugin"),
+    ):
+        plugin_root = root / "integrations" / client / "memforge-memory"
+        manifest = json.loads((plugin_root / manifest_dir / "plugin.json").read_text())
+        assert manifest["version"] == version
+        assert f"version is `{version}`" in (plugin_root / "README.md").read_text()
+        assert f'SERVER_VERSION = "{version}"' in (plugin_root / "scripts" / "memforge_mcp.py").read_text()
+        assert f'PLUGIN_VERSION = "{version}"' in (
+            plugin_root / "scripts" / "memforge_hook_adapter.py"
+        ).read_text()
+
+
 @pytest.mark.parametrize(
     ("plugin_path", "home_cache", "env_root"),
     [
