@@ -82,25 +82,12 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "search",
         "description": (
-            "Search memories visible to the current principal. Prefer list_sources before search "
-            "when a request can be scoped to a particular source, system, project, or connector, "
-            "then pass the exact source_ids it returns. For broad or cross-source queries, omit "
-            "source_filter so search covers all visible memory sources; keep time_range only when "
-            "the request explicitly asks for a date range. Never guess source IDs. "
-            "Query may be omitted only "
-            "for deterministic listing with source_filter or time_range. Convert phrases like "
-            "'last week' into explicit YYYY-MM-DD start_date/end_date before calling. For "
-            "complete-list, enumeration, or inventory requests, use list_sources, then queryless deterministic "
-            "listing; if total_candidates is greater than returned results, the answer is not a "
-            "complete list until you request the next page with offset. Set each next offset to "
-            "the previous offset plus the number of results returned. Stop when results is empty "
-            "or the next offset is greater than or equal to total_candidates. For complete-list "
-            "inventory tasks, choose a larger top_k page size up to 50 instead of assuming the default 10 is "
-            "enough. Queried/ranked search uses candidate_count_kind=windowed; in that mode "
-            "has_more means more results inside the current ranking window, not an exhaustive "
-            "corpus count. A result may include follow_up with suggested_tool and reason. Search results "
-            "do not include source links or artifact URLs; call get_memory for provenance, source "
-            "titles, exact links, quotes, and lifecycle details before relying on source evidence."
+            "Search memories visible to the current principal. For source-specific requests, "
+            "call list_sources first and pass its exact source_ids. For broad or cross-source "
+            "requests, omit source_filter; use time_range only when explicitly requested. Never "
+            "guess source IDs. Omit query only for deterministic source/time listings, and "
+            "paginate those with total_candidates and offset. Ranked queries are not exhaustive. "
+            "Call get_memory for provenance and source evidence."
         ),
         "inputSchema": {
             "type": "object",
@@ -211,12 +198,9 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "list_sources",
         "description": (
-            "List search-eligible memory sources visible to the current principal. Prefer this "
-            "before search when a request may target a particular source, system, project, or "
-            "connector; use the results to select precise source_ids. For broad or cross-source "
-            "queries, search without source_filter so all visible memory sources remain in scope. "
-            "A separately requested time_range can still apply. Returns safe metadata only: "
-            "source_id, name, type, status, counts, and last_synced_at."
+            "List search-eligible memory sources visible to the current principal. Use before "
+            "source-specific search to resolve exact source_ids; skip for broad or cross-source "
+            "requests. Returns source_id, name, type, status, counts, and last_synced_at."
         ),
         "inputSchema": {
             "type": "object",

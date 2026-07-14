@@ -1755,12 +1755,6 @@ def test_mcp_proxy_search_schema_exposes_validated_facets_not_recent_changes():
     assert "agent-selected entity hints" in properties["entities"]["description"]
     assert "keeping query unchanged" in properties["entities"]["description"]
     assert "not filters or authority" in properties["entities"]["description"]
-    assert "total_candidates" in tools["search"]["description"]
-    assert "complete list" in tools["search"]["description"]
-    assert "enumeration" in tools["search"]["description"]
-    assert "previous offset plus the number of results returned" in tools["search"]["description"]
-    assert "Stop when results is empty" in tools["search"]["description"]
-    assert "larger top_k" in tools["search"]["description"]
     assert "backlog" not in tools["search"]["description"].lower()
     assert "not a hard cap" in properties["top_k"]["description"]
     assert "up to 50" in properties["top_k"]["description"]
@@ -1783,9 +1777,6 @@ def test_mcp_proxy_search_schema_exposes_validated_facets_not_recent_changes():
     assert "status" not in properties
     assert "memory_types" not in properties
     assert "active_repo_identifier" not in properties
-    assert "follow_up" in tools["search"]["description"]
-    assert "call get_memory" in tools["search"]["description"]
-    assert "do not include source links" in tools["search"]["description"]
     assert "search -> get_memory -> get_resource" in tools["get_resource"]["description"]
 
     create_schema = tools["create_memory"]["inputSchema"]
@@ -1832,14 +1823,24 @@ def test_mcp_proxy_source_selection_descriptions_guide_scoped_and_global_search(
     proxy = _load_plugin_mcp_proxy()
     tools = {tool["name"]: tool for tool in proxy.TOOLS}
 
-    assert "Prefer list_sources before search" in tools["search"]["description"]
-    assert "omit source_filter" in tools["search"]["description"]
-    assert "all visible memory sources" in tools["search"]["description"]
-    assert "keep time_range only when" in tools["search"]["description"]
-    assert "Prefer this before search" in tools["list_sources"]["description"]
-    assert "precise source_ids" in tools["list_sources"]["description"]
-    assert "search without source_filter" in tools["list_sources"]["description"]
-    assert "separately requested time_range" in tools["list_sources"]["description"]
+    search_description = tools["search"]["description"]
+    list_sources_description = tools["list_sources"]["description"]
+
+    assert "call list_sources first" in search_description
+    assert "exact source_ids" in search_description
+    assert "omit source_filter" in search_description
+    assert "time_range only when explicitly requested" in search_description
+    assert "deterministic source/time listings" in search_description
+    assert "total_candidates and offset" in search_description
+    assert "Ranked queries are not exhaustive" in search_description
+    assert "Call get_memory for provenance" in search_description
+    assert len(search_description) <= 500
+
+    assert "Use before source-specific search" in list_sources_description
+    assert "exact source_ids" in list_sources_description
+    assert "skip for broad or cross-source requests" in list_sources_description
+    assert "Returns source_id, name, type, status, counts, and last_synced_at" in list_sources_description
+    assert len(list_sources_description) <= 260
 
 
 def test_mcp_proxy_forwards_search_to_hosted_workspace(monkeypatch):
