@@ -7,7 +7,7 @@ const sourcesPageSource = readFileSync("src/views/sources/SourcesPage.tsx", "utf
 
 assert.match(
   sourcesPageSource,
-  /aria-label="Search sources"[\s\S]*?className="h-7\b/,
+  /<SearchInput[\s\S]*?ariaLabel="Search sources"[\s\S]*?size="sm"/,
   "Source search should use the same compact height as the pinned filter button",
 );
 assert.match(
