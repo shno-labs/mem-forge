@@ -51,8 +51,20 @@ assert.match(
 
 assert.match(
   memoriesSource,
-  /<SearchInput[\s\S]*?size="sm"[\s\S]*?className="sm:w-64 sm:flex-none"/,
+  /<SearchInput[\s\S]*?size="sm"[\s\S]*?className="min-w-0 flex-1"/,
   "the Memories search should use the same compact control treatment as Sources",
+);
+
+assert.doesNotMatch(
+  memoriesSource,
+  />Memory List</,
+  "the Memories data surface should not repeat the page title in a tall list header",
+);
+
+assert.match(
+  memoriesSource,
+  /className="flex flex-col gap-2 border-b p-3 sm:flex-row sm:items-center"/,
+  "the Memories data surface should use one compact command row",
 );
 
 assert.match(

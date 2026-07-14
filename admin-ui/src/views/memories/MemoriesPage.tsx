@@ -416,46 +416,39 @@ export function MemoriesPage() {
       </div>
 
       <DataSurface>
-        <div className="border-b p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h2 className="text-base font-semibold">Memory List</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {headerCount} in the current result set.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <SearchInput
-                value={search}
-                onChange={changeSearch}
-                placeholder="Search memories"
-                ariaLabel="Search memories"
-                size="sm"
-                className="sm:w-64 sm:flex-none"
-              />
-              <MemoryFiltersPopover
-                type={type}
-                status={status}
-                source={source}
-                project={pageProject}
-                projectLabel={effectiveProjectLabel}
-                narrowProject={narrowToggle}
-                typeOptions={TYPE_OPTIONS}
-                statusOptions={STATUS_OPTIONS}
-                sourceOptions={[
-                  { value: "all", label: "All sources" },
-                  ...sourceList.map((item) => ({ value: item.id, label: item.name })),
-                ]}
-                projectOptions={projectOptions}
-                onTypeChange={changeType}
-                onStatusChange={changeStatus}
-                onSourceChange={changeSource}
-                onProjectChange={changeProject}
-                onNarrowProjectChange={changeNarrow}
-                onClear={clearFilters}
-              />
-            </div>
-          </div>
+        <div className="flex flex-col gap-2 border-b p-3 sm:flex-row sm:items-center">
+          <SearchInput
+            value={search}
+            onChange={changeSearch}
+            placeholder="Search memories"
+            ariaLabel="Search memories"
+            size="sm"
+            className="min-w-0 flex-1"
+          />
+          <MemoryFiltersPopover
+            type={type}
+            status={status}
+            source={source}
+            project={pageProject}
+            projectLabel={effectiveProjectLabel}
+            narrowProject={narrowToggle}
+            typeOptions={TYPE_OPTIONS}
+            statusOptions={STATUS_OPTIONS}
+            sourceOptions={[
+              { value: "all", label: "All sources" },
+              ...sourceList.map((item) => ({ value: item.id, label: item.name })),
+            ]}
+            projectOptions={projectOptions}
+            onTypeChange={changeType}
+            onStatusChange={changeStatus}
+            onSourceChange={changeSource}
+            onProjectChange={changeProject}
+            onNarrowProjectChange={changeNarrow}
+            onClear={clearFilters}
+          />
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {headerCount}
+          </span>
         </div>
         <>
             <AsyncBoundary
