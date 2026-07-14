@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Stdlib-only MCP proxy used by MemForge agent-client plugins."""
+"""Stdlib-only MCP proxy used by MemForge agent-client plugins.
+
+The canonical source is ``src/memforge/plugin_mcp_proxy.py``. Packaged
+integration copies are generated with ``scripts/sync_plugin_mcp_proxy.py`` and
+must not be edited independently.
+"""
 
 from __future__ import annotations
 
