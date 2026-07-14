@@ -1828,6 +1828,20 @@ def test_mcp_proxy_search_schema_exposes_validated_facets_not_recent_changes():
     assert "required when decision is reject" in resolve_schema["properties"]["note"]["description"]
 
 
+def test_mcp_proxy_source_selection_descriptions_guide_scoped_and_global_search():
+    proxy = _load_plugin_mcp_proxy()
+    tools = {tool["name"]: tool for tool in proxy.TOOLS}
+
+    assert "Prefer list_sources before search" in tools["search"]["description"]
+    assert "omit source_filter" in tools["search"]["description"]
+    assert "all visible memory sources" in tools["search"]["description"]
+    assert "keep time_range only when" in tools["search"]["description"]
+    assert "Prefer this before search" in tools["list_sources"]["description"]
+    assert "precise source_ids" in tools["list_sources"]["description"]
+    assert "search without source_filter" in tools["list_sources"]["description"]
+    assert "separately requested time_range" in tools["list_sources"]["description"]
+
+
 def test_mcp_proxy_forwards_search_to_hosted_workspace(monkeypatch):
     proxy = _load_plugin_mcp_proxy()
     captured = {}
