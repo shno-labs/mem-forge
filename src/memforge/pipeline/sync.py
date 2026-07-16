@@ -43,7 +43,11 @@ from memforge.retrieval.document_index import DocumentVectorIndex
 from memforge.pipeline.sync_memory import SyncMemoryObserver
 
 from memforge.pipeline.document_units import ExtractionContextPacker, UnitizationPolicy, unitize_markdown
-from memforge.pipeline.document_update import DocumentUpdatePlan, plan_document_update
+from memforge.pipeline.document_update import (
+    DocumentUpdatePlan,
+    plan_document_update,
+    quote_overlaps_current_changes,
+)
 from memforge.pipeline.source_projection_adapters import (
     DEFAULT_SOURCE_PROJECTION_ADAPTER,
     project_source_unit_tombstone,
@@ -2147,6 +2151,12 @@ class GeneSyncOrchestrator:
     ) -> MemoryExtractionResult:
         """Run full extraction or diff-guided extraction for a document."""
         projection_batches = plan_projection_extraction_batches(projection)
+        prefer_single_observation_diff = (
+            len(projection.observations) == 1
+            and update_plan is not None
+            and update_plan.mode == "diff_guided"
+            and hasattr(self.memory_extractor, "extract_memory_changes")
+        )
         changed_observation_ids = {
             anchor.observation_id
             for delta in projection.deltas
@@ -2174,6 +2184,7 @@ class GeneSyncOrchestrator:
             return result
         if (
             (len(projection.observations) > 1 or len(projection_batches) > 1)
+            and not prefer_single_observation_diff
             and projection_batches
             and hasattr(self.memory_extractor, "extract_projection_batch_memories")
         ):
@@ -2212,6 +2223,14 @@ class GeneSyncOrchestrator:
                         entities=entity_names,
                         existing_memories=same_document_memories,
                     )
+                if not result.error_type:
+                    result = self._enforce_diff_guided_evidence_boundary(
+                        result=result,
+                        updated_document=markdown_body,
+                        plan=update_plan,
+                        source_id=source_id,
+                        doc_id=doc_id,
+                    )
                 await self._record_memory_extraction_result(
                     mode=update_plan.mode,
                     plan=update_plan,
@@ -2219,6 +2238,13 @@ class GeneSyncOrchestrator:
                     source_id=source_id,
                     run_id=run_id,
                     result=result,
+                    extraction_metadata={
+                        "current_changed_range_count": len(update_plan.current_changed_ranges),
+                        "rejected_outside_changed_range_count": result.metadata.get(
+                            "rejected_outside_changed_range_count",
+                            0,
+                        ),
+                    },
                 )
                 if not result.error_type:
                     return result
@@ -2298,6 +2324,45 @@ class GeneSyncOrchestrator:
             result=result,
         )
         return result
+
+    def _enforce_diff_guided_evidence_boundary(
+        self,
+        *,
+        result: MemoryExtractionResult,
+        updated_document: str,
+        plan: DocumentUpdatePlan,
+        source_id: str,
+        doc_id: str,
+    ) -> MemoryExtractionResult:
+        """Keep only candidates whose exact evidence intersects the current diff."""
+
+        kept = []
+        rejected = 0
+        for memory in result.memories:
+            quote = (memory.evidence_quote or memory.extraction_context or "").strip()
+            if not quote_overlaps_current_changes(
+                updated_document,
+                quote,
+                plan.current_changed_ranges,
+            ):
+                rejected += 1
+                continue
+            memory.evidence_quote = quote
+            kept.append(memory)
+        if rejected:
+            logger.warning(
+                "Rejected %d diff-guided memory candidate(s) outside changed ranges for %s/%s",
+                rejected,
+                source_id,
+                doc_id,
+            )
+        return MemoryExtractionResult(
+            memories=kept,
+            metadata={
+                **result.metadata,
+                "rejected_outside_changed_range_count": rejected,
+            },
+        )
 
     async def _extract_projection_batches(
         self,

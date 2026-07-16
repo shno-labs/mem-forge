@@ -13,6 +13,7 @@ from memforge.config import DEFAULT_ENRICHMENT_MAX_TOKENS
 from memforge.llm.structured import LiteLlmStructuredClient, StructuredLlmConfig, StructuredLlmError
 from memforge.models import MemoryExtractionResult, RawMemory
 from memforge.pipeline.document_units import ExtractionContext
+from memforge.pipeline.document_update import DEFAULT_MAX_DIFF_CHARS
 from memforge.pipeline.projection_context import ProjectionExtractionBatch
 
 if TYPE_CHECKING:
@@ -32,7 +33,7 @@ EXTRACTION_QUOTE_MAX_CHARS = 200
 EXTRACTION_TAG_MIN = 2
 EXTRACTION_TAG_MAX = 5
 DOC_CONTENT_CHAR_CAP = 100_000
-CHANGED_HUNK_CHAR_CAP = 40_000
+CHANGED_HUNK_CHAR_CAP = DEFAULT_MAX_DIFF_CHARS
 UPDATED_DOC_CHAR_CAP = 100_000
 EXISTING_MEMORIES_WINDOW = 30
 EXISTING_MEMORIES_WINDOW_CHANGE = 50

@@ -753,7 +753,10 @@ large. This strategy is source-agnostic: Confluence pages, Jira tickets, Teams
 blocks, agent-session summaries, future GitHub Pages, and local markdown repos
 all share the same memory update path after normalization. Diff-guided
 extraction uses the full updated source item as context, but asks the extractor
-to produce only memories caused by changed hunks. Full-document fallback uses
+to produce only memories caused by changed hunks. The pipeline then enforces
+that contract: each candidate's exact quote must overlap an inserted or replaced
+current-revision range; unchanged-context candidates are audited and discarded.
+Deletion-only diffs authorize no new candidate. Full-document fallback uses
 the same deterministic structural units described above, so large pages are
 processed by owned sections without adding source-specific extraction logic.
 

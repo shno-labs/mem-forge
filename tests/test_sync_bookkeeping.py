@@ -2712,6 +2712,25 @@ class RecordingMemoryExtractor(NoopMemoryExtractor):
         return MemoryExtractionResult(memories=[])
 
 
+class DiffBoundaryViolatingMemoryExtractor(RecordingMemoryExtractor):
+    async def extract_memory_changes(self, **kwargs):
+        self.change_calls.append(kwargs)
+        return MemoryExtractionResult(
+            memories=[
+                RawMemory(
+                    content="The payrollTaskExecutor thread group has five threads.",
+                    memory_type="fact",
+                    extraction_context="| payrollTaskExecutor | 5 | 5 |",
+                ),
+                RawMemory(
+                    content="The document now uses the repository-owned thread-list asset.",
+                    memory_type="fact",
+                    extraction_context="![](assets/list-of-threads.png)",
+                ),
+            ]
+        )
+
+
 class ProjectionBatchRecordingExtractor(RecordingMemoryExtractor):
     def __init__(self) -> None:
         super().__init__()
@@ -7444,6 +7463,124 @@ async def test_document_update_uses_diff_guided_extraction_and_audits_strategy(
     assert extraction_rows[0].decision == "diff_guided"
     assert extraction_rows[0].payload["extracted_count"] == 0
     assert extraction_rows[0].payload["diff_line_count"] > 0
+
+
+@pytest.mark.asyncio
+async def test_diff_guided_extraction_rejects_candidates_outside_current_change(
+    db: Database,
+) -> None:
+    source_id = "src-diff-evidence-boundary"
+    old_markdown = "\n".join(
+        (
+            "# Shared HANA Database Connections",
+            "",
+            "| Thread Group | Min | Max |",
+            "| payrollTaskExecutor | 5 | 5 |",
+            "",
+            "![](../../../../../Desktop/old.png)",
+        )
+    )
+    new_markdown = "\n".join(
+        (
+            "# Shared HANA Database Connections",
+            "",
+            "| Thread Group | Min | Max |",
+            "| payrollTaskExecutor | 5 | 5 |",
+            "",
+            "Here is an example of running threads:",
+            "![](assets/list-of-threads.png)",
+        )
+    )
+    doc_store = StubDocumentStore()
+    normalized_content_uri = doc_store.store_normalized(
+        source_id=source_id,
+        title="Shared HANA Database Connections",
+        markdown=old_markdown,
+    )
+    await _insert_document_with_metadata(
+        db,
+        source_id=source_id,
+        doc_id="doc-1",
+        title="Shared HANA Database Connections",
+        markdown=old_markdown,
+        version="1",
+        normalized_content_uri=normalized_content_uri,
+    )
+    extractor = DiffBoundaryViolatingMemoryExtractor()
+    memory_engine = RecordingMemoryEngine()
+    orchestrator = GeneSyncOrchestrator(
+        db=db,
+        doc_store=doc_store,
+        enricher=DocumentVisibleEnricher(db, source_id),
+        memory_extractor=extractor,
+        memory_engine=memory_engine,
+        memory_store=_audited_memory_store(db),
+        max_concurrent=1,
+    )
+
+    state = await orchestrator.sync_gene(
+        gene=UpdatingDocumentGene(new_markdown),
+        source_name="Documents",
+        source_id=source_id,
+    )
+
+    extraction_rows = await db.list_memory_audit_events(
+        event_type="memory_change_extraction_completed",
+    )
+    assert state.last_sync_status == "success"
+    assert len(memory_engine.projected_lifecycle_calls) == 1
+    raw_memories = memory_engine.projected_lifecycle_calls[0]["raw_memories"]
+    assert [memory.content for memory in raw_memories] == [
+        "The document now uses the repository-owned thread-list asset."
+    ]
+    assert len(extraction_rows) == 1
+    assert extraction_rows[0].payload["extracted_count"] == 1
+    assert extraction_rows[0].payload["rejected_outside_changed_range_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_large_single_observation_update_keeps_diff_guided_authority(
+    db: Database,
+) -> None:
+    source_id = "src-large-diff-evidence-boundary"
+    stable_body = "\n".join(f"Stable context line {index}." for index in range(4_000))
+    old_markdown = f"# Design Doc\n\n{stable_body}\n\nThe service uses PostgreSQL 14."
+    new_markdown = f"# Design Doc\n\n{stable_body}\n\nThe service uses PostgreSQL 15."
+    doc_store = StubDocumentStore()
+    normalized_content_uri = doc_store.store_normalized(
+        source_id=source_id,
+        title="Design Doc",
+        markdown=old_markdown,
+    )
+    await _insert_document_with_metadata(
+        db,
+        source_id=source_id,
+        doc_id="doc-1",
+        title="Design Doc",
+        markdown=old_markdown,
+        version="1",
+        normalized_content_uri=normalized_content_uri,
+    )
+    extractor = ProjectionBatchRecordingExtractor()
+    orchestrator = GeneSyncOrchestrator(
+        db=db,
+        doc_store=doc_store,
+        enricher=DocumentVisibleEnricher(db, source_id),
+        memory_extractor=extractor,
+        memory_engine=RecordingMemoryEngine(),
+        memory_store=_audited_memory_store(db),
+        max_concurrent=1,
+    )
+
+    state = await orchestrator.sync_gene(
+        gene=UpdatingDocumentGene(new_markdown),
+        source_name="Documents",
+        source_id=source_id,
+    )
+
+    assert state.last_sync_status == "success"
+    assert len(extractor.change_calls) == 1
+    assert extractor.projection_calls == []
 
 
 @pytest.mark.asyncio
