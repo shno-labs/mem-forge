@@ -467,6 +467,7 @@ class MemoryExtractor:
             return result
         kept = []
         primary_content = dict(batch.primary_content_by_observation_id)
+        context_by_primary = dict(batch.context_observation_ids_by_primary)
         for memory in result.memories:
             quote = (memory.evidence_quote or memory.extraction_context or "").strip()
             if not quote or quote not in batch.primary_markdown:
@@ -490,9 +491,10 @@ class MemoryExtractor:
             memory.extraction_context = quote[:EXTRACTION_QUOTE_MAX_CHARS]
             memory.source_observation_id = source_observation_id
             required_ids = tuple(dict.fromkeys(memory.required_source_observation_ids))
+            allowed_context_ids = context_by_primary.get(source_observation_id, ())
             if (
                 source_observation_id in required_ids
-                or any(item not in batch.context_observation_ids for item in required_ids)
+                or any(item not in allowed_context_ids for item in required_ids)
             ):
                 continue
             memory.required_source_observation_ids = list(required_ids)
