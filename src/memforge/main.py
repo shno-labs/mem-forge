@@ -352,7 +352,8 @@ def _build_local_agent_runner(
         cloud_job_handler=lambda job, report_progress=None: _run_cloud_local_agent_job(
             job, client, browser=browser, report_progress=report_progress
         ),
-        cloud_jobs_provider=lambda wait_seconds=0, lease_seconds=60: client.lease_local_agent_jobs(
+        cloud_jobs_provider=lambda limit=1, wait_seconds=0, lease_seconds=60: client.lease_local_agent_jobs(
+            limit=limit,
             wait_seconds=wait_seconds,
             lease_seconds=lease_seconds,
         ),
