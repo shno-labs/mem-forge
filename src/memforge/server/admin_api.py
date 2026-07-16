@@ -4189,7 +4189,7 @@ def create_admin_app(
             )
         await sync_service.cancel_source(source_id)
         try:
-            job = await db.create_lifecycle_backfill_job(
+            job = await db.create_source_rebaseline_job(
                 LifecycleBackfillJob(
                     id=f"source-rebaseline-{uuid.uuid4().hex}",
                     source_id=source_id,

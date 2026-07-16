@@ -402,8 +402,16 @@ class SqliteRelationalStore:
     ) -> None:
         await self._db.rebind_projected_document_support(old_doc_id, new_doc_id)
 
-    async def record_source_projection(self, projection: SourceProjection) -> None:
-        await self._db.record_source_projection(projection)
+    async def record_source_projection(
+        self,
+        projection: SourceProjection,
+        *,
+        expected_source_activity_epoch: int | None = None,
+    ) -> None:
+        await self._db.record_source_projection(
+            projection,
+            expected_source_activity_epoch=expected_source_activity_epoch,
+        )
 
     async def get_source_projection(self, run_id: str) -> SourceProjection | None:
         return await self._db.get_source_projection(run_id)
@@ -536,6 +544,12 @@ class SqliteRelationalStore:
     ) -> LifecycleBackfillJob:
         return await self._db.create_lifecycle_backfill_job(job)
 
+    async def create_source_rebaseline_job(
+        self,
+        job: LifecycleBackfillJob,
+    ) -> LifecycleBackfillJob:
+        return await self._db.create_source_rebaseline_job(job)
+
     async def start_lifecycle_backfill_job(self, job_id: str) -> LifecycleBackfillJob:
         return await self._db.start_lifecycle_backfill_job(job_id)
 
@@ -657,8 +671,14 @@ class SqliteRelationalStore:
         self,
         projection: SourceProjection,
         plan: LifecyclePlan,
+        *,
+        expected_source_activity_epoch: int | None = None,
     ) -> None:
-        await self._db.apply_source_projection_lifecycle(projection, plan)
+        await self._db.apply_source_projection_lifecycle(
+            projection,
+            plan,
+            expected_source_activity_epoch=expected_source_activity_epoch,
+        )
 
     async def apply_agent_claim_source_projection_lifecycle(
         self,

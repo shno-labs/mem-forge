@@ -4137,6 +4137,7 @@ class Database:
         self,
         projection: SourceProjection,
         *,
+        expected_source_activity_epoch: int | None = None,
         _manage_transaction: bool = True,
     ) -> None:
         """Persist one complete provider-neutral projection atomically.
@@ -4159,6 +4160,18 @@ class Database:
                     "UPDATE sources SET status = status WHERE id = ?",
                     (projection.source_id,),
                 )
+                if expected_source_activity_epoch is not None:
+                    async with self.db.execute(
+                        "SELECT activity_epoch FROM sources WHERE id = ?",
+                        (projection.source_id,),
+                    ) as cursor:
+                        source_epoch = await cursor.fetchone()
+                    current_epoch = int(source_epoch["activity_epoch"] or 0)
+                    if current_epoch != expected_source_activity_epoch:
+                        raise SourceActivityConflict(
+                            "source activity epoch changed: "
+                            f"expected {expected_source_activity_epoch}, current {current_epoch}"
+                        )
                 async with self.db.execute(
                     "SELECT payload_hash FROM source_projection_runs WHERE id = ?",
                     (projection.run_id,),
@@ -5033,6 +5046,28 @@ class Database:
         self,
         job: LifecycleBackfillJob,
     ) -> LifecycleBackfillJob:
+        return await self._create_lifecycle_backfill_job(
+            job,
+            cancel_active_sync=False,
+        )
+
+    async def create_source_rebaseline_job(
+        self,
+        job: LifecycleBackfillJob,
+    ) -> LifecycleBackfillJob:
+        """Atomically fence active sync work and admit destructive maintenance."""
+
+        return await self._create_lifecycle_backfill_job(
+            job,
+            cancel_active_sync=True,
+        )
+
+    async def _create_lifecycle_backfill_job(
+        self,
+        job: LifecycleBackfillJob,
+        *,
+        cancel_active_sync: bool,
+    ) -> LifecycleBackfillJob:
         if job.status is not LifecycleBackfillJobStatus.QUEUED:
             raise ValueError("new lifecycle backfill job must be queued")
         now = _now_iso()
@@ -5051,7 +5086,7 @@ class Database:
                     (job.source_id,),
                 ) as cursor:
                     active_run = await cursor.fetchone()
-                if active_run is not None:
+                if active_run is not None and not cancel_active_sync:
                     raise ValueError(
                         f"source sync run already active: {active_run['run_id']}"
                     )
@@ -5115,6 +5150,21 @@ class Database:
                     raise ValueError(
                         f"source lifecycle job already active: {active['id']}"
                     )
+                if active_run is not None:
+                    await self._cancel_source_sync_run_for_maintenance_unlocked(
+                        str(active_run["run_id"]),
+                        maintenance_job_id=job.id,
+                    )
+                if cancel_active_sync:
+                    # A normal sync holds this lease in addition to its durable
+                    # SourceSyncRun lease.  Revoking only SYNC leaves collection
+                    # and agent-patch state machines independent; the epoch bump
+                    # below fences any already-computed stale lifecycle commit.
+                    await self.db.execute(
+                        "DELETE FROM source_activity_leases "
+                        "WHERE source_id = ? AND kind = ?",
+                        (job.source_id, SourceActivityKind.SYNC.value),
+                    )
                 await self._acquire_source_activity_unlocked(
                     activity_id=job.id,
                     source_id=job.source_id,
@@ -5137,6 +5187,55 @@ class Database:
         stored = await self.get_lifecycle_backfill_job(job.id)
         assert stored is not None
         return stored
+
+    async def _cancel_source_sync_run_for_maintenance_unlocked(
+        self,
+        run_id: str,
+        *,
+        maintenance_job_id: str,
+    ) -> None:
+        now = _now_iso()
+        cursor = await self.db.execute(
+            """UPDATE source_sync_runs
+               SET status = 'failed',
+                   input_snapshot_id = CASE
+                       WHEN rerun_requested = 1
+                       THEN COALESCE(rerun_input_snapshot_id, input_snapshot_id)
+                       ELSE input_snapshot_id
+                   END,
+                   input_generation_watermark = CASE
+                       WHEN rerun_requested = 1
+                       THEN COALESCE(
+                           rerun_input_generation_watermark,
+                           input_generation_watermark
+                       )
+                       ELSE input_generation_watermark
+                   END,
+                   source_config_revision = CASE
+                       WHEN rerun_requested = 1
+                       THEN COALESCE(rerun_source_config_revision, source_config_revision)
+                       ELSE source_config_revision
+                   END,
+                   rerun_requested = 0,
+                   rerun_input_snapshot_id = NULL,
+                   rerun_input_generation_watermark = NULL,
+                   rerun_source_config_revision = NULL,
+                   lease_owner = NULL,
+                   lease_expires_at = NULL,
+                   next_attempt_at = NULL,
+                   error_message = ?,
+                   completed_at = ?,
+                   updated_at = ?
+               WHERE run_id = ? AND status IN ('pending', 'running')""",
+            (
+                f"cancelled_by_source_lifecycle_maintenance:{maintenance_job_id}",
+                now,
+                now,
+                run_id,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError(f"source sync run changed during maintenance admission: {run_id}")
 
     async def _acquire_source_activity_unlocked(
         self,
@@ -5963,6 +6062,8 @@ class Database:
         self,
         projection: SourceProjection,
         plan: LifecyclePlan,
+        *,
+        expected_source_activity_epoch: int | None = None,
     ) -> None:
         """Advance Source Projection and Memory lifecycle in one transaction."""
 
@@ -5980,6 +6081,7 @@ class Database:
             try:
                 await self.record_source_projection(
                     projection,
+                    expected_source_activity_epoch=expected_source_activity_epoch,
                     _manage_transaction=False,
                 )
                 await self.apply_lifecycle_plan(

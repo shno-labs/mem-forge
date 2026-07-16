@@ -963,7 +963,7 @@ def test_source_rebaseline_uses_post_fence_source_snapshot(tmp_path, monkeypatch
         asyncio.run(database.close())
 
 
-def test_source_rebaseline_returns_conflict_while_source_sync_is_active(tmp_path):
+def test_source_rebaseline_cancels_active_durable_sync_before_maintenance(tmp_path):
     database = Database(str(tmp_path / "rebaseline-active-sync.db"))
 
     async def setup() -> None:
@@ -976,12 +976,14 @@ def test_source_rebaseline_returns_conflict_while_source_sync_is_active(tmp_path
             access_policy="workspace",
             owner_user_id="user-a",
         )
-        await database.enqueue_source_sync_run(
+        run = await database.enqueue_source_sync_run(
             source_id="src-confluence",
             trigger="manual",
+            force_full_sync=True,
         )
+        return run.run_id
 
-    asyncio.run(setup())
+    run_id = asyncio.run(setup())
     app = create_admin_app(
         db=database,
         config=_config(tmp_path),
@@ -994,11 +996,13 @@ def test_source_rebaseline_returns_conflict_while_source_sync_is_active(tmp_path
                 json={"confirm_source_id": "src-confluence"},
             )
 
-        assert response.status_code == 409, response.text
-        assert "source sync run already active" in response.json()["detail"]
-        assert asyncio.run(
-            database.list_lifecycle_backfill_jobs("src-confluence")
-        ) == []
+        assert response.status_code == 202, response.text
+        cancelled = asyncio.run(database.get_source_sync_run(run_id))
+        assert cancelled is not None
+        assert cancelled.status == "failed"
+        assert cancelled.error_message is not None
+        assert cancelled.error_message.startswith("cancelled_by_source_lifecycle_maintenance:")
+        assert asyncio.run(database.list_lifecycle_backfill_jobs("src-confluence"))
     finally:
         asyncio.run(database.close())
 

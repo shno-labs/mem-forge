@@ -159,7 +159,12 @@ class RelationalStore(Protocol):
         old_doc_id: str,
         new_doc_id: str,
     ) -> None: ...
-    async def record_source_projection(self, projection: SourceProjection) -> None: ...
+    async def record_source_projection(
+        self,
+        projection: SourceProjection,
+        *,
+        expected_source_activity_epoch: int | None = None,
+    ) -> None: ...
     async def get_source_projection(self, run_id: str) -> SourceProjection | None: ...
     async def get_current_source_unit_revision(
         self,
@@ -258,6 +263,10 @@ class RelationalStore(Protocol):
         self,
         job: LifecycleBackfillJob,
     ) -> LifecycleBackfillJob: ...
+    async def create_source_rebaseline_job(
+        self,
+        job: LifecycleBackfillJob,
+    ) -> LifecycleBackfillJob: ...
     async def start_lifecycle_backfill_job(self, job_id: str) -> LifecycleBackfillJob: ...
     async def complete_lifecycle_backfill_job(
         self,
@@ -328,6 +337,8 @@ class RelationalStore(Protocol):
         self,
         projection: SourceProjection,
         plan: LifecyclePlan,
+        *,
+        expected_source_activity_epoch: int | None = None,
     ) -> None: ...
     async def apply_agent_claim_source_projection_lifecycle(
         self,

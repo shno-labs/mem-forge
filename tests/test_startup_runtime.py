@@ -1843,8 +1843,9 @@ async def test_run_source_sync_leaves_authentication_to_orchestrator(
             force_full_sync=False,
             authoritative_snapshot=False,
             reprocess_doc_ids=None,
+            source_activity_epoch=None,
         ):
-            del authoritative_snapshot, reprocess_doc_ids
+            del authoritative_snapshot, reprocess_doc_ids, source_activity_epoch
             await gene.authenticate()
             return SyncState(source=source_id, last_sync_status="success")
 
@@ -1947,8 +1948,9 @@ async def test_run_source_sync_decrypts_gene_declared_secret_fields(
             force_full_sync=False,
             authoritative_snapshot=False,
             reprocess_doc_ids=None,
+            source_activity_epoch=None,
         ):
-            del authoritative_snapshot, reprocess_doc_ids
+            del authoritative_snapshot, reprocess_doc_ids, source_activity_epoch
             self.gene = gene
             return SyncState(source=source_id, last_sync_status="success")
 

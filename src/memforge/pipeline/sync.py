@@ -537,6 +537,7 @@ class GeneSyncOrchestrator:
         authoritative_snapshot: bool = False,
         reprocess_doc_ids: frozenset[str] | None = None,
         execution_mode: SourceSyncMode = SourceSyncMode.NORMAL,
+        source_activity_epoch: int | None = None,
     ) -> SyncState:
         """Run the full sync pipeline for a gene.
 
@@ -829,6 +830,7 @@ class GeneSyncOrchestrator:
                                 ),
                                 projection_access_context=configured_access_context,
                                 execution_mode=execution_mode,
+                                expected_source_activity_epoch=source_activity_epoch,
                             )
                             stats["processed"] = True
                             stats["updated"] = item_stats.get("updated", False)
@@ -974,6 +976,7 @@ class GeneSyncOrchestrator:
                     crawled_doc_ids=crawled_doc_ids,
                     source_filter_summary=_source_filter_summary(gene, last_sync_time),
                     allow_legacy_orphan_cleanup=rebaseline_replay,
+                    expected_source_activity_epoch=source_activity_epoch,
                 )
                 if deletion_failures:
                     failed_docs.extend(deletion_failures)
@@ -1179,6 +1182,7 @@ class GeneSyncOrchestrator:
         scope_transition: dict[str, object] | None = None,
         projection_access_context: dict[str, object] | None = None,
         execution_mode: SourceSyncMode = SourceSyncMode.NORMAL,
+        expected_source_activity_epoch: int | None = None,
     ) -> dict:
         doc_id = item.item_id
         self._memory_sample("document_wait_start", source_id=source_id, run_id=run_id, doc_id=doc_id)
@@ -1199,6 +1203,7 @@ class GeneSyncOrchestrator:
                     scope_transition=scope_transition,
                     projection_access_context=projection_access_context,
                     execution_mode=execution_mode,
+                    expected_source_activity_epoch=expected_source_activity_epoch,
                 )
                 lifecycle_ok = True
                 return result
@@ -1228,6 +1233,7 @@ class GeneSyncOrchestrator:
         scope_transition: dict[str, object] | None = None,
         projection_access_context: dict[str, object] | None = None,
         execution_mode: SourceSyncMode = SourceSyncMode.NORMAL,
+        expected_source_activity_epoch: int | None = None,
     ) -> dict:
         """Process a single content item through the full pipeline.
 
@@ -1455,7 +1461,10 @@ class GeneSyncOrchestrator:
             if not projection_requires_extraction and execution_mode is not SourceSyncMode.REBASELINE_PREFLIGHT:
                 # Location/access-only and idempotent observations carry no
                 # Memory mutation, so their lineage can advance independently.
-                await self.db.record_source_projection(projection)
+                await self.db.record_source_projection(
+                    projection,
+                    expected_source_activity_epoch=expected_source_activity_epoch,
+                )
 
             lineage_document_ids = await self.db.list_source_unit_document_ids(source_unit.id)
 
@@ -1622,7 +1631,10 @@ class GeneSyncOrchestrator:
                     doc_record,
                     require_configured_source=True,
                 )
-                await self.db.record_source_projection(projection)
+                await self.db.record_source_projection(
+                    projection,
+                    expected_source_activity_epoch=expected_source_activity_epoch,
+                )
             if progress_callback:
                 progress_callback(
                     {
@@ -1769,6 +1781,7 @@ class GeneSyncOrchestrator:
                         if normalized.source_semantics.get("uploader_user_id")
                         else None
                     ),
+                    expected_source_activity_epoch=expected_source_activity_epoch,
                 )
             except Exception:
                 await self._restore_document_processing_snapshot(
@@ -1777,7 +1790,10 @@ class GeneSyncOrchestrator:
                     document_vector_snapshot=document_vector_snapshot,
                 )
                 raise
-            await self.db.record_source_projection(projection)
+            await self.db.record_source_projection(
+                projection,
+                expected_source_activity_epoch=expected_source_activity_epoch,
+            )
             stats["memories_extracted"] = memory_stats.get("added", 0)
             stats["memories_corroborated"] = memory_stats.get("updated", 0)
             stats["memory_supports_removed"] = memory_stats.get("deleted", 0)
@@ -2020,6 +2036,7 @@ class GeneSyncOrchestrator:
                 update_plan_stats=self._document_update_plan_stats(update_plan),
                 source_updated_at=source_updated_at,
                 user_id=actor_user_id,
+                expected_source_activity_epoch=expected_source_activity_epoch,
             )
         except Exception:
             # Projection and lifecycle state roll back together in the engine;
@@ -2034,7 +2051,10 @@ class GeneSyncOrchestrator:
         # The production engine commits this projection with its Lifecycle
         # Plan. The idempotent write also keeps narrow test/custom engines on
         # the same success-only projection contract.
-        await self.db.record_source_projection(projection)
+        await self.db.record_source_projection(
+            projection,
+            expected_source_activity_epoch=expected_source_activity_epoch,
+        )
         stats["memories_extracted"] = memory_stats.get("added", 0)
         stats["memories_corroborated"] = memory_stats.get("updated", 0)
 
@@ -2641,6 +2661,7 @@ class GeneSyncOrchestrator:
         crawled_doc_ids: set[str],
         source_filter_summary: str | None,
         allow_legacy_orphan_cleanup: bool = False,
+        expected_source_activity_epoch: int | None = None,
     ) -> tuple[int, list[FailedDoc]]:
         """Detect and handle documents deleted from the source.
 
@@ -2757,8 +2778,12 @@ class GeneSyncOrchestrator:
                     projection=tombstone,
                     doc_id=doc_id,
                     reason="source Unit removed by authoritative discovery",
+                    expected_source_activity_epoch=expected_source_activity_epoch,
                 )
-                await self.db.record_source_projection(tombstone)
+                await self.db.record_source_projection(
+                    tombstone,
+                    expected_source_activity_epoch=expected_source_activity_epoch,
+                )
                 if lifecycle_result["can_delete_document"]:
                     await self.memory_store.delete_projected_document(
                         doc_id,

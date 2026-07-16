@@ -59,7 +59,7 @@ from memforge.models import (
     content_hash,
 )
 from memforge.pipeline.source_projection_adapters import project_source_item
-from memforge.source_activity import SourceActivityConflict
+from memforge.source_activity import SourceActivityConflict, SourceActivityKind
 from memforge.source_projection import AnchorKind, SourceAnchor
 from memforge.storage.database import Database, MIGRATIONS
 from memforge.storage.document_store import LocalDocumentStore
@@ -963,6 +963,44 @@ async def test_mutation_failure_rolls_back_source_projection_with_the_plan(db: D
 
     current = await db.get_current_source_unit_revision("unit-page-1")
     assert current is not None and current.id == "unitrev-page-1-v2"
+    assert await db.get_source_projection(projection.run_id) is None
+    assert await db.get_lifecycle_plan_status(plan.id) is None
+
+
+@pytest.mark.asyncio
+async def test_stale_source_activity_epoch_rejects_projected_lifecycle_commit(
+    db: Database,
+) -> None:
+    active_reference = await _persist_support_lineage(db)
+    await db.enable_lifecycle_gate("src-1")
+    lease = await db.acquire_source_activity(
+        activity_id="sync-before-rebaseline",
+        source_id="src-1",
+        kind=SourceActivityKind.SYNC,
+    )
+    await db.create_source_rebaseline_job(
+        LifecycleBackfillJob(
+            id="rebaseline-fence",
+            source_id="src-1",
+            status=LifecycleBackfillJobStatus.QUEUED,
+        )
+    )
+    projection = replace(_projection(), run_id="projection-from-stale-worker")
+    plan = replace(
+        _retirement_plan(
+            active_reference,
+            await db.get_memory_support_set_hash("mem-legacy"),
+        ),
+        id="plan-from-stale-worker",
+    )
+
+    with pytest.raises(SourceActivityConflict, match="source activity epoch changed"):
+        await db.apply_source_projection_lifecycle(
+            projection,
+            plan,
+            expected_source_activity_epoch=lease.epoch,
+        )
+
     assert await db.get_source_projection(projection.run_id) is None
     assert await db.get_lifecycle_plan_status(plan.id) is None
 

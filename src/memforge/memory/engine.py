@@ -662,6 +662,7 @@ class MemoryEngine:
         update_plan_stats: dict[str, Any] | None,
         source_updated_at: datetime | None,
         user_id: str | None = None,
+        expected_source_activity_epoch: int | None = None,
     ) -> dict[str, int]:
         """Reconcile a complete Source Unit ledger and atomically apply one plan."""
 
@@ -888,7 +889,11 @@ class MemoryEngine:
             evidence_units=projected_evidence.units,
             evidence_references=projected_evidence.references,
         )
-        await self.db.apply_source_projection_lifecycle(projection, plan)
+        await self.db.apply_source_projection_lifecycle(
+            projection,
+            plan,
+            expected_source_activity_epoch=expected_source_activity_epoch,
+        )
         await self.memory_store.drain_lifecycle_vector_outbox(plan.id)
 
         activated_memory_ids = [
@@ -942,6 +947,7 @@ class MemoryEngine:
         projection: SourceProjection,
         doc_id: str,
         reason: str,
+        expected_source_activity_epoch: int | None = None,
     ) -> dict[str, int | bool]:
         """Apply an authoritative Source Unit tombstone without an LLM call.
 
@@ -1011,7 +1017,11 @@ class MemoryEngine:
                 ),
             ),
         )
-        await self.db.apply_source_projection_lifecycle(projection, plan)
+        await self.db.apply_source_projection_lifecycle(
+            projection,
+            plan,
+            expected_source_activity_epoch=expected_source_activity_epoch,
+        )
         await self.memory_store.drain_lifecycle_vector_outbox(plan.id)
         pending_review = sum(
             mutation.mutation_type.value == "create_review" for mutation in plan.mutations

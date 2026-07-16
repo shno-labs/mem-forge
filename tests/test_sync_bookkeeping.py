@@ -97,6 +97,142 @@ async def test_expired_source_activity_can_be_reacquired_with_same_id(
     assert retried.epoch == first.epoch
 
 
+@pytest.mark.asyncio
+async def test_rebaseline_admission_atomically_cancels_active_run_and_fences_worker(
+    db: Database,
+) -> None:
+    source_id = "src-rebaseline-cancel"
+    now = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
+    await db.upsert_source(
+        id=source_id,
+        type="confluence",
+        name="Rebaseline cancel",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="dev",
+    )
+    enqueued = await db.enqueue_source_sync_run(
+        source_id=source_id,
+        trigger="manual",
+        force_full_sync=True,
+    )
+    leased = await db.lease_next_source_sync_run(
+        worker_id="worker-before-maintenance",
+        lease_seconds=300,
+        now=now,
+    )
+    assert leased is not None
+    sync_activity = await db.acquire_source_activity(
+        activity_id="sync-before-maintenance",
+        source_id=source_id,
+        kind=SourceActivityKind.SYNC,
+        lease_seconds=300,
+    )
+
+    job = await db.create_source_rebaseline_job(
+        LifecycleBackfillJob(
+            id="rebaseline-maintenance",
+            source_id=source_id,
+            status=LifecycleBackfillJobStatus.QUEUED,
+        )
+    )
+
+    cancelled = await db.get_source_sync_run(enqueued.run_id)
+    assert job.status is LifecycleBackfillJobStatus.QUEUED
+    assert cancelled is not None
+    assert cancelled.status == "failed"
+    assert cancelled.force_full_sync is True
+    assert cancelled.lease_owner is None
+    assert cancelled.lease_expires_at is None
+    assert cancelled.next_attempt_at is None
+    assert cancelled.completed_at is not None
+    assert cancelled.error_message == "cancelled_by_source_lifecycle_maintenance:rebaseline-maintenance"
+    assert await db.get_source_activity_epoch(source_id) == sync_activity.epoch + 1
+
+    assert await db.heartbeat_source_sync_run(
+        enqueued.run_id,
+        worker_id="worker-before-maintenance",
+        lease_attempt_count=leased.lease_attempt_count,
+        now=now + timedelta(seconds=1),
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_rebaseline_admission_rolls_back_run_cancel_when_other_activity_owns_source(
+    db: Database,
+) -> None:
+    source_id = "src-rebaseline-conflict-rollback"
+    now = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
+    await db.upsert_source(
+        id=source_id,
+        type="teams",
+        name="Rebaseline conflict rollback",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="dev",
+    )
+    enqueued = await db.enqueue_source_sync_run(
+        source_id=source_id,
+        trigger="manual",
+        force_full_sync=True,
+    )
+    leased = await db.lease_next_source_sync_run(
+        worker_id="worker-before-conflict",
+        lease_seconds=300,
+        now=now,
+    )
+    assert leased is not None
+    collection = await db.acquire_source_activity(
+        activity_id="external-collection-before-maintenance",
+        source_id=source_id,
+        kind=SourceActivityKind.EXTERNAL_COLLECTION,
+        capability="external-collection-before-maintenance",
+    )
+
+    with pytest.raises(SourceActivityConflict, match="source activity already active"):
+        await db.create_source_rebaseline_job(
+            LifecycleBackfillJob(
+                id="rebaseline-must-roll-back",
+                source_id=source_id,
+                status=LifecycleBackfillJobStatus.QUEUED,
+            )
+        )
+
+    still_running = await db.get_source_sync_run(enqueued.run_id)
+    assert still_running is not None
+    assert still_running.status == "running"
+    assert still_running.lease_owner == "worker-before-conflict"
+    assert still_running.lease_attempt_count == leased.lease_attempt_count
+    assert await db.get_source_activity_epoch(source_id) == collection.epoch
+    assert await db.list_lifecycle_backfill_jobs(source_id) == []
+    assert await db.report_source_sync_run_progress(
+        enqueued.run_id,
+        worker_id="worker-before-maintenance",
+        lease_attempt_count=leased.lease_attempt_count,
+        progress={"schema_version": 1, "phase": "processing"},
+        now=now + timedelta(seconds=1),
+    ) is False
+    assert await db.complete_source_sync_run(
+        enqueued.run_id,
+        worker_id="worker-before-maintenance",
+        lease_attempt_count=leased.lease_attempt_count,
+        final_state=SyncState(
+            source=source_id,
+            last_sync_at=now + timedelta(seconds=1),
+            last_sync_status="success",
+        ),
+        completed_at=now + timedelta(seconds=1),
+    ) is False
+    assert await db.fail_source_sync_run(
+        enqueued.run_id,
+        worker_id="worker-before-maintenance",
+        lease_attempt_count=leased.lease_attempt_count,
+        error_message="late worker failure",
+        retryable=False,
+        failed_at=now + timedelta(seconds=1),
+    ) is False
+
+
 def test_local_agent_broker_has_its_own_forward_migration() -> None:
     version, description, statements = next(migration for migration in MIGRATIONS if migration[0] == 37)
 
@@ -5550,6 +5686,74 @@ async def test_source_sync_worker_does_not_complete_after_losing_lease(db: Datab
     assert run is not None
     assert run.status == "running"
     assert run.lease_owner == "worker-a"
+
+
+@pytest.mark.asyncio
+async def test_rebaseline_admission_interrupts_an_inflight_durable_worker(
+    db: Database,
+) -> None:
+    import memforge.runtime as runtime
+
+    source_id = "src-worker-rebaseline-cancel"
+    await db.upsert_source(
+        id=source_id,
+        type="confluence",
+        name="Worker rebaseline cancel",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="dev",
+    )
+    enqueued = await db.enqueue_source_sync_run(
+        source_id=source_id,
+        trigger="manual",
+        force_full_sync=True,
+    )
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    class BlockingRuntimeProvider:
+        async def build_sync_runtime(self, db, config, **kwargs):
+            del db, config, kwargs
+            return object()
+
+        async def run_source_sync(self, **kwargs):
+            del kwargs
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+    worker = runtime.SourceSyncWorker(
+        db,
+        AppConfig(),
+        runtime_provider=BlockingRuntimeProvider(),
+        worker_id="worker-before-rebaseline",
+        lease_seconds=1,
+        heartbeat_seconds=0.01,
+        progress_flush_seconds=0.01,
+    )
+    worker_task = asyncio.create_task(worker.run_once())
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    job = await db.create_source_rebaseline_job(
+        LifecycleBackfillJob(
+            id="rebaseline-during-worker",
+            source_id=source_id,
+            status=LifecycleBackfillJobStatus.QUEUED,
+        )
+    )
+    await asyncio.wait_for(worker_task, timeout=1)
+
+    terminal = await db.get_source_sync_run(enqueued.run_id)
+    assert cancelled.is_set()
+    assert job.status is LifecycleBackfillJobStatus.QUEUED
+    assert terminal is not None
+    assert terminal.status == "failed"
+    assert terminal.error_message == (
+        "cancelled_by_source_lifecycle_maintenance:rebaseline-during-worker"
+    )
 
 
 @pytest.mark.asyncio
