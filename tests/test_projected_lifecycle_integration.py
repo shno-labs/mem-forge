@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -570,6 +571,140 @@ async def test_noop_without_current_evidence_rolls_back_stale_support(db: Databa
     assert current_unit is not None
     assert current_unit.id == first.source_unit_revisions[0].id
     assert await db.get_active_memory_support_reference_ids(incumbent.id) == old_support
+
+
+@pytest.mark.asyncio
+async def test_projected_support_invariant_accepts_other_valid_same_source_unit(
+    db: Database,
+) -> None:
+    first = _projection(run_id="projection-multi-unit-1", body="A7 is removed.")
+    await db.record_source_projection(first)
+    incumbent = await _seed_incumbent_support(db, projection=first)
+    other_item = ContentItem(
+        item_id="confluence-456",
+        title="Independent Page",
+        source_url="https://example.test/456",
+        last_modified=datetime(2026, 7, 15, tzinfo=timezone.utc),
+        version="1",
+        extra={"page_id": "456", "space_key": "ENG"},
+    )
+    other_body = "Independent note: A7 is removed."
+    other = project_source_item(
+        source_id="src-1",
+        source_type="confluence",
+        run_id="projection-multi-unit-2",
+        item=other_item,
+        raw=RawContent(
+            item=other_item,
+            body=other_body.encode(),
+            content_type="text/html",
+        ),
+        normalized=NormalizedContent(
+            item=other_item,
+            markdown_body=other_body,
+        ),
+    )
+    await db.record_source_projection(other)
+    other_observation = other.observations[0]
+    other_revision = other.observation_revisions[0]
+    other_unit = EvidenceUnit(
+        id="eu-multi-unit-other",
+        source_id="src-1",
+        doc_id="confluence-123",
+        doc_revision_id=other.source_unit_revisions[0].id,
+        source_type="confluence",
+        source_anchor=other_observation.id,
+        source_lineage_id=other.source_units[0].id,
+        project_key="ENG",
+        visibility="workspace",
+        owner_user_id=None,
+        repo_identifier=None,
+        content=other_revision.content,
+        excerpt="A7 is removed.",
+        evidence_provenance=EvidenceContentProvenance.SOURCE_EXCERPT,
+        access_context_hash="workspace-eng",
+    )
+    await db.upsert_evidence_unit(other_unit)
+    other_reference = (
+        await db.record_evidence_references(
+            other_unit.id,
+            (
+                EvidenceReference(
+                    role=EvidenceRole.PRIMARY,
+                    anchor=SourceAnchor(
+                        kind=AnchorKind.WHOLE_OBSERVATION,
+                        observation_id=other_observation.id,
+                        observation_revision_id=other_revision.id,
+                    ),
+                ),
+            ),
+        )
+    )[0]
+    await db.upsert_memory_support_assertion(
+        MemorySupportAssertion(
+            id="support-multi-unit-other",
+            memory_id=incumbent.id,
+            evidence_reference_id=other_reference.id or "",
+            source_id="src-1",
+            access_context_hash="workspace-eng",
+        )
+    )
+    plan = SimpleNamespace(
+        mutations=(),
+        coverage_proof=SimpleNamespace(mandatory_incumbent_ids=(incumbent.id,)),
+        scope=SimpleNamespace(
+            source_id="src-1",
+            source_unit_id=first.source_units[0].id,
+        ),
+    )
+    support_rows = await db.db.execute_fetchall(
+        """SELECT eu.source_id AS evidence_source_id,
+                  so.source_id AS observation_source_id,
+                  su.source_id AS unit_source_id,
+                  eu.source_lineage_id, so.source_unit_id,
+                  er.observation_revision_id, so.current_revision_id
+             FROM memory_support_assertions msa
+             JOIN evidence_references er ON er.id = msa.evidence_reference_id
+             JOIN evidence_units eu ON eu.id = er.evidence_unit_id
+             JOIN source_observations so ON so.id = er.observation_id
+             JOIN source_units su ON su.id = so.source_unit_id
+            WHERE msa.memory_id = ? AND msa.source_id = ? AND msa.active = 1
+            ORDER BY so.source_unit_id""",
+        (incumbent.id, "src-1"),
+    )
+    assert {
+        (
+            row["evidence_source_id"],
+            row["observation_source_id"],
+            row["unit_source_id"],
+            row["source_lineage_id"],
+            row["source_unit_id"],
+            row["observation_revision_id"],
+            row["current_revision_id"],
+        )
+        for row in support_rows
+    } == {
+        (
+            "src-1",
+            "src-1",
+            "src-1",
+            first.source_units[0].id,
+            first.source_units[0].id,
+            first.observation_revisions[0].id,
+            first.observation_revisions[0].id,
+        ),
+        (
+            "src-1",
+            "src-1",
+            "src-1",
+            other.source_units[0].id,
+            other.source_units[0].id,
+            other.observation_revisions[0].id,
+            other.observation_revisions[0].id,
+        ),
+    }
+
+    await db._validate_projected_support_invariant_unlocked(plan)
 
 
 @pytest.mark.asyncio

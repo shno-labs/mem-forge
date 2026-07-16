@@ -2295,6 +2295,95 @@ class ProjectionBatchRecordingExtractor(RecordingMemoryExtractor):
         return MemoryExtractionResult(memories=[])
 
 
+@pytest.mark.asyncio
+async def test_unchanged_multi_observation_projection_skips_full_document_extraction(
+    db: Database,
+) -> None:
+    source_id = "src-teams-unchanged"
+    await db.upsert_source(
+        id=source_id,
+        type="teams",
+        name="Teams Unchanged",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="dev",
+    )
+    item = ContentItem(
+        item_id="teams-window-1",
+        title="Teams window",
+        source_url="https://teams.example.test/conversations/conv-1",
+        last_modified=datetime(2026, 7, 16, tzinfo=timezone.utc),
+        version="1",
+        extra={"conversation_id": "conv-1", "window_id": "window-1"},
+    )
+    native = {
+        "messages": [
+            {"id": "msg-1", "content": "Keep A7.", "time": "2026-07-16T10:00:00Z"},
+            {"id": "msg-2", "content": "Agreed.", "time": "2026-07-16T10:01:00Z"},
+        ]
+    }
+    raw = RawContent(
+        item=item,
+        body=json.dumps(native).encode(),
+        content_type="application/json",
+    )
+    normalized = NormalizedContent(item=item, markdown_body="Keep A7.\n\nAgreed.")
+    initial = project_source_item(
+        source_id=source_id,
+        source_type="teams",
+        run_id="teams-unchanged-initial",
+        item=item,
+        raw=raw,
+        normalized=normalized,
+    )
+    unchanged = project_source_item(
+        source_id=source_id,
+        source_type="teams",
+        run_id="teams-unchanged-replay",
+        item=item,
+        raw=raw,
+        normalized=normalized,
+        prior_unit_revision=initial.source_unit_revisions[0],
+        prior_observation_revisions={
+            revision.observation_id: revision
+            for revision in initial.observation_revisions
+        },
+    )
+    assert unchanged.deltas[0].changed_anchors == ()
+    assert unchanged.deltas[0].added_observation_ids == ()
+    extractor = ProjectionBatchRecordingExtractor()
+    orchestrator = GeneSyncOrchestrator(
+        db=db,
+        doc_store=StubDocumentStore(),
+        enricher=InstantEnricher(),
+        memory_extractor=extractor,
+        memory_engine=NoopMemoryEngine(),
+        memory_store=None,
+        max_concurrent=2,
+    )
+
+    result = await orchestrator._extract_for_document_update(
+        projection=unchanged,
+        update_plan=None,
+        markdown_body=normalized.markdown_body,
+        source_type="teams",
+        doc_type="conversation",
+        entity_names=[],
+        existing_memories=[],
+        doc_id=item.item_id,
+        source_id=source_id,
+        run_id=unchanged.run_id,
+        document_title=item.title,
+        document_url=item.source_url,
+    )
+
+    assert result.memories == []
+    assert result.metadata == {"projection_changed_observation_count": 0}
+    assert extractor.projection_calls == []
+    assert extractor.full_calls == []
+    assert extractor.unit_calls == []
+
+
 class FailingMemoryExtractor(NoopMemoryExtractor):
     async def extract_memories(self, **kwargs):
         return MemoryExtractionResult(

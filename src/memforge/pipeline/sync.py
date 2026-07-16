@@ -2121,6 +2121,31 @@ class GeneSyncOrchestrator:
     ) -> MemoryExtractionResult:
         """Run full extraction or diff-guided extraction for a document."""
         projection_batches = plan_projection_extraction_batches(projection)
+        changed_observation_ids = {
+            anchor.observation_id
+            for delta in projection.deltas
+            for anchor in delta.changed_anchors
+        }
+        changed_observation_ids.update(
+            observation_id
+            for delta in projection.deltas
+            for observation_id in delta.added_observation_ids
+        )
+        if not projection_batches and not changed_observation_ids:
+            result = MemoryExtractionResult(
+                memories=[],
+                metadata={"projection_changed_observation_count": 0},
+            )
+            await self._record_memory_extraction_result(
+                mode="projection_no_changes",
+                plan=update_plan,
+                doc_id=doc_id,
+                source_id=source_id,
+                run_id=run_id,
+                result=result,
+                extraction_metadata=result.metadata,
+            )
+            return result
         if (
             (len(projection.observations) > 1 or len(projection_batches) > 1)
             and projection_batches

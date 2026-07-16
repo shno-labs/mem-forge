@@ -6206,7 +6206,9 @@ class Database:
         Review-only plans intentionally preserve the incumbent while a human
         decides; their contested support is represented by the durable review.
         Every applied non-review plan must leave each surviving same-source
-        assertion pinned to an Observation that is current in this Source Unit.
+        assertion pinned to an Observation current in its own stable Source
+        Unit. A newly activated Memory must additionally gain support in the
+        plan's current Unit.
         """
 
         if any(
@@ -6243,28 +6245,37 @@ class Database:
             if memory is None or memory["status"] != "active":
                 continue
             async with self.db.execute(
-                """SELECT COUNT(*) AS total,
+                """SELECT SUM(CASE
+                              WHEN so.source_unit_id = ?
+                               AND eu.source_lineage_id = so.source_unit_id
+                               AND eu.source_id = msa.source_id
+                               AND so.source_id = msa.source_id
+                               AND su.source_id = msa.source_id
+                               AND er.observation_revision_id = so.current_revision_id
+                              THEN 1 ELSE 0 END) AS current_scope_total,
                           SUM(CASE
-                              WHEN eu.source_lineage_id = ?
-                               AND so.source_unit_id = ?
+                              WHEN eu.source_lineage_id = so.source_unit_id
+                               AND eu.source_id = msa.source_id
+                               AND so.source_id = msa.source_id
+                               AND su.source_id = msa.source_id
                                AND er.observation_revision_id = so.current_revision_id
                               THEN 0 ELSE 1 END) AS invalid
                    FROM memory_support_assertions msa
                    JOIN evidence_references er ON er.id = msa.evidence_reference_id
                    JOIN evidence_units eu ON eu.id = er.evidence_unit_id
                    JOIN source_observations so ON so.id = er.observation_id
+                   JOIN source_units su ON su.id = so.source_unit_id
                    WHERE msa.memory_id = ? AND msa.source_id = ? AND msa.active = 1""",
                 (
-                    plan.scope.source_unit_id,
                     plan.scope.source_unit_id,
                     memory_id,
                     plan.scope.source_id,
                 ),
             ) as cursor:
                 support = await cursor.fetchone()
-            total = int(support["total"] or 0)
+            current_scope_total = int(support["current_scope_total"] or 0)
             invalid = int(support["invalid"] or 0)
-            if memory_id in created_ids | reactivated_ids and total == 0:
+            if memory_id in created_ids | reactivated_ids and current_scope_total == 0:
                 raise ValueError(
                     f"projected lifecycle activated Memory without source support: {memory_id}"
                 )
