@@ -20,6 +20,7 @@
 - **Lifecycle Migration Inventory** — A backend scan of every active Configured Source in the datastore, without applying a caller's source-discoverability filter. Agent Session sources are candidates when they own active Memories and either the Lifecycle Gate is not Enabled or an active Memory lacks an active same-source Support Assertion. Inventory output contains identifiers and counts, never private source content or owner identity.
 - **Active Same-Source Support Invariant** — Every active source-backed Memory has at least one active Support Assertion whose source matches that provenance edge. An Enabled gate does not override a violation.
 - **Lifecycle Migration Attempt** — One idempotent durable recovery job identified by an explicit attempt label. Unprovable lineage remains a durable open finding and keeps destructive lifecycle gated; semantic similarity cannot close it.
+- **Non-Migrating SQLite Open** — An existing SQLite workspace opened through `Database.connect(run_migrations=False)`. It uses SQLite read-only/query-only mode, does not create the database or parent directories, and does not create schema or run migrations. It is for operator evaluation, never normal serving or repair.
 
 ## Connector authentication
 
