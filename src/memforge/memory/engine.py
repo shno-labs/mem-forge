@@ -75,6 +75,9 @@ MEMORY_SUPPORT_VALIDATION_PROMPT = """Determine whether the current evidence sti
 Return supported=true only when the claim's truth conditions remain entailed by the current
 Primary and every current Required observation. A change in scope, subject, condition,
 polarity, or applicability means supported=false.
+When supported=true and the previous Primary quote is no longer present verbatim, return
+evidence_quote as one exact, non-empty substring copied from the current Primary observation
+that directly supports the claim. Never paraphrase evidence_quote.
 
 <case_json>
 {case_json}
@@ -492,18 +495,14 @@ class MemoryEngine:
                     f"{operation.memory_id}"
                 )
             selected = primary[0]
-            if (
+            primary_needs_validation = (
                 selected in stale
                 and (
                     not selected.excerpt
                     or selected.excerpt
                     not in current_revisions[selected.anchor.observation_id].content
                 )
-            ):
-                raise RuntimeError(
-                    "NOOP incumbent lacks exact current-revision PRIMARY evidence: "
-                    f"{operation.memory_id}"
-                )
+            )
             required_observation_ids = sorted(
                 {
                     item.anchor.observation_id
@@ -516,7 +515,8 @@ class MemoryEngine:
                 item for item in stale if item.role is EvidenceRole.REQUIRED
             ]
             support_validation: dict[str, object] = {}
-            if stale_required:
+            current_primary_quote = selected.excerpt or ""
+            if primary_needs_validation or stale_required:
                 validator = getattr(
                     self.structured_llm_client,
                     "validate_memory_support",
@@ -524,7 +524,15 @@ class MemoryEngine:
                 )
                 if validator is None:
                     raise RuntimeError(
-                        "revised REQUIRED evidence needs structured semantic validation: "
+                        "revised evidence needs structured semantic validation: "
+                        f"{operation.memory_id}"
+                    )
+                current_primary = current_revisions.get(
+                    selected.anchor.observation_id
+                )
+                if current_primary is None:
+                    raise RuntimeError(
+                        "NOOP incumbent current PRIMARY observation is unavailable: "
                         f"{operation.memory_id}"
                     )
                 validation = await validator(
@@ -532,9 +540,8 @@ class MemoryEngine:
                         case_json=json.dumps(
                             {
                                 "memory_claim": incumbent.content,
-                                "primary": current_revisions[
-                                    selected.anchor.observation_id
-                                ].content,
+                                "previous_primary_quote": selected.excerpt,
+                                "primary": current_primary.content,
                                 "required": [
                                     current_revisions[item.anchor.observation_id].content
                                     for item in stale_required
@@ -552,6 +559,7 @@ class MemoryEngine:
                     "model": self.llm_model,
                     "supported": bool(validation.supported),
                     "reason": validation.reason,
+                    "primary_observation_id": selected.anchor.observation_id,
                     "required_observation_ids": sorted(
                         item.anchor.observation_id for item in stale_required
                     ),
@@ -569,6 +577,19 @@ class MemoryEngine:
                         )
                     )
                     continue
+                if primary_needs_validation:
+                    current_primary_quote = str(
+                        getattr(validation, "evidence_quote", "") or ""
+                    ).strip()
+                    if (
+                        not current_primary_quote
+                        or current_primary_quote not in current_primary.content
+                    ):
+                        raise RuntimeError(
+                            "NOOP incumbent support validation lacks exact current "
+                            "PRIMARY evidence: "
+                            f"{operation.memory_id}"
+                        )
             rebound.append(
                 ReconcileOperation(
                     action=operation.action,
@@ -578,8 +599,8 @@ class MemoryEngine:
                         memory_type=incumbent.memory_type,
                         confidence=incumbent.confidence,
                         tags=list(incumbent.tags),
-                        extraction_context=selected.excerpt,
-                        evidence_quote=selected.excerpt,
+                        extraction_context=current_primary_quote,
+                        evidence_quote=current_primary_quote,
                         evidence_anchor="revalidated_noop",
                         source_observation_id=selected.anchor.observation_id,
                         required_source_observation_ids=required_observation_ids,

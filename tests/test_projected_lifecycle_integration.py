@@ -307,15 +307,27 @@ class _SemanticEquivalentClient:
 
 
 class _SupportValidatingNoopClient(_NoopClient):
-    def __init__(self, memory_id: str, *, supported: bool) -> None:
+    def __init__(
+        self,
+        memory_id: str,
+        *,
+        supported: bool,
+        evidence_quote: str = "",
+    ) -> None:
         super().__init__(memory_id)
         self.supported = supported
+        self.evidence_quote = evidence_quote
 
     async def validate_memory_support(self, prompt: str, **kwargs):
         del kwargs
-        assert "A7 is retained for regular payroll." in prompt
+        assert '"memory_claim"' in prompt
+        assert (
+            "A7 is retained for regular payroll." in prompt
+            or "A7 is removed." in prompt
+        )
         return MemorySupportValidationResponse(
             supported=self.supported,
+            evidence_quote=self.evidence_quote,
             reason=(
                 "The applicability remains regular payroll."
                 if self.supported
@@ -760,6 +772,170 @@ async def test_incremental_noop_rebinds_exact_unchanged_claim_without_new_extrac
         source_id="src-1",
     )
     assert evidence.anchor.observation_revision_id == second.observation_revisions[0].id
+
+
+@pytest.mark.asyncio
+async def test_incremental_noop_revalidates_reworded_primary_evidence(
+    db: Database,
+) -> None:
+    first = _projection(
+        run_id="projection-primary-reword-1",
+        body="A7 is removed.",
+    )
+    await db.record_source_projection(first)
+    incumbent = await _seed_incumbent_support(db, projection=first)
+    await db.enable_lifecycle_gate("src-1")
+    old_support = await db.get_active_memory_support_reference_ids(incumbent.id)
+    current_quote = "The A7 slot remains excluded."
+    second = _projection(
+        run_id="projection-primary-reword-2",
+        body=current_quote,
+        prior=first.source_unit_revisions[0],
+        prior_observations={
+            first.observations[0].id: first.observation_revisions[0]
+        },
+    )
+    adapters = build_sqlite_adapters(db, object())
+    engine = MemoryEngine(
+        relational=adapters.relational,
+        vector=adapters.vector,
+        db=db,
+        memory_store=_OutboxDrainer(db),
+        structured_llm_client=_SupportValidatingNoopClient(
+            incumbent.id,
+            supported=True,
+            evidence_quote=current_quote,
+        ),
+    )
+
+    stats = await engine.apply_projected_lifecycle(
+        projection=second,
+        doc_id="confluence-123",
+        raw_memories=[],
+        doc_type="design-doc",
+        project_key="ENG",
+        repo_identifier=None,
+        entity_ids=[],
+        document_content=current_quote,
+        update_mode="diff_guided",
+        changed_hunks="A7 is removed. -> The A7 slot remains excluded.",
+        update_plan_stats=None,
+        source_updated_at=datetime(2026, 7, 16, 10, 36, tzinfo=timezone.utc),
+    )
+
+    current_support = await db.get_active_memory_support_reference_ids(incumbent.id)
+    assert stats["noop"] == 1
+    assert set(current_support).isdisjoint(old_support)
+    [evidence] = await db.get_active_memory_support_evidence(
+        incumbent.id,
+        source_id="src-1",
+    )
+    assert evidence.excerpt == current_quote
+    assert evidence.anchor.observation_revision_id == second.observation_revisions[0].id
+
+
+@pytest.mark.asyncio
+async def test_incremental_noop_reworded_primary_requires_exact_current_quote(
+    db: Database,
+) -> None:
+    first = _projection(
+        run_id="projection-primary-bad-quote-1",
+        body="A7 is removed.",
+    )
+    await db.record_source_projection(first)
+    incumbent = await _seed_incumbent_support(db, projection=first)
+    await db.enable_lifecycle_gate("src-1")
+    second = _projection(
+        run_id="projection-primary-bad-quote-2",
+        body="The A7 slot remains excluded.",
+        prior=first.source_unit_revisions[0],
+        prior_observations={
+            first.observations[0].id: first.observation_revisions[0]
+        },
+    )
+    adapters = build_sqlite_adapters(db, object())
+    engine = MemoryEngine(
+        relational=adapters.relational,
+        vector=adapters.vector,
+        db=db,
+        memory_store=_OutboxDrainer(db),
+        structured_llm_client=_SupportValidatingNoopClient(
+            incumbent.id,
+            supported=True,
+            evidence_quote="A quote that is not in the current source.",
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="support validation lacks exact current PRIMARY evidence",
+    ):
+        await engine.apply_projected_lifecycle(
+            projection=second,
+            doc_id="confluence-123",
+            raw_memories=[],
+            doc_type="design-doc",
+            project_key="ENG",
+            repo_identifier=None,
+            entity_ids=[],
+            document_content=second.observation_revisions[0].content,
+            update_mode="diff_guided",
+            changed_hunks="primary wording changed",
+            update_plan_stats=None,
+            source_updated_at=datetime(2026, 7, 16, 10, 36, tzinfo=timezone.utc),
+        )
+
+
+@pytest.mark.asyncio
+async def test_incremental_noop_invalidated_primary_creates_review(
+    db: Database,
+) -> None:
+    first = _projection(
+        run_id="projection-primary-invalid-1",
+        body="A7 is removed.",
+    )
+    await db.record_source_projection(first)
+    incumbent = await _seed_incumbent_support(db, projection=first)
+    await db.enable_lifecycle_gate("src-1")
+    second = _projection(
+        run_id="projection-primary-invalid-2",
+        body="A7 is now retained.",
+        prior=first.source_unit_revisions[0],
+        prior_observations={
+            first.observations[0].id: first.observation_revisions[0]
+        },
+    )
+    adapters = build_sqlite_adapters(db, object())
+    engine = MemoryEngine(
+        relational=adapters.relational,
+        vector=adapters.vector,
+        db=db,
+        memory_store=_OutboxDrainer(db),
+        structured_llm_client=_SupportValidatingNoopClient(
+            incumbent.id,
+            supported=False,
+        ),
+    )
+
+    stats = await engine.apply_projected_lifecycle(
+        projection=second,
+        doc_id="confluence-123",
+        raw_memories=[],
+        doc_type="design-doc",
+        project_key="ENG",
+        repo_identifier=None,
+        entity_ids=[],
+        document_content=second.observation_revisions[0].content,
+        update_mode="diff_guided",
+        changed_hunks="removed -> retained",
+        update_plan_stats=None,
+        source_updated_at=datetime(2026, 7, 16, 10, 36, tzinfo=timezone.utc),
+    )
+
+    assert stats["pending_review"] == 1
+    current = await db.get_memory(incumbent.id)
+    assert current is not None and current.status == "active"
+    assert await db.get_active_memory_support_reference_ids(incumbent.id)
 
 
 @pytest.mark.asyncio
