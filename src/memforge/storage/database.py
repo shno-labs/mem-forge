@@ -373,6 +373,8 @@ def _source_sync_run_from_row(row: Mapping[str, Any], *, coalesced: bool = False
         ),
         source_config_revision=data.get("source_config_revision"),
         rerun_source_config_revision=data.get("rerun_source_config_revision"),
+        predecessor_activity_id=data.get("predecessor_activity_id"),
+        rerun_predecessor_activity_id=data.get("rerun_predecessor_activity_id"),
         coalesced=coalesced,
         lease_owner=data.get("lease_owner"),
         lease_expires_at=_parse_dt(data.get("lease_expires_at")),
@@ -1229,6 +1231,8 @@ CREATE TABLE IF NOT EXISTS source_sync_runs (
     rerun_input_generation_watermark INTEGER,
     source_config_revision TEXT,
     rerun_source_config_revision TEXT,
+    predecessor_activity_id TEXT,
+    rerun_predecessor_activity_id TEXT,
     lease_owner             TEXT,
     lease_expires_at        TEXT,
     lease_attempt_count     INTEGER NOT NULL DEFAULT 0,
@@ -2752,6 +2756,14 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
             )""",
             "CREATE INDEX IF NOT EXISTS idx_source_activity_leases_source "
             "ON source_activity_leases(source_id, lease_until)",
+        ],
+    ),
+    (
+        59,
+        "Track source sync predecessor activity",
+        [
+            "ALTER TABLE source_sync_runs ADD COLUMN predecessor_activity_id TEXT",
+            "ALTER TABLE source_sync_runs ADD COLUMN rerun_predecessor_activity_id TEXT",
         ],
     ),
 ]
@@ -5217,10 +5229,19 @@ class Database:
                        THEN COALESCE(rerun_source_config_revision, source_config_revision)
                        ELSE source_config_revision
                    END,
+                   predecessor_activity_id = CASE
+                       WHEN rerun_requested = 1
+                       THEN COALESCE(
+                           rerun_predecessor_activity_id,
+                           predecessor_activity_id
+                       )
+                       ELSE predecessor_activity_id
+                   END,
                    rerun_requested = 0,
                    rerun_input_snapshot_id = NULL,
                    rerun_input_generation_watermark = NULL,
                    rerun_source_config_revision = NULL,
+                   rerun_predecessor_activity_id = NULL,
                    lease_owner = NULL,
                    lease_expires_at = NULL,
                    next_attempt_at = NULL,
@@ -12647,6 +12668,7 @@ class Database:
         force_full_sync: bool = False,
         input_snapshot_id: str | None = None,
         source_config_revision: str | None = None,
+        predecessor_activity_id: str | None = None,
     ) -> SourceSyncRun:
         for _attempt in range(3):
             async with self._write_lock:
@@ -12658,6 +12680,7 @@ class Database:
                         force_full_sync=force_full_sync,
                         input_snapshot_id=input_snapshot_id,
                         source_config_revision=source_config_revision,
+                        predecessor_activity_id=predecessor_activity_id,
                     )
                     await self.db.commit()
                     return run
@@ -12678,11 +12701,15 @@ class Database:
         force_full_sync: bool = False,
         input_snapshot_id: str | None = None,
         source_config_revision: str | None = None,
+        predecessor_activity_id: str | None = None,
         now: str | None = None,
     ) -> SourceSyncRun:
         now_iso = now or _now_iso()
         normalized_snapshot_id = _non_empty_string(input_snapshot_id)
         normalized_config_revision = _non_empty_string(source_config_revision)
+        normalized_predecessor_activity_id = _non_empty_string(
+            predecessor_activity_id
+        )
         source_lock = await self.db.execute(
             "UPDATE sources SET status = status WHERE id = ?",
             (source_id,),
@@ -12788,6 +12815,15 @@ class Database:
                            WHEN status = 'running' AND ? AND ? IS NOT NULL THEN ?
                            ELSE rerun_source_config_revision
                        END,
+                       predecessor_activity_id = CASE
+                           WHEN status = 'pending' AND ? IS NOT NULL THEN ?
+                           ELSE predecessor_activity_id
+                       END,
+                       rerun_predecessor_activity_id = CASE
+                           WHEN status = 'pending' THEN NULL
+                           WHEN status = 'running' AND ? THEN ?
+                           ELSE rerun_predecessor_activity_id
+                       END,
                        updated_at = ?
                    WHERE run_id = ? AND status IN ('pending', 'running')""",
                 (
@@ -12805,6 +12841,10 @@ class Database:
                     int(mark_rerun),
                     normalized_config_revision,
                     normalized_config_revision,
+                    normalized_predecessor_activity_id,
+                    normalized_predecessor_activity_id,
+                    int(mark_rerun),
+                    normalized_predecessor_activity_id,
                     now_iso,
                     existing["run_id"],
                 ),
@@ -12823,8 +12863,9 @@ class Database:
             """INSERT INTO source_sync_runs (
                 run_id, workspace_id, source_id, trigger, status,
                 force_full_sync, input_snapshot_id, input_generation_watermark,
-                source_config_revision, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)""",
+                source_config_revision, predecessor_activity_id,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_id,
                 workspace_id,
@@ -12834,6 +12875,7 @@ class Database:
                 normalized_snapshot_id,
                 input_generation_watermark,
                 normalized_config_revision,
+                normalized_predecessor_activity_id,
                 now_iso,
                 now_iso,
             ),
@@ -12883,9 +12925,15 @@ class Database:
         lease_expires_at = _utc_iso(lease_started_at + timedelta(seconds=lease_seconds))
         conditions = [
             "((status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)) "
-            "OR (status = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?))"
+            "OR (status = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?))",
+            "NOT EXISTS ("
+            "SELECT 1 FROM source_activity_leases predecessor "
+            "WHERE predecessor.id = source_sync_runs.predecessor_activity_id "
+            "AND predecessor.source_id = source_sync_runs.source_id "
+            "AND predecessor.kind = 'external_collection' "
+            "AND predecessor.lease_until > ?)",
         ]
-        params: list[Any] = [lease_started_iso, lease_started_iso]
+        params: list[Any] = [lease_started_iso, lease_started_iso, lease_started_iso]
         if workspace_id is not None:
             conditions.append("workspace_id = ?")
             params.append(workspace_id)
@@ -12917,6 +12965,13 @@ class Database:
                        (status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
                        OR
                        (status = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?)
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM source_activity_leases predecessor
+                       WHERE predecessor.id = ?
+                         AND predecessor.source_id = ?
+                         AND predecessor.kind = 'external_collection'
+                         AND predecessor.lease_until > ?
                      )""",
                 (
                     worker_id,
@@ -12926,6 +12981,9 @@ class Database:
                     lease_started_iso,
                     row["run_id"],
                     lease_started_iso,
+                    lease_started_iso,
+                    row["predecessor_activity_id"],
+                    row["source_id"],
                     lease_started_iso,
                 ),
             )
@@ -13128,6 +13186,14 @@ class Database:
                            )
                            ELSE source_config_revision
                        END,
+                       predecessor_activity_id = CASE
+                           WHEN ? AND rerun_requested = 1
+                           THEN COALESCE(
+                               rerun_predecessor_activity_id,
+                               predecessor_activity_id
+                           )
+                           ELSE predecessor_activity_id
+                       END,
                        rerun_requested = CASE WHEN ? THEN 0 ELSE rerun_requested END,
                        rerun_input_snapshot_id = CASE
                            WHEN ? THEN NULL ELSE rerun_input_snapshot_id
@@ -13137,6 +13203,9 @@ class Database:
                        END,
                        rerun_source_config_revision = CASE
                            WHEN ? THEN NULL ELSE rerun_source_config_revision
+                       END,
+                       rerun_predecessor_activity_id = CASE
+                           WHEN ? THEN NULL ELSE rerun_predecessor_activity_id
                        END,
                        lease_owner = NULL,
                        lease_expires_at = NULL,
@@ -13149,6 +13218,8 @@ class Database:
                      AND lease_expires_at > ?""",
                 (
                     status,
+                    int(retryable),
+                    int(retryable),
                     int(retryable),
                     int(retryable),
                     int(retryable),
@@ -13208,8 +13279,9 @@ class Database:
             """INSERT INTO source_sync_runs (
                 run_id, workspace_id, source_id, trigger, status,
                 force_full_sync, input_snapshot_id, input_generation_watermark,
-                source_config_revision, created_at, updated_at
-            ) VALUES (?, ?, ?, 'rerun', 'pending', ?, ?, ?, ?, ?, ?)""",
+                source_config_revision, predecessor_activity_id,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, 'rerun', 'pending', ?, ?, ?, ?, ?, ?, ?)""",
             (
                 successor_id,
                 completed["workspace_id"],
@@ -13218,6 +13290,7 @@ class Database:
                 completed["rerun_input_snapshot_id"],
                 completed["rerun_input_generation_watermark"],
                 completed["rerun_source_config_revision"],
+                completed["rerun_predecessor_activity_id"],
                 now,
                 now,
             ),

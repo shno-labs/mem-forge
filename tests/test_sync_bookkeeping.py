@@ -589,6 +589,43 @@ async def test_snapshot_migration_upgrades_database_that_already_recorded_migrat
 
 
 @pytest.mark.asyncio
+async def test_predecessor_activity_migration_upgrades_existing_sync_run_table(
+    tmp_path,
+) -> None:
+    path = tmp_path / "pre-handoff.db"
+    database = Database(str(path))
+    await database.connect()
+    await database.close()
+
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "ALTER TABLE source_sync_runs DROP COLUMN predecessor_activity_id"
+        )
+        conn.execute(
+            "ALTER TABLE source_sync_runs DROP COLUMN rerun_predecessor_activity_id"
+        )
+        conn.execute("DELETE FROM schema_migrations WHERE version = 59")
+        conn.commit()
+
+    upgraded = Database(str(path))
+    await upgraded.connect()
+    try:
+        columns = {
+            row["name"]
+            for row in await (
+                await upgraded.db.execute("PRAGMA table_info(source_sync_runs)")
+            ).fetchall()
+        }
+    finally:
+        await upgraded.close()
+
+    assert {
+        "predecessor_activity_id",
+        "rerun_predecessor_activity_id",
+    } <= columns
+
+
+@pytest.mark.asyncio
 async def test_latest_source_sync_run_is_scoped_to_source_and_workspace(db: Database):
     await db.upsert_source(
         id="src-latest-a",
@@ -687,10 +724,12 @@ async def test_source_sync_run_persists_consumed_input_boundary_and_rerun_revisi
         source_id="src-input-boundary",
         trigger="local_agent",
         source_config_revision=config_revision,
+        predecessor_activity_id="laj-first-boundary",
     )
 
     assert first.input_generation_watermark == first_input.input_generation
     assert first.source_config_revision == config_revision
+    assert first.predecessor_activity_id == "laj-first-boundary"
 
     leased = await db.lease_next_source_sync_run(
         worker_id="worker-a",
@@ -708,10 +747,12 @@ async def test_source_sync_run_persists_consumed_input_boundary_and_rerun_revisi
         source_id="src-input-boundary",
         trigger="local_agent",
         source_config_revision=config_revision,
+        predecessor_activity_id="laj-second-boundary",
     )
 
     assert coalesced.rerun_input_generation_watermark == second_input.input_generation
     assert coalesced.rerun_source_config_revision == config_revision
+    assert coalesced.rerun_predecessor_activity_id == "laj-second-boundary"
 
     completed = await db.complete_source_sync_run(
         leased.run_id,
@@ -728,6 +769,7 @@ async def test_source_sync_run_persists_consumed_input_boundary_and_rerun_revisi
     assert successor.status == "pending"
     assert successor.input_generation_watermark == second_input.input_generation
     assert successor.source_config_revision == config_revision
+    assert successor.predecessor_activity_id == "laj-second-boundary"
 
 
 @pytest.mark.asyncio
@@ -913,6 +955,98 @@ async def test_duplicate_snapshot_does_not_schedule_running_successor(db: Databa
 
     assert duplicate.run_id == first.run_id
     assert duplicate.rerun_requested is False
+
+
+@pytest.mark.asyncio
+async def test_source_sync_run_waits_for_exact_predecessor_activity(db: Database):
+    source_id = "src-local-handoff"
+    job_id = "laj-local-handoff"
+    await db.upsert_source(
+        id=source_id,
+        type="github_repo",
+        name="Local handoff",
+        config_json='{"repo_url":"https://github.example/repo"}',
+        access_policy="workspace",
+        owner_user_id="dev",
+    )
+    await db.acquire_source_activity(
+        activity_id=job_id,
+        source_id=source_id,
+        kind=SourceActivityKind.EXTERNAL_COLLECTION,
+        capability=job_id,
+        lease_seconds=300,
+    )
+    run = await db.enqueue_source_sync_run(
+        source_id=source_id,
+        trigger="local_agent",
+        input_snapshot_id=f"{job_id}:attempt:1",
+        predecessor_activity_id=job_id,
+    )
+    coalesced = await db.enqueue_source_sync_run(
+        source_id=source_id,
+        trigger="manual",
+    )
+
+    blocked = await db.lease_next_source_sync_run(
+        worker_id="worker-before-release",
+        lease_seconds=60,
+    )
+    pending = await db.get_source_sync_run(run.run_id)
+
+    assert blocked is None
+    assert pending is not None
+    assert pending.status == "pending"
+    assert coalesced.run_id == run.run_id
+    assert coalesced.predecessor_activity_id == job_id
+    assert pending.predecessor_activity_id == job_id
+    assert pending.lease_attempt_count == 0
+
+    assert await db.release_source_activity(
+        activity_id=job_id,
+        capability=job_id,
+    )
+    leased = await db.lease_next_source_sync_run(
+        worker_id="worker-after-release",
+        lease_seconds=60,
+    )
+
+    assert leased is not None
+    assert leased.run_id == run.run_id
+    assert leased.lease_attempt_count == 1
+
+
+@pytest.mark.asyncio
+async def test_source_sync_run_does_not_wait_for_unrelated_activity(db: Database):
+    source_id = "src-unrelated-handoff"
+    await db.upsert_source(
+        id=source_id,
+        type="github_repo",
+        name="Unrelated handoff",
+        config_json='{"repo_url":"https://github.example/repo"}',
+        access_policy="workspace",
+        owner_user_id="dev",
+    )
+    await db.acquire_source_activity(
+        activity_id="laj-other",
+        source_id=source_id,
+        kind=SourceActivityKind.EXTERNAL_COLLECTION,
+        capability="laj-other",
+        lease_seconds=300,
+    )
+    run = await db.enqueue_source_sync_run(
+        source_id=source_id,
+        trigger="local_agent",
+        input_snapshot_id="laj-expected:attempt:1",
+        predecessor_activity_id="laj-expected",
+    )
+
+    leased = await db.lease_next_source_sync_run(
+        worker_id="worker-unrelated",
+        lease_seconds=60,
+    )
+
+    assert leased is not None
+    assert leased.run_id == run.run_id
 
 
 @pytest.mark.asyncio

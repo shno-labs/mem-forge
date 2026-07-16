@@ -5316,6 +5316,9 @@ def create_admin_app(
                 ),
                 input_snapshot_id=input_snapshot_id,
                 source_config_revision=str(lease_payload["source_config_revision"]),
+                predecessor_activity_id=(
+                    req.local_agent_job_id if req else None
+                ),
             )
         except SourcePausedError:
             raise _source_paused_http_error()
