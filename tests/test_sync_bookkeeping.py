@@ -1612,6 +1612,162 @@ async def test_source_sync_inputs_are_idempotent_by_raw_hash(db: Database):
 
 
 @pytest.mark.asyncio
+async def test_source_sync_input_artifact_attestation_fills_legacy_metadata_idempotently(
+    db: Database,
+):
+    source_id = "src-input-attestation"
+    await db.upsert_source(
+        id=source_id,
+        type="teams",
+        name="Teams",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="dev",
+    )
+    created = await db.create_source_sync_input(
+        source_id=source_id,
+        workspace_id="workspace-a",
+        raw_uri="object://workspace-a/src-input-attestation/legacy.json",
+        raw_sha256="semantic-sha",
+        raw_content_type="application/json",
+        metadata={
+            "doc_id": "doc-a",
+            "submitted_by": "legacy-daemon",
+            "manifest_entry": {
+                "doc_id": "doc-a",
+                "version": "v1",
+                "provider_field": "preserved",
+            },
+        },
+    )
+
+    attested = await db.attest_source_sync_input_artifact(
+        source_id=source_id,
+        input_id=created.input_id,
+        package_sha256="package-sha",
+        expected_activity_epoch=0,
+    )
+    repeated = await db.attest_source_sync_input_artifact(
+        source_id=source_id,
+        input_id=created.input_id,
+        package_sha256="package-sha",
+        expected_activity_epoch=0,
+    )
+
+    assert repeated == attested
+    assert attested.input_id == created.input_id
+    assert attested.input_generation == created.input_generation
+    assert attested.raw_uri == created.raw_uri
+    assert attested.raw_sha256 == created.raw_sha256
+    assert attested.metadata["submitted_by"] == "legacy-daemon"
+    assert attested.metadata["package_sha256"] == "package-sha"
+    assert attested.metadata["manifest_entry"] == {
+        "doc_id": "doc-a",
+        "version": "v1",
+        "provider_field": "preserved",
+        "package_sha256": "package-sha",
+    }
+
+    with pytest.raises(ValueError, match="artifact attestation conflict"):
+        await db.attest_source_sync_input_artifact(
+            source_id=source_id,
+            input_id=created.input_id,
+            package_sha256="different-package-sha",
+            expected_activity_epoch=0,
+        )
+
+    listed = await db.list_source_sync_inputs(
+        source_id=source_id,
+        workspace_id="workspace-a",
+    )
+    assert listed == [attested]
+
+
+@pytest.mark.asyncio
+async def test_source_sync_input_artifact_attestation_is_epoch_fenced(db: Database):
+    source_id = "src-input-attestation-fence"
+    await db.upsert_source(
+        id=source_id,
+        type="teams",
+        name="Teams",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="dev",
+    )
+    created = await db.create_source_sync_input(
+        source_id=source_id,
+        raw_uri="object://legacy.json",
+        raw_sha256="semantic-sha",
+        raw_content_type="application/json",
+        metadata={
+            "doc_id": "doc-a",
+            "manifest_entry": {"doc_id": "doc-a", "version": "v1"},
+        },
+    )
+    await db.db.execute(
+        "UPDATE sources SET activity_epoch = activity_epoch + 1 WHERE id = ?",
+        (source_id,),
+    )
+    await db.db.commit()
+
+    with pytest.raises(SourceActivityConflict, match="source activity epoch changed"):
+        await db.attest_source_sync_input_artifact(
+            source_id=source_id,
+            input_id=created.input_id,
+            package_sha256="package-sha",
+            expected_activity_epoch=0,
+        )
+
+    [unchanged] = await db.list_source_sync_inputs(source_id=source_id)
+    assert "package_sha256" not in unchanged.metadata
+    assert "package_sha256" not in unchanged.metadata["manifest_entry"]
+
+
+@pytest.mark.asyncio
+async def test_source_sync_input_artifact_attestation_is_maintenance_fenced(
+    db: Database,
+):
+    source_id = "src-input-attestation-maintenance"
+    await db.upsert_source(
+        id=source_id,
+        type="teams",
+        name="Teams",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="dev",
+    )
+    created = await db.create_source_sync_input(
+        source_id=source_id,
+        raw_uri="object://legacy.json",
+        raw_sha256="semantic-sha",
+        raw_content_type="application/json",
+        metadata={
+            "doc_id": "doc-a",
+            "manifest_entry": {"doc_id": "doc-a", "version": "v1"},
+        },
+    )
+    await db.create_lifecycle_backfill_job(
+        LifecycleBackfillJob(
+            id="lifecycle-attestation-fence",
+            source_id=source_id,
+            status=LifecycleBackfillJobStatus.QUEUED,
+        )
+    )
+
+    with pytest.raises(SourceActivityConflict, match="lifecycle maintenance active"):
+        await db.attest_source_sync_input_artifact(
+            source_id=source_id,
+            input_id=created.input_id,
+            package_sha256="package-sha",
+            expected_activity_epoch=0,
+        )
+
+    [unchanged] = await db.list_source_sync_inputs(source_id=source_id)
+    assert "package_sha256" not in unchanged.metadata
+    assert "package_sha256" not in unchanged.metadata["manifest_entry"]
+
+
+@pytest.mark.asyncio
 async def test_snapshot_input_uses_top_level_doc_id_and_rejects_missing_identity(db: Database):
     await db.upsert_source(
         id="src-snapshot-doc",

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict, is_dataclass
+import hashlib
 import json
 import logging
 import os
@@ -69,6 +70,7 @@ from memforge.models import (
     MemoryType,
     MemoryReview,
     Project,
+    SourceSyncInput,
     SourceExecutionKind,
     UNSORTED_PROJECT_KEY,
     canonicalize_entity_name,
@@ -2405,6 +2407,91 @@ def get_runtime_provider(request: Request) -> RuntimeProvider:
 # ---------------------------------------------------------------------------
 
 
+def _validate_local_source_replay_artifact_identity(
+    *,
+    source_type: str,
+    source_id: str,
+    body: bytes,
+    expected_doc_id: str,
+    expected_version: str,
+    expected_input_sha256: str,
+    expected_package_sha256: str,
+) -> Mapping[str, Any]:
+    """Validate one immutable package and its provider-derived document identity."""
+    from memforge.local_agent.replay_adapter import get_local_source_replay_adapter
+
+    try:
+        package = validate_local_agent_replay_package(
+            source_type,
+            body,
+            expected_doc_id=expected_doc_id,
+            expected_version=expected_version,
+            expected_input_sha256=expected_input_sha256,
+            expected_package_sha256=expected_package_sha256,
+        )
+        derived_doc_id = get_local_source_replay_adapter(
+            source_type
+        ).derive_document_id(
+            source_id=source_id,
+            package=package,
+        )
+    except ValueError as exc:
+        raise ValueError("source_lifecycle_local_replay_artifact_invalid") from exc
+    if derived_doc_id != expected_doc_id:
+        raise ValueError("source_lifecycle_local_replay_artifact_invalid")
+    return package
+
+
+async def _attest_retained_local_source_input(
+    *,
+    db: Any,
+    artifact_store: DocumentArtifactStore,
+    source_type: str,
+    source_id: str,
+    retained_input: SourceSyncInput,
+    expected_activity_epoch: int,
+) -> tuple[SourceSyncInput, str]:
+    """Validate and attest a legacy retained artifact without trusting a duplicate upload."""
+    metadata = retained_input.metadata
+    manifest_entry = metadata.get("manifest_entry")
+    if not isinstance(manifest_entry, Mapping):
+        raise ValueError("source_lifecycle_local_replay_artifact_invalid")
+    top_level_hash = str(metadata.get("package_sha256") or "").strip()
+    manifest_hash = str(manifest_entry.get("package_sha256") or "").strip()
+    if top_level_hash and manifest_hash and top_level_hash != manifest_hash:
+        raise ValueError(
+            "source sync input artifact attestation conflict: "
+            f"{retained_input.input_id}"
+        )
+    package_hash = top_level_hash or manifest_hash
+    if top_level_hash and manifest_hash:
+        return retained_input, package_hash
+    try:
+        body = artifact_store.read_artifact(retained_input.raw_uri)
+    except Exception as exc:
+        raise ValueError("source_lifecycle_local_replay_artifact_invalid") from exc
+    package_hash = hashlib.sha256(body).hexdigest()
+    expected_doc_id = str(
+        manifest_entry.get("doc_id") or metadata.get("doc_id") or ""
+    )
+    _validate_local_source_replay_artifact_identity(
+        source_type=source_type,
+        source_id=source_id,
+        body=body,
+        expected_doc_id=expected_doc_id,
+        expected_version=str(manifest_entry.get("version") or ""),
+        expected_input_sha256=retained_input.raw_sha256,
+        expected_package_sha256=package_hash,
+    )
+    attested = await db.attest_source_sync_input_artifact(
+        source_id=source_id,
+        input_id=retained_input.input_id,
+        package_sha256=package_hash,
+        expected_activity_epoch=expected_activity_epoch,
+    )
+    return attested, package_hash
+
+
 def create_admin_app(
     db: Database | None = None,
     config: AppConfig | None = None,
@@ -3841,10 +3928,6 @@ def create_admin_app(
     ) -> tuple[dict[str, Any], bool]:
         """Build an exact current-corpus replay for local collection sources."""
 
-        from memforge.local_agent.replay_adapter import (
-            get_local_source_replay_adapter,
-        )
-
         source_id = str(source["id"])
         if local_agent_sync_operation(source["type"], source.get("config")) is None:
             return source, False
@@ -3902,7 +3985,6 @@ def create_admin_app(
             ]
         except KeyError as exc:
             raise ValueError("source_lifecycle_local_replay_artifact_invalid") from exc
-        replay_adapter = get_local_source_replay_adapter(str(source["type"]))
         for entry in selected_manifest:
             doc_id = str(entry["doc_id"])
             if str(entry.get("version") or "") != current_document_versions[doc_id]:
@@ -3914,23 +3996,15 @@ def create_admin_app(
                 body = document_store.read_artifact(str(entry["package_uri"]))
             except Exception as exc:
                 raise ValueError("source_lifecycle_local_replay_artifact_invalid") from exc
-            package = validate_local_agent_replay_package(
-                str(source["type"]),
-                body,
+            _validate_local_source_replay_artifact_identity(
+                source_type=str(source["type"]),
+                source_id=source_id,
+                body=body,
                 expected_doc_id=doc_id,
                 expected_version=current_document_versions[doc_id],
                 expected_input_sha256=str(entry.get("input_sha256") or ""),
                 expected_package_sha256=package_sha256,
             )
-            try:
-                derived_doc_id = replay_adapter.derive_document_id(
-                    source_id=source_id,
-                    package=package,
-                )
-            except ValueError as exc:
-                raise ValueError("source_lifecycle_local_replay_artifact_invalid") from exc
-            if derived_doc_id != doc_id:
-                raise ValueError("source_lifecycle_local_replay_artifact_invalid")
         replay_source["config"]["local_agent_package_manifest"] = selected_manifest
         return replay_source, True
 
@@ -5546,8 +5620,28 @@ def create_admin_app(
                 await discard_unretained_package()
                 raise
             if retained_input.raw_uri != package_uri:
+                try:
+                    retained_input, retained_package_hash = (
+                        await _attest_retained_local_source_input(
+                            db=db,
+                            artifact_store=artifact_store,
+                            source_type=source_type,
+                            source_id=source_id,
+                            retained_input=retained_input,
+                            expected_activity_epoch=int(
+                                lease_payload["source_activity_epoch"]
+                            ),
+                        )
+                    )
+                except ValueError as exc:
+                    await discard_unretained_package()
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
+                except Exception:
+                    await discard_unretained_package()
+                    raise
                 await discard_unretained_package()
                 result["package_uri"] = retained_input.raw_uri
+                result["package_sha256"] = retained_package_hash
 
         public_result = dict(result)
         public_result.pop("package_manifest_entry", None)

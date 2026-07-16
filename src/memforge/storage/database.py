@@ -27,6 +27,7 @@ from memforge.local_agent.source_contract import (
     local_agent_source_config_revision,
     local_agent_sync_job_payload,
     local_agent_sync_operation,
+    source_sync_input_metadata_with_artifact_attestation,
 )
 from memforge.storage.admin_source import is_pause_only_source_update
 from memforge.source_activity import (
@@ -13365,6 +13366,72 @@ class Database:
             async for row in cursor:
                 results.append(_source_sync_input_from_row(row))
         return results
+
+    async def attest_source_sync_input_artifact(
+        self,
+        *,
+        source_id: str,
+        input_id: str,
+        package_sha256: str,
+        expected_activity_epoch: int | None = None,
+    ) -> SourceSyncInput:
+        """Atomically fill or verify a retained input's own package hash."""
+        async with self._write_lock:
+            try:
+                source_lock = await self.db.execute(
+                    "UPDATE sources SET status = status WHERE id = ?",
+                    (source_id,),
+                )
+                if source_lock.rowcount != 1:
+                    raise ValueError(f"Source not found: {source_id}")
+                async with self.db.execute(
+                    """SELECT id FROM lifecycle_backfill_jobs
+                       WHERE source_id = ? AND status IN ('queued', 'running')
+                       ORDER BY created_at LIMIT 1""",
+                    (source_id,),
+                ) as cursor:
+                    lifecycle_job = await cursor.fetchone()
+                if lifecycle_job is not None:
+                    raise SourceActivityConflict(
+                        f"source lifecycle maintenance active: {lifecycle_job['id']}"
+                    )
+                if expected_activity_epoch is not None:
+                    async with self.db.execute(
+                        "SELECT activity_epoch FROM sources WHERE id = ?",
+                        (source_id,),
+                    ) as cursor:
+                        epoch_row = await cursor.fetchone()
+                    current_epoch = int(epoch_row["activity_epoch"] or 0)
+                    if current_epoch != expected_activity_epoch:
+                        raise SourceActivityConflict(
+                            "source activity epoch changed: "
+                            f"expected {expected_activity_epoch}, current {current_epoch}"
+                        )
+                async with self.db.execute(
+                    "SELECT * FROM source_sync_inputs WHERE input_id = ? AND source_id = ?",
+                    (input_id, source_id),
+                ) as cursor:
+                    existing = await cursor.fetchone()
+                if existing is None:
+                    raise ValueError(f"Source sync input not found: {input_id}")
+                current = _source_sync_input_from_row(existing)
+                metadata = source_sync_input_metadata_with_artifact_attestation(
+                    current.metadata,
+                    package_sha256=package_sha256,
+                    input_id=input_id,
+                )
+                async with self.db.execute(
+                    """UPDATE source_sync_inputs SET metadata_json = ?
+                       WHERE input_id = ? AND source_id = ?""",
+                    (json.dumps(metadata, sort_keys=True), input_id, source_id),
+                ) as cursor:
+                    if cursor.rowcount != 1:
+                        raise ValueError(f"Source sync input not found: {input_id}")
+                await self.db.commit()
+            except Exception:
+                await self.db.rollback()
+                raise
+        return replace(current, metadata=metadata)
 
     async def _record_source_sync_snapshot_item_unlocked(
         self,

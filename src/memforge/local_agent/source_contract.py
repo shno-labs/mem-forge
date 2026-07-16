@@ -335,6 +335,39 @@ def local_agent_source_config_revision(source: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def source_sync_input_metadata_with_artifact_attestation(
+    metadata: Mapping[str, Any],
+    *,
+    package_sha256: str,
+    input_id: str,
+) -> dict[str, Any]:
+    """Fill or validate the immutable package attestation for a retained input."""
+    artifact_hash = str(package_sha256 or "").strip()
+    if not artifact_hash:
+        raise ValueError("source sync input artifact attestation is required")
+    result = dict(metadata)
+    manifest_entry = result.get("manifest_entry")
+    if not isinstance(manifest_entry, Mapping):
+        raise ValueError(f"source sync input manifest is missing: {input_id}")
+    manifest = dict(manifest_entry)
+    declared_hashes = {
+        value
+        for value in (
+            str(result.get("package_sha256") or "").strip(),
+            str(manifest.get("package_sha256") or "").strip(),
+        )
+        if value
+    }
+    if declared_hashes and declared_hashes != {artifact_hash}:
+        raise ValueError(
+            f"source sync input artifact attestation conflict: {input_id}"
+        )
+    result["package_sha256"] = artifact_hash
+    manifest["package_sha256"] = artifact_hash
+    result["manifest_entry"] = manifest
+    return result
+
+
 def source_with_sync_inputs(
     source: Mapping[str, Any],
     inputs: list[Any],
