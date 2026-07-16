@@ -95,6 +95,8 @@ async def _setup_completed_teams_local_replay(
     include_current_document: bool = True,
     include_retired_input: bool = False,
     include_newer_noncurrent_version: bool = False,
+    run_status: str = "success",
+    force_full_sync: bool = False,
 ) -> dict[str, str]:
     await database.connect()
     await database.upsert_source(
@@ -251,6 +253,7 @@ async def _setup_completed_teams_local_replay(
     run = await database.enqueue_source_sync_run(
         source_id="src-teams",
         trigger="local_agent",
+        force_full_sync=force_full_sync,
         input_snapshot_id=snapshot_id,
         source_config_revision=local_agent_source_config_revision(source),
     )
@@ -260,18 +263,31 @@ async def _setup_completed_teams_local_replay(
         now=now,
     )
     assert leased is not None
-    completed = await database.complete_source_sync_run(
-        run.run_id,
-        worker_id="worker-a",
-        lease_attempt_count=leased.lease_attempt_count,
-        final_state=SyncState(
-            source="src-teams",
-            last_sync_at=now,
-            last_sync_status="success",
-        ),
-        completed_at=now,
+    final_state = SyncState(
+        source="src-teams",
+        last_sync_at=(now if run_status == "success" else None),
+        last_sync_status=run_status,
+        error_message=(None if run_status == "success" else "document lifecycle was gated"),
     )
-    assert completed is True
+    if run_status == "success":
+        terminal = await database.complete_source_sync_run(
+            run.run_id,
+            worker_id="worker-a",
+            lease_attempt_count=leased.lease_attempt_count,
+            final_state=final_state,
+            completed_at=now,
+        )
+    else:
+        terminal = await database.fail_source_sync_run(
+            run.run_id,
+            worker_id="worker-a",
+            lease_attempt_count=leased.lease_attempt_count,
+            error_message=final_state.error_message or "source sync failed",
+            final_state=final_state,
+            retryable=False,
+            failed_at=now,
+        )
+    assert terminal is True
     return artifacts
 
 
@@ -1116,10 +1132,10 @@ def test_local_agent_lifecycle_backfill_repairs_from_durable_current_corpus(
         asyncio.run(database.close())
 
 
-def test_local_agent_source_rebaseline_fails_before_reset_without_successful_replay(tmp_path):
+def test_local_agent_source_rebaseline_fails_before_reset_without_terminal_replay(tmp_path):
     class UnexpectedReplayProvider(DefaultRuntimeProvider):
         async def run_source_sync(self, **kwargs):
-            raise AssertionError("local-agent rebaseline must not run without a successful replay")
+            raise AssertionError("local-agent rebaseline must not run without a terminal replay")
 
     database = Database(str(tmp_path / "local-agent-rebaseline-preflight.db"))
 
@@ -1149,11 +1165,11 @@ def test_local_agent_source_rebaseline_fails_before_reset_without_successful_rep
             )
 
         assert response.status_code == 409, response.text
-        assert response.json()["detail"] == "source_lifecycle_successful_local_replay_required"
+        assert response.json()["detail"] == "source_lifecycle_terminal_local_replay_required"
         jobs = asyncio.run(database.list_lifecycle_backfill_jobs("src-teams"))
         assert len(jobs) == 1
         assert jobs[0].status is LifecycleBackfillJobStatus.FAILED
-        assert jobs[0].error == "source_lifecycle_successful_local_replay_required"
+        assert jobs[0].error == "source_lifecycle_terminal_local_replay_required"
     finally:
         asyncio.run(database.close())
 
@@ -1316,6 +1332,95 @@ def test_incremental_local_agent_source_rebaseline_replays_exact_current_corpus(
         }
         assert manifest["input_sha256"]
         assert manifest["package_sha256"]
+    finally:
+        asyncio.run(database.close())
+
+
+def test_local_rebaseline_accepts_attested_terminal_full_sync_after_lifecycle_gate_failure(
+    tmp_path,
+):
+    class ReplayProvider(DefaultRuntimeProvider):
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        async def run_source_sync(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(last_sync_status="success", error_message=None)
+
+    database = Database(str(tmp_path / "failed-full-sync-rebaseline.db"))
+    cfg = _config(tmp_path)
+    document_store = LocalDocumentStore(cfg.storage.docs_path)
+
+    async def setup() -> None:
+        await _setup_completed_teams_local_replay(
+            database,
+            snapshot_id=None,
+            document_store=document_store,
+            run_status="failed",
+            force_full_sync=True,
+        )
+
+    asyncio.run(setup())
+    provider = ReplayProvider()
+    app = create_admin_app(
+        db=database,
+        config=cfg,
+        runtime_provider=provider,
+        principal_resolver=lambda request: "user-a",
+        document_store=document_store,
+    )
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/sources/src-teams/memory-lifecycle/rebaseline",
+                json={"confirm_source_id": "src-teams"},
+            )
+
+        assert response.status_code == 202, response.text
+        assert [call["execution_mode"] for call in provider.calls] == [
+            SourceSyncMode.REBASELINE_PREFLIGHT,
+            SourceSyncMode.REBASELINE_REPLAY,
+        ]
+    finally:
+        asyncio.run(database.close())
+
+
+def test_local_rebaseline_rejects_failed_incremental_input_boundary(tmp_path):
+    class UnexpectedReplayProvider(DefaultRuntimeProvider):
+        async def run_source_sync(self, **kwargs):
+            del kwargs
+            raise AssertionError("failed incremental inputs must not be replayed")
+
+    database = Database(str(tmp_path / "failed-incremental-rebaseline.db"))
+    cfg = _config(tmp_path)
+    document_store = LocalDocumentStore(cfg.storage.docs_path)
+
+    async def setup() -> None:
+        await _setup_completed_teams_local_replay(
+            database,
+            snapshot_id=None,
+            document_store=document_store,
+            run_status="failed",
+            force_full_sync=False,
+        )
+
+    asyncio.run(setup())
+    app = create_admin_app(
+        db=database,
+        config=cfg,
+        runtime_provider=UnexpectedReplayProvider(),
+        principal_resolver=lambda request: "user-a",
+        document_store=document_store,
+    )
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/sources/src-teams/memory-lifecycle/rebaseline",
+                json={"confirm_source_id": "src-teams"},
+            )
+
+        assert response.status_code == 409, response.text
+        assert response.json()["detail"] == "source_lifecycle_terminal_local_replay_required"
     finally:
         asyncio.run(database.close())
 

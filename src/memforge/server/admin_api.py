@@ -3849,8 +3849,10 @@ def create_admin_app(
         if local_agent_sync_operation(source["type"], source.get("config")) is None:
             return source, False
         latest_run = await db.get_latest_source_sync_run(source_id=source_id)
-        if latest_run is None or latest_run.status != "success":
-            raise ValueError("source_lifecycle_successful_local_replay_required")
+        if latest_run is None or latest_run.status not in {"success", "failed"}:
+            raise ValueError("source_lifecycle_terminal_local_replay_required")
+        if latest_run.status == "failed" and not latest_run.force_full_sync:
+            raise ValueError("source_lifecycle_terminal_local_replay_required")
         if latest_run.source_config_revision != local_agent_source_config_revision(source):
             raise ValueError("source_lifecycle_local_replay_config_changed")
         authoritative_collection = local_agent_collection_is_authoritative(source["type"])
