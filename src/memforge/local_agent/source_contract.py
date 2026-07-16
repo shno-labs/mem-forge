@@ -161,25 +161,19 @@ def local_agent_sync_snapshot_id(job_id: object, attempt_count: object) -> str:
     return f"{normalized_job_id}:attempt:{normalized_attempt}"
 
 
-def local_agent_authoritative_snapshot_id(
+def local_agent_collection_attempt_id(
     source_type: object,
     job_id: object,
     attempt_count: object,
     requested_snapshot_id: object = None,
-) -> str | None:
-    """Return the server-owned snapshot identity for complete collections."""
+) -> str:
+    """Return the server-owned immutable identity for one collection attempt."""
+
     normalized_source_type = str(source_type or "").strip().lower()
     requested = str(requested_snapshot_id or "").strip()
     from memforge.local_agent.replay_adapter import get_local_source_replay_adapter
 
-    try:
-        authoritative_collection = get_local_source_replay_adapter(normalized_source_type).authoritative_collection
-    except ValueError:
-        authoritative_collection = False
-    if not authoritative_collection:
-        if requested:
-            raise ValueError("source type does not accept collection snapshots")
-        return None
+    get_local_source_replay_adapter(normalized_source_type)
     canonical = local_agent_sync_snapshot_id(job_id, attempt_count)
     if requested and requested != canonical:
         raise ValueError("local agent snapshot does not match the leased job attempt")
@@ -195,6 +189,28 @@ def local_agent_collection_is_authoritative(source_type: object) -> bool:
         return get_local_source_replay_adapter(str(source_type or "").strip().lower()).authoritative_collection
     except ValueError:
         return False
+
+
+def local_agent_rebaseline_snapshot_is_authoritative(
+    source_type: object,
+    *,
+    force_full_sync: bool,
+    input_snapshot_id: str | None,
+) -> bool:
+    """Return whether an immutable attempt defines the rebaseline corpus."""
+
+    from memforge.local_agent.replay_adapter import get_local_source_replay_adapter
+
+    try:
+        adapter = get_local_source_replay_adapter(
+            str(source_type or "").strip().lower()
+        )
+    except ValueError:
+        return False
+    return adapter.rebaseline_snapshot_is_authoritative(
+        force_full_sync=force_full_sync,
+        input_snapshot_id=input_snapshot_id,
+    )
 
 
 def local_agent_input_sha256(doc_id: object, document_hash: object) -> str:

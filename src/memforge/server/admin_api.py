@@ -131,14 +131,13 @@ from memforge.local_agent.source_contract import (
     LOCAL_AGENT_SYNC_OPERATIONS,
     execution_owner_user_id,
     is_local_agent_backed_source,
-    local_agent_authoritative_snapshot_id,
-    local_agent_collection_is_authoritative,
+    local_agent_collection_attempt_id,
+    local_agent_rebaseline_snapshot_is_authoritative,
     local_agent_semantic_input_sha256,
     local_agent_completion_status,
     local_agent_source_config_revision,
     local_agent_sync_job_payload,
     local_agent_sync_operation,
-    local_agent_sync_snapshot_id,
     source_with_sync_inputs,
     validate_local_agent_replay_package,
 )
@@ -3938,13 +3937,17 @@ def create_admin_app(
             raise ValueError("source_lifecycle_terminal_local_replay_required")
         if latest_run.source_config_revision != local_agent_source_config_revision(source):
             raise ValueError("source_lifecycle_local_replay_config_changed")
-        authoritative_collection = local_agent_collection_is_authoritative(source["type"])
+        authoritative_snapshot = local_agent_rebaseline_snapshot_is_authoritative(
+            source["type"],
+            force_full_sync=latest_run.force_full_sync,
+            input_snapshot_id=latest_run.input_snapshot_id,
+        )
         inputs = await db.list_source_sync_inputs(
             source_id=source_id,
             workspace_id=latest_run.workspace_id,
-            input_snapshot_id=(latest_run.input_snapshot_id if authoritative_collection else None),
+            input_snapshot_id=(latest_run.input_snapshot_id if authoritative_snapshot else None),
         )
-        if not authoritative_collection:
+        if not authoritative_snapshot:
             if latest_run.input_generation_watermark is None:
                 raise ValueError("source_lifecycle_local_replay_inputs_unavailable")
             inputs = [
@@ -3956,7 +3959,7 @@ def create_admin_app(
             source,
             inputs,
             authoritative_snapshot=True,
-            preserve_version_history=not authoritative_collection,
+            preserve_version_history=not authoritative_snapshot,
         )
         manifest = replay_source.get("config", {}).get("local_agent_package_manifest") or []
         manifest_by_doc_version = {
@@ -3972,22 +3975,27 @@ def create_admin_app(
         manifest_doc_ids = {doc_id for doc_id, _version in manifest_by_doc_version}
         current_document_versions = await db.list_indexed_document_versions(source_id)
         current_doc_ids = set(current_document_versions)
-        if (
-            (not authoritative_collection and not current_doc_ids)
-            or (authoritative_collection and manifest_doc_ids != current_doc_ids)
-            or not current_doc_ids.issubset(manifest_doc_ids)
-        ):
-            raise ValueError("source_lifecycle_local_replay_inputs_unavailable")
-        try:
-            selected_manifest = [
-                manifest_by_doc_version[(doc_id, current_document_versions[doc_id])]
-                for doc_id in sorted(current_doc_ids)
-            ]
-        except KeyError as exc:
-            raise ValueError("source_lifecycle_local_replay_artifact_invalid") from exc
+        if authoritative_snapshot:
+            if len(manifest) != len(inputs) or len(manifest_doc_ids) != len(manifest):
+                raise ValueError("source_lifecycle_local_replay_inputs_unavailable")
+            selected_manifest = sorted(
+                manifest,
+                key=lambda entry: str(entry.get("doc_id") or ""),
+            )
+        else:
+            if not current_doc_ids or not current_doc_ids.issubset(manifest_doc_ids):
+                raise ValueError("source_lifecycle_local_replay_inputs_unavailable")
+            try:
+                selected_manifest = [
+                    manifest_by_doc_version[(doc_id, current_document_versions[doc_id])]
+                    for doc_id in sorted(current_doc_ids)
+                ]
+            except KeyError as exc:
+                raise ValueError("source_lifecycle_local_replay_artifact_invalid") from exc
         for entry in selected_manifest:
             doc_id = str(entry["doc_id"])
-            if str(entry.get("version") or "") != current_document_versions[doc_id]:
+            expected_version = str(entry.get("version") or "")
+            if not authoritative_snapshot and expected_version != current_document_versions[doc_id]:
                 raise ValueError("source_lifecycle_local_replay_artifact_invalid")
             package_sha256 = str(entry.get("package_sha256") or "").strip()
             if not package_sha256:
@@ -4001,7 +4009,7 @@ def create_admin_app(
                 source_id=source_id,
                 body=body,
                 expected_doc_id=doc_id,
-                expected_version=current_document_versions[doc_id],
+                expected_version=expected_version,
                 expected_input_sha256=str(entry.get("input_sha256") or ""),
                 expected_package_sha256=package_sha256,
             )
@@ -5279,7 +5287,7 @@ def create_admin_app(
         if current_source is None:
             raise HTTPException(status_code=404, detail="Source not found")
         try:
-            snapshot_id = local_agent_authoritative_snapshot_id(
+            input_snapshot_id = local_agent_collection_attempt_id(
                 current_source["type"],
                 req.local_agent_job_id if req else None,
                 req.local_agent_attempt_count if req else None,
@@ -5287,14 +5295,6 @@ def create_admin_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        input_snapshot_id = (
-            local_agent_sync_snapshot_id(
-                req.local_agent_job_id if req else None,
-                req.local_agent_attempt_count if req else None,
-            )
-            if current_source["type"] == "teams"
-            else snapshot_id
-        )
         current_source = await db.get_source(source_id)
         if current_source is None:
             raise HTTPException(status_code=404, detail="Source not found")
@@ -5459,7 +5459,7 @@ def create_admin_app(
                 detail=f"source lifecycle maintenance active: {lifecycle_job.id}",
             )
         try:
-            snapshot_id = local_agent_authoritative_snapshot_id(
+            input_snapshot_id = local_agent_collection_attempt_id(
                 source_type,
                 req.local_agent_job_id,
                 req.local_agent_attempt_count,
@@ -5467,15 +5467,6 @@ def create_admin_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-        input_snapshot_id = (
-            local_agent_sync_snapshot_id(
-                req.local_agent_job_id,
-                req.local_agent_attempt_count,
-            )
-            if source_type == TEAMS_SOURCE_TYPE
-            else snapshot_id
-        )
 
         try:
             if source_type == GITHUB_REPO_SOURCE_TYPE:
@@ -5494,7 +5485,7 @@ def create_admin_app(
                     submitted_by=req.submitted_by,
                     submitted_at=req.submitted_at,
                     document_store=artifact_store,
-                    sync_snapshot_id=snapshot_id,
+                    sync_snapshot_id=input_snapshot_id,
                 )
             elif source_type == JIRA_SOURCE_TYPE:
                 result = await submit_jira_package(
