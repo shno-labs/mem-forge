@@ -22,6 +22,7 @@ from memforge.models import (
     Entity,
     EnrichmentResult,
     GeneMetadata,
+    Memory,
     MemoryExtractionResult,
     NormalizedContent,
     RawEntityRef,
@@ -37,7 +38,7 @@ from memforge.source_projection import (
     ProjectionScopeTransition,
     ProjectionScopeTransitionStatus,
 )
-from memforge.source_projection_config import projection_scope_fingerprint
+from memforge.source_projection_config import canonical_projection_scope, projection_scope_fingerprint
 from memforge.pipeline.sync import (
     DocumentLifecycleAdmission,
     ExtractionWorkPool,
@@ -7343,6 +7344,122 @@ async def test_exact_version_github_file_move_a_to_b_to_a_keeps_one_lineage(db: 
         "github-b",
     )
     assert len(extractor.full_calls) + len(extractor.change_calls) + len(extractor.unit_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_scope_transition_reuses_historical_document_unit_identity(db: Database) -> None:
+    source_id = "src-github-ref-roundtrip"
+
+    def config(ref: str) -> dict[str, object]:
+        return {
+            "ref": ref,
+            "include_paths": ["docs"],
+            "include_extensions": ["md"],
+        }
+
+    async def set_scope(previous_ref: str, target_ref: str) -> None:
+        target_config = config(target_ref)
+        await db.upsert_source(
+            id=source_id,
+            type="github_repo",
+            name="Payroll Repo",
+            config_json=json.dumps(target_config),
+            access_policy="workspace",
+            owner_user_id="dev",
+            projection_scope_transition=ProjectionScopeTransition(
+                id=f"scope-{previous_ref}-{target_ref}",
+                source_id=source_id,
+                previous_scope=canonical_projection_scope("github_repo", config(previous_ref)),
+                target_scope=canonical_projection_scope("github_repo", target_config),
+            ),
+        )
+
+    await db.upsert_source(
+        id=source_id,
+        type="github_repo",
+        name="Payroll Repo",
+        config_json=json.dumps(config("ref-a")),
+        access_policy="workspace",
+        owner_user_id="dev",
+    )
+    orchestrator = GeneSyncOrchestrator(
+        db=db,
+        doc_store=StubDocumentStore(),
+        enricher=InstantEnricher(),
+        memory_extractor=RecordingMemoryExtractor(),
+        memory_engine=NoopMemoryEngine(),
+        memory_store=_audited_memory_store(db),
+        max_concurrent=1,
+    )
+
+    first = await orchestrator.sync_gene(
+        gene=MovingGithubFileGene(
+            item_id="github-ref-a",
+            relative_path="docs/design.md",
+            file_lineage_id=None,
+            version="blob-a",
+        ),
+        source_name="Payroll Repo",
+        source_id=source_id,
+    )
+    memory = Memory(
+        id="mem-ref-roundtrip",
+        memory_type="fact",
+        content="A7 remains enabled.",
+        content_hash="hash-ref-roundtrip",
+    )
+    await db.insert_memory(memory)
+    await db.add_memory_source(
+        memory.id,
+        "github-ref-a",
+        "github_repo",
+        "Keep A7.",
+        source_updated_at=datetime.now(timezone.utc),
+    )
+    await set_scope("ref-a", "ref-b")
+    second = await orchestrator.sync_gene(
+        gene=MovingGithubFileGene(
+            item_id="github-ref-b",
+            relative_path="docs/design.md",
+            file_lineage_id=None,
+            version="blob-b",
+        ),
+        source_name="Payroll Repo",
+        source_id=source_id,
+        authoritative_snapshot=True,
+    )
+    await set_scope("ref-b", "ref-a")
+    third = await orchestrator.sync_gene(
+        gene=MovingGithubFileGene(
+            item_id="github-ref-a",
+            relative_path="docs/design.md",
+            file_lineage_id=None,
+            version="blob-a",
+        ),
+        source_name="Payroll Repo",
+        source_id=source_id,
+        authoritative_snapshot=True,
+    )
+
+    assert first.last_sync_status == "success"
+    assert second.last_sync_status == "success"
+    assert third.last_sync_status == "success"
+    unit_rows = await db.db.execute_fetchall(
+        "SELECT id, provider_key FROM source_units WHERE source_id = ?",
+        (source_id,),
+    )
+    assert len(unit_rows) == 1
+    assert unit_rows[0]["provider_key"] == "acme/payroll:docs/design.md"
+    assert await db.list_source_unit_document_ids(str(unit_rows[0]["id"])) == (
+        "github-ref-a",
+        "github-ref-b",
+    )
+    stored_memory = await db.get_memory(memory.id)
+    assert stored_memory is not None
+    assert stored_memory.status == "active"
+    assert [source.doc_id for source in await db.get_memory_sources(memory.id)] == [
+        "github-ref-a"
+    ]
 
 
 @pytest.mark.asyncio

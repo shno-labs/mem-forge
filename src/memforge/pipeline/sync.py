@@ -1348,10 +1348,47 @@ class GeneSyncOrchestrator:
                 }
             )
         elif historical_source_unit is not None:
-            # Reusing a historical locator after its former Unit moved is a
-            # new incarnation, not a move back. Seed a distinct identity once;
-            # subsequent snapshots bind through the new current document row.
-            probe_scope["source_unit_incarnation"] = f"{historical_source_unit.id}:{item.version}"
+            scope_identity_probe = (
+                await self.source_projection_adapter.project(
+                    ProjectionEnvelope(
+                        request=ProjectionRequest(
+                            run_id="projection-scope-identity-probe",
+                            source_id=source_id,
+                            source_type=source_type,
+                            scope=probe_scope,
+                            run_mode=ProjectionRunMode.FULL_SNAPSHOT,
+                            scope_transition=scope_transition,
+                            access_context=dict(projection_access_context or {}),
+                        ),
+                        item=item,
+                        raw=raw,
+                        normalized=normalized,
+                    )
+                )
+                if scope_transition is not None
+                else None
+            )
+            if (
+                scope_identity_probe is not None
+                and scope_identity_probe.source_units[0].provider_key
+                == historical_source_unit.provider_key
+            ):
+                # Re-entry during an explicit selector transition keeps the
+                # provider's stable identity. This includes ref A -> B -> A;
+                # absence/reappearance in an unchanged scope remains a new
+                # incarnation unless the provider attests a rename.
+                persisted_source_unit = historical_source_unit
+                probe_scope.update(
+                    {
+                        "source_unit_id": historical_source_unit.id,
+                        "source_unit_provider_key": historical_source_unit.provider_key,
+                    }
+                )
+            else:
+                # Reusing a historical locator after its former Unit moved is
+                # a new incarnation, not a move back. Seed a distinct identity
+                # once; subsequent snapshots bind through the current row.
+                probe_scope["source_unit_incarnation"] = f"{historical_source_unit.id}:{item.version}"
         projection_probe = await self.source_projection_adapter.project(
             ProjectionEnvelope(
                 request=ProjectionRequest(
