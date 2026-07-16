@@ -829,6 +829,7 @@ class GeneSyncOrchestrator:
                                     else None
                                 ),
                                 projection_access_context=configured_access_context,
+                                authoritative_snapshot=authoritative_snapshot,
                                 execution_mode=execution_mode,
                                 expected_source_activity_epoch=source_activity_epoch,
                             )
@@ -1181,6 +1182,7 @@ class GeneSyncOrchestrator:
         projection_scope: dict[str, object] | None = None,
         scope_transition: dict[str, object] | None = None,
         projection_access_context: dict[str, object] | None = None,
+        authoritative_snapshot: bool = False,
         execution_mode: SourceSyncMode = SourceSyncMode.NORMAL,
         expected_source_activity_epoch: int | None = None,
     ) -> dict:
@@ -1202,6 +1204,7 @@ class GeneSyncOrchestrator:
                     projection_scope=projection_scope,
                     scope_transition=scope_transition,
                     projection_access_context=projection_access_context,
+                    authoritative_snapshot=authoritative_snapshot,
                     execution_mode=execution_mode,
                     expected_source_activity_epoch=expected_source_activity_epoch,
                 )
@@ -1232,6 +1235,7 @@ class GeneSyncOrchestrator:
         projection_scope: dict[str, object] | None = None,
         scope_transition: dict[str, object] | None = None,
         projection_access_context: dict[str, object] | None = None,
+        authoritative_snapshot: bool = False,
         execution_mode: SourceSyncMode = SourceSyncMode.NORMAL,
         expected_source_activity_epoch: int | None = None,
     ) -> dict:
@@ -1326,6 +1330,7 @@ class GeneSyncOrchestrator:
         probe_scope: dict[str, object] = {
             "configured_scope": dict(projection_scope or {}),
             "document_id": item.item_id,
+            "authoritative_snapshot": authoritative_snapshot,
         }
         if persisted_source_unit is not None:
             # Document lineage is the durable identity bridge after an
@@ -1434,6 +1439,7 @@ class GeneSyncOrchestrator:
                                 "configured_scope": dict(projection_scope or {}),
                                 "source_unit_id": source_unit.id,
                                 "source_unit_provider_key": source_unit.provider_key,
+                                "authoritative_snapshot": authoritative_snapshot,
                             },
                             run_mode=(
                                 ProjectionRunMode.FULL_SNAPSHOT

@@ -14,6 +14,8 @@ from memforge.memory.lifecycle_plan import (
 )
 from memforge.memory.store import MemoryStore
 from memforge.local_agent.source_contract import local_agent_source_config_revision
+from memforge.local_agent.document_identity import build_teams_doc_id
+from memforge.local_agent.teams_ledger import build_teams_window_id
 from memforge.models import (
     ContentItem,
     DocumentMetadata,
@@ -6522,6 +6524,138 @@ async def test_rebaseline_preflight_reads_full_provider_corpus_without_persistin
         )
         == []
     )
+
+
+@pytest.mark.asyncio
+async def test_rebaseline_preflight_accepts_proven_authoritative_teams_package(
+    db: Database,
+) -> None:
+    source_id = "src-teams-authoritative-preflight"
+    conversation_id = "19:conversation-a@thread.v2"
+    root_message_id = "message-a"
+    window_id = build_teams_window_id(
+        source_id=source_id,
+        conversation_id=conversation_id,
+        root_or_anchor_message_id=root_message_id,
+        window_type="time_block",
+    )
+    doc_id = build_teams_doc_id(source_id=source_id, window_id=window_id)
+    await db.upsert_source(
+        id=source_id,
+        type="teams",
+        name="Teams Authoritative Preflight",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="dev",
+    )
+
+    class AuthoritativeTeamsPackageGene:
+        discovery_complete = False
+
+        @classmethod
+        def metadata(cls):
+            return GeneMetadata(
+                name="teams",
+                display_name="Teams",
+                description="",
+                default_sync_interval_minutes=60,
+                auth_method="browser",
+                data_shape="conversation",
+            )
+
+        async def authenticate(self) -> None:
+            return None
+
+        async def discover(self, since=None):
+            assert since is None
+            yield ContentItem(
+                item_id=doc_id,
+                title="Conversation A",
+                source_url="https://teams.example.test/conversation-a",
+                last_modified=datetime(2026, 7, 16, 9, 0, tzinfo=timezone.utc),
+                content_type="application/json",
+                space_or_project="Conversation A",
+                version="revision-a",
+                extra={
+                    "conversation_id": conversation_id,
+                    "root_message_id": root_message_id,
+                    "window_id": window_id,
+                    "window_type": "time_block",
+                },
+            )
+
+        async def fetch(self, item):
+            return RawContent(
+                item=item,
+                body=json.dumps(
+                    {
+                        "package_kind": "teams_window_document",
+                        "doc_id": doc_id,
+                        "conversation_id": conversation_id,
+                        "root_message_id": root_message_id,
+                        "window_id": window_id,
+                        "window_type": "time_block",
+                        "raw_payload": {
+                            "conversation_id": conversation_id,
+                            "window_id": window_id,
+                            "messages": [
+                                {
+                                    "id": root_message_id,
+                                    "content": "Current decision",
+                                    "time": "2026-07-16T09:00:00+00:00",
+                                }
+                            ],
+                        },
+                    }
+                ).encode(),
+                content_type="application/json",
+            )
+
+        async def normalize(self, raw):
+            return NormalizedContent(
+                item=raw.item,
+                markdown_body="# Conversation A\n\nCurrent decision",
+            )
+
+    class SemanticWorkMustNotRun:
+        async def enrich_document(self, **kwargs):
+            raise AssertionError("rebaseline preflight must not enrich")
+
+        async def extract_memories(self, **kwargs):
+            raise AssertionError("rebaseline preflight must not extract")
+
+        async def process_enrichment(self, **kwargs):
+            raise AssertionError("rebaseline preflight must not process enrichment")
+
+        async def apply_projected_lifecycle(self, **kwargs):
+            raise AssertionError("rebaseline preflight must not apply lifecycle")
+
+    semantic_guard = SemanticWorkMustNotRun()
+    orchestrator = GeneSyncOrchestrator(
+        db=db,
+        doc_store=StubDocumentStore(),
+        enricher=semantic_guard,
+        memory_extractor=semantic_guard,
+        memory_engine=semantic_guard,
+        memory_store=None,
+        vector_store=FailingVectorStore(),
+        max_concurrent=1,
+    )
+
+    state = await orchestrator.sync_gene(
+        gene=AuthoritativeTeamsPackageGene(),
+        source_name="Teams Authoritative Preflight",
+        source_id=source_id,
+        force_full_sync=True,
+        authoritative_snapshot=True,
+        execution_mode=SourceSyncMode.REBASELINE_PREFLIGHT,
+    )
+
+    assert state.last_sync_status == "success"
+    assert state.docs_processed == 1
+    assert state.docs_failed == 0
+    assert await db.count_documents(source=source_id) == 0
+    assert await db.list_current_source_unit_observation_ids(source_id) == {}
 
 
 @pytest.mark.asyncio
