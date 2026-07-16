@@ -276,6 +276,7 @@ class IncumbentDisposition(str, Enum):
 
 class LifecycleMutationType(str, Enum):
     CREATE_MEMORY = "create_memory"
+    REACTIVATE_MEMORY = "reactivate_memory"
     ATTACH_SUPPORT = "attach_support"
     REMOVE_SUPPORT = "remove_support"
     SUPERSEDE_MEMORY = "supersede_memory"

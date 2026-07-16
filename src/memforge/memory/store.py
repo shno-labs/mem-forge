@@ -543,6 +543,19 @@ class MemoryStore:
         not a visibility boundary.
         """
 
+        compatible: list[Memory] = []
+        reactivation_candidate = await self.db.find_rebaseline_reactivation_candidate(
+            memory.content_hash,
+            visibility=memory.visibility,
+            owner_user_id=memory.owner_user_id,
+            repo_identifier=memory.repo_identifier,
+        )
+        if (
+            reactivation_candidate is not None
+            and reactivation_candidate.id not in excluded_memory_ids
+        ):
+            compatible.append(reactivation_candidate)
+
         embedding = await self._embed(_memory_embedding_text(memory))
         candidates = await self.vector.query(
             embedding,
@@ -550,7 +563,6 @@ class MemoryStore:
             None,
             DEDUP_CANDIDATE_LIMIT,
         )
-        compatible: list[Memory] = []
         for existing_id, score in candidates:
             if existing_id in excluded_memory_ids:
                 continue

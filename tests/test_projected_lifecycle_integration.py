@@ -23,18 +23,24 @@ from memforge.memory.evidence import (
     MemorySupportAssertion,
 )
 from memforge.memory.lifecycle_plan import (
+    CoverageProof,
     CutoverFindingReason,
     CutoverFindingStatus,
     LifecycleCutoverFinding,
     LifecycleGateState,
+    LifecycleMutation,
+    LifecycleMutationType,
+    LifecyclePlan,
     LifecycleVectorOperation,
     LifecycleVectorTaskStatus,
     ReconciliationScope,
+    StaleGuard,
 )
 from memforge.memory.lifecycle_planner import (
     NewMemoryDefaults,
     build_lifecycle_plan,
     lifecycle_access_context_hash,
+    lifecycle_plan_id,
 )
 from memforge.memory.store import MemoryStore
 from memforge.models import (
@@ -252,6 +258,20 @@ class _OutboxDrainer:
             lifecycle_plan_id=lifecycle_plan_id
         ):
             await self.db.complete_lifecycle_vector_task(task.id)
+
+    async def find_access_compatible_equivalence_candidates(
+        self,
+        memory: Memory,
+        **kwargs,
+    ) -> tuple[Memory, ...]:
+        del kwargs
+        candidate = await self.db.find_rebaseline_reactivation_candidate(
+            memory.content_hash,
+            visibility=memory.visibility,
+            owner_user_id=memory.owner_user_id,
+            repo_identifier=memory.repo_identifier,
+        )
+        return (candidate,) if candidate is not None else ()
 
 
 class _EquivalentMemoryStore(_OutboxDrainer):
@@ -1314,6 +1334,263 @@ async def test_cross_source_semantic_equivalent_add_reuses_memory_id_and_attache
     )
     assert len(support) == 1
     assert support[0].anchor.observation_revision_id == second.observation_revisions[0].id
+
+
+@pytest.mark.asyncio
+async def test_new_projected_memory_persists_explicit_source_observation_support(
+    db: Database,
+) -> None:
+    projection = _jira_projection(
+        run_id="projection-jira-new-memory",
+        description="A7 applies only to regular payroll.",
+        comment_body="The rollout note is unrelated.",
+    )
+    primary = projection.observations[0]
+    primary_revision = projection.observation_revisions[0]
+    raw = RawMemory(
+        content="A7 applies only to regular payroll.",
+        memory_type="decision",
+        confidence=0.95,
+        evidence_quote="A7 applies only to regular payroll.",
+        extraction_context="A7 applies only to regular payroll.",
+        evidence_anchor="projection_batch",
+        source_observation_id=primary.id,
+    )
+    adapters = build_sqlite_adapters(db, object())
+    engine = MemoryEngine(
+        relational=adapters.relational,
+        vector=adapters.vector,
+        db=db,
+        memory_store=_OutboxDrainer(db),
+        structured_llm_client=_SemanticEquivalentClient(),
+    )
+
+    stats = await engine.apply_projected_lifecycle(
+        projection=projection,
+        doc_id="confluence-123",
+        raw_memories=[raw],
+        doc_type="ticket",
+        project_key="ENG",
+        repo_identifier=None,
+        entity_ids=[],
+        document_content="PAY-12",
+        update_mode="full_document",
+        changed_hunks=None,
+        update_plan_stats=None,
+        source_updated_at=datetime(2026, 7, 15, 11, 0, tzinfo=timezone.utc),
+    )
+
+    [memory] = await db.list_memories(source="src-1", status="active")
+    support = await db.get_active_memory_support_evidence(memory.id, source_id="src-1")
+    assert stats["added"] == 1
+    assert len(support) == 1
+    assert support[0].anchor.observation_id == primary.id
+    assert support[0].anchor.observation_revision_id == primary_revision.id
+
+
+@pytest.mark.asyncio
+async def test_rebaseline_replay_reuses_memory_with_explicit_observation_support(
+    db: Database,
+) -> None:
+    projection = _jira_projection(
+        run_id="projection-jira-before-rebaseline",
+        description="A7 applies only to regular payroll.",
+        comment_body="The rollout note is unrelated.",
+    )
+    primary = projection.observations[0]
+    raw = RawMemory(
+        content="A7 applies only to regular payroll.",
+        memory_type="decision",
+        confidence=0.95,
+        evidence_quote="A7 applies only to regular payroll.",
+        extraction_context="A7 applies only to regular payroll.",
+        evidence_anchor="projection_batch",
+        source_observation_id=primary.id,
+    )
+    adapters = build_sqlite_adapters(db, object())
+    engine = MemoryEngine(
+        relational=adapters.relational,
+        vector=adapters.vector,
+        db=db,
+        memory_store=_OutboxDrainer(db),
+        structured_llm_client=_SemanticEquivalentClient(),
+    )
+    arguments = {
+        "doc_id": "confluence-123",
+        "raw_memories": [raw],
+        "doc_type": "ticket",
+        "project_key": "ENG",
+        "repo_identifier": None,
+        "entity_ids": [],
+        "document_content": "PAY-12",
+        "update_mode": "full_document",
+        "changed_hunks": None,
+        "update_plan_stats": None,
+        "source_updated_at": datetime(2026, 7, 15, 11, 0, tzinfo=timezone.utc),
+    }
+
+    first = await engine.apply_projected_lifecycle(projection=projection, **arguments)
+    [memory] = await db.list_memories(source="src-1", status="active")
+    assert first["added"] == 1
+    assert await db.get_active_memory_support_evidence(memory.id, source_id="src-1")
+
+    await db.rebaseline_source_lifecycle("src-1")
+    replay = _jira_projection(
+        run_id="projection-jira-after-rebaseline",
+        description="A7 applies only to regular payroll.",
+        comment_body="The rollout note is unrelated.",
+    )
+    second = await engine.apply_projected_lifecycle(projection=replay, **arguments)
+
+    replayed = await db.get_memory(memory.id)
+    support = await db.get_active_memory_support_evidence(memory.id, source_id="src-1")
+    assert replayed is not None and replayed.status == "active"
+    assert second["reactivated"] == 1
+    assert second["corroborated"] == 1
+    assert second["contradictions_found"] == 0
+    assert len(support) == 1
+    assert support[0].anchor.observation_id == primary.id
+    plan_rows = await db.db.execute_fetchall(
+        "SELECT payload_json FROM lifecycle_plans WHERE id = ?",
+        (
+            lifecycle_plan_id(
+                ReconciliationScope(
+                    id=f"scope:{replay.run_id}",
+                    source_id=replay.source_id,
+                    source_unit_id=replay.deltas[0].source_unit_id,
+                    base_unit_revision_id=replay.deltas[0].previous_unit_revision_id,
+                    target_unit_revision_id=replay.deltas[0].current_unit_revision_id,
+                )
+            ),
+        ),
+    )
+    assert len(plan_rows) == 1
+    plan_payload = json.loads(str(plan_rows[0]["payload_json"]))
+    assert [item["mutation_type"] for item in plan_payload["mutations"]] == [
+        "reactivate_memory",
+        "attach_support",
+        "refresh_memory_index",
+    ]
+    assert plan_payload["mutations"][0]["payload"]["expected_content_hash"] == memory.content_hash
+
+
+@pytest.mark.asyncio
+async def test_reactivation_rejects_stale_content_hash_and_keeps_memory_retired(
+    db: Database,
+) -> None:
+    memory = Memory(
+        id="mem-rebaseline-stale",
+        memory_type="decision",
+        content="A7 applies only to regular payroll.",
+        content_hash=content_hash("A7 applies only to regular payroll."),
+        status="retired",
+        retirement_reason="source_rebaseline",
+    )
+    await db.insert_memory(memory)
+    plan = LifecyclePlan(
+        id="plan-rebaseline-stale",
+        scope=ReconciliationScope(
+            id="scope-rebaseline-stale",
+            source_id="src-1",
+            source_unit_id="unit-rebaseline-stale",
+            base_unit_revision_id=None,
+            target_unit_revision_id=None,
+        ),
+        gate_state=LifecycleGateState.GATED,
+        coverage_proof=CoverageProof((), (), (), ()),
+        stale_guard=StaleGuard((), {}),
+        mutations=(
+            LifecycleMutation(
+                LifecycleMutationType.REACTIVATE_MEMORY,
+                memory_id=memory.id,
+                source_id="src-1",
+                payload={"expected_content_hash": "stale-content-hash"},
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="reactivate Memory stale guard failed"):
+        await db.apply_lifecycle_plan(plan)
+
+    persisted = await db.get_memory(memory.id)
+    assert persisted is not None and persisted.status == "retired"
+    assert await db.get_lifecycle_plan_payload(plan.id) is None
+
+
+@pytest.mark.asyncio
+async def test_reactivation_without_new_source_support_rolls_back(
+    db: Database,
+) -> None:
+    memory = Memory(
+        id="mem-rebaseline-no-support",
+        memory_type="decision",
+        content="A7 applies only to regular payroll.",
+        content_hash=content_hash("A7 applies only to regular payroll."),
+        status="retired",
+        retirement_reason="source_rebaseline",
+    )
+    await db.insert_memory(memory)
+    plan = LifecyclePlan(
+        id="plan-rebaseline-no-support",
+        scope=ReconciliationScope(
+            id="scope-rebaseline-no-support",
+            source_id="src-1",
+            source_unit_id="unit-rebaseline-no-support",
+            base_unit_revision_id=None,
+            target_unit_revision_id=None,
+        ),
+        gate_state=LifecycleGateState.GATED,
+        coverage_proof=CoverageProof((), (), (), ()),
+        stale_guard=StaleGuard((), {}),
+        mutations=(
+            LifecycleMutation(
+                LifecycleMutationType.REACTIVATE_MEMORY,
+                memory_id=memory.id,
+                source_id="src-1",
+                payload={"expected_content_hash": memory.content_hash},
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="activated Memory without source support"):
+        await db.apply_lifecycle_plan(plan)
+
+    persisted = await db.get_memory(memory.id)
+    assert persisted is not None and persisted.status == "retired"
+    assert await db.get_lifecycle_plan_payload(plan.id) is None
+
+
+@pytest.mark.asyncio
+async def test_rebaseline_reset_retires_legacy_edge_identified_by_document_source(
+    db: Database,
+) -> None:
+    memory = Memory(
+        id="mem-legacy-null-source-edge",
+        memory_type="fact",
+        content="Legacy Jira fact without canonical source identity.",
+        content_hash=content_hash("Legacy Jira fact without canonical source identity."),
+        project_key="ENG",
+    )
+    await db.insert_memory(memory)
+    await db.add_memory_source(
+        memory.id,
+        "confluence-123",
+        "confluence",
+        memory.content,
+        source_updated_at=None,
+    )
+    await db.db.execute(
+        "UPDATE memory_sources SET source_id = NULL WHERE memory_id = ?",
+        (memory.id,),
+    )
+    await db.db.commit()
+
+    result = await db.rebaseline_source_lifecycle("src-1")
+
+    retired = await db.get_memory(memory.id)
+    assert result.retired_memory_ids == (memory.id,)
+    assert retired is not None and retired.status == "retired"
+    assert await db.get_memory_sources(memory.id) == []
 
 
 @pytest.mark.asyncio

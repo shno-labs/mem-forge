@@ -6219,9 +6219,15 @@ class Database:
             for mutation in plan.mutations
             if mutation.mutation_type is LifecycleMutationType.CREATE_MEMORY
         }
+        reactivated_ids = {
+            mutation.memory_id
+            for mutation in plan.mutations
+            if mutation.mutation_type is LifecycleMutationType.REACTIVATE_MEMORY
+        }
         candidate_ids = (
             set(plan.coverage_proof.mandatory_incumbent_ids)
             | created_ids
+            | reactivated_ids
             | {
                 mutation.memory_id
                 for mutation in plan.mutations
@@ -6258,9 +6264,9 @@ class Database:
                 support = await cursor.fetchone()
             total = int(support["total"] or 0)
             invalid = int(support["invalid"] or 0)
-            if memory_id in created_ids and total == 0:
+            if memory_id in created_ids | reactivated_ids and total == 0:
                 raise ValueError(
-                    f"projected lifecycle created active Memory without source support: {memory_id}"
+                    f"projected lifecycle activated Memory without source support: {memory_id}"
                 )
             if invalid:
                 raise ValueError(
@@ -6388,6 +6394,26 @@ class Database:
                 memory.id,
                 LifecycleVectorOperation.UPSERT,
                 now=now,
+            )
+            return
+        if mutation_type is LifecycleMutationType.REACTIVATE_MEMORY:
+            expected_content_hash = mutation.payload.get("expected_content_hash")
+            if not isinstance(expected_content_hash, str) or not expected_content_hash:
+                raise ValueError("reactivate_memory requires expected_content_hash")
+            cursor = await self.db.execute(
+                """UPDATE memories
+                      SET status = 'active', retirement_reason = NULL,
+                          retired_at = NULL, valid_until = NULL, updated_at = ?
+                    WHERE id = ? AND status = 'retired'
+                      AND retirement_reason = 'source_rebaseline'
+                      AND content_hash = ?""",
+                (now, mutation.memory_id, expected_content_hash),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("reactivate Memory stale guard failed")
+            await self._rebuild_memory_fts_unlocked(
+                mutation.memory_id,
+                search_visible_statuses=set(allowed_search_statuses()),
             )
             return
         if mutation_type is LifecycleMutationType.ATTACH_SUPPORT:
@@ -7928,6 +7954,36 @@ class Database:
             if not row:
                 return None
             return self._row_to_memory(row)
+
+    async def find_rebaseline_reactivation_candidate(
+        self,
+        memory_content_hash: str,
+        *,
+        visibility: str,
+        owner_user_id: str | None,
+        repo_identifier: str | None,
+    ) -> Memory | None:
+        """Return the canonical exact claim retired only for source rebaseline."""
+
+        async with self.db.execute(
+            """SELECT * FROM memories
+                WHERE content_hash = ?
+                  AND status = 'retired'
+                  AND retirement_reason = 'source_rebaseline'
+                  AND visibility = ?
+                  AND owner_user_id IS ?
+                  AND repo_identifier IS ?
+                ORDER BY created_at, id
+                LIMIT 1""",
+            (
+                memory_content_hash,
+                visibility,
+                owner_user_id,
+                repo_identifier,
+            ),
+        ) as cursor:
+            row = await cursor.fetchone()
+        return self._row_to_memory(row) if row else None
 
     async def get_memories_by_source_doc(
         self,
@@ -11823,8 +11879,11 @@ class Database:
                     doc_ids = [str(row[0]) async for row in cursor]
                 memory_ids: set[str] = set()
                 async with self.db.execute(
-                    "SELECT DISTINCT memory_id FROM memory_sources WHERE source_id = ?",
-                    (source_id,),
+                    """SELECT DISTINCT ms.memory_id
+                         FROM memory_sources ms
+                         LEFT JOIN documents d ON d.doc_id = ms.doc_id
+                        WHERE ms.source_id = ? OR d.source = ?""",
+                    (source_id, source_id),
                 ) as cursor:
                     async for row in cursor:
                         memory_ids.add(str(row[0]))
@@ -11929,7 +11988,12 @@ class Database:
                 )
                 await self.db.execute("DELETE FROM source_units WHERE source_id = ?", (source_id,))
                 await self.db.execute("DELETE FROM projection_scope_transitions WHERE source_id = ?", (source_id,))
-                await self.db.execute("DELETE FROM memory_sources WHERE source_id = ?", (source_id,))
+                await self.db.execute(
+                    """DELETE FROM memory_sources
+                        WHERE source_id = ?
+                           OR doc_id IN (SELECT doc_id FROM documents WHERE source = ?)""",
+                    (source_id, source_id),
+                )
                 for doc_id in doc_ids:
                     await self.db.execute("DELETE FROM memory_search_metadata_fts WHERE doc_id = ?", (doc_id,))
                     await self.db.execute("DELETE FROM memory_search_metadata_alias_fts WHERE doc_id = ?", (doc_id,))

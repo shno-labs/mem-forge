@@ -685,6 +685,7 @@ class MemoryEngine:
 
         stats = {
             "added": 0,
+            "reactivated": 0,
             "corroborated": 0,
             "updated": 0,
             "superseded": 0,
@@ -890,16 +891,16 @@ class MemoryEngine:
         await self.db.apply_source_projection_lifecycle(projection, plan)
         await self.memory_store.drain_lifecycle_vector_outbox(plan.id)
 
-        created_memory_ids = [
+        activated_memory_ids = [
             mutation.memory_id
             for mutation in plan.mutations
-            if mutation.mutation_type.value == "create_memory"
+            if mutation.mutation_type.value in {"create_memory", "reactivate_memory"}
         ]
-        if created_memory_ids and self.structured_llm_client:
+        if activated_memory_ids and self.structured_llm_client:
             from memforge.pipeline.contradiction_detector import detect_cross_doc_contradictions
 
             contradiction_stats = await detect_cross_doc_contradictions(
-                new_memory_ids=created_memory_ids,
+                new_memory_ids=activated_memory_ids,
                 doc_id=doc_id,
                 db=self.db,
                 memory_store=self.memory_store,
@@ -912,6 +913,8 @@ class MemoryEngine:
         for mutation in plan.mutations:
             if mutation.mutation_type.value == "create_memory":
                 stats["added"] += 1
+            elif mutation.mutation_type.value == "reactivate_memory":
+                stats["reactivated"] += 1
             elif mutation.mutation_type.value == "supersede_memory":
                 stats["superseded"] += 1
             elif mutation.mutation_type.value == "retire_memory":

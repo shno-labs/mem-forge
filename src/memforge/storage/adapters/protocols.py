@@ -136,6 +136,14 @@ class RelationalStore(Protocol):
 
     async def insert_memory(self, memory: Memory) -> str: ...
     async def get_memory(self, memory_id: str) -> Memory | None: ...
+    async def find_rebaseline_reactivation_candidate(
+        self,
+        content_hash: str,
+        *,
+        visibility: str,
+        owner_user_id: str | None,
+        repo_identifier: str | None,
+    ) -> Memory | None: ...
     async def get_memory_sources(self, memory_id: str) -> list[MemorySource]: ...
     async def upsert_document(
         self,

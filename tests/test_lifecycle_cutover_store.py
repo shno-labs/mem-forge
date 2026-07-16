@@ -5,11 +5,13 @@ from dataclasses import replace
 from datetime import datetime, timezone
 import json
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
 
 from memforge.memory.evidence import (
+    ActiveSupportEvidence,
     EvidenceContentProvenance,
     EvidenceReference,
     EvidenceRole,
@@ -1029,6 +1031,129 @@ async def test_backfill_maps_exact_document_lineage_and_enables_gate(db: Databas
     assert result.finding_count == 0
     assert result.gate_enabled is True
     assert (await db.get_lifecycle_gate("src-1")).state is LifecycleGateState.ENABLED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("current_revision_id", "expected_mapped", "expected_findings"),
+    (("obsrev-supported", 1, 0), ("obsrev-newer", 0, 1)),
+)
+async def test_backfill_trusts_existing_active_support_only_at_current_revision(
+    current_revision_id: str,
+    expected_mapped: int,
+    expected_findings: int,
+) -> None:
+    finding = LifecycleCutoverFinding(
+        id="finding-supported",
+        source_id="src-1",
+        memory_id="mem-supported",
+        reason=CutoverFindingReason.AMBIGUOUS_OBSERVATION,
+        status=CutoverFindingStatus.OPEN,
+        available_provenance={"documents": [{"doc_id": "legacy-doc"}]},
+        mapping_attempt={"strategy": "legacy"},
+    )
+    support = ActiveSupportEvidence(
+        memory_id="mem-supported",
+        source_id="src-1",
+        reference_id="ref-supported",
+        evidence_unit_id="unit-evidence-supported",
+        role=EvidenceRole.PRIMARY,
+        anchor=SourceAnchor(
+            kind=AnchorKind.WHOLE_OBSERVATION,
+            observation_id="obs-supported",
+            observation_revision_id="obsrev-supported",
+        ),
+        excerpt="Exact supported claim",
+    )
+
+    class SupportedDb:
+        def __init__(self) -> None:
+            self.resolved: list[tuple[str, str, str]] = []
+            self.enabled: list[str] = []
+            self.gated: list[str] = []
+            self.upserted: list[LifecycleCutoverFinding] = []
+            self.finding_id: str | None = None
+
+        async def list_legacy_memory_provenance(self, source_id: str):
+            assert source_id == "src-1"
+            return [
+                SimpleNamespace(
+                    memory_id="mem-supported",
+                    doc_id="legacy-doc",
+                    source_type="jira",
+                    excerpt="ambiguous legacy excerpt",
+                )
+            ]
+
+        async def get_lifecycle_cutover_finding(self, finding_id: str):
+            assert finding_id.startswith("finding-")
+            self.finding_id = finding_id
+            return replace(finding, id=finding_id)
+
+        async def get_active_memory_support_evidence(self, memory_id: str, *, source_id: str):
+            assert (memory_id, source_id) == ("mem-supported", "src-1")
+            return (support,)
+
+        async def get_evidence_unit(self, evidence_unit_id: str):
+            assert evidence_unit_id == support.evidence_unit_id
+            return replace(
+                _unit(),
+                id=evidence_unit_id,
+                source_lineage_id="unit-supported",
+            )
+
+        async def get_current_source_observation_revisions(self, source_unit_id: str):
+            assert source_unit_id == "unit-supported"
+            return {"obs-supported": SimpleNamespace(id=current_revision_id)}
+
+        async def resolve_lifecycle_cutover_finding(
+            self,
+            finding_id: str,
+            *,
+            observation_id: str,
+            source_unit_id: str,
+        ):
+            self.resolved.append((finding_id, observation_id, source_unit_id))
+            return finding
+
+        async def enable_lifecycle_gate(self, source_id: str) -> None:
+            self.enabled.append(source_id)
+
+        async def find_source_unit_by_document_id(self, *_args):
+            if current_revision_id == "obsrev-supported":
+                raise AssertionError("current supported Memory must not use legacy provenance")
+            return None
+
+        async def upsert_lifecycle_cutover_finding(
+            self,
+            cutover_finding: LifecycleCutoverFinding,
+        ) -> None:
+            self.upserted.append(cutover_finding)
+
+        async def gate_destructive_lifecycle(self, source_id: str, *, reason: str) -> None:
+            assert reason == "1 open lifecycle cutover finding(s)"
+            self.gated.append(source_id)
+
+    database = SupportedDb()
+
+    result = await run_source_lifecycle_backfill(database, "src-1")
+
+    assert result.scanned_memories == 1
+    assert result.mapped_memories == expected_mapped
+    assert result.finding_count == expected_findings
+    assert result.gate_enabled is (expected_findings == 0)
+    if expected_findings == 0:
+        assert database.resolved == [
+            (database.finding_id, "obs-supported", "unit-supported")
+        ]
+        assert database.enabled == ["src-1"]
+        assert database.upserted == []
+        assert database.gated == []
+    else:
+        assert database.resolved == []
+        assert database.enabled == []
+        assert len(database.upserted) == 1
+        assert database.gated == ["src-1"]
 
 
 @pytest.mark.asyncio
