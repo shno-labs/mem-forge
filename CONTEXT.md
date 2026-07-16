@@ -15,6 +15,13 @@
 - **Determinate Progress** — Progress with a trustworthy total, presented as completed out of total.
 - **Indeterminate Progress** — Progress whose total is not yet knowable, presented without a percentage while still reporting useful counts when available.
 
+## Memory lifecycle migration
+
+- **Lifecycle Migration Inventory** — A backend scan of every active Configured Source in the datastore, without applying a caller's source-discoverability filter. Agent Session sources are candidates when they own active Memories and either the Lifecycle Gate is not Enabled or an active Memory lacks an active same-source Support Assertion. Inventory output contains identifiers and counts, never private source content or owner identity.
+- **Active Same-Source Support Invariant** — Every active source-backed Memory has at least one active Support Assertion whose source matches that provenance edge. An Enabled gate does not override a violation.
+- **Lifecycle Migration Attempt** — One idempotent durable recovery job identified by an explicit attempt label. Unprovable lineage remains a durable open finding and keeps destructive lifecycle gated; semantic similarity cannot close it.
+- **Non-Migrating SQLite Open** — An existing SQLite workspace opened through `Database.connect(run_migrations=False)`. It uses SQLite read-only/query-only mode, does not create the database or parent directories, and does not create schema or run migrations. It is for operator evaluation, never normal serving or repair.
+
 ## Connector authentication
 
 - **Teams Access Token** — A short-lived bearer credential that authorizes one local Teams collection session against a specific Teams service audience.
@@ -54,3 +61,4 @@ _Avoid_: Source query
 - **Repository Base Scope** — The positive boundary of a GitHub Repository source. An empty `include_paths` list means the whole repository; otherwise only the selected remote folders and files are candidates. Avoid: _Local folder selection_.
 - **Repository Exclusion** — A selected remote folder or file removed from the Repository Base Scope. Exclusions win over inclusions and apply to all descendants. A child below an excluded path cannot be re-included. Avoid: _Ignore hint, inferred outdated content_.
 - **Effective Repository Scope** — The deterministic set of remote files remaining after base scope, exclusions, and extension filters are applied. Suggested exclusions require explicit user confirmation and never change this set automatically.
+- **Repository File Identity** — Built-in GitHub Repository collection identifies a file by canonical repository path because Git has no immutable file ID. A path move is a removed file plus a new file unless a future/provider adapter supplies explicit authoritative rename evidence; matching blob SHA alone never proves a move because copy plus delete is ambiguous.
