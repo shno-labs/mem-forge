@@ -145,6 +145,18 @@ Use the full updated document only for context and quote validation.
 Return [] for formatting-only or operational metadata-only changes.
 ```
 
+The prompt is not the authority boundary. For every returned candidate, the
+pipeline requires an exact current-revision evidence quote that overlaps an
+inserted or replaced range. Candidates grounded only in unchanged context are
+rejected and counted in the extraction audit. A deletion-only diff grants no
+new-candidate authority; reconciliation owns incumbent removal. If the diff
+cannot fit the prompt budget, the planner selects `full_document` instead of
+silently truncating its authority.
+
+For a document represented by one persistent Observation, a safe small diff
+takes precedence over token-splitting that Observation into extraction batches.
+Provider-native multi-Observation sources keep changed-Observation batching.
+
 Operational metadata includes status, assignee, sprint, rank, labels,
 timestamps, participants, reactions, and edit time. These fields can still be
 used as context, but they should not become memories unless the changed text
@@ -170,6 +182,8 @@ Every update should record:
 ```text
 document_update_strategy_selected
 memory_change_extraction_completed, when diff-guided extraction runs
+  (including current_changed_range_count and
+  rejected_outside_changed_range_count)
 memory_extraction_completed, with unit_count, segmentation_version,
 partition_strategy, and max_unit_input_tokens for full-document units
 reconciliation_failed, when reconciliation returns no safe lifecycle decisions
