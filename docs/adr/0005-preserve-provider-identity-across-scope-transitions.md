@@ -8,14 +8,14 @@ This decision is provider-neutral and belongs in projection orchestration. Lifec
 
 ## Exact revision return
 
-When a scope transition returns an exact historical Unit revision, the system replays its applied claim ledger instead of asking the extractor to rediscover unchanged claims. Replay requires equality of Source, Unit, Unit revision, Observation revisions, Evidence lineage, and access context. It may reactivate only Memories retired by the authoritative Unit-removal transition; active shared Memories only regain the returning Support.
+When a scope transition returns an exact historical Unit revision, stable provider identity lets the system reuse the Source Unit and Observation lineage. It does not restore a historical Memory snapshot. The returned Unit goes through normal extraction and reconciliation against the current cross-source Memory state.
 
-Changed content, changed access, ordinary delete/recreate, missing proof, and incompatible Memory lifecycle state do not gain replay authority. They use normal extraction and reconciliation, while malformed historical proof fails closed.
+Semantically equivalent output may reuse a current canonical Memory through reconciliation; otherwise the system creates a new Memory identity. Changed content, changed access, ordinary delete/recreate, missing proof, and incompatible lifecycle state follow the same path. This keeps scope re-entry subject to current lifecycle and cross-source authority instead of a historical replay optimization.
 
 ## Repeated cycles and retries
 
 Transition identity includes the preceding transition, so A to B, B to A, and a later A to B are three cycles. Concurrent creation and retries from the same predecessor still resolve to one transition.
 
-Destructive lifecycle identity uses the transition ID for scope changes and the durable Source Sync Run plus lease-attempt identity for ordinary provider updates. A failed run may adopt a newer coalesced input boundary, so each lease attempt is a new reconciliation cycle; the extractor's random run ID remains telemetry only. Re-entering one cycle reuses its applied ledger and resumes pending vector delivery, while a later cycle always receives a new Lifecycle Plan even when it reaches the same tombstone revision.
+Destructive lifecycle identity uses the transition ID for scope changes and the durable Source Sync Run plus lease-attempt identity for ordinary provider updates. A failed run may adopt a newer coalesced input boundary, so each lease attempt is a new reconciliation cycle; the extractor's random run ID remains telemetry only. A re-entry retry remains idempotent at the lifecycle-plan boundary, while a later cycle always receives a new Lifecycle Plan even when it reaches the same tombstone revision.
 
 Before the successful run owner releases its lease, it makes one source-scoped delivery attempt for every pending or failed lifecycle-vector task selected by the bounded outbox batch. Delivery failure remains durable outbox state and never changes the already-authoritative relational graph or the source run's successful terminal state.
