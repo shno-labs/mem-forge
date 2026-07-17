@@ -1,14 +1,15 @@
 # Source-Agnostic Memory Extraction
 
-MemForge keeps source-specific behavior at the normalization boundary. A
-gene owns how raw source data becomes stable, structured markdown. After that,
-memory extraction, reconciliation, support management, review gating, and
-lifecycle/index writes use the shared pipeline.
+MemForge keeps source-specific behavior at the projection boundary. A provider
+adapter owns how raw source data becomes stable Source Units, Observations, and
+normalized artifacts. After that, memory extraction, candidate selection,
+reconciliation, support management, review gating, and lifecycle/index writes
+use the shared pipeline.
 
 ## Core Rule
 
 ```text
-Source genes customize normalization.
+Projection adapters customize source identity and observation structure.
 The memory pipeline stays centralized and reusable.
 ```
 
@@ -157,11 +158,43 @@ For a document represented by one persistent Observation, a safe small diff
 takes precedence over token-splitting that Observation into extraction batches.
 Provider-native multi-Observation sources keep changed-Observation batching.
 
-Operational metadata includes status, assignee, sprint, rank, labels,
+Operational metadata includes status, resolution, assignee, sprint, rank, labels,
 timestamps, participants, reactions, and edit time. These fields can still be
 used as context, but they should not become memories unless the changed text
 explicitly states a durable decision, constraint, procedure, or architectural
 fact.
+
+## Candidate Durability and Uniqueness
+
+All extraction batches for one Source Unit revision are aggregated before any
+Memory write. The shared pipeline then applies two separate policies:
+
+```text
+all batch candidates
+  -> deterministic durability gate
+  -> deterministic exact-duplicate collapse
+  -> complete semantic CandidateLedger
+  -> incumbent reconciliation
+  -> atomic lifecycle plan
+```
+
+The durability gate rejects provenance bookkeeping such as attachment uploads
+and routing-field history. A claim extracted from the actual content of an
+attachment is different: it may pass when its evidence points to that content
+artifact. The gate is shared and never switches on provider type.
+
+CandidateLedger owns only within-revision uniqueness. It receives candidate
+index, memory type, self-contained content, and Observation identity. It does
+not receive the full document, Evidence quote, incumbent Memory ledger, or
+provider payload, and it never rewrites candidate content. Its only actions are
+`KEEP` and `DROP_REDUNDANT -> canonical_index`.
+
+The semantic ledger must return exactly one valid decision for every candidate.
+An incomplete ledger receives one corrective retry. A second invalid response,
+more than 200 non-identical candidates, or more than 100,000 serialized input
+characters fails closed: no candidate is written and no destructive incumbent
+lifecycle action is authorized. Exact duplicates are collapsed before these
+semantic budgets are applied.
 
 ## Lifecycle Boundary
 
@@ -186,6 +219,8 @@ memory_change_extraction_completed, when diff-guided extraction runs
   rejected_outside_changed_range_count)
 memory_extraction_completed, with unit_count, segmentation_version,
 partition_strategy, and max_unit_input_tokens for full-document units
+candidate_ledger_completed, when multiple or exact-duplicate candidates are selected
+candidate_ledger_failed, when a complete bounded ledger cannot be proven
 reconciliation_failed, when reconciliation returns no safe lifecycle decisions
 reconciliation_decision_returned
 reconciliation_authority_rejected, when needed
