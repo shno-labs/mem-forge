@@ -17,3 +17,5 @@ Changed content, changed access, ordinary delete/recreate, missing proof, and in
 Transition identity includes the preceding transition, so A to B, B to A, and a later A to B are three cycles. Concurrent creation and retries from the same predecessor still resolve to one transition.
 
 Destructive lifecycle identity uses the transition ID for scope changes and the durable Source Sync Run plus lease-attempt identity for ordinary provider updates. A failed run may adopt a newer coalesced input boundary, so each lease attempt is a new reconciliation cycle; the extractor's random run ID remains telemetry only. Re-entering one cycle reuses its applied ledger and resumes pending vector delivery, while a later cycle always receives a new Lifecycle Plan even when it reaches the same tombstone revision.
+
+Before the successful run owner releases its lease, it makes one source-scoped delivery attempt for every pending or failed lifecycle-vector task selected by the bounded outbox batch. Delivery failure remains durable outbox state and never changes the already-authoritative relational graph or the source run's successful terminal state.
