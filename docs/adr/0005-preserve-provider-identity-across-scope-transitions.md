@@ -11,3 +11,9 @@ This decision is provider-neutral and belongs in projection orchestration. Lifec
 When a scope transition returns an exact historical Unit revision, the system replays its applied claim ledger instead of asking the extractor to rediscover unchanged claims. Replay requires equality of Source, Unit, Unit revision, Observation revisions, Evidence lineage, and access context. It may reactivate only Memories retired by the authoritative Unit-removal transition; active shared Memories only regain the returning Support.
 
 Changed content, changed access, ordinary delete/recreate, missing proof, and incompatible Memory lifecycle state do not gain replay authority. They use normal extraction and reconciliation, while malformed historical proof fails closed.
+
+## Repeated cycles and retries
+
+Transition identity includes the preceding transition, so A to B, B to A, and a later A to B are three cycles. Concurrent creation and retries from the same predecessor still resolve to one transition.
+
+Destructive lifecycle identity uses the transition ID for scope changes and the durable Source Sync Run plus lease-attempt identity for ordinary provider updates. A failed run may adopt a newer coalesced input boundary, so each lease attempt is a new reconciliation cycle; the extractor's random run ID remains telemetry only. Re-entering one cycle reuses its applied ledger and resumes pending vector delivery, while a later cycle always receives a new Lifecycle Plan even when it reaches the same tombstone revision.
