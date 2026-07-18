@@ -741,7 +741,8 @@ selection is recorded as `candidate_ledger_completed`.
 - Call 1 input: normalized document content truncated to 100,000 chars
 - Call 1 output: max_tokens = 4000 (metadata is compact)
 - Call 2 input: one deterministic unit plus read-only outline/glossary context
-- Call 2 output: max_tokens = 64000 for structured memory candidates
+- Call 2 output: max_tokens = 32768 for structured memory candidates; the model supports
+  64000, but regularly needing that ceiling indicates the Source Unit should be split smaller
 - CandidateLedger input: at most 200 non-identical candidates and 100,000 serialized chars
 - CandidateLedger output: max_tokens = 8192 for a complete decision ledger
 - Call 3 output on updates: max_tokens = 4096 (reconciliation decisions)
