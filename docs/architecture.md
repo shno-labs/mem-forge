@@ -70,7 +70,7 @@ MemForge is a **memory layer** that:
 | Vector store | ChromaDB | PersistentClient, cosine similarity |
 | Embedding model | **OpenAI text-embedding-3-small** | 1536 dimensions, cosine distance. All similarity thresholds calibrated for this model. |
 | LLM (enrichment) | **Claude Sonnet** (via Anthropic SDK) | XML-tag prompts, max_tokens=4000 |
-| LLM (memory extraction) | **Claude Sonnet** (via Anthropic SDK) | Whole-document extraction, max_tokens=8192 |
+| LLM (memory extraction) | **Claude Sonnet** (via Anthropic SDK) | Bounded source-unit extraction, max_tokens=32768 |
 | LLM (reconciliation) | **Claude Sonnet** (via Anthropic SDK) | Third call on document updates only |
 | Scheduler | APScheduler | Per-gene cron schedules |
 | Auth (Atlassian) | Encrypted PAT + shared Jira browser sessions + httpx | HTTPS-only Confluence PAT access; Jira can use a shared per-origin browser session for instances that do not grant PAT REST quota. Source PATs and Jira browser-session cookies use `MEMFORGE_SECRET_KEY` when provided, otherwise an app-managed local Fernet key file |
@@ -604,6 +604,10 @@ Gene.normalize() --> comprehensive markdown
   corroborated evidence without creating or rewriting memories.
 - Each prompt can be iterated independently without risking regression on the other
 - Separate token budgets — no competition for max_tokens
+- A completed document lifecycle is also the process-memory ownership boundary:
+  Python cycles are collected and Linux/glibc free pages are trimmed before the
+  next document is admitted. Reclamation is best-effort and cannot change the
+  already committed relational lifecycle result.
 
 ### Call 1: Enrichment Prompt
 
