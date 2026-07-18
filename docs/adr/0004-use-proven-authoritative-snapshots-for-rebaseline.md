@@ -8,4 +8,6 @@ Every rebaseline stage must use the same process-wide document-lifecycle admissi
 
 Each sync run owns its per-document tasks. Cancellation or another non-local exit must cancel and drain every sibling task before the run releases its database and source-runtime resources; maintenance fencing must never leave detached document work behind.
 
+Replay scalability is enforced below source adapters. The shared embedding transport bounds request batches and validates one returned vector per input, while entity-index refresh embeds only new or renamed canonical entities. Source adapters must not add provider-specific batching workarounds as their corpus grows.
+
 Any incomplete proof fails before reset and keeps the source gated. The rule is provider-neutral and must have SQLite/HANA parity plus add, change, rename, delete, empty-snapshot, concurrency, multi-support, and cross-source canaries for every authoritative source type.
