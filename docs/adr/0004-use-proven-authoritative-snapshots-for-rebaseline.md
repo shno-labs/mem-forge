@@ -10,4 +10,6 @@ Each sync run owns its per-document tasks. Cancellation or another non-local exi
 
 Replay scalability is enforced below source adapters. The shared embedding transport bounds request batches and validates one returned vector per input, while entity-index refresh embeds only new or renamed canonical entities. Source adapters must not add provider-specific batching workarounds as their corpus grows.
 
+Provider-backed extraction has one lifecycle write path: a Source Projection and its complete incumbent plan are applied atomically, while authoritative absence is expressed as a projected tombstone. The former raw extraction-unit `process_memories` path and direct orphan-retirement helper are removed rather than retained as alternate or compatibility engines; manual user Memory commands and compliance purge remain separate explicit authorities.
+
 Any incomplete proof fails before reset and keeps the source gated. The rule is provider-neutral and must have SQLite/HANA parity plus add, change, rename, delete, empty-snapshot, concurrency, multi-support, and cross-source canaries for every authoritative source type.
