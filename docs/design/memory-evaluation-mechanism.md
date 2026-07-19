@@ -478,6 +478,38 @@ Evaluation findings should feed a quality dashboard or admin report with triage 
 
 Memory-specific conflicts may link to `memory_reviews`, but systemic evaluation findings should become engineering tasks or design updates.
 
+## LLM Test Boundary
+
+Default unit and pull-request CI must not claim semantic quality from a canned
+LLM answer or from assertions that particular instructions still appear in a
+prompt. Those tests only restate their fixtures and remain green when the real
+model behaves incorrectly.
+
+Deterministic CI may still replace the network model at explicit software
+boundaries when it verifies code-owned behavior:
+
+- structured-response schemas, provider parameters, retries, parsing, and
+  fail-closed errors;
+- prompt serialization boundaries such as redaction, evidence identity, and
+  context partitioning;
+- lifecycle, storage, audit, and search effects produced from an explicit
+  typed decision;
+- batching, coverage, idempotency, concurrency, and transaction invariants.
+
+Extraction, equivalence, contradiction, authority, and replacement judgement
+quality require a separate opt-in evaluation against the real configured model.
+Each case must record the model, prompt hash, configuration hash, redacted source
+fixture, structured result, and quality rubric. These evaluations are not
+silently replaced by mocks and do not run in default PR CI until their
+acceptance thresholds and flake policy are explicit.
+
+The authority evaluation set must include at least these semantic boundaries:
+
+- a generic continuation message does not authorize assistant-authored durable
+  knowledge;
+- a durable instruction can be authoritative without matching a keyword or
+  regular-expression allowlist.
+
 ## Replay Fixtures
 
 Monthly or before major prompt/model/lifecycle changes, selected findings become replay fixtures.
