@@ -14,7 +14,20 @@ only while its Source Activity lease is current. A provider-neutral worker
 sweep finds jobs with missing or expired leases and atomically records them as
 failed, advances the Source Activity epoch to fence stale commits, and preserves
 their history, gate, and findings; a later retry starts as a new explicit
-attempt.
+attempt. Recovery is isolated per job so one malformed orphan cannot prevent
+other stale jobs from being fenced.
+
+Destructive reset renews the exact maintenance capability immediately before
+the reset. Every maintenance mutation transaction then validates the durable
+lease identity, capability, source, epoch, and expiry while holding the source
+row; it repeats the validation before commit. Projection commits retain their
+source-row epoch fence. Losing authority therefore fails closed for document,
+gate, finding, evidence, reference, support, reset, and projection writes
+instead of allowing a stale executor to continue after recovery.
+
+A resolved cutover finding is terminal history. Retrying its upsert is a full
+no-op, including the Source gate; it cannot reopen the finding or re-gate the
+Source after validated resolution.
 
 Replay scalability is enforced below source adapters. The shared embedding transport bounds request batches and validates one returned vector per input, while entity-index refresh embeds only new or renamed canonical entities. Source adapters must not add provider-specific batching workarounds as their corpus grows.
 
