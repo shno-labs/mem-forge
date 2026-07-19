@@ -45,7 +45,10 @@ outbox batches while they make progress, before running the gate-opening
 lifecycle audit. A remaining failed or non-progressing task fails maintenance
 and leaves destructive lifecycle gated. Ordinary document sync remains
 decoupled from vector delivery failure because its relational lifecycle commit
-is already authoritative.
+is already authoritative. Because another source-scoped consumer may finish a
+task after a batch lists it, a zero-progress batch performs one bounded durable
+remainder check; an empty remainder is accepted as concurrent completion,
+while a remaining task still fails maintenance.
 
 Replay scalability is enforced below source adapters. The shared embedding transport bounds request batches and validates one returned vector per input, while entity-index refresh embeds only new or renamed canonical entities. Source adapters must not add provider-specific batching workarounds as their corpus grows.
 
