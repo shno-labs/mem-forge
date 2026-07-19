@@ -29,6 +29,24 @@ A resolved cutover finding is terminal history. Retrying its upsert is a full
 no-op, including the Source gate; it cannot reopen the finding or re-gate the
 Source after validated resolution.
 
+One finding ID is permanently bound to its Source and Memory. Upsert accepts
+only open findings and may refine the reason and diagnostic payload while the
+finding remains open; only the explicit resolution path may change its status.
+
+When a provider-neutral lifecycle plan, source rebaseline, or final Source
+Support removal makes a Memory terminal, the same transaction marks every
+pending Memory Review that names that Memory, including related challengers,
+as stale. Review history is preserved; a review may not remain actionable
+against a retired or superseded target.
+
+Rebaseline acceptance includes the source-scoped lifecycle vector outbox.
+After authoritative replay, the maintenance flow drains successive bounded
+outbox batches while they make progress, before running the gate-opening
+lifecycle audit. A remaining failed or non-progressing task fails maintenance
+and leaves destructive lifecycle gated. Ordinary document sync remains
+decoupled from vector delivery failure because its relational lifecycle commit
+is already authoritative.
+
 Replay scalability is enforced below source adapters. The shared embedding transport bounds request batches and validates one returned vector per input, while entity-index refresh embeds only new or renamed canonical entities. Source adapters must not add provider-specific batching workarounds as their corpus grows.
 
 Provider-backed extraction has one lifecycle write path: a Source Projection and its complete incumbent plan are applied atomically, while authoritative absence is expressed as a projected tombstone. The former raw extraction-unit `process_memories` path and direct orphan-retirement helper are removed rather than retained as alternate or compatibility engines; manual user Memory commands and compliance purge remain separate explicit authorities.
