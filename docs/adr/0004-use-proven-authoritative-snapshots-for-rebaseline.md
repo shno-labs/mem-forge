@@ -47,6 +47,23 @@ guards match; a different finding cannot reuse that Review row or relation
 audit. SQLite and Cloud adapters implement the same validation and error
 contract.
 
+Cross-document classification reuses the challenger Memory's current primary
+Support Evidence Unit; it may not synthesize detached evidence from Memory
+content or legacy source edges. Only a `CONTRADICTS` relation creates a
+cross-source conflict Review. A temporal or independent refinement records its
+non-destructive relation without creating a Review or changing either Memory.
+The durable contradiction summary uses an unordered Memory pair: retries in
+either direction are idempotent, and a temporal classification may upgrade once
+to contradiction but a later retry cannot downgrade it or increment counts
+again. The cutover clears only legacy directional contradiction summary rows and
+their cached counts once; it does not alter Reviews, Relations, Support,
+Observations, or restart rebaseline. The reset and migration marker commit
+atomically; HANA takes the same Memory-then-summary lock order as runtime writes
+so rolling deployment cannot interleave a new pair with the reset.
+Historical Reviews that violate this contract are operational residue: they may
+be removed by a bounded, audited cleanup after the corrected deployment, but
+their cleanup never restarts rebaseline or rewrites Memory Support lineage.
+
 Rebaseline acceptance includes the source-scoped lifecycle vector outbox.
 After authoritative replay, the maintenance flow drains successive bounded
 outbox batches while they make progress, before running the gate-opening
