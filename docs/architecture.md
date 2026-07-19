@@ -55,8 +55,8 @@ MemForge is a **memory layer** that:
 | Retrieval latency (no reranking) | < 150ms |
 | Retrieval latency (with reranking) | < 500ms |
 | Memory extraction per document | All durable atomic memories justified by the source; no fixed count |
-| LLM calls per document sync (new) | 2 (enrichment + memory extraction) |
-| LLM calls per document sync (update) | 3 (enrichment + memory extraction + reconciliation), plus bounded support verification when needed |
+| LLM calls per document sync (new) | 2 (enrichment + memory extraction), plus CandidateLedger when multiple semantic candidates remain |
+| LLM calls per document sync (update) | 3 (enrichment + memory extraction + reconciliation), plus CandidateLedger and bounded support verification when needed |
 
 ---
 
@@ -70,7 +70,7 @@ MemForge is a **memory layer** that:
 | Vector store | ChromaDB | PersistentClient, cosine similarity |
 | Embedding model | **OpenAI text-embedding-3-small** | 1536 dimensions, cosine distance. All similarity thresholds calibrated for this model. |
 | LLM (enrichment) | **Claude Sonnet** (via Anthropic SDK) | XML-tag prompts, max_tokens=4000 |
-| LLM (memory extraction) | **Claude Sonnet** (via Anthropic SDK) | Whole-document extraction, max_tokens=8192 |
+| LLM (memory extraction) | **Claude Sonnet** (via Anthropic SDK) | Bounded source-unit extraction, max_tokens=32768 |
 | LLM (reconciliation) | **Claude Sonnet** (via Anthropic SDK) | Third call on document updates only |
 | Scheduler | APScheduler | Per-gene cron schedules |
 | Auth (Atlassian) | Encrypted PAT + shared Jira browser sessions + httpx | HTTPS-only Confluence PAT access; Jira can use a shared per-origin browser session for instances that do not grant PAT REST quota. Source PATs and Jira browser-session cookies use `MEMFORGE_SECRET_KEY` when provided, otherwise an app-managed local Fernet key file |
@@ -604,6 +604,10 @@ Gene.normalize() --> comprehensive markdown
   corroborated evidence without creating or rewriting memories.
 - Each prompt can be iterated independently without risking regression on the other
 - Separate token budgets — no competition for max_tokens
+- A completed document lifecycle is also the process-memory ownership boundary:
+  Python cycles are collected and Linux/glibc free pages are trimmed before the
+  next document is admitted. Reclamation is best-effort and cannot change the
+  already committed relational lifecycle result.
 
 ### Call 1: Enrichment Prompt
 
@@ -709,6 +713,8 @@ persisted, `MemoryEngine` runs a deterministic gate that skips:
 
 - `metadata_only`: document headers such as author, last modified, document status, reviewers.
 - `reference_only`: source link-list rows such as "Link to Concept".
+- `attachment_event_only`: upload bookkeeping without a claim grounded in attachment content.
+- `operational_history_only`: routing-field transitions such as assignee, due date, labels, priority, rank, sprint, resolution, or routine status.
 - `open_question`: unresolved discussion prompts such as "discuss whether" or "to be discussed".
 
 The gate is deliberately narrow. Conditional domain rules are kept when the
@@ -717,12 +723,32 @@ the validation." The same gate applies to reconciliation-created ADD, UPDATE,
 and SUPERSEDE candidates; a skipped replacement cannot supersede an incumbent
 memory.
 
+### CandidateLedger
+
+Every extraction batch for one Source Unit revision is aggregated before
+lifecycle planning. After the deterministic quality gate, exact content
+duplicates collapse without an LLM call. Multiple remaining candidates pass
+through one complete semantic uniqueness ledger:
+
+- one `KEEP` or `DROP_REDUNDANT -> canonical_index` decision per candidate
+- original candidate objects are retained; the ledger does not merge or rewrite content
+- no full document, evidence text, incumbent list, or provider payload is included
+- one corrective retry is allowed for an incomplete ledger
+- more than 200 semantic candidates or 100,000 serialized input characters fails closed
+
+A failed ledger writes no Memory and authorizes no incumbent mutation. The
+failure is recorded as `candidate_ledger_failed`; successful multi-candidate
+selection is recorded as `candidate_ledger_completed`.
+
 ### Token Budget
 
 - Call 1 input: normalized document content truncated to 100,000 chars
 - Call 1 output: max_tokens = 4000 (metadata is compact)
 - Call 2 input: one deterministic unit plus read-only outline/glossary context
-- Call 2 output: max_tokens = 64000 for structured memory candidates
+- Call 2 output: max_tokens = 32768 for structured memory candidates; the model supports
+  64000, but regularly needing that ceiling indicates the Source Unit should be split smaller
+- CandidateLedger input: at most 200 non-identical candidates and 100,000 serialized chars
+- CandidateLedger output: max_tokens = 8192 for a complete decision ledger
 - Call 3 output on updates: max_tokens = 4096 (reconciliation decisions)
 - Call 2 receives additional context: entities + up to 30 existing memories for those entities
 - Cost per document varies by source length; unchanged documents are skipped by content hash,
@@ -753,7 +779,10 @@ large. This strategy is source-agnostic: Confluence pages, Jira tickets, Teams
 blocks, agent-session summaries, future GitHub Pages, and local markdown repos
 all share the same memory update path after normalization. Diff-guided
 extraction uses the full updated source item as context, but asks the extractor
-to produce only memories caused by changed hunks. Full-document fallback uses
+to produce only memories caused by changed hunks. The pipeline then enforces
+that contract: each candidate's exact quote must overlap an inserted or replaced
+current-revision range; unchanged-context candidates are audited and discarded.
+Deletion-only diffs authorize no new candidate. Full-document fallback uses
 the same deterministic structural units described above, so large pages are
 processed by owned sections without adding source-specific extraction logic.
 
@@ -1974,7 +2003,7 @@ The fundamental mismatch:
 | JSON truncated (hit max_tokens) | JSON parse fails on incomplete structure | Increase max_tokens and retry once. If still truncated, parse what's available, log warning. |
 | No memories extracted | `data.get("memories", [])` returns `[]` | Accept — some documents genuinely have no extractable atomic facts. Store document without memories. |
 | Hallucinated entity names | Entity not in existing entity list | Create as new entity. The alias discovery pipeline will eventually merge if it's a duplicate. |
-| Many memories extracted | `len(memories)` is high | Keep all candidates that pass the quality gate. The extractor has no fixed count target; quality control happens through source-grounded prompting, the deterministic gate, confidence, and retrieval filtering. |
+| Many memories extracted | `len(memories)` is high | Keep every durable, semantically distinct candidate. Exact duplicates collapse deterministically; a complete CandidateLedger removes fully redundant claims within the Source Unit revision. Explicit input budgets fail closed instead of truncating the ledger. |
 | LLM timeout / API error | httpx timeout or 5xx response | Retry with exponential backoff (3 attempts). If all fail, store document without enrichment, mark for re-enrichment on next sync. |
 
 ### Fallback Metadata
