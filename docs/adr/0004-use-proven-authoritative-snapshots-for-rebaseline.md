@@ -8,6 +8,14 @@ Every rebaseline stage must use the same process-wide document-lifecycle admissi
 
 Each sync run owns its per-document tasks. Cancellation or another non-local exit must cancel and drain every sibling task before the run releases its database and source-runtime resources; maintenance fencing must never leave detached document work behind.
 
+A process exit cannot prove that partially executed destructive maintenance is
+safe to resume. A queued or running maintenance job therefore remains active
+only while its Source Activity lease is current. A provider-neutral worker
+sweep finds jobs with missing or expired leases and atomically records them as
+failed, advances the Source Activity epoch to fence stale commits, and preserves
+their history, gate, and findings; a later retry starts as a new explicit
+attempt.
+
 Replay scalability is enforced below source adapters. The shared embedding transport bounds request batches and validates one returned vector per input, while entity-index refresh embeds only new or renamed canonical entities. Source adapters must not add provider-specific batching workarounds as their corpus grows.
 
 Provider-backed extraction has one lifecycle write path: a Source Projection and its complete incumbent plan are applied atomically, while authoritative absence is expressed as a projected tombstone. The former raw extraction-unit `process_memories` path and direct orphan-retirement helper are removed rather than retained as alternate or compatibility engines; manual user Memory commands and compliance purge remain separate explicit authorities.
