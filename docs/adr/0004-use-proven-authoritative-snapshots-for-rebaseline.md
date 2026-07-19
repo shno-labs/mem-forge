@@ -39,6 +39,14 @@ pending Memory Review that names that Memory, including related challengers,
 as stale. Review history is preserved; a review may not remain actionable
 against a retired or superseded target.
 
+A pending cross-source Review is written with its RelationRun only after both
+active Memories, both current revision-pinned Support lineages, and compatible
+access contexts validate in one transaction. Retrying its deterministic Review
+ID is idempotent only when the complete immutable Review identity and stale
+guards match; a different finding cannot reuse that Review row or relation
+audit. SQLite and Cloud adapters implement the same validation and error
+contract.
+
 Rebaseline acceptance includes the source-scoped lifecycle vector outbox.
 After authoritative replay, the maintenance flow drains successive bounded
 outbox batches while they make progress, before running the gate-opening
