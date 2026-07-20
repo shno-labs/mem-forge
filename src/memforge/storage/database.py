@@ -14314,32 +14314,26 @@ class Database:
     async def get_cross_doc_candidates(
         self,
         memory_id: str,
-        entity_ids: list[int],
+        entity_ids: Sequence[int],
         doc_id: str,
         *,
-        owner_user_id: str | None = None,
-        visibility: str | None = None,
-        project_key: str | None = None,
         excluded_source_ids: Sequence[str] = (),
         limit: int = 200,
     ) -> CandidatePage[Memory]:
-        """Find active memories sharing entities with this memory but from different documents."""
+        """Find access-compatible active Memories sharing entities across documents.
+
+        Access identity is derived from the challenger row so callers cannot
+        accidentally widen or narrow the lifecycle boundary. Project remains a
+        relevance attribute and is not an access boundary.
+        """
         if not entity_ids:
             return CandidatePage(candidates=(), complete=True, requested_limit=limit)
         if limit < 1:
             return CandidatePage(candidates=(), complete=True, requested_limit=limit)
 
         placeholders = ",".join("?" for _ in entity_ids)
-        visibility_clause = "AND m.visibility != 'private'"
-        visibility_params: list[str] = []
-        if visibility == "private" and owner_user_id:
-            visibility_clause = "AND (m.visibility != 'private' OR m.owner_user_id = ?)"
-            visibility_params.append(owner_user_id)
         scope_clause = ""
         scope_params: list[Any] = []
-        if project_key:
-            scope_clause += " AND m.project_key = ?"
-            scope_params.append(project_key)
         if excluded_source_ids:
             source_placeholders = ",".join("?" for _ in excluded_source_ids)
             scope_clause += f"""
@@ -14357,22 +14351,31 @@ class Database:
             scope_params.extend(excluded_source_ids)
         sql = f"""
             SELECT DISTINCT m.* FROM memories m
+            JOIN memories challenger ON challenger.id = ?
             JOIN memory_entities me ON m.id = me.memory_id
             JOIN memory_sources ms ON m.id = ms.memory_id
             WHERE me.entity_id IN ({placeholders})
               AND ms.doc_id != ?
               AND m.id != ?
               AND m.status = 'active'
-              {visibility_clause}
+              AND challenger.status = 'active'
+              AND m.visibility = challenger.visibility
+              AND m.owner_user_id IS challenger.owner_user_id
+              AND m.repo_identifier IS challenger.repo_identifier
               {scope_clause}
-            ORDER BY m.updated_at DESC, m.id
+            ORDER BY CASE
+                         WHEN challenger.project_key IS NOT NULL
+                          AND m.project_key = challenger.project_key
+                         THEN 1 ELSE 0
+                     END DESC,
+                     m.updated_at DESC, m.id
             LIMIT ?
         """
         params = [
+            memory_id,
             *entity_ids,
             doc_id,
             memory_id,
-            *visibility_params,
             *scope_params,
             limit + 1,
         ]

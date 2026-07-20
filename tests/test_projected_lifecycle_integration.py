@@ -19,7 +19,11 @@ from memforge.llm.structured import (
     ReconciliationResponse,
 )
 from memforge.memory.audit import MemoryAuditLogger
-from memforge.memory.engine import MemoryEngine, _memory_equivalence_pair_json
+from memforge.memory.engine import (
+    MEMORY_EQUIVALENCE_PROMPT,
+    MemoryEngine,
+    _memory_equivalence_pair_json,
+)
 from memforge.memory.evidence import (
     EvidenceContentProvenance,
     EvidenceReference,
@@ -653,6 +657,10 @@ def test_memory_equivalence_pair_payload_is_order_independent_and_neutral() -> N
     payload = json.loads(forward)
     assert set(payload) == {"claim_a", "claim_b"}
     assert set(payload.values()) == {first, second}
+    assert "document, case, or record states that P" in MEMORY_EQUIVALENCE_PROMPT
+    assert "neither claim is about the act, completeness, or authority of recording" in (
+        MEMORY_EQUIVALENCE_PROMPT
+    )
 
 
 async def _seed_incumbent_support(

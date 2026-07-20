@@ -59,6 +59,8 @@ Equivalence is symmetric: the labels do not imply recency, authority, direction,
 rather than its speech act or presentation. Attribution, document framing, labels, examples, and stylistic modality are
 non-material unless they change authority, subject, action or value, scope, polarity, conditions, or time. A rule described
 as a requirement and the same rule described as a configured state may be equivalent when all material dimensions match.
+Treat "a document, case, or record states that P" and a direct statement of P as the same durable proposition when P is
+the knowledge being preserved and neither claim is about the act, completeness, or authority of recording itself.
 
 Return equivalent=false if either claim contradicts, narrows, broadens, conditions, updates, or adds any material fact.
 Equivalent wording, language, abbreviation, or presentation alone is not a material difference.
