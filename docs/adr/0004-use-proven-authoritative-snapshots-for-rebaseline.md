@@ -64,6 +64,13 @@ Historical Reviews that violate this contract are operational residue: they may
 be removed by a bounded, audited cleanup after the corrected deployment, but
 their cleanup never restarts rebaseline or rewrites Memory Support lineage.
 
+A pending lifecycle Review remains authoritative across later Plans for other
+Source Units. Support validation combines exact `REMOVE_SUPPORT` edges staged
+by the current Plan with exact edges from previously applied pending Review
+Plans whose own Source Unit still points to that Plan's target revision. This
+preserves the contested edge without making the later Plan its owner and never
+exempts another Memory, another Evidence Reference, or malformed lineage.
+
 Rebaseline acceptance includes the source-scoped lifecycle vector outbox.
 After authoritative replay, the maintenance flow drains successive bounded
 outbox batches while they make progress, before running the gate-opening

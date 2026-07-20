@@ -1047,6 +1047,124 @@ async def test_review_preserves_its_exact_contested_incumbent_support(
 
 
 @pytest.mark.asyncio
+async def test_later_unit_plan_preserves_exact_support_contested_by_durable_review(
+    db: Database,
+) -> None:
+    first = _projection(run_id="projection-durable-review-1", body="A7 is removed.")
+    await db.record_source_projection(first)
+    incumbent = await _seed_incumbent_support(db, projection=first)
+    incumbent = await db.get_memory(incumbent.id)
+    assert incumbent is not None
+    old_support = await db.get_active_memory_support_reference_ids(incumbent.id)
+    await db.enable_lifecycle_gate("src-1")
+
+    changed = _projection(
+        run_id="projection-durable-review-2",
+        body="A7 is retained.",
+        prior=first.source_unit_revisions[0],
+        prior_observations={
+            revision.observation_id: revision
+            for revision in first.observation_revisions
+        },
+    )
+    changed_delta = changed.deltas[0]
+    review_plan = build_lifecycle_plan(
+        plan_id="plan-durable-review",
+        scope=ReconciliationScope(
+            id="scope-durable-review",
+            source_id="src-1",
+            source_unit_id=changed_delta.source_unit_id,
+            base_unit_revision_id=changed_delta.previous_unit_revision_id,
+            target_unit_revision_id=changed_delta.current_unit_revision_id,
+        ),
+        gate_state=LifecycleGateState.ENABLED,
+        operations=(
+            ReconcileOperation(
+                action=ReconcileAction.DELETE,
+                memory_id=incumbent.id,
+                reason="the source now disputes this claim",
+                flag_for_review=True,
+            ),
+        ),
+        incumbents={incumbent.id: incumbent},
+        source_support_reference_ids={incumbent.id: old_support},
+        all_active_support_reference_ids={incumbent.id: old_support},
+        support_set_hashes={
+            incumbent.id: await db.get_memory_support_set_hash(incumbent.id)
+        },
+        observation_revision_ids=tuple(
+            revision.id for revision in changed.observation_revisions
+        ),
+        new_evidence_reference_ids=(),
+        defaults=NewMemoryDefaults(
+            visibility="workspace",
+            owner_user_id=None,
+            project_key="ENG",
+            repo_identifier=None,
+            doc_id="confluence-123",
+            source_type="confluence",
+            access_context_hash="workspace-eng",
+        ),
+    )
+    await db.apply_source_projection_lifecycle(changed, review_plan)
+
+    later = _projection(
+        run_id="projection-durable-review-later-unit",
+        body="A separate page changes.",
+        item_id="confluence-456",
+        page_id="456",
+    )
+    later_delta = later.deltas[0]
+    later_plan = build_lifecycle_plan(
+        plan_id="plan-after-durable-review",
+        scope=ReconciliationScope(
+            id="scope-after-durable-review",
+            source_id="src-1",
+            source_unit_id=later_delta.source_unit_id,
+            base_unit_revision_id=later_delta.previous_unit_revision_id,
+            target_unit_revision_id=later_delta.current_unit_revision_id,
+        ),
+        gate_state=LifecycleGateState.ENABLED,
+        operations=(
+            ReconcileOperation(
+                action=ReconcileAction.NOOP,
+                memory_id=incumbent.id,
+                reason="the unrelated unit does not resolve the pending review",
+            ),
+        ),
+        incumbents={incumbent.id: incumbent},
+        source_support_reference_ids={incumbent.id: old_support},
+        all_active_support_reference_ids={incumbent.id: old_support},
+        support_set_hashes={
+            incumbent.id: await db.get_memory_support_set_hash(incumbent.id)
+        },
+        observation_revision_ids=tuple(
+            revision.id for revision in later.observation_revisions
+        ),
+        new_evidence_reference_ids=(),
+        defaults=NewMemoryDefaults(
+            visibility="workspace",
+            owner_user_id=None,
+            project_key="ENG",
+            repo_identifier=None,
+            doc_id="confluence-456",
+            source_type="confluence",
+            access_context_hash="workspace-eng",
+        ),
+    )
+
+    await db.apply_source_projection_lifecycle(later, later_plan)
+
+    assert await db.get_lifecycle_plan_status(later_plan.id) == "applied"
+    assert await db.get_active_memory_support_reference_ids(incumbent.id) == old_support
+    review = await db.get_lifecycle_review(
+        str(review_plan.mutations[0].payload["review_id"])
+    )
+    assert review is not None
+    assert review.status is LifecycleReviewStatus.PENDING
+
+
+@pytest.mark.asyncio
 async def test_projected_support_invariant_accepts_other_valid_same_source_unit(
     db: Database,
 ) -> None:

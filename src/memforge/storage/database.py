@@ -90,6 +90,7 @@ from memforge.memory.evidence import (
 from memforge.memory.lifecycle_plan import (
     build_unprovable_cutover_resolution,
     ClaimIdentityPolicy,
+    contested_supports_from_staged_evidence,
     CutoverFindingReason,
     CutoverFindingStatus,
     LifecycleCutoverFinding,
@@ -6612,7 +6613,6 @@ class Database:
         plan's current Unit.
         """
 
-        contested_supports = pending_review_contested_supports(plan)
         created_ids = {
             mutation.memory_id
             for mutation in plan.mutations
@@ -6632,6 +6632,13 @@ class Database:
                 for mutation in plan.mutations
                 if mutation.mutation_type is LifecycleMutationType.ATTACH_SUPPORT
             }
+        )
+        contested_supports = set(pending_review_contested_supports(plan))
+        contested_supports.update(
+            await self._durable_pending_review_contested_supports_unlocked(
+                source_id=plan.scope.source_id,
+                memory_ids=candidate_ids,
+            )
         )
         for memory_id in sorted(candidate_ids):
             async with self.db.execute(
@@ -6686,6 +6693,47 @@ class Database:
             ]
             if len(accepted_supports) != len(supports):
                 raise ValueError(f"projected lifecycle left stale or ambiguous source support: {memory_id}")
+
+    async def _durable_pending_review_contested_supports_unlocked(
+        self,
+        *,
+        source_id: str,
+        memory_ids: set[str],
+    ) -> frozenset[tuple[str, str]]:
+        """Load exact contested edges from previously applied pending Reviews."""
+
+        ordered_memory_ids = sorted(memory_ids)
+        if not ordered_memory_ids:
+            return frozenset()
+        placeholders = ", ".join("?" for _ in ordered_memory_ids)
+        rows = await self.db.execute_fetchall(
+            f"""SELECT lr.incumbent_memory_id,
+                       lp.source_id AS plan_source_id,
+                       lr.staged_evidence_json
+                  FROM lifecycle_reviews lr
+                  JOIN lifecycle_plans lp ON lp.id = lr.lifecycle_plan_id
+                  JOIN source_units su ON su.id = lp.source_unit_id
+                 WHERE lr.status = 'pending'
+                   AND lp.status = 'applied'
+                   AND lp.source_id = ?
+                   AND su.source_id = lp.source_id
+                   AND lp.target_unit_revision_id = su.current_revision_id
+                   AND lr.incumbent_memory_id IN ({placeholders})""",
+            (source_id, *ordered_memory_ids),
+        )
+        contested: set[tuple[str, str]] = set()
+        for row in rows:
+            staged = json.loads(row["staged_evidence_json"] or "{}")
+            if not isinstance(staged, Mapping):
+                raise ValueError("pending lifecycle review requires staged_evidence")
+            contested.update(
+                contested_supports_from_staged_evidence(
+                    incumbent_memory_id=row["incumbent_memory_id"],
+                    source_id=row["plan_source_id"],
+                    staged_evidence=staged,
+                )
+            )
+        return frozenset(contested)
 
     async def _stage_lifecycle_evidence_unlocked(
         self,
