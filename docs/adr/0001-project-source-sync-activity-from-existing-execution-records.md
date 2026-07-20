@@ -8,6 +8,10 @@ A terminal source-sync failure remains available through Last sync details, but
 the Source row presents it as actionable only when the current viewer has the
 Source capability to run sync. This prevents a managed or read-only Source from
 offering an impossible Retry action while preserving the execution record.
+Source sync capability is derived from the Source Gene's declared
+`execution_kinds`; a Source type with no execution kind never enters manual,
+scheduled, or worker-owned ordinary sync. Historical sync records remain
+auditable, but are not projected as current Source activity for such a type.
 
 When local collection successfully starts server processing, its terminal
 result records the returned `SourceSyncRun` ID as an immutable handoff receipt.
