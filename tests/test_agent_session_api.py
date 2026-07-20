@@ -2263,6 +2263,18 @@ async def test_successful_agent_session_receipt_advances_source_activity_monoton
 
         await database.upsert_agent_session_receipt(
             _make_receipt(
+                doc_id="successful-explicit-document",
+                session_id="session-activity",
+                source_id=source_id,
+                source_kind="generated_agent_summary",
+                outcome="knowledge_patched",
+                updated_at="2026-07-21T10:30:00Z",
+            )
+        )
+        assert (await database.get_source(source_id))["last_sync"] is None
+
+        await database.upsert_agent_session_receipt(
+            _make_receipt(
                 doc_id="successful-window",
                 session_id="session-activity",
                 source_id=source_id,

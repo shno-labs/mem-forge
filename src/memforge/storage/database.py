@@ -22,7 +22,10 @@ from typing import Any, Mapping, Sequence
 
 import aiosqlite
 
-from memforge.agent_session_contract import successful_agent_session_activity_at
+from memforge.agent_session_contract import (
+    AGENT_SESSION_WINDOW_SOURCE_KIND,
+    successful_agent_session_activity_at,
+)
 from memforge.local_agent.source_contract import (
     local_agent_completion_status,
     local_agent_source_config_revision,
@@ -228,7 +231,6 @@ AGENT_SESSION_OUTCOMES = (
     AGENT_SESSION_OUTCOME_NO_OUTPUT,
     AGENT_SESSION_OUTCOME_FAILED,
 )
-AGENT_SESSION_WINDOW_SOURCE_KIND = "generated_agent_window_summary"
 _PERSISTED_RELATION_TYPES = {
     RelationType.SUPPORTS,
     RelationType.EQUIVALENT,

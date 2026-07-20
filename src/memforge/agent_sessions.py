@@ -18,6 +18,7 @@ from typing import Any
 from memforge.agent_session_contract import (
     AGENT_SESSION_CONTENT_ROLE,
     AGENT_SESSION_PACKAGE_KIND,
+    AGENT_SESSION_WINDOW_SOURCE_KIND,
 )
 from memforge.config import AppConfig
 from memforge.agent_knowledge import (
@@ -34,7 +35,6 @@ from memforge.source_activity import SourceActivityConflict, SourceActivityKind
 
 AGENT_SESSION_SOURCE_TYPE = "agent_session"
 AGENT_SESSION_SOURCE_KIND = "generated_agent_summary"
-AGENT_SESSION_WINDOW_SOURCE_KIND = "generated_agent_window_summary"
 AGENT_SESSION_KNOWLEDGE_PATCH_MAX_TOKENS = 8192
 
 

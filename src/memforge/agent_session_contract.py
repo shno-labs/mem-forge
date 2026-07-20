@@ -6,6 +6,7 @@ from memforge.models import AgentSessionReceipt
 
 AGENT_SESSION_PACKAGE_KIND = "agent_session_document"
 AGENT_SESSION_CONTENT_ROLE = "generated_summary"
+AGENT_SESSION_WINDOW_SOURCE_KIND = "generated_agent_window_summary"
 
 LLM_VISIBLE_METADATA_KEYS = {
     "has_transcript_path",
@@ -33,6 +34,8 @@ def successful_agent_session_activity_at(
     comparison stable across ``Z`` and explicit-offset inputs.
     """
 
+    if receipt.source_kind != AGENT_SESSION_WINDOW_SOURCE_KIND:
+        return None
     if receipt.metadata.get("outcome") not in _SUCCESSFUL_WINDOW_OUTCOMES:
         return None
     value = receipt.updated_at or receipt.submitted_at
