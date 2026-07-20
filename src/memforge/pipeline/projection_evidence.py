@@ -15,7 +15,12 @@ from memforge.memory.evidence import (
 )
 from memforge.models import RawMemory, content_hash
 from memforge.pipeline.projection_context import context_observation_ids_for
-from memforge.source_projection import AnchorKind, SourceAnchor, SourceProjection
+from memforge.source_projection import (
+    AnchorKind,
+    SourceAnchor,
+    SourceObservationRevision,
+    SourceProjection,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,30 +74,13 @@ def build_projected_claim_evidence(
     reference_ids_by_claim_hash: dict[str, tuple[str, ...]] = {}
     for raw in raw_memories:
         quote = (raw.evidence_quote or raw.extraction_context or "").strip()
-        explicit_observation_id = raw.source_observation_id
-        if explicit_observation_id is not None:
-            revalidated_noop = raw.evidence_anchor == "revalidated_noop"
-            if explicit_observation_id not in candidate_ids and not revalidated_noop:
-                raise ValueError("explicit source observation is outside the changed evidence scope")
-            if explicit_observation_id not in revisions_by_observation:
-                raise ValueError("explicit source observation is unavailable in the current revision")
-            if not quote or quote not in revisions_by_observation[explicit_observation_id].content:
-                raise ValueError("explicit source observation does not contain the evidence quote")
-            primary_id = explicit_observation_id
-        else:
-            exact = [
-                observation_id
-                for observation_id in candidate_ids
-                if quote and quote in revisions_by_observation[observation_id].content
-            ]
-            if len(exact) == 1:
-                primary_id = exact[0]
-            elif len(candidate_ids) == 1:
-                primary_id = next(iter(candidate_ids))
-            else:
-                raise ValueError(
-                    "extracted Memory cannot be localized to exactly one changed Source Observation"
-                )
+        primary_id = _primary_observation_id(
+            candidate_ids=candidate_ids,
+            revisions_by_observation=revisions_by_observation,
+            quote=quote,
+            observation_hint=raw.source_observation_id,
+            revalidated_noop=raw.evidence_anchor == "revalidated_noop",
+        )
 
         primary_revision = revisions_by_observation[primary_id]
         evidence_unit_id = _stable_id(
@@ -192,6 +180,43 @@ def build_projected_claim_evidence(
         references=tuple(references_by_id.values()),
         reference_ids_by_claim_hash=reference_ids_by_claim_hash,
     )
+
+
+def _primary_observation_id(
+    *,
+    candidate_ids: set[str],
+    revisions_by_observation: Mapping[str, SourceObservationRevision],
+    quote: str,
+    observation_hint: str | None,
+    revalidated_noop: bool,
+) -> str:
+    exact_quote_matches = [
+        observation_id
+        for observation_id in candidate_ids
+        if quote and quote in revisions_by_observation[observation_id].content
+    ]
+    if observation_hint is None:
+        if len(exact_quote_matches) == 1:
+            return exact_quote_matches[0]
+        if len(candidate_ids) == 1:
+            return next(iter(candidate_ids))
+        raise ValueError(
+            "extracted Memory cannot be localized to exactly one changed Source Observation"
+        )
+
+    if observation_hint in candidate_ids or revalidated_noop:
+        if observation_hint not in revisions_by_observation:
+            raise ValueError("explicit source observation is unavailable in the current revision")
+        if not quote or quote not in revisions_by_observation[observation_hint].content:
+            raise ValueError("explicit source observation does not contain the evidence quote")
+        return observation_hint
+
+    # Extractor-provided identities are localization hints, not evidence. The
+    # current projection can safely repair a hint only with one exact match.
+    if len(exact_quote_matches) == 1:
+        return exact_quote_matches[0]
+    raise ValueError("explicit source observation is outside the changed evidence scope")
+
 
 def _stable_id(prefix: str, *values: object) -> str:
     digest = hashlib.sha256("\x1f".join(str(value) for value in values).encode("utf-8")).hexdigest()[:20]

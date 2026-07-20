@@ -2037,6 +2037,7 @@ async def test_cross_source_semantic_equivalent_add_reuses_memory_id_and_attache
         confidence=0.9,
         evidence_quote="A7 remains excluded.",
         extraction_context="A7 remains excluded.",
+        source_observation_id="obs-from-unrelated-source",
     )
     adapters = build_sqlite_adapters(db, object())
     engine = MemoryEngine(
