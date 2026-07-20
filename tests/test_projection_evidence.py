@@ -237,6 +237,50 @@ async def test_out_of_scope_observation_hint_rebinds_to_unique_current_quote(
 
 
 @pytest.mark.asyncio
+async def test_added_observation_is_in_current_evidence_scope_with_other_changed_observations(
+    db: Database,
+) -> None:
+    projection = _jira_projection()
+    target_id = projection.observations[2].id
+    other_id = projection.observations[1].id
+    delta = projection.deltas[0]
+    projection = replace(
+        projection,
+        deltas=(
+            replace(
+                delta,
+                changed_anchors=tuple(
+                    anchor for anchor in delta.changed_anchors if anchor.observation_id == other_id
+                ),
+                added_observation_ids=(target_id,),
+            ),
+        ),
+    )
+    raw = RawMemory(
+        content="The correction retains A7.",
+        memory_type="decision",
+        evidence_quote="Correction: retain A7",
+        source_observation_id=target_id,
+    )
+
+    staged = build_projected_claim_evidence(
+        projection=projection,
+        raw_memories=(raw,),
+        doc_id="jira-PAY-12",
+        source_type="jira",
+        project_key="PAY",
+        visibility="workspace",
+        owner_user_id=None,
+        repo_identifier=None,
+        access_context_hash="workspace-pay",
+        extractor_run_id="sync-added-primary",
+    )
+
+    [primary] = [item for item in staged.references if item.role.value == "primary"]
+    assert primary.anchor.observation_id == target_id
+
+
+@pytest.mark.asyncio
 async def test_out_of_scope_observation_hint_without_unique_quote_is_rejected(
     db: Database,
 ) -> None:
@@ -248,7 +292,7 @@ async def test_out_of_scope_observation_hint_without_unique_quote_is_rejected(
         source_observation_id="obs-from-another-projection",
     )
 
-    with pytest.raises(ValueError, match="outside the changed evidence scope"):
+    with pytest.raises(ValueError, match="outside the current evidence scope"):
         build_projected_claim_evidence(
             projection=projection,
             raw_memories=(raw,),
@@ -286,7 +330,7 @@ async def test_out_of_scope_observation_hint_with_ambiguous_quote_is_rejected(
         source_observation_id="obs-from-another-projection",
     )
 
-    with pytest.raises(ValueError, match="outside the changed evidence scope"):
+    with pytest.raises(ValueError, match="outside the current evidence scope"):
         build_projected_claim_evidence(
             projection=projection,
             raw_memories=(raw,),

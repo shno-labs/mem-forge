@@ -47,9 +47,9 @@ def build_projected_claim_evidence(
     """Build deterministic evidence staged for the atomic Lifecycle Plan.
 
     Candidate localization is proof-oriented: an exact quote match selects one
-    Observation; otherwise a single changed Observation is an acceptable Whole
-    Observation fallback. Multiple possible Observations are rejected instead
-    of assigning invented lineage.
+    Observation; otherwise a single current changed-or-added Observation is an
+    acceptable Whole Observation fallback. Multiple possible Observations are
+    rejected instead of assigning invented lineage.
     """
 
     if len(projection.source_units) != 1 or len(projection.source_unit_revisions) != 1:
@@ -61,13 +61,18 @@ def build_projected_claim_evidence(
     ordered_observation_ids = [
         item.id for item in projection.observations if item.id in revisions_by_observation
     ]
-    changed_ids = {
+    current_evidence_ids = {
         anchor.observation_id
         for delta in projection.deltas
         for anchor in delta.changed_anchors
         if anchor.observation_id in revisions_by_observation
+    } | {
+        observation_id
+        for delta in projection.deltas
+        for observation_id in delta.added_observation_ids
+        if observation_id in revisions_by_observation
     }
-    candidate_ids = changed_ids or set(ordered_observation_ids)
+    candidate_ids = current_evidence_ids or set(ordered_observation_ids)
 
     units_by_id: dict[str, EvidenceUnit] = {}
     references_by_id: dict[str, EvidenceReference] = {}
@@ -215,7 +220,7 @@ def _primary_observation_id(
     # current projection can safely repair a hint only with one exact match.
     if len(exact_quote_matches) == 1:
         return exact_quote_matches[0]
-    raise ValueError("explicit source observation is outside the changed evidence scope")
+    raise ValueError("explicit source observation is outside the current evidence scope")
 
 
 def _stable_id(prefix: str, *values: object) -> str:
