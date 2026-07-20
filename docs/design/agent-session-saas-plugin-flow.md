@@ -428,6 +428,7 @@ resident daemon.
 | --- | --- |
 | `/api/agent-sessions/windows` | Validate versioned window uploads and call Stage 1 package generation |
 | Window canonicalizer | Redact again, drop operational noise, normalize legacy events, and build service-canonical package input |
+| Authority classifier | Classify explicit user evidence in bounded batches while preserving the full canonical event stream as context; require exactly one typed decision per batch candidate |
 | Stage 1 LLM packager | Convert canonical evidence into durable markdown packages, or return `no_output` |
 | Agent session receipts | Record processed outcome, reason, hash, range, and provenance |
 | Package store | Persist generated markdown atomically by deterministic document id |
@@ -438,6 +439,10 @@ resident daemon.
 
 Stage 1 prompt contract:
 
+- Authority classification is fail-closed. Candidate output is bounded by
+  batching, not by dropping surrounding evidence or accepting a truncated
+  response; missing, duplicate, and non-candidate evidence IDs reject the
+  window before package generation.
 - Create a package only when a future agent would plausibly act better because
   the package exists; otherwise return `no_output`.
 - Prefer evidence in this order: user-confirmed decisions and corrections,
