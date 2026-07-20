@@ -1275,6 +1275,70 @@ async def test_review_does_not_exempt_mismatched_observation_revision_lineage(
         await db._validate_projected_support_invariant_unlocked(plan)
 
 
+@pytest.mark.parametrize(
+    ("broken_hop", "table", "id_column"),
+    (
+        ("evidence_reference", "evidence_references", "reference_id"),
+        ("evidence_unit", "evidence_units", "evidence_unit_id"),
+        ("observation", "source_observations", "observation_id"),
+        (
+            "observation_revision",
+            "source_observation_revisions",
+            "observation_revision_id",
+        ),
+        ("source_unit", "source_units", "source_unit_id"),
+    ),
+)
+@pytest.mark.asyncio
+async def test_projected_support_invariant_cannot_hide_a_missing_lineage_hop(
+    db: Database,
+    broken_hop: str,
+    table: str,
+    id_column: str,
+) -> None:
+    projection = _projection(
+        run_id=f"projection-missing-{broken_hop}",
+        body="A7 is removed.",
+    )
+    await db.record_source_projection(projection)
+    incumbent = await _seed_incumbent_support(db, projection=projection)
+    [reference_id] = await db.get_active_memory_support_reference_ids(incumbent.id)
+    async with db.db.execute(
+        """SELECT er.evidence_unit_id, er.observation_id,
+                  er.observation_revision_id, so.source_unit_id
+             FROM evidence_references er
+             JOIN source_observations so ON so.id = er.observation_id
+            WHERE er.id = ?""",
+        (reference_id,),
+    ) as cursor:
+        lineage = await cursor.fetchone()
+    assert lineage is not None
+    ids = {
+        "reference_id": reference_id,
+        "evidence_unit_id": lineage["evidence_unit_id"],
+        "observation_id": lineage["observation_id"],
+        "observation_revision_id": lineage["observation_revision_id"],
+        "source_unit_id": lineage["source_unit_id"],
+    }
+    await db.db.commit()
+    await db.db.execute("PRAGMA foreign_keys = OFF")
+    await db.db.execute(f"DELETE FROM {table} WHERE id = ?", (ids[id_column],))
+    await db.db.commit()
+    plan = SimpleNamespace(
+        mutations=(),
+        coverage_proof=SimpleNamespace(
+            mandatory_incumbent_ids=(incumbent.id,)
+        ),
+        scope=SimpleNamespace(
+            source_id="src-1",
+            source_unit_id=projection.source_units[0].id,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="stale or ambiguous source support"):
+        await db._validate_projected_support_invariant_unlocked(plan)
+
+
 @pytest.mark.asyncio
 async def test_projected_support_invariant_accepts_other_valid_same_source_unit(
     db: Database,
