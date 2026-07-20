@@ -106,6 +106,7 @@ from memforge.memory.lifecycle_plan import (
     LifecycleVectorTask,
     LifecycleVectorTaskStatus,
     lifecycle_plan_to_payload,
+    pending_review_contested_supports,
     unprovable_cutover_retirement_plan_id,
     validate_unprovable_cutover_evidence,
 )
@@ -6611,8 +6612,7 @@ class Database:
         plan's current Unit.
         """
 
-        if any(mutation.mutation_type is LifecycleMutationType.CREATE_REVIEW for mutation in plan.mutations):
-            return
+        contested_supports = pending_review_contested_supports(plan)
         created_ids = {
             mutation.memory_id
             for mutation in plan.mutations
@@ -6642,39 +6642,49 @@ class Database:
             if memory is None or memory["status"] != "active":
                 continue
             async with self.db.execute(
-                """SELECT SUM(CASE
-                              WHEN so.source_unit_id = ?
-                               AND eu.source_lineage_id = so.source_unit_id
-                               AND eu.source_id = msa.source_id
-                               AND so.source_id = msa.source_id
-                               AND su.source_id = msa.source_id
-                               AND er.observation_revision_id = so.current_revision_id
-                              THEN 1 ELSE 0 END) AS current_scope_total,
-                          SUM(CASE
-                              WHEN eu.source_lineage_id = so.source_unit_id
-                               AND eu.source_id = msa.source_id
-                               AND so.source_id = msa.source_id
-                               AND su.source_id = msa.source_id
-                               AND er.observation_revision_id = so.current_revision_id
-                              THEN 0 ELSE 1 END) AS invalid
+                """SELECT msa.evidence_reference_id,
+                          eu.source_id AS evidence_source_id,
+                          so.source_id AS observation_source_id,
+                          su.source_id AS unit_source_id,
+                          eu.source_lineage_id,
+                          so.source_unit_id,
+                          er.observation_revision_id,
+                          so.current_revision_id
                    FROM memory_support_assertions msa
                    JOIN evidence_references er ON er.id = msa.evidence_reference_id
                    JOIN evidence_units eu ON eu.id = er.evidence_unit_id
                    JOIN source_observations so ON so.id = er.observation_id
                    JOIN source_units su ON su.id = so.source_unit_id
                    WHERE msa.memory_id = ? AND msa.source_id = ? AND msa.active = 1""",
-                (
-                    plan.scope.source_unit_id,
-                    memory_id,
-                    plan.scope.source_id,
-                ),
+                (memory_id, plan.scope.source_id),
             ) as cursor:
-                support = await cursor.fetchone()
-            current_scope_total = int(support["current_scope_total"] or 0)
-            invalid = int(support["invalid"] or 0)
+                supports = await cursor.fetchall()
+            structurally_valid = [
+                support
+                for support in supports
+                if support["evidence_source_id"] == plan.scope.source_id
+                and support["observation_source_id"] == plan.scope.source_id
+                and support["unit_source_id"] == plan.scope.source_id
+                and support["source_lineage_id"] == support["source_unit_id"]
+            ]
+            current_supports = [
+                support
+                for support in structurally_valid
+                if support["observation_revision_id"] == support["current_revision_id"]
+            ]
+            current_scope_total = sum(
+                support["source_unit_id"] == plan.scope.source_unit_id
+                for support in current_supports
+            )
             if memory_id in created_ids | reactivated_ids and current_scope_total == 0:
                 raise ValueError(f"projected lifecycle activated Memory without source support: {memory_id}")
-            if invalid:
+            accepted_supports = [
+                support
+                for support in structurally_valid
+                if support["observation_revision_id"] == support["current_revision_id"]
+                or (memory_id, support["evidence_reference_id"]) in contested_supports
+            ]
+            if len(accepted_supports) != len(supports):
                 raise ValueError(f"projected lifecycle left stale or ambiguous source support: {memory_id}")
 
     async def _stage_lifecycle_evidence_unlocked(
