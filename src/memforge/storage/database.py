@@ -90,6 +90,7 @@ from memforge.memory.evidence import (
 from memforge.memory.lifecycle_plan import (
     build_unprovable_cutover_resolution,
     ClaimIdentityPolicy,
+    ContestedSupportEdge,
     contested_supports_from_staged_evidence,
     CutoverFindingReason,
     CutoverFindingStatus,
@@ -6605,12 +6606,12 @@ class Database:
     ) -> None:
         """Fail closed when committed source support is not current, stable lineage.
 
-        Review-only plans intentionally preserve the incumbent while a human
-        decides; their contested support is represented by the durable review.
-        Every applied non-review plan must leave each surviving same-source
-        assertion pinned to an Observation current in its own stable Source
-        Unit. A newly activated Memory must additionally gain support in the
-        plan's current Unit.
+        A pending Review intentionally preserves only its exact incumbent edge
+        while a human decides. The current Plan's staged Reviews and prior
+        applied Reviews whose own Source Unit revision remains current share
+        that contract. Every other surviving same-source assertion must point
+        to an Observation current in its own stable Source Unit. A newly
+        activated Memory must additionally gain support in the Plan's Unit.
         """
 
         created_ids = {
@@ -6650,18 +6651,22 @@ class Database:
                 continue
             async with self.db.execute(
                 """SELECT msa.evidence_reference_id,
+                          er.observation_id,
                           eu.source_id AS evidence_source_id,
                           so.source_id AS observation_source_id,
                           su.source_id AS unit_source_id,
                           eu.source_lineage_id,
                           so.source_unit_id,
                           er.observation_revision_id,
+                          sor.observation_id AS revision_observation_id,
                           so.current_revision_id
                    FROM memory_support_assertions msa
-                   JOIN evidence_references er ON er.id = msa.evidence_reference_id
-                   JOIN evidence_units eu ON eu.id = er.evidence_unit_id
-                   JOIN source_observations so ON so.id = er.observation_id
-                   JOIN source_units su ON su.id = so.source_unit_id
+                   LEFT JOIN evidence_references er ON er.id = msa.evidence_reference_id
+                   LEFT JOIN evidence_units eu ON eu.id = er.evidence_unit_id
+                   LEFT JOIN source_observations so ON so.id = er.observation_id
+                   LEFT JOIN source_observation_revisions sor
+                     ON sor.id = er.observation_revision_id
+                   LEFT JOIN source_units su ON su.id = so.source_unit_id
                    WHERE msa.memory_id = ? AND msa.source_id = ? AND msa.active = 1""",
                 (memory_id, plan.scope.source_id),
             ) as cursor:
@@ -6673,6 +6678,7 @@ class Database:
                 and support["observation_source_id"] == plan.scope.source_id
                 and support["unit_source_id"] == plan.scope.source_id
                 and support["source_lineage_id"] == support["source_unit_id"]
+                and support["revision_observation_id"] == support["observation_id"]
             ]
             current_supports = [
                 support
@@ -6689,7 +6695,13 @@ class Database:
                 support
                 for support in structurally_valid
                 if support["observation_revision_id"] == support["current_revision_id"]
-                or (memory_id, support["evidence_reference_id"]) in contested_supports
+                or ContestedSupportEdge(
+                    memory_id=memory_id,
+                    source_id=plan.scope.source_id,
+                    source_unit_id=support["source_unit_id"],
+                    evidence_reference_id=support["evidence_reference_id"],
+                )
+                in contested_supports
             ]
             if len(accepted_supports) != len(supports):
                 raise ValueError(f"projected lifecycle left stale or ambiguous source support: {memory_id}")
@@ -6699,7 +6711,7 @@ class Database:
         *,
         source_id: str,
         memory_ids: set[str],
-    ) -> frozenset[tuple[str, str]]:
+    ) -> frozenset[ContestedSupportEdge]:
         """Load exact contested edges from previously applied pending Reviews."""
 
         ordered_memory_ids = sorted(memory_ids)
@@ -6709,6 +6721,7 @@ class Database:
         rows = await self.db.execute_fetchall(
             f"""SELECT lr.incumbent_memory_id,
                        lp.source_id AS plan_source_id,
+                       lp.source_unit_id AS plan_source_unit_id,
                        lr.staged_evidence_json
                   FROM lifecycle_reviews lr
                   JOIN lifecycle_plans lp ON lp.id = lr.lifecycle_plan_id
@@ -6721,7 +6734,7 @@ class Database:
                    AND lr.incumbent_memory_id IN ({placeholders})""",
             (source_id, *ordered_memory_ids),
         )
-        contested: set[tuple[str, str]] = set()
+        contested: set[ContestedSupportEdge] = set()
         for row in rows:
             staged = json.loads(row["staged_evidence_json"] or "{}")
             if not isinstance(staged, Mapping):
@@ -6730,6 +6743,7 @@ class Database:
                 contested_supports_from_staged_evidence(
                     incumbent_memory_id=row["incumbent_memory_id"],
                     source_id=row["plan_source_id"],
+                    source_unit_id=row["plan_source_unit_id"],
                     staged_evidence=staged,
                 )
             )

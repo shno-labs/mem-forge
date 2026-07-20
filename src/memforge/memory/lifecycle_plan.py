@@ -452,12 +452,23 @@ class LifecyclePlan:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class ContestedSupportEdge:
+    """One exact Support edge intentionally retained by a pending Review."""
+
+    memory_id: str
+    source_id: str
+    source_unit_id: str
+    evidence_reference_id: str
+
+
 def contested_supports_from_staged_evidence(
     *,
     incumbent_memory_id: str,
     source_id: str,
+    source_unit_id: str,
     staged_evidence: Mapping[str, object],
-) -> frozenset[tuple[str, str]]:
+) -> frozenset[ContestedSupportEdge]:
     """Parse exact incumbent Support edges intentionally held for Review.
 
     A pending Review may keep an incumbent active on its previous revision
@@ -466,7 +477,7 @@ def contested_supports_from_staged_evidence(
     weaken validation for any other Memory or edge.
     """
 
-    contested: set[tuple[str, str]] = set()
+    contested: set[ContestedSupportEdge] = set()
     proposed = staged_evidence.get("proposed_mutations")
     if not isinstance(proposed, Sequence) or isinstance(proposed, (str, bytes)):
         raise ValueError("create_review mutation requires proposed_mutations")
@@ -491,7 +502,12 @@ def contested_supports_from_staged_evidence(
         ):
             raise ValueError("create_review remove_support requires stable evidence references")
         contested.update(
-            (incumbent_memory_id, reference_id)
+            ContestedSupportEdge(
+                memory_id=incumbent_memory_id,
+                source_id=source_id,
+                source_unit_id=source_unit_id,
+                evidence_reference_id=reference_id,
+            )
             for reference_id in reference_ids
         )
     return frozenset(contested)
@@ -499,10 +515,10 @@ def contested_supports_from_staged_evidence(
 
 def pending_review_contested_supports(
     plan: LifecyclePlan,
-) -> frozenset[tuple[str, str]]:
+) -> frozenset[ContestedSupportEdge]:
     """Return exact contested edges staged by Reviews in the current Plan."""
 
-    contested: set[tuple[str, str]] = set()
+    contested: set[ContestedSupportEdge] = set()
     for review_mutation in plan.mutations:
         if review_mutation.mutation_type is not LifecycleMutationType.CREATE_REVIEW:
             continue
@@ -513,6 +529,7 @@ def pending_review_contested_supports(
             contested_supports_from_staged_evidence(
                 incumbent_memory_id=review_mutation.memory_id,
                 source_id=review_mutation.source_id,
+                source_unit_id=plan.scope.source_unit_id,
                 staged_evidence=staged,
             )
         )

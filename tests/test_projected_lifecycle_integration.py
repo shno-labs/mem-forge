@@ -1165,6 +1165,117 @@ async def test_later_unit_plan_preserves_exact_support_contested_by_durable_revi
 
 
 @pytest.mark.asyncio
+async def test_review_does_not_exempt_support_from_another_source_unit(
+    db: Database,
+) -> None:
+    first = _projection(run_id="projection-review-unit-1", body="A7 is removed.")
+    await db.record_source_projection(first)
+    incumbent = await _seed_incumbent_support(db, projection=first)
+    old_support = await db.get_active_memory_support_reference_ids(incumbent.id)
+    changed = _projection(
+        run_id="projection-review-unit-2",
+        body="A7 is retained.",
+        prior=first.source_unit_revisions[0],
+        prior_observations={
+            revision.observation_id: revision
+            for revision in first.observation_revisions
+        },
+    )
+    await db.record_source_projection(changed)
+    other = _projection(
+        run_id="projection-review-other-unit",
+        body="An unrelated page changes.",
+        item_id="confluence-456",
+        page_id="456",
+    )
+    await db.record_source_projection(other)
+    plan = SimpleNamespace(
+        mutations=(
+            LifecycleMutation(
+                mutation_type=LifecycleMutationType.CREATE_REVIEW,
+                memory_id=incumbent.id,
+                source_id="src-1",
+                payload={
+                    "staged_evidence": {
+                        "proposed_mutations": [
+                            {
+                                "mutation_type": "remove_support",
+                                "memory_id": incumbent.id,
+                                "source_id": "src-1",
+                                "evidence_reference_ids": list(old_support),
+                            }
+                        ]
+                    }
+                },
+            ),
+        ),
+        coverage_proof=SimpleNamespace(
+            mandatory_incumbent_ids=(incumbent.id,)
+        ),
+        scope=SimpleNamespace(
+            source_id="src-1",
+            source_unit_id=other.source_units[0].id,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="stale or ambiguous source support"):
+        await db._validate_projected_support_invariant_unlocked(plan)
+
+
+@pytest.mark.asyncio
+async def test_review_does_not_exempt_mismatched_observation_revision_lineage(
+    db: Database,
+) -> None:
+    first = _projection(run_id="projection-review-lineage-1", body="A7 is removed.")
+    await db.record_source_projection(first)
+    incumbent = await _seed_incumbent_support(db, projection=first)
+    support = await db.get_active_memory_support_reference_ids(incumbent.id)
+    other = _projection(
+        run_id="projection-review-lineage-other",
+        body="An unrelated page changes.",
+        item_id="confluence-456",
+        page_id="456",
+    )
+    await db.record_source_projection(other)
+    await db.db.execute(
+        "UPDATE evidence_references SET observation_revision_id = ? WHERE id = ?",
+        (other.observation_revisions[0].id, support[0]),
+    )
+    await db.db.commit()
+    plan = SimpleNamespace(
+        mutations=(
+            LifecycleMutation(
+                mutation_type=LifecycleMutationType.CREATE_REVIEW,
+                memory_id=incumbent.id,
+                source_id="src-1",
+                payload={
+                    "staged_evidence": {
+                        "proposed_mutations": [
+                            {
+                                "mutation_type": "remove_support",
+                                "memory_id": incumbent.id,
+                                "source_id": "src-1",
+                                "evidence_reference_ids": list(support),
+                            }
+                        ]
+                    }
+                },
+            ),
+        ),
+        coverage_proof=SimpleNamespace(
+            mandatory_incumbent_ids=(incumbent.id,)
+        ),
+        scope=SimpleNamespace(
+            source_id="src-1",
+            source_unit_id=first.source_units[0].id,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="stale or ambiguous source support"):
+        await db._validate_projected_support_invariant_unlocked(plan)
+
+
+@pytest.mark.asyncio
 async def test_projected_support_invariant_accepts_other_valid_same_source_unit(
     db: Database,
 ) -> None:
