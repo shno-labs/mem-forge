@@ -30,6 +30,7 @@ from memforge.agent_knowledge import (
 from memforge.memory.project_resolver import resolve_project_key
 from memforge.llm.structured import AgentSessionAuthorityResponse
 from memforge.models import AgentHookReceipt, AgentSessionReceipt, content_hash, slugify
+from memforge.repo_identity import normalize_repo_identifier
 from memforge.storage.database import Database
 from memforge.source_activity import SourceActivityConflict, SourceActivityKind
 
@@ -119,33 +120,6 @@ def agent_session_source_id(client: str, owner_user_id: str) -> str:
 def agent_session_source_name(client: str) -> str:
     """Return the display name for the given client's agent-session source."""
     return _KNOWN_CLIENT_SOURCE_NAMES.get(client, f"{client.title()} Session")
-
-
-def normalize_repo_identifier(repo: str | None) -> str | None:
-    """Return the stable repository identity used for agent-session grouping.
-
-    Remote URLs are normalized to ``host/org/repo`` without protocol, user, or
-    ``.git`` suffix. Plain repo slugs are lower-cased and returned unchanged.
-    """
-    if repo is None:
-        return None
-    value = repo.strip()
-    if not value:
-        return None
-
-    ssh_match = re.match(r"^[^/@]+@([^:/]+):(.+)$", value)
-    if ssh_match:
-        host, path = ssh_match.groups()
-        value = f"{host}/{path}"
-    else:
-        value = re.sub(r"^[a-z][a-z0-9+.-]*://", "", value, flags=re.IGNORECASE)
-        value = re.sub(r"^[^@/]+@", "", value)
-
-    value = value.split("?", 1)[0].split("#", 1)[0].rstrip("/")
-    if value.endswith(".git"):
-        value = value[:-4]
-    value = re.sub(r"/+", "/", value)
-    return value.lower() or None
 
 
 _SECRET_PATTERNS = [
