@@ -19,7 +19,7 @@ from memforge.llm.structured import (
     ReconciliationResponse,
 )
 from memforge.memory.audit import MemoryAuditLogger
-from memforge.memory.engine import MemoryEngine
+from memforge.memory.engine import MemoryEngine, _memory_equivalence_pair_json
 from memforge.memory.evidence import (
     EvidenceContentProvenance,
     EvidenceReference,
@@ -585,8 +585,10 @@ class _SemanticEquivalentClient:
 
     async def classify_memory_equivalence(self, prompt: str, **kwargs):
         del kwargs
-        assert "A7 is removed." in prompt
-        assert "A7 remains excluded." in prompt
+        pair = prompt.split("<claim_pair>", 1)[1].split("</claim_pair>", 1)[0]
+        payload = json.loads(pair)
+        assert set(payload) == {"claim_a", "claim_b"}
+        assert set(payload.values()) == {"A7 is removed.", "A7 remains excluded."}
         return MemoryEquivalenceResponse(
             equivalent=True,
             reason="Both claims state that A7 is excluded.",
@@ -638,6 +640,19 @@ def test_lifecycle_access_identity_treats_project_as_relevance_only() -> None:
     )
 
     assert pay == risk
+
+
+def test_memory_equivalence_pair_payload_is_order_independent_and_neutral() -> None:
+    first = "The deployment policy permits at most three retry attempts."
+    second = "The maximum retry count permitted by the deployment policy is 3."
+
+    forward = _memory_equivalence_pair_json(first, second)
+    reverse = _memory_equivalence_pair_json(second, first)
+
+    assert forward == reverse
+    payload = json.loads(forward)
+    assert set(payload) == {"claim_a", "claim_b"}
+    assert set(payload.values()) == {first, second}
 
 
 async def _seed_incumbent_support(
