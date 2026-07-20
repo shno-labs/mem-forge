@@ -22,6 +22,7 @@ from typing import Any, Mapping, Sequence
 
 import aiosqlite
 
+from memforge.agent_session_contract import successful_agent_session_activity_at
 from memforge.local_agent.source_contract import (
     local_agent_completion_status,
     local_agent_source_config_revision,
@@ -12937,54 +12938,70 @@ class Database:
 
     async def upsert_agent_session_receipt(self, receipt: AgentSessionReceipt) -> None:
         """Insert or update lineage for a generated agent session document."""
+        activity_at = successful_agent_session_activity_at(receipt)
         async with self._write_lock:
-            await self.db.execute(
-                """INSERT INTO agent_session_receipts (
-                    doc_id, source_id, client, session_id, trigger, workspace,
-                    repo, branch, commit_sha, history_window_kind,
-                    history_window_start, history_window_end, submitted_at,
-                    document_hash, source_kind, document_uri, metadata, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(doc_id) DO UPDATE SET
-                    source_id=excluded.source_id,
-                    client=excluded.client,
-                    session_id=excluded.session_id,
-                    trigger=excluded.trigger,
-                    workspace=excluded.workspace,
-                    repo=excluded.repo,
-                    branch=excluded.branch,
-                    commit_sha=excluded.commit_sha,
-                    history_window_kind=excluded.history_window_kind,
-                    history_window_start=excluded.history_window_start,
-                    history_window_end=excluded.history_window_end,
-                    submitted_at=excluded.submitted_at,
-                    document_hash=excluded.document_hash,
-                    source_kind=excluded.source_kind,
-                    document_uri=excluded.document_uri,
-                    metadata=excluded.metadata,
-                    updated_at=excluded.updated_at""",
-                (
-                    receipt.doc_id,
-                    receipt.source_id,
-                    receipt.client,
-                    receipt.session_id,
-                    receipt.trigger,
-                    receipt.workspace,
-                    receipt.repo,
-                    receipt.branch,
-                    receipt.commit_sha,
-                    receipt.history_window_kind,
-                    receipt.history_window_start,
-                    receipt.history_window_end,
-                    receipt.submitted_at,
-                    receipt.document_hash,
-                    receipt.source_kind,
-                    receipt.document_uri,
-                    json.dumps(receipt.metadata),
-                    receipt.updated_at or _now_iso(),
-                ),
-            )
-            await self.db.commit()
+            try:
+                await self.db.execute(
+                    """INSERT INTO agent_session_receipts (
+                        doc_id, source_id, client, session_id, trigger, workspace,
+                        repo, branch, commit_sha, history_window_kind,
+                        history_window_start, history_window_end, submitted_at,
+                        document_hash, source_kind, document_uri, metadata, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(doc_id) DO UPDATE SET
+                        source_id=excluded.source_id,
+                        client=excluded.client,
+                        session_id=excluded.session_id,
+                        trigger=excluded.trigger,
+                        workspace=excluded.workspace,
+                        repo=excluded.repo,
+                        branch=excluded.branch,
+                        commit_sha=excluded.commit_sha,
+                        history_window_kind=excluded.history_window_kind,
+                        history_window_start=excluded.history_window_start,
+                        history_window_end=excluded.history_window_end,
+                        submitted_at=excluded.submitted_at,
+                        document_hash=excluded.document_hash,
+                        source_kind=excluded.source_kind,
+                        document_uri=excluded.document_uri,
+                        metadata=excluded.metadata,
+                        updated_at=excluded.updated_at""",
+                    (
+                        receipt.doc_id,
+                        receipt.source_id,
+                        receipt.client,
+                        receipt.session_id,
+                        receipt.trigger,
+                        receipt.workspace,
+                        receipt.repo,
+                        receipt.branch,
+                        receipt.commit_sha,
+                        receipt.history_window_kind,
+                        receipt.history_window_start,
+                        receipt.history_window_end,
+                        receipt.submitted_at,
+                        receipt.document_hash,
+                        receipt.source_kind,
+                        receipt.document_uri,
+                        json.dumps(receipt.metadata),
+                        receipt.updated_at or _now_iso(),
+                    ),
+                )
+                if activity_at is not None:
+                    await self.db.execute(
+                        """UPDATE sources
+                           SET last_sync = CASE
+                               WHEN last_sync IS NULL OR last_sync < ? THEN ?
+                               ELSE last_sync
+                           END
+                           WHERE id = ?""",
+                        (activity_at, activity_at, receipt.source_id),
+                    )
+                await self.db.commit()
+            except BaseException:
+                rollback_task = asyncio.create_task(self.db.rollback())
+                await _drain_task_despite_cancellation(rollback_task)
+                raise
 
     async def get_agent_session_receipt(self, doc_id: str) -> dict | None:
         """Return receipt metadata for one generated agent session document."""
