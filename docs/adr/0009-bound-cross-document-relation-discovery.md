@@ -38,6 +38,17 @@ candidate-provenance guards reject stale completion. One selected candidate
 ledger is indivisible; slice budgets decide whether to start another work item,
 not whether to silently complete a truncated ledger.
 
+Request creation, candidate retrieval, relation authority, and the final storage
+fence resolve the same effective access principal. Private work persists its
+owner as the durable principal, while execution and completion rederive that
+principal from the current locked challenger Memory; an optional request actor
+cannot widen or erase the boundary. A contradiction is a cross-source conflict
+only when the two Evidence lineages belong to different sources, and only that
+exact authority case may create the pending Review. A same-source contradiction
+remains an independent, non-destructive relation. Sharing an owner or repository
+therefore permits discovery but never converts a conflict into automatic
+lifecycle authority.
+
 Before constructing the retrieval and classifier runtime, an idle worker uses a
 bounded read-only readiness probe with the same retry-attempt ceiling as the
 lease policy. The probe is only an initialization guard; the fenced lease
@@ -84,3 +95,5 @@ blocking and filtered nearest-neighbor retrieval patterns.
 - [Elastic RRF API](https://www.elastic.co/docs/reference/elasticsearch/rest-apis/reciprocal-rank-fusion)
 - [A Survey of Blocking and Filtering Techniques for Entity Resolution](https://arxiv.org/abs/1905.06167)
 - [Filtered Vector Search: State of the Art and Research Opportunities](https://research.google/pubs/filtered-vector-search-state-of-the-art-and-research-opportunities/)
+- [OWASP Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
+- [Microsoft background job security guidance](https://learn.microsoft.com/en-us/azure/architecture/best-practices/background-jobs)
