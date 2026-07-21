@@ -116,6 +116,14 @@ CONTRADICTION | TEMPORAL | CLARIFICATION | UNRELATED
 
 Only contradictions or ambiguous replacements should quarantine a challenger.
 
+Cross-document candidate discovery is not the destructive lifecycle ledger. It
+retrieves bounded IDs from entity, vector, and lexical channels, fuses them with
+RRF, applies exact access/provenance predicates to lightweight rows, and loads
+full Memory content only for the final candidates. A discovery result may add a
+Relation or Review; it cannot supersede or retire another source's Memory. The
+same-source reconciliation path separately retains complete coverage of every
+directly affected incumbent.
+
 ## Case Matrix
 
 | # | Situation | Correct operation |
