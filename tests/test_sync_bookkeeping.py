@@ -69,6 +69,10 @@ async def db(tmp_path):
     await database.close()
 
 
+async def _skip_retry_delay(_delay: float) -> None:
+    """Preserve retry attempts without turning contract tests into wall-clock tests."""
+
+
 @pytest.mark.asyncio
 async def test_expired_source_activity_can_be_reacquired_with_same_id(
     db: Database,
@@ -3888,6 +3892,7 @@ async def test_sync_memory_observer_records_lifecycle_exit_when_document_fails(d
         memory_store=None,
         max_concurrent=1,
         memory_observer=observer,
+        retry_sleep=_skip_retry_delay,
     )
 
     state = await orchestrator.sync_gene(
@@ -7564,6 +7569,7 @@ async def test_rebaseline_preflight_fails_closed_on_empty_normalized_content(
         memory_extractor=NoopMemoryExtractor(),
         memory_engine=NoopMemoryEngine(),
         memory_store=None,
+        retry_sleep=_skip_retry_delay,
     )
 
     state = await orchestrator.sync_gene(
@@ -7626,6 +7632,7 @@ async def test_rebaseline_preflight_rejects_truncated_jira_projection(
         memory_extractor=NoopMemoryExtractor(),
         memory_engine=NoopMemoryEngine(),
         memory_store=None,
+        retry_sleep=_skip_retry_delay,
     )
     full_payload = {
         "id": "100000",
@@ -8374,6 +8381,7 @@ async def test_full_document_extraction_failure_is_audited(db: Database):
         memory_engine=NoopMemoryEngine(),
         memory_store=memory_store,
         max_concurrent=1,
+        retry_sleep=_skip_retry_delay,
     )
 
     state = await orchestrator.sync_gene(
@@ -8871,6 +8879,7 @@ async def test_partial_unit_extraction_failure_skips_reconciliation(db: Database
         memory_engine=memory_engine,
         memory_store=memory_store,
         max_concurrent=1,
+        retry_sleep=_skip_retry_delay,
     )
 
     state = await orchestrator.sync_gene(
@@ -8940,6 +8949,7 @@ async def test_lifecycle_failure_preserves_projection_delta_for_ordinary_retry(d
         memory_engine=failing_engine,
         memory_store=None,
         max_concurrent=1,
+        retry_sleep=_skip_retry_delay,
     )
     failed_state = await failed.sync_gene(
         gene=UpdatingDocumentGene(new_markdown, version="2"),
@@ -9130,6 +9140,10 @@ async def test_document_vector_failure_happens_before_memory_mutations(db: Datab
     release.set()
     memory_engine = CountingMemoryEngine(inserted=3)
     vector_store = FailingVectorStore()
+    retry_delays: list[float] = []
+
+    async def record_retry_delay(delay: float) -> None:
+        retry_delays.append(delay)
 
     def fake_embed_texts(texts, *args, **kwargs):
         return [[0.1, 0.2, 0.3] for _ in texts]
@@ -9146,6 +9160,7 @@ async def test_document_vector_failure_happens_before_memory_mutations(db: Datab
         vector_store=vector_store,
         embed_cfg={"base_url": "http://embedding", "api_key": "test", "model": "test"},
         max_concurrent=1,
+        retry_sleep=record_retry_delay,
     )
 
     state = await orchestrator.sync_gene(
@@ -9155,6 +9170,7 @@ async def test_document_vector_failure_happens_before_memory_mutations(db: Datab
     )
 
     assert state.last_sync_status == "failed"
+    assert retry_delays == [2, 4]
     assert memory_engine.enrichment_calls == 0
     assert memory_engine.projected_lifecycle_calls == 0
     assert await db.get_document("jira-0") is None
@@ -9414,6 +9430,7 @@ async def test_missing_required_confluence_pdf_fails_sync_without_hiding_gap(db:
         vector_store=None,
         embed_cfg={},
         max_concurrent=1,
+        retry_sleep=_skip_retry_delay,
     )
 
     state = await orchestrator.sync_gene(
@@ -9498,6 +9515,7 @@ async def test_confluence_pdf_storage_failure_is_not_reported_as_export_failure(
         vector_store=None,
         embed_cfg={},
         max_concurrent=1,
+        retry_sleep=_skip_retry_delay,
     )
 
     state = await orchestrator.sync_gene(
@@ -9644,6 +9662,7 @@ async def test_unchanged_stale_vector_fails_when_embedding_config_is_incomplete(
         vector_store=vector_store,
         embed_cfg={"base_url": "http://embedding", "api_key": "", "model": "test"},
         max_concurrent=1,
+        retry_sleep=_skip_retry_delay,
     )
 
     state = await orchestrator.sync_gene(
@@ -9718,11 +9737,7 @@ async def test_embedding_connection_failure_is_reported_as_provider_unreachable(
     def fake_embed_texts(texts, *args, **kwargs):
         raise OSError("[Errno 111] Connection refused")
 
-    async def no_retry_delay(delay):
-        return None
-
     monkeypatch.setattr("memforge.retrieval.embeddings.embed_texts", fake_embed_texts)
-    monkeypatch.setattr("memforge.pipeline.sync.asyncio.sleep", no_retry_delay)
 
     orchestrator = GeneSyncOrchestrator(
         db=db,
@@ -9734,6 +9749,7 @@ async def test_embedding_connection_failure_is_reported_as_provider_unreachable(
         vector_store=FalseyVectorStore(),
         embed_cfg={"base_url": "https://embedding.example", "api_key": "test-key", "model": "test"},
         max_concurrent=1,
+        retry_sleep=_skip_retry_delay,
     )
 
     state = await orchestrator.sync_gene(
