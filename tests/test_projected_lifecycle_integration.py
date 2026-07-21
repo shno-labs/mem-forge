@@ -3658,6 +3658,11 @@ async def test_relation_discovery_persists_direction_after_lifecycle_commit(
     assert relation.memory_id == candidate.id
     assert relation.relation_type is RelationType.REFINES
     assert relation.direction is RelationDirection.CHALLENGER_TO_CANDIDATE
+    [relation_run] = await db.db.execute_fetchall(
+        "SELECT result_memory_id FROM relation_runs WHERE evidence_unit_id = ?",
+        (unit.id,),
+    )
+    assert relation_run["result_memory_id"] == challenger.id
 
 
 @pytest.mark.asyncio

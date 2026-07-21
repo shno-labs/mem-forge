@@ -373,6 +373,7 @@ class RelationDiscovery:
             lifecycle_action=lifecycle_action,
             review_case=review_case,
             status="review" if cross_source_conflicts else "checked",
+            result_memory_id=challenger.id,
             audit={
                 "source": "relation_discovery",
                 "work_id": work.request.id,

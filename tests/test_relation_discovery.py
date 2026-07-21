@@ -211,6 +211,7 @@ async def test_relation_discovery_finishes_one_selected_ledger_before_slice_budg
     assert result.completed_work == 1
     assert result.checked_candidate_pairs == 3
     assert store.completed is not None
+    assert store.completed.relation_run.result_memory_id == challenger.id
     assert {item.memory_id for item in store.completed.candidates} == {
         "candidate-0",
         "candidate-1",
