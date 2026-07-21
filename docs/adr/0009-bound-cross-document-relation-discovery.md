@@ -25,9 +25,25 @@ primitive fuses IDs from those channels. The detector applies exact access and
 provenance predicates to lightweight candidate rows, adaptively selects between
 32 and 128 candidates, and only then batch-loads full Memory content. Access and
 provenance are revalidated after classification and before any Relation write;
-a concurrent change fails the run closed instead of persisting a stale edge. Runtime
-telemetry is kept outside the deterministic RelationRun payload; RelationRun
-identity includes the selected candidate snapshot.
+a concurrent change fails the run closed instead of persisting a stale edge.
+
+The authoritative Lifecycle transaction commits Memory, Evidence, Support,
+vector-outbox work, and a narrow durable Relation Discovery request. It does not
+wait for non-destructive cross-document classification. A bounded worker later
+leases that content- and revision-pinned request, performs retrieval and batched
+classification, then atomically commits its RelationRun, relations, any required
+cross-source Review, and work completion. Lease owner/token fencing and current
+Memory, Source Unit revision, Evidence, Support, access, subscription, and
+candidate-provenance guards reject stale completion. One selected candidate
+ledger is indivisible; slice budgets decide whether to start another work item,
+not whether to silently complete a truncated ledger.
+
+Relation discovery may persist `EQUIVALENT`, directional `REFINES`, or
+`CONTRADICTS`, but it never changes Memory identity or retires or supersedes a
+Memory. An independent cross-source contradiction preserves both lineages and
+creates a deterministic pending Review unless an explicit Source Authority
+Policy is introduced later. Runtime telemetry is kept outside the deterministic
+RelationRun identity, which includes the selected candidate snapshot.
 
 This supersedes the assumption that a truncated cross-document discovery page
 is an incomplete mandatory lifecycle ledger.
@@ -40,6 +56,14 @@ recall must be evaluated with representative cases and live latency, queue, and
 RSS measurements. Channel failure is audited but does not authorize destructive
 fallback behavior. Adding a future retrieval backend requires only another
 ranked-ID channel and the same access/provenance postfilter.
+
+Source synchronization is not held open by discovery latency or a transient
+discovery failure. Failed work remains durable with bounded exponential retry;
+one worker slice cannot consume all attempts, and an exhausted item remains
+auditable as failed. Source-sync and relation slices are fairly interleaved so a
+continuous ingestion backlog cannot starve discovery. This is a dedicated
+domain work contract, not a replay ledger or generic job framework, and SQLite,
+HANA, and future adapters implement the same lease and completion semantics.
 
 The ranking choice follows the original RRF method and current production-search
 practice; bounded candidate generation follows standard entity-resolution
