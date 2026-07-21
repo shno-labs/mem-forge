@@ -38,6 +38,16 @@ candidate-provenance guards reject stale completion. One selected candidate
 ledger is indivisible; slice budgets decide whether to start another work item,
 not whether to silently complete a truncated ledger.
 
+The current Evidence Relation projection has two ownership planes. The
+authoritative Lifecycle write owns source-support relations and may rebuild the
+whole projection when source evidence changes. Post-commit discovery owns only
+non-authoritative relations and replaces only that part of the projection; an
+empty discovery outcome therefore cannot remove authoritative support. If both
+planes address the same Evidence/Memory pair, authoritative support remains the
+current projection while each RelationRun retains its immutable audit snapshot.
+This supersedes the earlier assumption that the latest RelationRun owned every
+current relation for an Evidence Unit.
+
 Request creation, candidate retrieval, relation authority, and the final storage
 fence resolve the same effective access principal. Private work persists its
 owner as the durable principal, while execution and completion rederive that
@@ -81,6 +91,9 @@ auditable as failed. Source-sync and relation slices are fairly interleaved so a
 continuous ingestion backlog cannot starve discovery. This is a dedicated
 domain work contract, not a replay ledger or generic job framework, and SQLite,
 HANA, and future adapters implement the same lease and completion semantics.
+Adapters must also preserve the same projection ownership rule: Lifecycle
+replacement invalidates stale discovery, whereas discovery replacement cannot
+delete or overwrite authoritative support.
 An empty relation queue does not initialize vector or LLM runtime components,
 which keeps idle startup and test/application shutdown independent of heavy
 retrieval initialization.
