@@ -38,6 +38,12 @@ candidate-provenance guards reject stale completion. One selected candidate
 ledger is indivisible; slice budgets decide whether to start another work item,
 not whether to silently complete a truncated ledger.
 
+Before constructing the retrieval and classifier runtime, an idle worker uses a
+bounded read-only readiness probe with the same retry-attempt ceiling as the
+lease policy. The probe is only an initialization guard; the fenced lease
+remains the authority, so a concurrent enqueue is picked up on the next poll
+without weakening durability or correctness.
+
 Relation discovery may persist `EQUIVALENT`, directional `REFINES`, or
 `CONTRADICTS`, but it never changes Memory identity or retires or supersedes a
 Memory. An independent cross-source contradiction preserves both lineages and
@@ -64,6 +70,9 @@ auditable as failed. Source-sync and relation slices are fairly interleaved so a
 continuous ingestion backlog cannot starve discovery. This is a dedicated
 domain work contract, not a replay ledger or generic job framework, and SQLite,
 HANA, and future adapters implement the same lease and completion semantics.
+An empty relation queue does not initialize vector or LLM runtime components,
+which keeps idle startup and test/application shutdown independent of heavy
+retrieval initialization.
 
 The ranking choice follows the original RRF method and current production-search
 practice; bounded candidate generation follows standard entity-resolution
