@@ -2,6 +2,16 @@
 
 Memory identity reuse is provider-neutral and source-neutral. The engine checks exact active identity first, then interleaves bounded strict-vector and shared-entity candidates before structured semantic proof. Candidate recall never decides identity by itself, and the combined candidate set remains capped.
 
+Identity resolution is synchronous within one Reconciliation Scope. Exact
+content and a strict `EQUIVALENT` verdict reuse the durable Memory ID.
+`REFINES`, `CONTRADICTS`, `UNRELATED`, incomplete classifier coverage, and
+classifier failure do not reuse it; they create or retain independent
+proposition identities. Structured classification may batch exact pairs, but
+every requested pair must have one attributable result before equivalence is
+accepted. Normative requirements, plans, recommendations, and observed states
+have different truth conditions and are not equivalent merely because their
+subject and value match.
+
 Storage adapters apply active ordinary-Memory and access-identity predicates before candidate limits. Visibility, private owner, and repository identity are boundaries; Project affects ordering only. Equivalent claims may therefore reuse one canonical Memory across Source Units, sources, and Projects while each Support Assertion preserves its own revision-pinned lineage.
 
 Extraction reports durable claims directly supported by the current Primary
