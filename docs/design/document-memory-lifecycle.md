@@ -93,6 +93,12 @@ Review is a case over a proposed operation. The incumbent usually remains active
 `pending_review` memory status is reserved for hidden challengers or hidden
 suspect memories, not for every reviewed operation.
 
+An active incumbent may temporarily retain only the prior-revision Support
+edges that its durable Review explicitly stages for `REMOVE_SUPPORT`. Those
+edges are contested rather than current. Storage validation continues to
+reject every unrelated stale edge and every source or lineage mismatch; the
+presence of a Review is never a Plan-wide validation bypass.
+
 Create review when:
 
 - a mutation would conflict with another valid support edge

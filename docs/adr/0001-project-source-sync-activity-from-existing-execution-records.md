@@ -13,6 +13,13 @@ Source sync capability is derived from the Source Gene's declared
 scheduled, or worker-owned ordinary sync. Historical sync records remain
 auditable, but are not projected as current Source activity for such a type.
 
+For a managed push Source, a successful durable intake receipt advances the
+Source row's freshness watermark without creating an ordinary sync record.
+The receipt and the monotonic watermark commit atomically in every storage
+adapter; failed receipts do not advance it, and older or exact retries cannot
+move it backward. The read model therefore reflects accepted source activity
+while preserving the boundary between push intake and connector sync.
+
 When local collection successfully starts server processing, its terminal
 result records the returned `SourceSyncRun` ID as an immutable handoff receipt.
 A local sync cannot report success without that identity, and an idempotent
