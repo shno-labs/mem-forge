@@ -988,6 +988,9 @@ class SqliteRelationalStore:
             max_attempts=max_attempts,
         )
 
+    async def has_ready_relation_discovery_work(self, *, max_attempts: int) -> bool:
+        return await self._db.has_ready_relation_discovery_work(max_attempts=max_attempts)
+
     async def complete_relation_discovery_work(
         self,
         work_id: str,

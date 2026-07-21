@@ -7413,6 +7413,24 @@ class Database:
                 raise ValueError("lifecycle vector task is not pending")
             await self.db.commit()
 
+    async def has_ready_relation_discovery_work(self, *, max_attempts: int) -> bool:
+        """Return whether durable relation work is ready for a lease attempt."""
+
+        if max_attempts < 1:
+            raise ValueError("relation discovery readiness requires positive max attempts")
+        now = _now_iso()
+        rows = await self.db.execute_fetchall(
+            """SELECT 1 AS ready FROM relation_discovery_work
+               WHERE attempts < ? AND (
+                     status = 'pending'
+                  OR (status = 'failed' AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
+                  OR (status = 'running' AND lease_until < ?)
+               )
+               LIMIT 1""",
+            (max_attempts, now, now),
+        )
+        return bool(rows)
+
     async def lease_relation_discovery_work(
         self,
         *,

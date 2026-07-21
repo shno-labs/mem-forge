@@ -780,6 +780,12 @@ class SourceSyncWorker:
     async def _process_relation_discovery_once(self) -> bool:
         try:
             if self._relation_runtime is None:
+                from memforge.memory.relation_discovery import DEFAULT_RELATION_DISCOVERY_BUDGET
+
+                if not await self.db.has_ready_relation_discovery_work(
+                    max_attempts=DEFAULT_RELATION_DISCOVERY_BUDGET.max_attempts,
+                ):
+                    return False
                 self._relation_runtime = await self.runtime_provider.build_sync_runtime(
                     self.db,
                     self.config,

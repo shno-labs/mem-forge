@@ -6714,6 +6714,29 @@ async def test_source_sync_worker_run_forever_polls_until_cancelled(db: Database
 
 
 @pytest.mark.asyncio
+async def test_idle_source_sync_worker_skips_relation_runtime_without_ready_work(
+    db: Database,
+) -> None:
+    import memforge.runtime as runtime
+
+    class BlockingRuntimeProvider:
+        async def build_sync_runtime(self, db, config, **kwargs):
+            del db, config, kwargs
+            await asyncio.Event().wait()
+
+    worker = runtime.SourceSyncWorker(
+        db,
+        AppConfig(),
+        runtime_provider=BlockingRuntimeProvider(),
+        worker_id="worker-empty-relation-queue",
+    )
+
+    result = await asyncio.wait_for(worker.run_once(), timeout=0.1)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_source_sync_worker_interleaves_relation_work_during_source_backlog(
     db: Database,
     monkeypatch,

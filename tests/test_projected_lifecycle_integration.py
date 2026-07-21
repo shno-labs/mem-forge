@@ -3193,6 +3193,7 @@ async def test_new_projected_memory_persists_explicit_source_observation_support
     assert len(support) == 1
     assert support[0].anchor.observation_id == primary.id
     assert support[0].anchor.observation_revision_id == primary_revision.id
+    assert await db.has_ready_relation_discovery_work(max_attempts=5) is True
     [work] = await db.lease_relation_discovery_work(
         worker_id="relation-worker-a",
         limit=10,
@@ -3206,6 +3207,7 @@ async def test_new_projected_memory_persists_explicit_source_observation_support
     assert work.request.source_unit_revision_id == projection.source_unit_revisions[0].id
     assert work.attempts == 1
     assert work.lease_token
+    assert await db.has_ready_relation_discovery_work(max_attempts=5) is False
 
     with pytest.raises(ValueError, match="lease was lost"):
         await db.obsolete_relation_discovery_work(
@@ -3223,6 +3225,7 @@ async def test_new_projected_memory_persists_explicit_source_observation_support
         next_attempt_at="2999-01-01T00:00:00+00:00",
         exhausted=False,
     )
+    assert await db.has_ready_relation_discovery_work(max_attempts=5) is False
     assert (
         await db.lease_relation_discovery_work(
             worker_id="relation-worker-c",
@@ -3237,6 +3240,7 @@ async def test_new_projected_memory_persists_explicit_source_observation_support
         ("2000-01-01T00:00:00+00:00", work.request.id),
     )
     await db.db.commit()
+    assert await db.has_ready_relation_discovery_work(max_attempts=5) is True
     [retried] = await db.lease_relation_discovery_work(
         worker_id="relation-worker-c",
         limit=1,

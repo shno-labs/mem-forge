@@ -70,6 +70,9 @@ class RelationDiscoveryBudget:
             raise ValueError("relation discovery budget values must be positive")
 
 
+DEFAULT_RELATION_DISCOVERY_BUDGET = RelationDiscoveryBudget()
+
+
 @dataclass(frozen=True, slots=True)
 class RelationDiscoverySliceResult:
     attempted_work: int = 0
@@ -102,7 +105,7 @@ class RelationDiscovery:
         worker_id: str,
         budget: RelationDiscoveryBudget | None = None,
     ) -> RelationDiscoverySliceResult:
-        policy = budget or RelationDiscoveryBudget()
+        policy = budget or DEFAULT_RELATION_DISCOVERY_BUDGET
         started = time.perf_counter()
         attempted = completed = failed = obsolete = 0
         checked_pairs = llm_calls = prompt_chars = 0
