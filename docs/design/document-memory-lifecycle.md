@@ -99,6 +99,16 @@ edges are contested rather than current. Storage validation continues to
 reject every unrelated stale edge and every source or lineage mismatch; the
 presence of a Review is never a Plan-wide validation bypass.
 
+When a later lifecycle transaction makes the incumbent terminal, that same
+transaction marks every pending proposal Review and relation/conflict Review
+that targets the Memory as stale. Review rows remain durable history, but no
+Review remains actionable against a retired or superseded Memory.
+
+An approval Plan resolves its target Review before applying the approved
+mutations inside the same transaction. This prevents terminal-review cleanup
+from staling the Review being approved; if any approved mutation fails, the
+Review resolution rolls back with the rest of the Plan.
+
 Create review when:
 
 - a mutation would conflict with another valid support edge
