@@ -3396,7 +3396,10 @@ async def test_llm_config_put_can_preserve_and_clear_keys(db, tmp_path):
             "embedding_api_key": "embed-secret",
         }
     )
-    app = create_admin_app(db=db, config=_config(tmp_path))
+    config = _config(tmp_path)
+    config.sync.worker_enabled = False
+    config.sync.scheduler_enabled = False
+    app = create_admin_app(db=db, config=config)
 
     with TestClient(app) as client:
         preserve_response = client.put("/api/llm-config", json={"embedding_api_key": None})
@@ -3424,6 +3427,8 @@ async def test_llm_config_put_can_be_disabled_for_deployment_managed_config(db, 
         }
     )
     cfg = _config(tmp_path)
+    cfg.sync.worker_enabled = False
+    cfg.sync.scheduler_enabled = False
     cfg.server.llm_config_writable = False
     app = create_admin_app(db=db, config=cfg)
 
