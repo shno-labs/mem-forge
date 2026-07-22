@@ -9,8 +9,8 @@
 MemForge will add a **Memory Evaluation Mechanism** made of four cooperating parts:
 
 1. **Memory Audit Ledger**: an append-only operation log for memory decisions and outcomes.
-2. **Safe Memory Write Path**: a refined write boundary so memory mutations cannot bypass SQLite, FTS5, ChromaDB, and audit coordination.
-3. **Daily Deterministic Health Checks**: automated consistency checks across DB state, FTS5 rows, memory Chroma IDs, and document Chroma IDs.
+2. **Safe Memory Write Path**: a refined write boundary so Memory mutations cannot bypass relational state, FTS, the durable Memory-vector outbox, and audit coordination.
+3. **Daily Deterministic Health Checks**: automated consistency checks across DB state, FTS5 rows, Memory Chroma IDs, lifecycle relations, and vector-outbox state.
 4. **Periodic Evaluation Loop**: weekly agent review and monthly/release replay fixtures for semantic quality, lifecycle behavior, and retrieval impact.
 
 The weekly evaluator does not mutate memories. It produces findings and recommendations. Memory changes still happen through normal sync, review, admin, or engineering workflows.
@@ -31,7 +31,8 @@ Why did this memory get created, skipped, updated, corroborated, superseded,
 retired, quarantined, or left searchable?
 ```
 
-They also do not prove that SQLite, FTS5, and ChromaDB stayed aligned after each lifecycle operation.
+They also do not prove that relational state, FTS, the Memory-vector index, and
+durable outbox stayed aligned after each lifecycle operation.
 
 The evaluation mechanism gives the project a feedback loop while extraction, reconciliation, source support detection, entity resolution, and retrieval are still evolving.
 
@@ -39,7 +40,7 @@ The evaluation mechanism gives the project a feedback loop while extraction, rec
 
 - Record each important memory operation with enough context to review the decision later.
 - Separate semantic decisions from storage and index side effects.
-- Detect DB/FTS5/Chroma divergence and source-artifact provenance gaps quickly, before weekly review.
+- Detect relational/FTS/Memory-vector divergence, outbox stalls, and source-artifact provenance gaps quickly, before weekly review.
 - Make high-risk lifecycle and retrieval behavior visible to a human and to a reviewing agent.
 - Turn real failures into replay fixtures and regression tests.
 - Preserve purge and privacy expectations by avoiding unbounded raw evidence retention.
@@ -50,7 +51,7 @@ The evaluation mechanism gives the project a feedback loop while extraction, rec
 - No full source-document duplication inside audit rows.
 - No per-turn agent transcript journal.
 - No replacement for `memory_reviews`; evaluation findings are separate from review workbench decisions.
-- No attempt to make SQLite and ChromaDB transactionally atomic. The design detects and repairs non-atomic side effects instead.
+- No attempt to make the relational store and vector provider transactionally atomic. A durable outbox owns post-commit materialization and retry.
 
 ## Architecture
 
@@ -68,9 +69,8 @@ Decision owner
         v
 Safe mutation executor
   - MemoryStore for memory mutations
-  - DocumentVectorIndex for document-vector mutations
         |
-        +--> SQLite / FTS5 / ChromaDB
+        +--> relational store / FTS / Memory-vector outbox
         |
         +--> Memory Audit Ledger
         |
@@ -94,7 +94,7 @@ Human triage -> prompt, threshold, lifecycle, normalizer, retrieval, or test cha
 It should own execution for:
 
 - memory insert
-- memory content, confidence, or tag update
+- memory content or confidence update
 - deduplication and corroboration
 - source support add, update, and removal
 - supersede
@@ -103,7 +103,7 @@ It should own execution for:
 - purge
 - expired-memory retirement
 - document or source deletion effects that can retire memories
-- memory FTS5 and memory Chroma updates
+- memory FTS updates and durable Memory-vector outbox publication
 
 `MemoryStore` should not own:
 
@@ -114,26 +114,21 @@ It should own execution for:
 - review policy
 - entity-resolution strategy
 - weekly evaluation reports
-- document-vector indexing
+- source-artifact storage
 
 This keeps `MemoryStore` as the safe mutation executor, not the brain of the memory system.
 
-## Document Vectors
+## Memory Vector Boundary
 
-Memory vectors and document vectors are separate retrieval surfaces.
+The default semantic index contains Memory vectors only. Source documents remain
+available through source-artifact storage and revision-pinned Evidence; they do
+not have a separate document-vector retrieval surface.
 
-Memory vectors represent extracted memories and should be protected by `MemoryStore`.
-
-Document vectors represent source documents or document summaries and are written by sync as document fallback retrieval data. They should not be forced into `MemoryStore`, because they are not memories.
-
-Current implementation:
-
-- `DocumentVectorIndex` owns document Chroma writes, deletes, snapshots, and restores.
-- `MemoryStore` owns memory lifecycle consistency and uses `DocumentVectorIndex` only for source/document cascade cleanup.
-- Sync uses `DocumentVectorIndex` directly for document fallback vectors and stores/restores document-vector snapshots when later DB work fails.
-- Memory and document vector writes both use stored-vector hashing, so health compares metadata against the vector payload Chroma actually persisted.
-
-The daily health checker includes document Chroma consistency so deleted documents do not remain discoverable through document fallback. It also flags source-artifact provenance gaps for genes with required local renditions, such as Confluence documents with normalized content but no stored PDF URI.
+The core lifecycle transaction commits relational Memory state, provenance,
+the Memory-vector outbox task, and relation work atomically. Vector materialization
+occurs after commit under durable ownership and stale guards. Health evaluation
+checks active/terminal search visibility and noncompleted outbox ownership rather
+than coordinating a second document index.
 
 ## Audit Ledger
 
@@ -246,7 +241,7 @@ Retrieval evaluation events:
 
 ## Safe Write Path
 
-The implementation should refine current code so memory-affecting operations do not write directly to `Database` when they also affect FTS5, ChromaDB, audit state, or memory visibility.
+The implementation should refine current code so memory-affecting operations do not write directly to `Database` when they also affect FTS, the Memory-vector outbox, audit state, or memory visibility.
 
 Target shape:
 
@@ -272,9 +267,11 @@ Before corroborating a near-duplicate returned by Chroma:
 4. If not active, reject that Chroma candidate and emit `stale_chroma_candidate_detected`.
 5. Continue checking candidates or insert a new memory.
 
-### Non-Atomic Store Effects
+### Post-Commit Vector Effects
 
-SQLite and ChromaDB cannot be committed atomically together. The design therefore records separate events:
+The relational store and vector provider cannot be committed atomically together.
+The core transaction therefore publishes a durable Memory-vector task and records
+separate materialization events:
 
 ```text
 memory_update_attempted
@@ -286,7 +283,7 @@ chroma_upsert_failed
 index_repair_needed
 ```
 
-The daily health checker and repair flow consume these events.
+The vector worker, daily health checker, and repair flow consume these tasks and events.
 
 ## Audit Context
 
@@ -329,8 +326,8 @@ They should compute:
 - memory rows with no provenance
 - source support rows pointing to missing documents
 - duplicate content hashes among active memories
-- document Chroma IDs without SQLite document rows
-- SQLite documents missing document Chroma fallback entries when expected
+- noncompleted Memory-vector outbox tasks without valid ownership or retry state
+- active Memory-vector tasks whose lifecycle revision no longer matches current state
 - stale review age
 - pending review count by age band
 - contradiction rate
@@ -542,18 +539,18 @@ Release gate:
 
 1. Sync starts and creates `run_id`.
 2. The gene fetches and normalizes a document.
-3. Enrichment resolves entities and emits entity audit events.
-4. Extraction emits candidate events.
-5. Quality gate emits keep/skip events.
-6. `MemoryEngine` decides ADD.
-7. `MemoryStore` inserts the memory in SQLite and FTS5, upserts Chroma, and emits separate DB/index events.
-8. Daily health confirms the active memory exists in DB, FTS5, and Chroma.
-9. Weekly evaluation samples the case and checks groundedness, atomicity, and retrieval impact.
+3. One structured Source Unit extraction emits Memory candidates, revision-pinned Evidence localization, and entity mentions.
+4. The quality gate, CandidateLedger, and batched EntityResolver emit their audit events.
+5. `MemoryEngine` creates a Lifecycle Plan against the complete same-source incumbent scope.
+6. The core transaction commits lifecycle state, the Memory-vector outbox task, and relation work.
+7. Bounded Relation Discovery runs after commit and records its candidate/classification outcome.
+8. Daily health confirms current relational, FTS, Memory-vector, Evidence, relation, and outbox state.
+9. Weekly evaluation samples the case and checks groundedness, atomicity, cost, and retrieval impact.
 
 ### Updated Document
 
 1. Sync detects content hash change.
-2. Reconciliation proposes ADD, UPDATE, SUPERSEDE, DELETE, or NOOP.
+2. Source Unit extraction and lifecycle planning propose ADD, UPDATE, SUPERSEDE, DELETE, or NOOP against complete same-source incumbent coverage.
 3. Each proposal is audited before execution.
 4. Human-review-required proposals create pending review events.
 5. Executed lifecycle changes go through `MemoryStore`.
@@ -564,8 +561,9 @@ Release gate:
 
 1. Scheduler finds active memories past `valid_until`.
 2. Scheduler calls `MemoryStore.retire_expired_memories`, not a DB-only helper.
-3. `MemoryStore` marks each memory retired and removes it from FTS5 and Chroma.
-4. Audit records each retirement and index side effect.
+3. `MemoryStore` marks each memory retired, removes it from FTS5, and publishes
+   the Chroma removal through the durable Memory-vector outbox in one transaction.
+4. The post-commit vector worker applies and acknowledges the Chroma removal.
 5. Daily health verifies no retired memory remains searchable.
 
 ### Deleted Source Document
@@ -573,9 +571,10 @@ Release gate:
 1. Sync detects document deletion during a safe full-sync deletion pass.
 2. Deletion flows through `MemoryStore.delete_document`.
 3. SQLite determines which memories lost their last usable support.
-4. `MemoryStore` removes only newly retired memories from FTS5 and Chroma.
-5. Document-vector cleanup flows through `DocumentVectorIndex`.
-6. Daily health verifies memory and document index consistency.
+4. `MemoryStore` removes only newly retired memories from FTS5 and publishes
+   their Memory-vector removals through the durable outbox.
+5. The post-commit vector worker applies and acknowledges each Chroma removal.
+6. Daily health verifies Memory lifecycle and search-index consistency.
 
 ## Implementation Phases
 
@@ -613,7 +612,6 @@ Deliver:
 
 - Implemented: deterministic `/api/health` consistency checker.
 - Implemented: DB/FTS5/memory-Chroma ID-set checks.
-- Implemented: document-Chroma consistency checks.
 - Implemented: anomaly summaries.
 - Implemented: repair CLI that records repair marker events.
 - Remaining: scheduled/alerted repair automation if drift recurs.
@@ -656,15 +654,15 @@ Real evaluator findings should become regression tests so the same memory mistak
 - Active, retired, superseded, and pending-review memory visibility can be checked across SQLite, FTS5, and Chroma.
 - Chroma dedup candidates are verified against SQLite active status before corroboration.
 - Admin, scheduler, sync, support detection, and review flows use safe mutation APIs for memory-affecting writes.
-- Document-vector consistency is either managed by a dedicated index store or explicitly checked and reported.
+- Memory-vector outbox ownership, retries, stale guards, and final visibility are checked and reported.
 - Weekly evaluator findings are stored separately from `memory_reviews`.
 - Purge-sensitive payloads can be redacted without destroying operational audit metadata.
 - At least one replay fixture can be generated from an evaluation finding.
 
 ## Open Design Choices For Implementation
 
-- Resolved: document vectors use `DocumentVectorIndex`; memory lifecycle consistency remains in `MemoryStore`.
-- Resolved for now: the audit writer uses direct table inserts. An outbox worker is not required for current Chroma repair coordination.
+- Resolved: document vectors and `DocumentVectorIndex` are removed; source artifacts remain available through Evidence-backed resource access.
+- Resolved: Memory vector materialization uses the durable lifecycle outbox; audit events remain part of the relational decision record.
 - Exact retention periods for redacted snapshots and evidence excerpts.
 - Whether daily health should trigger alerts or repair suggestions in APScheduler beyond the current deterministic `/api/health` and repair CLI.
 - Which retrieval probes should seed the first replay set.
