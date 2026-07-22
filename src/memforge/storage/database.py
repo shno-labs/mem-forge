@@ -1350,6 +1350,11 @@ CREATE TABLE IF NOT EXISTS source_sync_snapshot_manifest_items (
     PRIMARY KEY (workspace_id, source_id, snapshot_id, doc_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_source_sync_manifest_item_attestation
+    ON source_sync_snapshot_manifest_items(
+        workspace_id, source_id, doc_id, revision, change_kind, snapshot_id
+    );
+
 CREATE TABLE IF NOT EXISTS local_agent_jobs (
     job_id TEXT PRIMARY KEY,
     workspace_id TEXT NOT NULL DEFAULT 'default',
@@ -2985,6 +2990,10 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
                 change_kind         TEXT NOT NULL CHECK (change_kind IN ('upsert', 'tombstone')),
                 PRIMARY KEY (workspace_id, source_id, snapshot_id, doc_id)
             )""",
+            """CREATE INDEX IF NOT EXISTS idx_source_sync_manifest_item_attestation
+               ON source_sync_snapshot_manifest_items(
+                   workspace_id, source_id, doc_id, revision, change_kind, snapshot_id
+               )""",
         ],
     ),
 ]
@@ -14989,6 +14998,63 @@ class Database:
         async with self.db.execute(query, params) as cursor:
             async for row in cursor:
                 results.append(_source_sync_input_from_row(row))
+        return results
+
+    async def find_source_sync_input_attestations(
+        self,
+        *,
+        source_id: str,
+        workspace_id: str,
+        manifest_items: Sequence[tuple[str, str, str]],
+    ) -> list[SourceSyncInput]:
+        """Return only latest immutable inputs matching exact manifest identities."""
+
+        from memforge.storage.source_sync_manifest import (
+            MANIFEST_ATTESTATION_LOOKUP_CHUNK_SIZE,
+        )
+
+        identities = tuple(
+            dict.fromkeys(
+                (str(doc_id), str(revision), str(change_kind))
+                for doc_id, revision, change_kind in manifest_items
+            )
+        )
+        if not identities:
+            return []
+        results: list[SourceSyncInput] = []
+        for offset in range(0, len(identities), MANIFEST_ATTESTATION_LOOKUP_CHUNK_SIZE):
+            chunk = identities[offset : offset + MANIFEST_ATTESTATION_LOOKUP_CHUNK_SIZE]
+            predicates = " OR ".join(
+                "(mi.doc_id = ? AND mi.revision = ? AND mi.change_kind = ?)"
+                for _identity in chunk
+            )
+            params: tuple[Any, ...] = (
+                workspace_id,
+                source_id,
+                *(value for identity in chunk for value in identity),
+            )
+            query = f"""WITH ranked_inputs AS (
+                           SELECT i.*,
+                                  ROW_NUMBER() OVER (
+                                      PARTITION BY mi.doc_id, mi.revision, mi.change_kind
+                                      ORDER BY i.input_generation DESC
+                                  ) AS attestation_rank
+                           FROM source_sync_snapshot_manifest_items mi
+                           JOIN source_sync_snapshot_items si
+                             ON si.workspace_id = mi.workspace_id
+                            AND si.source_id = mi.source_id
+                            AND si.snapshot_id = mi.snapshot_id
+                            AND si.doc_id = mi.doc_id
+                           JOIN source_sync_inputs i ON i.input_id = si.input_id
+                           WHERE mi.workspace_id = ? AND mi.source_id = ?
+                             AND ({predicates})
+                       )
+                       SELECT * FROM ranked_inputs
+                       WHERE attestation_rank = 1
+                       ORDER BY input_generation"""
+            async with self.db.execute(query, params) as cursor:
+                async for row in cursor:
+                    results.append(_source_sync_input_from_row(row))
         return results
 
     async def attach_source_sync_inputs_to_snapshot(

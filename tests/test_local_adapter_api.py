@@ -1112,6 +1112,18 @@ def test_github_repo_manifest_reuses_unchanged_input_without_another_package(tmp
                 repo_ref="main",
                 relative_path=relative_path,
             )
+            initial_manifest = client.post(
+                f"/api/sources/{source_id}/adapter/manifest",
+                json={
+                    "items": [
+                        {"doc_id": doc_id, "revision": "blob-sha-1", "change_kind": "upsert"}
+                    ],
+                    "coverage": "complete_snapshot",
+                    "sync_snapshot_id": "test-local-agent-job:attempt:1",
+                    "local_agent_job_id": "test-local-agent-job",
+                    "local_agent_attempt_count": 1,
+                },
+            )
             first = client.post(
                 f"/api/sources/{source_id}/adapter/packages",
                 json={
@@ -1133,6 +1145,8 @@ def test_github_repo_manifest_reuses_unchanged_input_without_another_package(tmp
                 },
             )
 
+        assert initial_manifest.status_code == 200, initial_manifest.text
+        assert initial_manifest.json()["required_doc_ids"] == [doc_id]
         assert first.status_code == 200, first.text
         assert planned.status_code == 200, planned.text
         assert planned.json() == {

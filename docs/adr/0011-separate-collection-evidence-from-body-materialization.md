@@ -90,7 +90,9 @@ capability:
   be missed.
 - **Teams** continues to use the existing delegated ChatSvc REST collector, not
   Microsoft Graph. Ordinary runs use bounded polling with overlap and stable
-  window revisions; unchanged windows are not uploaded. A periodic or explicit
+  window revisions; unchanged windows are not materialized into packages or
+  uploaded. ChatSvc message polling itself remains collection evidence because
+  the provider exposes no cheaper authoritative window revision feed. A periodic or explicit
   complete reconciliation over the configured scope detects older changes.
   Bounded-poll absence never creates a tombstone, and incomplete conversation
   polling preserves prior state.
@@ -120,6 +122,13 @@ window ledger. Root-tree no-op probing, daemon-local digest caching, bounded
 Teams checkpoint polling, and periodic Teams complete reconciliation remain
 acceptance work under issue #164; they must reuse this contract rather than add
 another execution state machine.
+
+Reusable inputs are selected by a bounded, indexed exact match on normalized
+manifest membership `(workspace, source, doc_id, revision, change_kind)` and
+latest input generation. The planner never loads all historical Source Sync
+Inputs into Python. Inputs created before normalized manifest membership exists
+are intentionally materialized once; there is no metadata-JSON fallback scan or
+silent backfill.
 
 ## References
 

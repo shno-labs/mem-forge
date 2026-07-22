@@ -5847,9 +5847,14 @@ def create_admin_app(
                 req.local_agent_attempt_count,
                 req.sync_snapshot_id,
             )
-            retained_inputs = await db.list_source_sync_inputs(
+            manifest_items = [
+                (item.doc_id, item.revision, item.change_kind)
+                for item in req.items
+            ]
+            retained_inputs = await db.find_source_sync_input_attestations(
                 source_id=source_id,
                 workspace_id=workspace_id,
+                manifest_items=manifest_items,
             )
             plan = plan_snapshot_manifest(
                 [
@@ -5884,10 +5889,7 @@ def create_admin_app(
                 coverage=req.coverage,
                 manifest_count=len(req.items),
                 manifest_sha256=manifest_sha256,
-                manifest_items=[
-                    (item.doc_id, item.revision, item.change_kind)
-                    for item in req.items
-                ],
+                manifest_items=manifest_items,
                 local_agent_job_id=req.local_agent_job_id,
                 local_agent_attempt_count=req.local_agent_attempt_count,
                 source_config_revision=str(lease_payload["source_config_revision"]),
