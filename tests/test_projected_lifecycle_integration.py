@@ -3645,6 +3645,77 @@ async def test_relation_discovery_rejects_candidate_provenance_removed_before_co
 
 
 @pytest.mark.asyncio
+async def test_relation_discovery_rejects_candidate_support_change_before_commit(
+    db: Database,
+) -> None:
+    projection, challenger = await _create_relation_discovery_fixture(
+        db,
+        run_id="projection-stale-candidate-support",
+    )
+    challenger_evidence = await db.get_active_memory_support_evidence(challenger.id)
+    assert len(challenger_evidence) == 1
+    unit = await db.get_current_relation_evidence_unit(
+        challenger.id,
+        source_id="src-1",
+        source_unit_id=projection.source_units[0].id,
+    )
+    assert unit is not None
+    candidate = Memory(
+        id="mem-stale-relation-support",
+        memory_type="decision",
+        content="A7 applies to payroll.",
+        content_hash=content_hash("A7 applies to payroll."),
+        project_key="ENG",
+    )
+    await db.insert_memory(candidate)
+    now = datetime(2026, 7, 15, 11, 0, tzinfo=timezone.utc)
+    await db.upsert_document(
+        DocumentRecord(
+            doc_id="other-doc",
+            source="src-other",
+            source_url="https://example.test/other-doc",
+            title="Relation candidate",
+            space_or_project="ENG",
+            author=None,
+            last_modified=now,
+            labels=[],
+            version="1",
+            content_hash="candidate-doc-hash",
+            token_count=4,
+            raw_content_uri=None,
+            raw_content_type=None,
+            normalized_content_uri=None,
+            pdf_content_uri=None,
+            last_synced=now,
+        )
+    )
+    await db.add_memory_source(candidate.id, "other-doc", "confluence", source_updated_at=now)
+
+    async def attach_new_support() -> None:
+        await db.upsert_memory_support_assertion(
+            MemorySupportAssertion(
+                id="support-stale-relation-candidate",
+                memory_id=candidate.id,
+                evidence_reference_id=challenger_evidence[0].reference_id,
+                source_id="src-1",
+                access_context_hash=unit.access_context_hash or "",
+            )
+        )
+
+    result = await RelationDiscovery(
+        store=db,
+        candidate_retriever=_MutatingRelationCandidates(candidate, attach_new_support),
+        pair_classifier=_DeterministicRefinementClassifier(),
+    ).process_slice(worker_id="relation-worker")
+
+    assert result.failed_work == 1
+    [row] = await db.db.execute_fetchall("SELECT status, error FROM relation_discovery_work")
+    assert row["status"] == "failed"
+    assert "candidate current Support is stale" in row["error"]
+    assert await db.db.execute_fetchall("SELECT id FROM relation_runs") == []
+
+
+@pytest.mark.asyncio
 async def test_private_relation_completion_rechecks_access_as_current_owner(
     db: Database,
 ) -> None:

@@ -1928,7 +1928,7 @@ class GeneSyncOrchestrator:
             )
         except Exception:
             # Projection and lifecycle state roll back together in the engine;
-            # keep the document/vector snapshot on the same prior revision so
+            # keep the durable document snapshot on the same prior revision so
             # an ordinary retry still observes the semantic delta.
             await self._restore_document_processing_snapshot(
                 doc_id=doc_id,
@@ -1989,6 +1989,18 @@ class GeneSyncOrchestrator:
             ),
             entity_resolution_elapsed_ms=memory_stats.get(
                 "entity_resolution_elapsed_ms", 0
+            ),
+            identity_resolution_pair_count=memory_stats.get(
+                "identity_resolution_pair_count", 0
+            ),
+            identity_resolution_llm_calls=memory_stats.get(
+                "identity_resolution_llm_calls", 0
+            ),
+            identity_resolution_prompt_chars=memory_stats.get(
+                "identity_resolution_prompt_chars", 0
+            ),
+            identity_resolution_elapsed_ms=memory_stats.get(
+                "identity_resolution_elapsed_ms", 0
             ),
         )
 

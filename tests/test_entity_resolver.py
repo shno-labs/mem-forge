@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 
 from memforge.llm.structured import EntityBatchValidationDecision, EntityBatchValidationResponse
-from memforge.memory.entity_resolver import EntityResolutionContext, EntityResolver, validate_alias
+from memforge.memory.entity_resolver import (
+    EntityResolutionContext,
+    EntityResolutionPolicy,
+    EntityResolver,
+    validate_alias,
+)
 from memforge.models import Entity, EntityAlias, canonicalize_entity_name
 from memforge.storage.database import Database
 from memforge.storage.adapters.protocols import EntityResolutionScope, EntityUpsert
@@ -147,11 +152,27 @@ class BatchEntityClient:
     def __init__(self, decisions: list[EntityBatchValidationDecision]) -> None:
         self.decisions = decisions
         self.calls = 0
+        self.prompts: list[str] = []
 
     async def validate_entity_batch(self, prompt, *, max_tokens, model):
-        del prompt, max_tokens, model
+        del max_tokens, model
         self.calls += 1
+        self.prompts.append(prompt)
         return EntityBatchValidationResponse(decisions=self.decisions)
+
+
+class SequencedBatchEntityClient:
+    def __init__(self, responses: list[list[EntityBatchValidationDecision]]) -> None:
+        self.responses = responses
+        self.calls = 0
+        self.prompts: list[str] = []
+
+    async def validate_entity_batch(self, prompt, *, max_tokens, model):
+        del max_tokens, model
+        self.prompts.append(prompt)
+        response = self.responses[self.calls]
+        self.calls += 1
+        return EntityBatchValidationResponse(decisions=response)
 
 
 @pytest.mark.asyncio
@@ -242,6 +263,102 @@ async def test_resolve_many_rejects_classifier_id_outside_candidate_set(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_resolve_many_rejects_incomplete_adjudication_before_entity_writes(monkeypatch):
+    first = Entity(id=1, canonical_name="first service", display_name="First Service")
+    second = Entity(id=2, canonical_name="second service", display_name="Second Service")
+    store = FakeEntityStore(
+        EntityResolutionContext(
+            exact_matches={},
+            alias_matches={},
+            candidates={"first svc": (first,), "second svc": (second,)},
+        )
+    )
+    client = BatchEntityClient(
+        [EntityBatchValidationDecision(mention="first svc", matched_id=1, confidence=0.99)]
+    )
+    monkeypatch.setattr(
+        "memforge.retrieval.embeddings.embed_texts",
+        lambda texts, *_args: [[1.0, 0.0] for _ in texts],
+    )
+    resolver = EntityResolver(
+        store=store,  # type: ignore[arg-type]
+        embed_cfg={"base_url": "http://embed", "api_key": "key", "model": "model"},
+        structured_llm_client=client,
+    )
+
+    with pytest.raises(RuntimeError, match="coverage invalid"):
+        await resolver.resolve_many(("first svc", "second svc"), scope=_SCOPE)
+
+    assert store.created == []
+    assert store.aliases == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_many_bounds_context_and_adjudication_batches(monkeypatch):
+    mentions = tuple(f"service {index}" for index in range(5))
+    candidates = {
+        mention: (Entity(id=index + 1, canonical_name=f"canonical {index}", display_name=f"Canonical {index}"),)
+        for index, mention in enumerate(mentions)
+    }
+
+    class ChunkedStore(FakeEntityStore):
+        async def load_entity_resolution_context(self, canonical_names, *, candidate_limit, scope):
+            self.context_calls += 1
+            return EntityResolutionContext(
+                exact_matches={},
+                alias_matches={},
+                candidates={name: candidates[name] for name in canonical_names},
+            )
+
+    store = ChunkedStore(EntityResolutionContext({}, {}, {}))
+    client = SequencedBatchEntityClient(
+        [
+            [
+                EntityBatchValidationDecision(
+                    mention=mention,
+                    matched_id=candidates[mention][0].id,
+                    confidence=0.99,
+                )
+                for mention in mentions[start : start + 2]
+            ]
+            for start in range(0, len(mentions), 2)
+        ]
+    )
+    monkeypatch.setattr(
+        "memforge.retrieval.embeddings.embed_texts",
+        lambda texts, *_args: [[1.0, 0.0] for _ in texts],
+    )
+    resolver = EntityResolver(
+        store=store,  # type: ignore[arg-type]
+        embed_cfg={"base_url": "http://embed", "api_key": "key", "model": "model"},
+        structured_llm_client=client,
+        policy=EntityResolutionPolicy(context_batch_size=2, adjudication_batch_size=2),
+    )
+
+    result = await resolver.resolve_many(mentions, scope=_SCOPE)
+
+    assert store.context_calls == 3
+    assert client.calls == 3
+    assert all(len(prompt) <= 32_000 for prompt in client.prompts)
+    assert result.metrics.structured_llm_calls == 3
+    assert result.metrics.new_entities == 0
+
+
+def test_adjudication_batch_rejects_single_case_over_final_prompt_limit():
+    resolver = EntityResolver(
+        store=FakeEntityStore(EntityResolutionContext({}, {}, {})),  # type: ignore[arg-type]
+        policy=EntityResolutionPolicy(max_adjudication_prompt_chars=300),
+    )
+    oversized_case = {
+        "mention": "service",
+        "candidates": [{"id": 1, "name": "x" * 400}],
+    }
+
+    with pytest.raises(RuntimeError, match="exceeds prompt character limit"):
+        resolver._adjudication_batches((oversized_case,), context="")
+
+
+@pytest.mark.asyncio
 async def test_sqlite_entity_resolution_context_is_bounded_and_bulk(db):
     exact_id = await db.upsert_entity("memforge", "MemForge")
     candidate_id = await db.upsert_entity("payroll service", "Payroll Service")
@@ -275,11 +392,51 @@ async def test_sqlite_entity_resolution_context_is_bounded_and_bulk(db):
             ),
         )
     )
-    assert (await db.get_entity_by_alias("nc")).canonical_id == created["new component"]
+    current_scope = await db.load_entity_resolution_context(
+        ("nc",),
+        candidate_limit=2,
+        scope=_SCOPE,
+    )
+    assert current_scope.alias_matches["nc"].canonical_id == created["new component"]
+    assert await db.get_entity_by_alias("nc") is None
+
+    await db.insert_aliases(
+        (
+            EntityAlias(
+                alias="NC",
+                alias_normalized="nc",
+                canonical_id=created["new component"],
+                source="resolver_confirmed",
+                access_context_hash="access-b",
+            ),
+        )
+    )
+    alias_rows = await db.db.execute_fetchall(
+        "SELECT access_context_hash FROM entity_aliases WHERE alias_normalized = ? ORDER BY access_context_hash",
+        ("nc",),
+    )
+    assert [row["access_context_hash"] for row in alias_rows] == ["access-a", "access-b"]
 
     other_scope = await db.load_entity_resolution_context(
         ("nc",),
         candidate_limit=2,
         scope=EntityResolutionScope(access_context_hash="access-b"),
     )
-    assert "nc" not in other_scope.alias_matches
+    assert other_scope.alias_matches["nc"].canonical_id == created["new component"]
+
+
+@pytest.mark.asyncio
+async def test_sqlite_entity_context_preserves_tail_mentions_beyond_global_term_cap(db):
+    mentions = tuple(f"service{index:02d} request" for index in range(12))
+    for index in range(12):
+        await db.upsert_entity(f"service{index:02d} canonical", f"Service {index:02d}")
+
+    context = await db.load_entity_resolution_context(
+        mentions,
+        candidate_limit=2,
+        scope=_SCOPE,
+    )
+
+    assert [entity.canonical_name for entity in context.candidates[mentions[-1]]] == [
+        "service11 canonical"
+    ]

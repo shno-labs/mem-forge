@@ -115,6 +115,13 @@ class RelationalStoreContract:
                     source="resolver_confirmed",
                     access_context_hash="access-a",
                 ),
+                EntityAlias(
+                    alias="Private Calendar",
+                    alias_normalized="private calendar",
+                    canonical_id=resolved["product release calendar"],
+                    source="resolver_confirmed",
+                    access_context_hash="access-b",
+                ),
             )
         )
 
@@ -140,7 +147,49 @@ class RelationalStoreContract:
         ]
         assert len(context.candidates["release"]) == 1
         assert context.candidates["missing"] == ()
-        assert "private calendar" not in other_scope.alias_matches
+        assert other_scope.alias_matches["private calendar"].canonical_id == resolved[
+            "product release calendar"
+        ]
+
+    async def test_entity_alias_conflicts_are_candidates_not_order_dependent_hits(
+        self,
+        adapters: ContractAdapters,
+    ) -> None:
+        store = adapters.relational
+        resolved = await store.upsert_entities(
+            (
+                EntityUpsert("payroll command center", "Payroll Command Center"),
+                EntityUpsert("policy control center", "Policy Control Center"),
+            )
+        )
+        await store.insert_aliases(
+            tuple(
+                EntityAlias(
+                    alias="PCC",
+                    alias_normalized="pcc",
+                    canonical_id=entity_id,
+                    source="resolver_confirmed",
+                    access_context_hash="access-a",
+                )
+                for entity_id in resolved.values()
+            )
+        )
+
+        conflicted = await store.load_entity_resolution_context(
+            ("pcc",),
+            candidate_limit=10,
+            scope=EntityResolutionScope(access_context_hash="access-a"),
+        )
+        unrelated_scope = await store.load_entity_resolution_context(
+            ("pcc",),
+            candidate_limit=10,
+            scope=EntityResolutionScope(access_context_hash="access-c"),
+        )
+
+        assert "pcc" not in conflicted.alias_matches
+        assert {entity.id for entity in conflicted.candidates["pcc"]} == set(resolved.values())
+        assert "pcc" not in unrelated_scope.alias_matches
+        assert unrelated_scope.candidates["pcc"] == ()
 
     async def test_active_exact_claim_candidate_is_access_scoped_and_excludable(
         self,

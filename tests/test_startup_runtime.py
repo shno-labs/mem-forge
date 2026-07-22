@@ -41,6 +41,10 @@ def _config(tmp_path: Path) -> AppConfig:
     cfg.llm.embedding_base_url = "http://localhost:6655/openai/v1"
     cfg.llm.embedding_api_key = "test-key"
     cfg.server.jwt_secret = "test-secret"
+    # Route and wiring tests must not implicitly own long-lived background
+    # loops.  The dedicated lifecycle tests below opt those loops back in.
+    cfg.sync.scheduler_enabled = False
+    cfg.sync.worker_enabled = False
     return cfg
 
 
@@ -314,7 +318,9 @@ def test_admin_app_scheduler_registers_expiry_maintenance(tmp_path):
     from memforge.scheduler import EXPIRY_JOB_ID
     from memforge.server.admin_api import create_admin_app
 
-    app = create_admin_app(config=_config(tmp_path))
+    config = _config(tmp_path)
+    config.sync.scheduler_enabled = True
+    app = create_admin_app(config=config)
 
     with TestClient(app):
         assert app.state.sync_scheduler.scheduler.get_job(EXPIRY_JOB_ID) is not None
@@ -3131,11 +3137,16 @@ async def test_admin_source_sync_status_marks_expired_worker_lease_recovering(db
     assert source["sync"]["recovery_count"] == 0
 
 
+def test_app_config_enables_embedded_source_sync_worker_by_default():
+    assert AppConfig().sync.worker_enabled is True
+
+
 @pytest.mark.asyncio
-async def test_admin_app_starts_embedded_source_sync_worker_by_default(db, tmp_path):
+async def test_admin_app_starts_embedded_source_sync_worker_when_enabled(db, tmp_path):
     from memforge.server.admin_api import create_admin_app
 
     config = _config(tmp_path)
+    config.sync.worker_enabled = True
     config.sync.worker_poll_seconds = 60
     app = create_admin_app(
         db=db,

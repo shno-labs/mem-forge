@@ -136,6 +136,68 @@ async def test_sqlite_active_support_states_chunk_large_bind_sets(
     assert all(state.current_reference_ids == () for state in states.values())
 
 
+@pytest.mark.asyncio
+async def test_sqlite_active_memories_chunk_large_bind_sets(
+    db: Database,
+    monkeypatch,
+) -> None:
+    memory_ids = tuple(f"mem-active-{index}" for index in range(501))
+    now = datetime.now(timezone.utc).isoformat()
+    await db.db.executemany(
+        """INSERT INTO memories (
+               id, memory_type, content, content_hash, visibility,
+               confidence, status, created_at, updated_at
+           ) VALUES (?, 'fact', ?, ?, 'workspace', 0.9, 'active', ?, ?)""",
+        tuple(
+            (memory_id, f"content for {memory_id}", f"hash-{memory_id}", now, now)
+            for memory_id in memory_ids
+        ),
+    )
+    await db.db.commit()
+    calls = 0
+    original = db.db.execute
+
+    def execute(sql, parameters=None):
+        nonlocal calls
+        if "SELECT m.* FROM memories AS m" in sql:
+            calls += 1
+        return original(sql, parameters)
+
+    monkeypatch.setattr(db.db, "execute", execute)
+
+    memories = await SqliteRelationalStore(db).list_active_memories(memory_ids)
+
+    assert calls == 2
+    assert [memory.id for memory in memories] == list(memory_ids)
+
+
+@pytest.mark.asyncio
+async def test_sqlite_active_support_evidence_chunks_and_preserves_empty_memory_ids(
+    db: Database,
+    monkeypatch,
+) -> None:
+    calls = 0
+    original = db.db.execute_fetchall
+
+    async def execute_fetchall(sql, parameters=None):
+        nonlocal calls
+        if "FROM memory_support_assertions msa" in sql and "JOIN evidence_units eu" in sql:
+            calls += 1
+        return await original(sql, parameters)
+
+    monkeypatch.setattr(db.db, "execute_fetchall", execute_fetchall)
+    memory_ids = tuple(f"mem-evidence-{index}" for index in range(501))
+
+    evidence = await SqliteRelationalStore(db).get_active_memory_support_evidence_many(
+        memory_ids,
+        source_id="src-1",
+    )
+
+    assert calls == 2
+    assert tuple(evidence) == memory_ids
+    assert all(items == () for items in evidence.values())
+
+
 def _memory(
     mem_id: str,
     status: str = "active",

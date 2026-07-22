@@ -55,12 +55,15 @@ dormant index.
 ### Resolve entities as one bounded batch
 
 `EntityResolver` owns a batch interface. It canonicalizes and deduplicates
-mentions, performs bulk exact and alias lookup, embeds only unresolved unique
-mentions in one batch, retrieves bounded top-k candidates through the shared
-storage contract, and coalesces genuinely ambiguous matches into bounded
-structured adjudication calls. It validates every returned ID against the
-supplied candidate set and maps resolved IDs back only to the Memory candidates
-that mentioned them.
+mentions, performs chunked exact and alias lookup, embeds only unresolved unique
+mentions in bounded batches, retrieves bounded top-k candidates through the
+shared storage contract, and coalesces genuinely ambiguous matches into
+case- and prompt-bounded structured adjudication calls. The hard prompt bound
+applies to the final rendered prompt, including its template and document
+context; a single oversized case fails closed. Every adjudication batch must
+return exactly one decision per supplied mention before any Entity or alias
+write occurs. It validates every returned ID against the supplied candidate set
+and maps resolved IDs back only to the Memory candidates that mentioned them.
 
 Embedding is recall, never merge authority. No retrieved candidate means a new
 Entity without an LLM call. A confirmed same-entity decision may learn an alias;
@@ -68,9 +71,14 @@ proactive document-wide alias generation is removed. The alias table remains
 because exact alias lookup and query-time expansion have real consumers.
 Canonical Entity IDs remain workspace-internal graph identities rather than
 Evidence or access authority. Resolver-confirmed aliases carry the lifecycle
-access-context hash that authorized the decision; extraction cannot reuse a
-private or repository-incompatible learned alias. Authoritative manual and
-deterministic aliases may remain workspace-wide.
+access-context hash that authorized the decision, and that hash participates in
+alias identity and lookup; extraction cannot reuse a private or
+repository-incompatible learned alias. Query expansion and global alias FTS
+admit only authoritative manual and deterministic aliases, which remain
+workspace-wide. Manual aliases outrank deterministic aliases, which outrank
+access-scoped learned aliases. If the highest eligible priority maps one alias
+to multiple canonical IDs, it is not an exact alias hit; those IDs become
+bounded adjudication candidates.
 
 Generated tags are removed end to end from document, Memory, and Entity models,
 prompts, APIs, UI, indexes, and adapter contracts. Entity kind is removed with
@@ -92,9 +100,11 @@ decision is carried into the existing durable Relation Discovery request as a
 candidate-content-hash-, current-Support-hash-, both-side-access-context-, and
 classifier-version-pinned seed. The request already pins the challenger content
 hash, Source Unit revision, actor/access scope and current Evidence lookup. Relation discovery
-revalidates the stale guards and reuses valid overlapping decisions while still
-retrieving and classifying additional candidates. This input is part of normal
-relation work, not a replay or classification ledger.
+revalidates the stale guards before classification and again inside the fenced
+completion transaction, including candidate current-Support-set hashes. It
+reuses valid overlapping decisions while still retrieving and classifying
+additional candidates. This input is part of normal relation work, not a replay
+or classification ledger.
 
 Lifecycle stale-guard input is loaded through one batch support-state operation
 that returns the active Evidence Reference IDs and canonical support-set hash
@@ -126,6 +136,8 @@ count, embedding batches, adjudication calls, new identities, and elapsed time
 through the existing memory/RSS stage event. Provider token counts remain
 optional until the configured client exposes them; prompt text is never
 persisted as telemetry.
+Identity admission reports classified pair count, structured call count, prompt
+characters, and elapsed time through that same event.
 The Candidate Ledger reports input/selected/exact-drop/semantic-drop counts,
 logical structured calls, validation retries, prompt characters, and elapsed
 model time through the same Source Unit result and audit path.

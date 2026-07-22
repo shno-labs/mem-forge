@@ -55,8 +55,8 @@ MemForge is a **memory layer** that:
 | Retrieval latency (no reranking) | < 150ms |
 | Retrieval latency (with reranking) | < 500ms |
 | Memory extraction per document | All durable atomic memories justified by the source; no fixed count |
-| LLM calls per document sync (new) | 2 (enrichment + memory extraction), plus CandidateLedger when multiple semantic candidates remain |
-| LLM calls per document sync (update) | 3 (enrichment + memory extraction + reconciliation), plus CandidateLedger and bounded support verification when needed |
+| LLM calls per changed Source Unit | One structured extraction call, plus CandidateLedger only when multiple semantic candidates remain |
+| Relation-discovery work | Post-commit, bounded candidate retrieval and classification; no unbounded Memory history in extraction |
 
 ---
 
@@ -69,9 +69,8 @@ MemForge is a **memory layer** that:
 | Async DB | aiosqlite | SQLite with WAL mode |
 | Vector store | ChromaDB | PersistentClient, cosine similarity |
 | Embedding model | **OpenAI text-embedding-3-small** | 1536 dimensions, cosine distance. All similarity thresholds calibrated for this model. |
-| LLM (enrichment) | **Claude Sonnet** (via Anthropic SDK) | XML-tag prompts, max_tokens=4000 |
-| LLM (memory extraction) | **Claude Sonnet** (via Anthropic SDK) | Bounded source-unit extraction, max_tokens=32768 |
-| LLM (reconciliation) | **Claude Sonnet** (via Anthropic SDK) | Third call on document updates only |
+| LLM (source-unit extraction) | **Claude Sonnet** (via Anthropic SDK) | One structured call per token-bounded Source Unit batch |
+| LLM (relation classification) | **Claude Sonnet** (via Anthropic SDK) | Post-commit, bounded candidates only |
 | Scheduler | APScheduler | Per-gene cron schedules |
 | Auth (Atlassian) | Encrypted PAT + shared Jira browser sessions + httpx | HTTPS-only Confluence PAT access; Jira can use a shared per-origin browser session for instances that do not grant PAT REST quota. Source PATs and Jira browser-session cookies use `MEMFORGE_SECRET_KEY` when provided, otherwise an app-managed local Fernet key file |
 | Auth (OAuth2) | httpx + MSAL | Microsoft Graph API for Teams/Outlook |
@@ -121,13 +120,13 @@ All distance thresholds are calibrated for **text-embedding-3-small** with cosin
 
 | Principle | Implementation |
 |-----------|---------------|
-| **One extraction path** | The gene normalizes ALL data into comprehensive markdown. Two LLM calls extract metadata and memories (no separate "structural extraction" from gene code). |
+| **One extraction path** | The gene normalizes source data into comprehensive markdown. One structured Source Unit extraction emits Memory candidates, revision-pinned Evidence localization, and entity mentions. |
 | **Team-first, not user-first** | All memories are team-shared. No per-user scoping. Scope hierarchy: team > project/space > source. |
 | **Steal patterns, not code** | Inspired by mem0's ADD/UPDATE/DELETE/NOOP operations, semantic deduplication, and confidence scoring. No mem0 dependency. |
 | **SQLite + ChromaDB, no Neo4j** | Sufficient at team scale (up to 50K memories). Revisit graph DB only with data proving otherwise. |
-| **Two-call extraction** | Enrichment (Call 1) produces metadata. Memory extraction (Call 2) receives Call 1's output + existing memories as context. Better quality, isolation, and independent iteration. |
+| **Bounded lifecycle context** | Extraction never loads unbounded workspace Memory history. Complete same-source incumbent coverage is handled by lifecycle planning; cross-document and cross-source discovery is bounded and post-commit. |
 | **Source-agnostic update extraction** | Every gene normalizes raw source data into stable markdown. Updates extract from changed hunks with the normalized full source item as context, then reconcile only current-document extracted memories. No persisted `KnowledgeBlock` layer or source-specific extraction strategy is required for the current lean design. |
-| **Code-level entity resolution** | Entities are resolved in code (exact match → alias lookup → fuzzy match), not by LLM prompt instructions. The LLM assists by extracting explicit aliases from document text. |
+| **Batched entity resolution** | Entity mentions are resolved after extraction by exact/alias lookup, bounded candidate retrieval, embeddings, and bounded structured ambiguity batches. Learned aliases are access-context fenced. |
 | **Normalizer carries the weight** | Memory quality is proportional to normalizer quality. Each gene's normalizer must surface ALL meaningful structured data as readable markdown. |
 | **Progressive disclosure** | Level 0 (memory cards, ~60 tokens each) > Level 1 (full detail + provenance) > Level 2 (backing source artifact via `get_resource`). Agents drill down only when needed. |
 | **Unified search** | One `search` MCP tool that returns memory cards only. Agents use `get_memory` for provenance and `get_resource` for source artifacts. |
@@ -178,36 +177,35 @@ All distance thresholds are calibrated for **text-embedding-3-small** with cosin
 |  +-----------------------------------------------------------+      |
 |  +-------------------+                                               |
 |  | ChromaDB          |                                               |
-|  | "memories"        | (separate from "documents" collection)        |
+|  | "memories"        | Memory vectors only                           |
 |  | collection        |                                               |
 |  +-------------------+                                               |
 +----------------------------------------------------------------------+
 |                   EXTRACTION & LIFECYCLE                              |
 |                                                                      |
 |  +--------------------+ +-----------------+ +--------------------+   |
-|  |  Memory Engine     | |  Deduplicator   | | Lifecycle Manager   |   |
-|  |  (extract from     | |  (semantic      | |  (daily scheduler, |   |
-|  |   enricher output) | |   similarity    | |   expiry/support   |   |
-|  |                    | |   check before  | |   cleanup)         |   |
-|  |  ADD / UPDATE /    | |   insert)       | |                    |   |
-|  |  SUPERSEDE /       | |                 | |  Contradiction     |   |
-|  |  DELETE / NOOP     | |  Corroboration  | |  Detector          |   |
+|  |  Source Unit       | | Candidate Ledger| | Lifecycle Manager   |   |
+|  |  Extractor         | |  (batch semantic | |  (plans, support, |   |
+|  |  (one structured   | |   uniqueness)    | |   stale guards)    |   |
+|  |   semantic pass)   | |                  | |                    |   |
+|  |  candidates +      | |  exact coverage  | |  review gates +    |   |
+|  |  Evidence          | |  or fail closed  | |  vector outbox     |   |
+|  |  localization      | |                  | |                    |   |
 |  +--------+-----------+ +-----------------+ +--------------------+   |
 +-----------|----------------------------------------------------------+
-            |        ENRICHMENT LAYER
-            |
-|  +--------v--------------------------------------------+             |
-|  |  Enrichment (Call 1) + Memory Extraction (Call 2) |             |
-|  |  -> summary, tags, entities, relationships          |             |
-|  |  -> all durable atomic memories justified by source  |             |
-|  |  -> entity_aliases                                  |             |
+            | committed lifecycle state
+            v
+|  +-----------------------------------------------------+             |
+|  |  Post-commit Relation Discovery                    |             |
+|  |  bounded retrieval -> ledger -> classification     |             |
+|  |  non-destructive cross-document/source relations   |             |
 |  +--------+--------------------------------------------+             |
 +-----------|----------------------------------------------------------+
             |          GENE LAYER (Sync)
             |
 |  +--------v-------------------------------------------------+       |
 |  |  Gene Sync Orchestrator                                   |       |
-|  |  discover -> fetch -> normalize -> enrich+extract -> store|       |
+|  |  discover -> fetch -> normalize -> extract -> lifecycle plan|      |
 |  +----+----------+----------+----------------+----------+----+       |
 |       |          |          |                |                       |
 |  +----v---+ +---v----+ +--v-----+  +-------v---+                    |
@@ -402,11 +400,11 @@ Every gene produces `NormalizedContent` with two parts:
 
 | Part | Purpose | Used By |
 |------|---------|---------|
-| `markdown_body` | Clean markdown including ALL structured data | Enricher, ChromaDB, MCP |
+| `markdown_body` | Clean markdown including all meaningful structured data | Source Unit extraction, source artifacts |
 | `source_semantics` | Structured dict for search filtering only | Faceted search, metadata filtering |
 
 The normalizer is the critical quality gate. It MUST surface all meaningful structured data
-as readable markdown so the enricher can extract memories from it.
+as readable markdown so Source Unit extraction can produce grounded candidates.
 
 ### Gene Registry (Simple Dict)
 
@@ -564,197 +562,87 @@ projections are absent, and summary totals match projection/patch rows.
 
 ## 6. Memory Extraction Pipeline
 
-### Two-Call Extraction
+### Source Unit Extraction
 
-Two separate LLM call families per document. Call 2 receives Call 1's output as
-context. Better quality, failure isolation, and independent iteration vs. a
-single combined call. Source items are first converted to readable normalized
-markdown. Full-document extraction then uses shared deterministic structural
-units derived from that markdown heading tree. The system does not persist a
-source-specific `KnowledgeBlock` structure; unit ownership lives on the source
-support edge.
+Every source type follows the same provider-neutral flow:
 
-```
-Gene.normalize() --> comprehensive markdown
-        |
-   CALL 1: Enrichment (document --> metadata)
-        | --> summary, tags, entities, relationships, doc_type, complexity, entity_aliases
-        |
-   CODE: Entity Resolution Pipeline (Section 8)
-        | --> resolve extracted entities against DB (exact, alias, fuzzy)
-        | --> auto-register new aliases from fuzzy matches
-        | --> insert LLM-extracted aliases into entity_aliases table
-        |
-   CALL 2: Memory Extraction (unit + read-only document context + existing memories --> memories)
-        | --> durable atomic memories justified by the owned unit
-        | --> receives: entities from Call 1, existing memories for these entities
-        |
-   CODE: Dedup against existing DB memories --> store
-        |
-   CODE + LLM verifier: source-support detection
-        | --> attach corroborated provenance to existing active memories
-        | --> validate exact excerpts before persistence
-```
+    Gene discovery and fetch
+      -> normalized source artifact
+      -> deterministic, token-bounded Source Units
+      -> one structured semantic extraction per Source Unit batch
+           - transient Memory candidates
+           - revision-pinned Evidence localization
+           - entity mentions
+      -> deterministic quality gate and exact duplicate collapse
+      -> CandidateLedger when multiple semantic candidates remain
+      -> batched entity resolution
+      -> Lifecycle Plan against the complete mandatory same-source incumbent scope
+      -> atomic core lifecycle commit, Memory-vector outbox, and relation work
+      -> bounded post-commit Relation Discovery
 
-**Why staged calls, not one prompt:**
-- Each prompt is focused — better quality than a kitchen-sink prompt with 8 output fields
-- If memory extraction fails, enrichment still succeeds (isolation)
-- Memory extraction prompt can reference existing memories ("don't re-extract known facts")
-- Source-support verification is isolated from extraction so it can add
-  corroborated evidence without creating or rewriting memories.
-- Each prompt can be iterated independently without risking regression on the other
-- Separate token budgets — no competition for max_tokens
-- A completed document lifecycle is also the process-memory ownership boundary:
-  Python cycles are collected and Linux/glibc free pages are trimmed before the
-  next document is admitted. Reclamation is best-effort and cannot change the
-  already committed relational lifecycle result.
+Extraction is grounded only in the owned Source Unit plus bounded structural
+context. It does not receive unbounded workspace Memory history. This keeps the
+hot path independent of corpus size without weakening lifecycle safety:
 
-### Call 1: Enrichment Prompt
+- Same-source destructive reconciliation loads every active incumbent that the
+  changed revision can replace, retire, or retain.
+- Cross-document and cross-source discovery retrieves a bounded candidate set
+  after the core lifecycle state commits.
+- Cross-source relations are non-destructive unless an explicit Source
+  Authority or Review gate authorizes the action.
 
-```
-You are analyzing an internal document for a team knowledge system.
-
-<source_type>{source_type}</source_type>
-<document>{content}</document>
-
-Return a JSON object with:
-
-1. summary: 2-3 sentence summary
-2. tags: 5-10 normalized lowercase topic tags (singular, no version numbers)
-3. entities: [{name, type}] where type is: service, person, technology, api, team, feature
-4. relationships: [{target_title, relation_type, confidence}]
-5. doc_type: enum (design-doc, runbook, decision-record, how-to, reference,
-   postmortem, meeting-notes, ticket, discussion, email, unknown)
-6. complexity: enum (low, medium, high)
-7. entity_aliases: if the document explicitly states two names refer to the same thing
-   (e.g., "OnDemand Payroll, internally called Project Payroll"), return:
-   [{canonical, aliases, evidence}]
-
-Return ONLY valid JSON, no markdown fences or extra text.
-```
-
-### Between Calls: Code-Level Entity Resolution
-
-After Call 1 returns entities, each entity passes through the resolution pipeline
-(Section 8). This is **code, not LLM**:
-
-```python
-resolved_entities = []
-for raw_entity in enrichment_result.entities:
-    entity_id = await resolve_entity(
-        extracted_name=raw_entity.name,
-        extracted_type=raw_entity.type,
-        db=self.db,
-    )
-    resolved_entities.append(entity_id)
-
-# Also process LLM-extracted aliases
-for alias_group in enrichment_result.entity_aliases:
-    canonical_id = await resolve_entity(alias_group.canonical, ...)
-    for alias_name in alias_group.aliases:
-        await db.insert_alias(alias_name, canonicalize(alias_name), canonical_id, "llm_extracted")
-```
-
-### Call 2: Memory Extraction Prompt
-
-```
-You are extracting atomic knowledge from a document for a team memory system.
-
-<source_type>{source_type}</source_type>
-<doc_type>{doc_type_from_call_1}</doc_type>
-<entities_found>{canonical_entity_names_from_call_1}</entities_found>
-<existing_memories_for_these_entities>
-{memories_already_in_DB_for_these_entities}
-</existing_memories_for_these_entities>
-<unit_markdown>{owned_unit_content}</unit_markdown>
-<document_outline>{outline_context}</document_outline>
-<glossary_appendix>{glossary_context}</glossary_appendix>
-
-Extract all durable atomic knowledge units justified by `unit_markdown`. Return
-[] if the unit contains no durable team memory. Each memory must have:
-- content: self-contained factual sentence (understandable without the source document)
-- memory_type: fact | decision | convention | procedure
-- confidence: 0.0-1.0 (high only when the source directly states durable domain knowledge)
-- entity_refs: key entity names (use the canonical names from <entities_found>)
-- tags: 2-5 lowercase topic tags
-- valid_from / valid_until: ISO dates if time-bound (null otherwise)
-- extraction_context: short evidence quote for audit/provenance display
-- evidence_quote: evidence text copied by the model when available
-- evidence_anchor: "unit" to declare that the evidence belongs to the owned unit
-
-Rules:
-- Each memory must be SELF-CONTAINED
-- Do NOT re-extract facts listed in <existing_memories_for_these_entities>
-- Do not extract facts that appear only in the outline, glossary, title, URL, or source metadata
-- Each memory must declare `evidence_anchor = "unit"` so code can reject context-only candidates
-- Focus on NEW or UPDATED information
-- Use entity names from <entities_found>, not your own variations
-- Prefer specifics ("PostgreSQL 15" not "a database")
-- For tickets: extract the decision/outcome, not the discussion
-- For runbooks: each distinct step = separate procedural memory
-- For design docs: extract decisions, dependencies, constraints
-- For discussions: extract decisions and conventions that reached consensus;
-  skip unresolved opinions, tentative suggestions, and unanswered questions
-- For chat sources: skip transient status updates, review-in-progress notes, and
-  temporary caveats; focus on decisions, persistent facts, and action items
-- Do not extract document metadata: author, last modified, document status,
-  revision-history rows, reviewer lists, and link list rows are provenance
-- Preserve conditional language and do not turn open questions into decisions
-- Do not extract formatting details, boilerplate, table-of-contents entries,
-  passwords, credentials, tokens, API keys, or authentication secrets
-
-Return ONLY a JSON array of memories, no markdown fences or extra text.
-```
+The structured extraction output contains no generated document summary, tag,
+entity kind, relationship list, complexity score, or document-vector payload.
+Those fields have no default-path consumer or lifecycle acceptance contract.
+Source-native labels remain source metadata; they are not generated Memory tags.
 
 ### Pre-Persistence Quality Gate
 
-Call 2 output is still treated as candidate data. Before any candidate is
-persisted, `MemoryEngine` runs a deterministic gate that skips:
-
-- `metadata_only`: document headers such as author, last modified, document status, reviewers.
-- `reference_only`: source link-list rows such as "Link to Concept".
-- `attachment_event_only`: upload bookkeeping without a claim grounded in attachment content.
-- `operational_history_only`: routing-field transitions such as assignee, due date, labels, priority, rank, sprint, resolution, or routine status.
-- `open_question`: unresolved discussion prompts such as "discuss whether" or "to be discussed".
-
-The gate is deliberately narrow. Conditional domain rules are kept when the
-condition is part of the fact, for example "If regular pay date changes, repeat
-the validation." The same gate applies to reconciliation-created ADD, UPDATE,
-and SUPERSEDE candidates; a skipped replacement cannot supersede an incumbent
-memory.
+Structured extraction output is candidate data. Before persistence,
+MemoryEngine rejects metadata-only, reference-only, attachment-event-only,
+operational-history-only, open-question, or context-only candidates. Conditional
+domain rules remain valid when the condition is part of the grounded claim. The
+same gate applies to lifecycle replacement candidates, so an invalid replacement
+cannot supersede an incumbent.
 
 ### CandidateLedger
 
-Every extraction batch for one Source Unit revision is aggregated before
-lifecycle planning. After the deterministic quality gate, exact content
-duplicates collapse without an LLM call. Multiple remaining candidates pass
-through one complete semantic uniqueness ledger:
+Every Source Unit revision is aggregated before lifecycle planning. Exact content
+duplicates collapse deterministically. Multiple remaining candidates pass through
+one complete semantic uniqueness ledger:
 
-- one `KEEP` or `DROP_REDUNDANT -> canonical_index` decision per candidate
-- original candidate objects are retained; the ledger does not merge or rewrite content
-- no full document, evidence text, incumbent list, or provider payload is included
-- one corrective retry is allowed for an incomplete ledger
-- more than 200 semantic candidates or 100,000 serialized input characters fails closed
+- one KEEP or DROP_REDUNDANT -> canonical_index decision per candidate;
+- original candidate and Evidence objects remain unchanged;
+- no full document, incumbent list, or provider payload is included;
+- one corrective retry is allowed for an incomplete ledger;
+- explicit candidate and serialized-input limits fail closed.
 
-A failed ledger writes no Memory and authorizes no incumbent mutation. The
-failure is recorded as `candidate_ledger_failed`; successful multi-candidate
-selection is recorded as `candidate_ledger_completed`.
+A failed ledger writes no Memory and authorizes no incumbent mutation. The ledger
+is retained as an auditable processing boundary, not as a second extraction pass.
 
-### Token Budget
+### Entity Resolution and Relation Discovery
 
-- Call 1 input: normalized document content truncated to 100,000 chars
-- Call 1 output: max_tokens = 4000 (metadata is compact)
-- Call 2 input: one deterministic unit plus read-only outline/glossary context
-- Call 2 output: max_tokens = 32768 for structured memory candidates; the model supports
-  64000, but regularly needing that ceiling indicates the Source Unit should be split smaller
-- CandidateLedger input: at most 200 non-identical candidates and 100,000 serialized chars
-- CandidateLedger output: max_tokens = 8192 for a complete decision ledger
-- Call 3 output on updates: max_tokens = 4096 (reconciliation decisions)
-- Call 2 receives additional context: entities + up to 30 existing memories for those entities
-- Cost per document varies by source length; unchanged documents are skipped by content hash,
-  new/changed documents pay enrichment + extraction, and changed documents pay reconciliation.
+Entity mentions are resolved in one batch after extraction. Exact and alias
+matches are deterministic; unresolved mentions use bounded candidates,
+embeddings, and bounded structured ambiguity batches. The resolved mapping is then
+applied back to the original candidates without rewriting their content or
+Evidence.
 
----
+After the lifecycle commit, Relation Discovery retrieves candidates with the
+same visibility, owner, project, source, lineage, Anchor, and revision predicates
+used by retrieval. It records a candidate ledger and classifies only the bounded
+pairs. Relation results never substitute for exact Evidence attribution.
+
+### Token and Cost Boundaries
+
+- Source Units and batch input have explicit token/character ceilings.
+- CandidateLedger and entity adjudication require exact output coverage and fail
+  closed when incomplete.
+- Relation candidate retrieval is bounded and excludes deterministic lineage,
+  Anchor, and RevisionDelta disjointness before LLM classification.
+- Aggregate metrics record candidate counts, structured LLM calls, latency, and
+  failure class without logging source content or Evidence excerpts.
+- Unchanged source items are skipped by revision/content identity.
 
 ## 7. Memory Lifecycle
 
@@ -762,13 +650,9 @@ selection is recorded as `candidate_ledger_completed`.
 
 Triggered inside the sync pipeline after normalization:
 
-```python
-# After enrichment returns combined output
-for raw_memory in enrichment_result.memories:
-    stored_id = await memory_engine.deduplicate_and_insert(
-        raw_memory, doc_id, source_type, project_key
-    )
-```
+The Source Unit Extractor emits transient candidates and revision-pinned
+Evidence localization. The quality gate, CandidateLedger, entity resolver, and
+Lifecycle Plan complete before the core lifecycle state is committed.
 
 ### Update (When Source Items Change)
 
@@ -790,7 +674,7 @@ processed by owned sections without adding source-specific extraction logic.
 async def update_memories_for_document(self, doc_id, new_content):
     existing = await self.db.get_memories_by_source_doc(doc_id, support_kind="extracted")
     existing_active = [m for m in existing if m.status == "active"]
-    new_candidates = memory_extraction_result.memories  # from Call 2, scoped by update mode
+    new_candidates = extraction_result.memories  # scoped by Source Unit and update mode
 
     if not existing_active:
         for mem in new_candidates:
@@ -939,399 +823,43 @@ ambiguous challenger or risky replacement is quarantined for review:
 
 ---
 
-## 8. Entity Resolution & Alias System
-
-### The Problem
-
-The LLM extracts entity names from documents. Different documents use different names
-for the same thing. Without resolution, memories fragment across duplicate entities:
-
-```
-Without resolution:
-  entity #5  "postgresql"      → 4 memories linked
-  entity #37 "postgresql 15"   → 2 memories linked
-  entity #38 "postgres"        → 1 memory linked
-  entity #39 "pg"              → 1 memory linked
-  Total: 4 entities, 8 memories, no cross-linking.
-
-With resolution:
-  entity #5  "postgresql"      → 8 memories linked
-  aliases: "postgresql 15", "postgres", "pg"
-  Total: 1 entity, 8 memories, fully connected.
-```
-
-### Design Principle: Code Resolves, LLM Assists
-
-Prompt-level guidance ("map to existing entities") is unreliable. The LLM is
-non-deterministic, doesn't reliably scan long entity lists, and makes inconsistent
-decisions about whether "PostgreSQL 15" is the same as "PostgreSQL".
-
-**Entity resolution is a code-level pipeline, not a prompt instruction.** The LLM assists
-by extracting explicit aliases from document text, but code is the safety net.
-
-### Known Abbreviation Table
-
-A static lookup of ~200 common tech abbreviations, applied during canonicalization.
-Eliminates the single largest class of entity fragmentation (abbreviations/acronyms)
-at zero runtime cost:
-
-```python
-KNOWN_ABBREVIATIONS: dict[str, str] = {
-    # Databases
-    "pg": "postgresql", "postgres": "postgresql", "psql": "postgresql",
-    "mongo": "mongodb", "dynamo": "dynamodb", "rds": "amazon rds",
-    # Infrastructure
-    "k8s": "kubernetes", "k3s": "k3s",  # k3s is its own thing
-    "tf": "terraform", "cdk": "aws cdk",
-    # Languages / Runtimes
-    "js": "javascript", "ts": "typescript", "py": "python",
-    "rb": "ruby", "rs": "rust", "go": "golang",
-    # Platforms
-    "gh": "github", "gl": "gitlab", "aws": "amazon web services",
-    "gcp": "google cloud platform", "az": "azure",
-    # Auth / Identity
-    "msal": "microsoft authentication library",
-    "oidc": "openid connect", "saml": "saml",
-    # Messaging
-    "mq": "rabbitmq", "sns": "amazon sns", "sqs": "amazon sqs",
-    # Monitoring
-    "dd": "datadog", "otel": "opentelemetry",
-    # ... ~200 entries total, curated per team domain
-}
-
-def canonicalize_entity_name(name: str) -> str:
-    """Normalize entity name: lowercase, strip whitespace, expand abbreviations."""
-    s = name.strip().lower()
-    s = re.sub(r"\s+", " ", s)
-    # Expand known abbreviations (exact match on full canonical form)
-    if s in KNOWN_ABBREVIATIONS:
-        s = KNOWN_ABBREVIATIONS[s]
-    return s
-```
-
-This runs BEFORE any matching step. "PG" → "postgresql" → exact match on entity #5.
-"K8s" → "kubernetes" → exact match. No fuzzy matching or alias table needed.
-
-The table is **team-extensible**: admins can add domain-specific abbreviations
-(e.g., "ODP" → "on-demand processing") via config or the admin API.
-
-### Entity Alias Table
-
-```sql
-CREATE TABLE entity_aliases (
-    alias            TEXT NOT NULL,
-    alias_normalized TEXT NOT NULL,
-    canonical_id     INTEGER NOT NULL REFERENCES entities(id),
-    source           TEXT NOT NULL,    -- "exact" | "fuzzy_auto" | "llm_extracted" | "admin_manual"
-    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (alias_normalized, canonical_id)
-);
-CREATE INDEX IF NOT EXISTS idx_entity_aliases_normalized ON entity_aliases(alias_normalized);
-```
-
-### The Resolution Pipeline (4 Steps)
-
-Every entity name extracted by the LLM passes through this pipeline before being
-linked to a memory. The pipeline is deterministic (Steps 1-3) with LLM assistance
-(Step 4) feeding future lookups.
-
-```
-LLM extracts: "PostgreSQL 15"
-    |
-    v
-Step 1: Exact canonical match           "postgresql 15" ≠ "postgresql" → miss
-    |
-    v
-Step 2: Alias table lookup              no alias "postgresql 15" → miss
-    |
-    v
-Step 3: Fuzzy code match                "postgresql" is substring of "postgresql 15" → HIT!
-    |   → link to entity #5 "postgresql"
-    |   → auto-create alias: ("postgresql 15" → entity #5, source="fuzzy_auto")
-    |   → next time "PostgreSQL 15" appears, Step 2 catches it instantly
-    |
-    v
-Done. Memory linked to entity #5.
-```
-
-When no step matches → create new entity.
-
-### Step-by-Step Implementation
-
-```python
-async def resolve_entity(
-    extracted_name: str,
-    extracted_type: str,
-    db: Database,
-) -> int:
-    """Resolve an extracted entity name to a canonical entity ID.
-
-    Returns the entity ID (existing or newly created).
-    Deterministic: same input always produces same output.
-    Self-improving: fuzzy matches auto-register aliases for faster future lookups.
-    """
-    canonical = canonicalize_entity_name(extracted_name)
-    # After this: "PG" → "postgresql", "K8s" → "kubernetes", etc.
-
-    # Step 1: Exact match on canonical_name (cross-type — LLM is inconsistent about types)
-    entity = await db.get_entity_by_canonical(canonical)
-    if entity:
-        return entity.id
-
-    # Step 2: Alias table lookup (cross-type)
-    alias = await db.get_entity_by_alias(canonical)
-    if alias:
-        return alias.canonical_id
-
-    # Step 3: Fuzzy match against existing entities of same type
-    candidates = await db.get_entities_by_type(extracted_type)
-    match = fuzzy_entity_match(canonical, candidates)
-    if match:
-        # Auto-register alias so Step 2 catches this next time
-        await db.insert_alias(
-            alias=extracted_name,
-            alias_normalized=canonical,
-            canonical_id=match.id,
-            source="fuzzy_auto",
-        )
-        return match.id
-
-    # Step 4: No match — create new entity
-    new_id = await db.insert_entity(canonical, extracted_type, extracted_name)
-    return new_id
-```
-
-> **Note:** Steps 1-2 are **cross-type** (no type filtering). This prevents duplicates when
-> the LLM extracts "auth-service" as type `service` in one document and type `api` in another.
-> Step 3 filters by type because fuzzy matching is less precise and type-filtering reduces
-> false positives.
-
-### Fuzzy Match Rules
-
-Entity names are short (1-5 tokens). Simple deterministic rules outperform
-embedding similarity for this use case:
-
-```python
-def fuzzy_entity_match(
-    new_name: str,
-    candidates: list[Entity],
-) -> Entity | None:
-    """Deterministic fuzzy match for short entity names.
-
-    Rules applied in order, first match wins:
-    1. Substring containment: "postgresql" in "postgresql 15"
-    2. Token overlap: {"postgresql", "15"} ∩ {"postgresql"} ≥ 80% of shorter name
-    3. Hyphen/space normalization: "pay-api" matches "pay api"
-    """
-    # Pre-normalize: remove hyphens, collapse spaces
-    new_normalized = new_name.replace("-", " ").replace("_", " ")
-    new_tokens = set(new_normalized.split())
-
-    best_match = None
-    best_score = 0.0
-
-    for candidate in candidates:
-        existing = candidate.canonical_name.replace("-", " ").replace("_", " ")
-        existing_tokens = set(existing.split())
-
-        score = 0.0
-
-        # Rule 1: Substring containment
-        # "postgresql" in "postgresql 15" → match
-        # "pay" in "pay api" → match
-        if existing in new_normalized or new_normalized in existing:
-            longer = max(len(existing), len(new_normalized))
-            shorter = min(len(existing), len(new_normalized))
-            score = shorter / longer  # penalize large length differences
-
-        # Rule 2: Token overlap
-        # {"postgresql", "15"} ∩ {"postgresql"} = {"postgresql"}
-        # overlap = 1, shorter name has 1 token → ratio = 1.0 → match
-        elif new_tokens & existing_tokens:
-            overlap = new_tokens & existing_tokens
-            shorter_len = min(len(new_tokens), len(existing_tokens))
-            score = len(overlap) / shorter_len
-
-        if score > best_score:
-            best_score = score
-            best_match = candidate
-
-    # Threshold: require ≥ 80% match confidence
-    if best_score >= 0.8:
-        return best_match
-    return None
-```
-
-### What Each Step Catches
-
-| Step | Input | Matches To | How |
-|------|-------|-----------|-----|
-| 0. Abbrev | "PG" | entity #5 "postgresql" | `KNOWN_ABBREVIATIONS["pg"]` → "postgresql" → exact match |
-| 0. Abbrev | "K8s" | entity #7 "kubernetes" | `KNOWN_ABBREVIATIONS["k8s"]` → "kubernetes" → exact match |
-| 0. Abbrev | "Postgres" | entity #5 "postgresql" | `KNOWN_ABBREVIATIONS["postgres"]` → "postgresql" → exact match |
-| 1. Exact | "postgresql" | entity #5 "postgresql" | `canonical_name = canonical_name` |
-| 1. Exact | "PostgreSQL" | entity #5 "postgresql" | canonicalize lowercases |
-| 2. Alias | "adaptive scheduling" | entity #42 "on-demand processing" | alias table populated by LLM/admin |
-| 3. Fuzzy | "postgresql 15" | entity #5 "postgresql" | "postgresql" is substring |
-| 3. Fuzzy | "pay api" | entity #1 "pay-api" | hyphen/space normalization |
-| 3. Fuzzy | "kafka broker" | entity #6 "kafka" | token "kafka" overlap = 1/1 |
-| 3. Fuzzy | "auth service v2" | entity #2 "auth-service" | "auth service" ⊂ "auth service v2" |
-| Miss | "MSAL" (if not in abbrev table) | → NEW entity | no overlap with "microsoft authentication library" |
-| Miss | custom team acronyms | → NEW entity | add to KNOWN_ABBREVIATIONS or wait for LLM alias |
-
-The abbreviation table eliminates the most common misses in software engineering
-knowledge bases. Remaining misses are team-specific acronyms that get resolved via
-LLM alias extraction or admin merge.
-
-### LLM Alias Extraction (Feeds the Alias Table)
-
-The enrichment prompt still asks the LLM to extract explicit aliases:
-
-```
-7. entity_aliases: if the document explicitly states that two names refer to the same
-   thing (e.g., "OnDemand Payroll, internally called Project Payroll"), return:
-   [{"canonical": "OnDemand Payroll", "aliases": ["Project Payroll"], "evidence": "..."}]
-```
-
-These populate the alias table, making Step 2 smarter over time.
-But this is an **accelerator, not the primary defense**.
-
-### Alias Validation Gate (Preventing Corruption)
-
-LLM-extracted aliases are validated before insertion. This prevents the most dangerous
-failure mode: a hallucinated alias that silently misroutes all future entity lookups.
-
-```python
-from difflib import SequenceMatcher
-
-def validate_alias(alias_name: str, canonical_name: str) -> bool:
-    """Check if an LLM-extracted alias has ANY resemblance to the canonical name.
-
-    If the LLM says "pay-api" is an alias for "payment-service", that's likely
-    wrong — they share no string similarity. Block it.
-
-    If the LLM says "Project Payroll" is an alias for "OnDemand Payroll", that's
-    plausible — they share word "Payroll". Allow it.
-
-    For abbreviations that share no string similarity (e.g., "ODP" → "OnDemand Payroll"),
-    the evidence field from the LLM must contain the explicit statement from the document.
-    """
-    a = canonicalize_entity_name(alias_name)
-    c = canonicalize_entity_name(canonical_name)
-
-    # Check 1: Any token overlap?
-    a_tokens = set(a.replace("-", " ").split())
-    c_tokens = set(c.replace("-", " ").split())
-    if a_tokens & c_tokens:
-        return True  # shared word = plausible alias
-
-    # Check 2: Substring containment?
-    if a in c or c in a:
-        return True
-
-    # Check 3: String similarity (SequenceMatcher, similar to Jaro-Winkler for short strings)
-    ratio = SequenceMatcher(None, a, c).ratio()
-    if ratio >= 0.5:
-        return True
-
-    # No resemblance — this alias is suspicious.
-    return False
-
-
-async def insert_llm_alias(alias_name: str, canonical_name: str, canonical_id: int, evidence: str, db: Database):
-    """Insert an LLM-extracted alias, with validation."""
-    if validate_alias(alias_name, canonical_name):
-        await db.insert_alias(alias_name, canonicalize_entity_name(alias_name), canonical_id, "llm_extracted")
-    else:
-        # No string resemblance — could be a legitimate abbreviation OR a hallucination.
-        # Queue for admin review instead of auto-inserting.
-        await db.insert_pending_alias(
-            alias=alias_name,
-            canonical_id=canonical_id,
-            evidence=evidence,
-            reason="No string similarity between alias and canonical name",
-        )
-        logger.warning("LLM alias flagged for review", extra={
-            "alias": alias_name, "canonical": canonical_name, "evidence": evidence
-        })
-```
-
-**What this catches:**
-
-| Alias | Canonical | Similarity | Result |
-|-------|-----------|-----------|--------|
-| "Project Payroll" | "OnDemand Payroll" | token overlap: "payroll" | ✅ Auto-insert |
-| "ODP Runbook" | "ODP" | substring: "odp" ⊂ "odp runbook" | ✅ Auto-insert |
-| "pay-api" | "payment-service" | no overlap, ratio=0.26 | ⚠️ Flagged for review |
-| "auth-svc" | "billing-service" | token overlap: "service" — wait, false positive? | ✅ Auto-insert (false positive risk is low — admin can remove) |
-| "ODP" | "OnDemand Payroll" | no overlap, ratio=0.15 | ⚠️ Flagged for review |
-
-Note: "ODP" → "OnDemand Payroll" gets flagged because the abbreviation shares no string
-similarity. This is a **correct flag** — the system can't verify that "ODP" truly means
-"OnDemand Payroll" from string analysis alone. The admin reviews the evidence
-("document says: ODP (OnDemand Payroll)") and approves it, promoting it to
-`source = "admin_manual"`. After that, Step 2 catches "ODP" forever.
-
-> **The principle:** Auto-insert when string similarity confirms the alias is plausible.
-> Flag for human review when it doesn't. Never blindly trust the LLM.
-
-### Self-Improving Behavior
-
-The system gets better at entity resolution the more documents it processes:
-
-```
-Sync 1: "PG" extracted
-  Abbreviation table: "pg" → "postgresql" → exact match entity #5. Done.
-
-Sync 1: "PostgreSQL 15" extracted
-  Step 3 fuzzy-matches to "postgresql"
-  Auto-creates alias: "postgresql 15" → entity #5
-
-Sync 2: "PostgreSQL 15" extracted again
-  Step 2 finds alias immediately. No fuzzy match needed. Faster.
-
-Sync 5: Document says "OnDemand Payroll (also known as ODP)"
-  LLM extracts alias: "ODP" → "OnDemand Payroll"
-  Validation gate: no string similarity → flagged for admin review
-  Admin approves → alias inserted with source="admin_manual"
-  Now Step 2 catches "ODP" forever.
-
-Sync 10: "payment gateway svc" extracted
-  Fuzzy match: "payment gateway" ⊂ "payment gateway svc" → entity #12
-  Auto-alias registered. Step 2 catches it next time.
-```
-
-```
-Resolution accuracy over time (with abbreviation table):
-
-  Sync 1:    ~85% (abbreviation table + exact + fuzzy)
-  Sync 10:   ~90% (alias table populated by LLM + auto-registration)
-  Sync 50:   ~95% (alias table + admin merges)
-  Sync 100+: ~97% (comprehensive alias table, most variants seen)
-```
-
-> Without the abbreviation table, initial accuracy drops to ~60-65%.
-> The table is the single highest-ROI addition to entity resolution.
-
-### Query Expansion (During Retrieval)
-
-When searching, BM25 queries are expanded with known aliases:
-
-```
-User query: "Project Payroll weekly pay"
-
-Step 1: "adaptive scheduling" → alias lookup → canonical entity #42 "on-demand processing"
-Step 2: Get all aliases for entity #42 → ["adaptive scheduling", "odp"]
-Step 3: Expand BM25 query:
-
-  "Project Payroll weekly pay" ("on-demand processing" OR "adaptive scheduling" OR "odp")
-```
-
-This ensures keyword search finds memories regardless of which name was used in the
-source document.
-
----
-
+## 8. Entity Resolution and Alias Scope
+
+Entity extraction emits names only. Entity kind is not part of the default
+schema or prompt because no current lifecycle, retrieval, or product contract
+consumes it.
+
+Resolution is a batched post-extraction service:
+
+1. Canonicalize and deduplicate all mentions in the Source Unit batch.
+2. Resolve deterministic exact-name and visible-alias matches in bulk.
+3. Retrieve a bounded candidate set for each unresolved mention.
+4. Embed unresolved mentions and candidates in batches, then retain only
+   plausible ambiguity sets.
+5. Send remaining ambiguity sets through case- and prompt-bounded structured
+   adjudication calls with exact mention coverage per batch.
+6. Create genuinely new entities in bulk and map every resolved ID back to the
+   original Memory candidates.
+
+Missing, duplicate, or unknown adjudication decisions fail closed; they do not
+silently create entities. Storage preloads names and aliases once and performs
+bulk inserts, avoiding per-mention database reads and writes.
+
+Aliases remain useful for exact future lookup and query expansion, but their
+scope is explicit:
+
+- manual and deterministic aliases are workspace-wide domain knowledge;
+- learned aliases carry the same access-context hash as the Evidence that taught
+  the system the alias;
+- learned-alias uniqueness and extraction lookup include that access context;
+  query expansion and global alias FTS admit only manual or deterministic
+  aliases, so private or repository-scoped wording cannot affect another scope;
+- generated Memory tags are unrelated to entity resolution and are removed.
+
+Embeddings provide recall for bounded unresolved candidates; the LLM decides
+only genuine ambiguity. Neither stage scans the full entity table or Memory
+corpus. Relation Discovery consumes resolved entity IDs as one retrieval signal,
+but retains its own candidate ledger and exact Evidence attribution.
 ## 9. Storage Architecture
 
 ### Backend Decision
@@ -1344,28 +872,24 @@ source document.
 - No additional deployment dependencies
 - Revisit graph DB at 50K+ memories if traversal queries become bottleneck
 
-### Database Schema (Migration #7)
+### Current Core Schema
 
 ```sql
 -- Core entity table (referenced by memory_entities and entity_aliases)
 CREATE TABLE IF NOT EXISTS entities (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     canonical_name  TEXT NOT NULL UNIQUE,
-    entity_type     TEXT NOT NULL,        -- service, person, technology, api, team, feature
     display_name    TEXT NOT NULL,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(canonical_name);
-CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
-
 -- Core memory table
 CREATE TABLE IF NOT EXISTS memories (
     id                  TEXT PRIMARY KEY,
     memory_type         TEXT NOT NULL,          -- fact|decision|convention|procedure
     content             TEXT NOT NULL,
     content_hash        TEXT NOT NULL,           -- SHA-256 for dedup
-    tags                TEXT NOT NULL DEFAULT '[]', -- JSON array of topic tags
     scope               TEXT NOT NULL DEFAULT 'team',
     project_key         TEXT,
     confidence          REAL NOT NULL DEFAULT 0.7,
@@ -1399,22 +923,22 @@ CREATE TABLE IF NOT EXISTS memory_entities (
     PRIMARY KEY (memory_id, entity_id)
 );
 
--- Entity alias registry (populated by fuzzy_auto, llm_extracted, and admin_manual)
+-- Entity alias registry. Learned aliases are fenced by access context.
 CREATE TABLE IF NOT EXISTS entity_aliases (
     alias            TEXT NOT NULL,
     alias_normalized TEXT NOT NULL,
     canonical_id     INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-    source           TEXT NOT NULL,      -- "exact" | "fuzzy_auto" | "llm_extracted" | "admin_manual"
+    source           TEXT NOT NULL,
+    access_context_hash TEXT NOT NULL DEFAULT '', -- empty only for manual/deterministic aliases
     created_at       TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (alias_normalized, canonical_id)
+    PRIMARY KEY (alias_normalized, canonical_id, access_context_hash)
 );
 
 -- BM25 full-text search index
 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
     memory_id UNINDEXED,
     content,
-    entities_text,    -- space-separated entity names
-    tags_text,        -- space-separated tags
+    entities_text,    -- space-separated visible canonical names and aliases
     tokenize='porter unicode61'
 );
 
@@ -1426,20 +950,15 @@ CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_key);
 CREATE INDEX IF NOT EXISTS idx_memories_hash ON memories(content_hash);
 CREATE INDEX IF NOT EXISTS idx_memory_sources_doc ON memory_sources(doc_id);
 CREATE INDEX IF NOT EXISTS idx_memory_entities_entity ON memory_entities(entity_id);
-CREATE INDEX IF NOT EXISTS idx_entity_aliases_normalized ON entity_aliases(alias_normalized);
+CREATE INDEX IF NOT EXISTS idx_entity_aliases_normalized ON entity_aliases(alias_normalized, access_context_hash);
 ```
 
-### ChromaDB Collections
+### ChromaDB Collection
 
-Two separate collections on the same PersistentClient:
-
-| Collection | Content | Metadata |
-|------------|---------|----------|
-| `documents` | Summary + tags + document type + complexity | source, source_type, space, token_count, content_hash, version, embedding_text_hash, embedding_vector_hash |
-| `memories` | Type-prefixed memory content + canonical entity names | memory_type, source_doc_id, space_or_project, confidence, status, content_hash, embedding_text_hash, embedding_vector_hash |
-
-**Why separate?** Document embeddings (summary + tags) are semantically different from
-memory embeddings (atomic facts). Mixing them degrades retrieval quality.
+The default vector index contains Memory vectors only. Source documents remain
+available as backing artifacts and Evidence, but are not embedded into a separate
+document collection. This keeps retrieval and lifecycle visibility anchored to
+the durable Memory model.
 
 ### Memory Embedding Text Construction
 
@@ -1457,15 +976,7 @@ Memory embeddings use canonical entity names read from `memory_entities JOIN
 entities`, not temporary LLM entity order. The type prefix causes memories of
 the same type to cluster in embedding space, improving type-filtered retrieval.
 
-Document embeddings are separate from memory embeddings and use the enrichment
-metadata payload:
-
-```python
-def document_embedding_text(metadata: DocumentMetadata) -> str:
-    return f"{metadata.summary}\n{' '.join(metadata.tags)}\n{metadata.doc_type}\n{metadata.complexity}"
-```
-
-Both Chroma collections store two freshness proofs:
+The Memory collection stores two freshness proofs:
 
 - `embedding_text_hash`: hash of the exact text sent to the embedding model.
 - `embedding_vector_hash`: hash of the exact vector payload stored in Chroma.
@@ -1487,15 +998,17 @@ involved:
 - Source/document removal deletes source-support links and retires memories only
   when no usable source support remains. Usable support includes extracted and
   corroborated provenance rows whose documents still exist.
-- Memory retirement removes the memory from FTS5 and ChromaDB default indexes.
+- Memory retirement removes the memory from FTS5 in the lifecycle transaction and
+  publishes a durable outbox operation that removes the ChromaDB vector after commit.
 - Privacy/compliance purge deletes memory rows, FTS5 rows, ChromaDB vectors,
   provenance links, and local document artifacts.
 
 ### FTS5 Sync
 
 FTS5 virtual table requires manual sync. Every memory lifecycle write must route
-through MemoryStore, which coordinates SQLite, FTS5, and ChromaDB. Do not write
-`memories_fts` directly from LLM output.
+through MemoryStore, which atomically coordinates SQLite state, FTS5, and the
+durable Memory-vector outbox. ChromaDB is materialized only after commit. Do not
+write `memories_fts` or ChromaDB directly from LLM output.
 
 Canonical memory insert and supersede both follow this derived-index sequence:
 
@@ -1504,8 +1017,9 @@ Canonical memory insert and supersede both follow this derived-index sequence:
 3. Link canonical entities in `memory_entities`.
 4. Rebuild `memories_fts` from `memories JOIN memory_entities JOIN entities`.
 5. Build the memory embedding text from the same canonical entity names.
-6. Upsert the Chroma memory vector with `content_hash`, `embedding_text_hash`,
-   and `embedding_vector_hash`.
+6. Publish the Memory-vector operation in the same transaction.
+7. After commit, materialize Chroma with `content_hash`,
+   `embedding_text_hash`, and `embedding_vector_hash`, then acknowledge the outbox row.
 
 This order makes SQLite the source of truth and prevents FTS/Chroma from storing
 temporary LLM entity ordering when canonical entity resolution produced a
@@ -1639,9 +1153,9 @@ for repeated/similar queries within a session. Trivial to implement (dict + hash
 
 ### Memory-Only Unified Search
 
-Memory search returns only memory cards. Direct document hits, document vectors,
-and source artifacts remain part of sync, health, repair, and evidence access,
-but they are not mixed into `search` results. Agents drill down through
+Memory search returns only memory cards. Source artifacts remain part of sync,
+health, repair, and Evidence access, but they are not mixed into `search`
+results. Agents drill down through
 `get_memory` before choosing a source artifact.
 
 ---
@@ -1754,7 +1268,6 @@ request and tells the agent to omit the filter for a broader search.
   "summary": "Team chose gRPC over REST for inter-service calls...",
   "confidence": 0.90,
   "relevance_score": 0.87,
-  "tags": ["grpc", "architecture", "performance"],
   "corroborated_by": 2,
   "last_observed_at": "2026-03-15T10:30:00Z",
   "freshness": "current",
@@ -1852,15 +1365,16 @@ Agent receives a question
 - GeneRegistry with explicit built-in registration
 - Agent session, Confluence, Jira, and Teams genes (normalizers that produce comprehensive markdown)
 - GeneSyncOrchestrator (discover -> fetch -> normalize -> store)
-- Basic document storage and sync WITHOUT enrichment (prove the pipeline works)
+- Basic source-artifact storage and sync without semantic extraction
 
 **Week 2 focus: Memory extraction layer**
 
-- Enrichment prompt (Call 1) + Memory extraction prompt (Call 2)
-- MemoryEngine: extract memories from enricher output
-- MemoryStore: SQLite + ChromaDB operations, deduplication, FTS5 sync
+- One structured Source Unit extraction contract
+- MemoryEngine: quality gate, CandidateLedger, lifecycle planning, and commit
+- MemoryStore: SQLite lifecycle state, deduplication, FTS5 sync, and durable
+  Memory-vector outbox publication
 - ChromaDB "memories" collection (parameterized get_chroma_collection)
-- Hook memory extraction into GeneSyncOrchestrator after enrichment
+- Hook Source Unit extraction into GeneSyncOrchestrator after normalization
 - Full initial sync to populate memory corpus
 - Basic CLI: `memforge init`, `memforge sync`, `memforge api`
 
@@ -1875,7 +1389,6 @@ Agent receives a question
 - `get_memory` MCP tool
 - Recent-memory questions through `search` with `time_range`
 - `submit_agent_session_document` MCP tool (explicit generated session-document intake)
-- Document fallback in search results
 - Query expansion with entity aliases
 - Caching layer (entity cache, embedding cache, result cache)
 - Admin API: memory endpoints, entity endpoints, health check
@@ -1918,7 +1431,7 @@ Agent receives a question
 
 | Mem0 Pattern | How We Adapt It |
 |-------------|----------------|
-| Atomic fact extraction via LLM | Two-call extraction: enrichment (Call 1) + memory extraction (Call 2) with existing memories as context |
+| Atomic fact extraction via LLM | One bounded structured Source Unit extraction with exact Evidence localization |
 | ADD/UPDATE/DELETE/NOOP operations | Plus SUPERSEDE (mem0 conflates with UPDATE) |
 | Semantic dedup via embedding similarity | Cosine < 0.08 threshold before insert |
 | Confidence scoring | Per-memory, from LLM + corroboration boosting |
@@ -1954,22 +1467,19 @@ The fundamental mismatch:
 
 ### Confirmed Feasible
 
-- **Enrichment prompt (Call 1)**: Free-text JSON parsing with permissive `.get()` defaults.
-  No schema validation. max_tokens = 4000.
-- **Memory extraction prompt (Call 2)**: Separate call with entities + existing memories as
-  context. max_tokens = 8192.
-- **Reconciliation prompt (Call 3)**: Runs only on changed documents and receives the
-  updated normalized document plus same-document active memories. max_tokens = 4096.
+- **Structured Source Unit extraction**: one schema-validated call emits Memory
+  candidates, Evidence localization, and entity mentions without unbounded
+  workspace Memory context.
+- **Lifecycle planning**: complete same-source incumbent coverage remains in the
+  deterministic/structured lifecycle boundary.
+- **Post-commit Relation Discovery**: bounded candidates preserve cross-document
+  and cross-source discovery without coupling extraction cost to corpus size.
 - **FTS5**: SQLite 3.47.1 confirmed. FTS5 extension available.
-- **Second ChromaDB collection**: PersistentClient supports multiple collections natively.
 - **Database migration**: Fits as migration #7 in existing pattern.
 - **MCP tool merge**: Declarative tool definitions, ~50-80 lines of changes.
 - **FK enforcement**: Enabled; sync inserts documents before memories.
 - **ChromaDB client management**: Shared singleton avoids local lock contention.
 - **FTS5 sync**: Managed in the MemoryStore layer for memory insert/update/delete paths.
-- **Document vector ownership**: `DocumentVectorIndex` owns document Chroma
-  writes while `MemoryStore` owns memory lifecycle consistency. Sync uses
-  document-index snapshots so DB/document-vector writes can roll back together.
 - **Confluence PDF health**: Confluence sources require local PDF URI coverage;
   missing PDFs are reported by `/api/health` and fail sync instead of being
   hidden as success.
@@ -2000,41 +1510,34 @@ The fundamental mismatch:
 
 | Failure Mode | Detection | Response |
 |-------------|-----------|----------|
-| Malformed JSON (not parseable) | `json.loads()` raises | Strip markdown fences, retry parse. If still fails, use fallback (empty memories, basic metadata). Log warning. |
-| JSON truncated (hit max_tokens) | JSON parse fails on incomplete structure | Increase max_tokens and retry once. If still truncated, parse what's available, log warning. |
-| No memories extracted | `data.get("memories", [])` returns `[]` | Accept — some documents genuinely have no extractable atomic facts. Store document without memories. |
-| Hallucinated entity names | Entity not in existing entity list | Create as new entity. The alias discovery pipeline will eventually merge if it's a duplicate. |
+| Invalid or incomplete structured extraction | Schema or exact-coverage validation fails | Retry once within the same bound, then fail closed for that Source Unit; do not persist partial candidates. |
+| No memories extracted | Valid structured result contains no candidates | Accept — some Source Units contain no durable atomic claims. |
+| Incomplete entity adjudication | Missing, duplicate, or unknown mention decision | Fail closed; do not silently create entities from an incomplete batch. |
 | Many memories extracted | `len(memories)` is high | Keep every durable, semantically distinct candidate. Exact duplicates collapse deterministically; a complete CandidateLedger removes fully redundant claims within the Source Unit revision. Explicit input budgets fail closed instead of truncating the ledger. |
-| LLM timeout / API error | httpx timeout or 5xx response | Retry with exponential backoff (3 attempts). If all fail, store document without enrichment, mark for re-enrichment on next sync. |
+| LLM timeout / API error | httpx timeout or 5xx response | Retry with bounded exponential backoff. If all attempts fail, preserve the previous lifecycle state and record the Source Unit failure. |
 
-### Fallback Metadata
+### Failure Boundary
 
-When enrichment completely fails, store the document with:
-```python
-def fallback_metadata(doc_id: str) -> EnrichmentResult:
-    return EnrichmentResult(
-        summary="Enrichment failed. Document content remains available through source artifacts.",
-        tags=[], entities=[], relationships=[],
-        doc_type="unknown", complexity="unknown",
-        memories=[], entity_aliases=[],
-    )
-```
+Source artifacts may still be stored when semantic extraction fails, but no
+synthetic summary, tags, entity kinds, relationships, or partial Memories are
+created as fallback data. Existing active lifecycle state remains unchanged and
+the failed Source Unit is retryable from its durable revision identity.
 
 ### ChromaDB / SQLite Consistency
 
 The system has two data stores that must stay in sync. Strategy:
 
 1. **SQLite is the source of truth.** FTS5 and ChromaDB are derived indexes.
-2. **Write ownership**: MemoryStore owns memory lifecycle writes across SQLite,
-   FTS5, and ChromaDB. Memory FTS rows are rebuilt from canonical `memory_entities`
-   after entity links are committed. Chroma memory vectors are embedded from that
-   same canonical entity set.
+2. **Write ownership**: MemoryStore owns the atomic SQLite lifecycle, FTS5, and
+   Memory-vector outbox write. Memory FTS rows are rebuilt from canonical
+   `memory_entities`. A post-commit worker embeds and materializes Chroma from that
+   same canonical entity set and only then acknowledges the outbox operation.
 3. **Repair command**: `memforge maintenance repair-indexes` rebuilds FTS5,
-   removes non-search-visible memory vectors, and repairs memory/document Chroma
+   removes non-search-visible memory vectors, and repairs Memory Chroma
    freshness metadata from SQLite. It also prunes FTS orphans and repairs missing
    vector payload hashes without needing source documents.
-4. **Health check**: `/api/health` runs deterministic SQLite, FTS5, memory Chroma,
-   and document Chroma consistency checks. It detects active/non-active index
+4. **Health check**: `/api/health` runs deterministic SQLite, FTS5, and Memory
+   Chroma consistency checks. It detects active/non-active index
    visibility drift, FTS duplicates, FTS orphans, Chroma orphans, metadata hash
    drift, and vector payload hash drift. Any drift degrades health instead of
    being hidden.
@@ -2052,15 +1555,16 @@ The system has two data stores that must stay in sync. Strategy:
 ### Rate Limiting for LLM Calls
 
 ```python
-# Semaphore limits concurrent LLM calls during sync
-llm_semaphore = asyncio.Semaphore(3)  # max 3 concurrent enrichment calls
+# Semaphore limits concurrent structured LLM calls during sync
+llm_semaphore = asyncio.Semaphore(3)
 
 async with llm_semaphore:
-    result = await enricher.enrich_document(doc_id, content, ...)
+    result = await source_unit_extractor.extract(source_units, ...)
 ```
 
-For initial backfill of 10K documents: ~3-4 hours at 3 concurrent calls with ~2s per call.
-Estimated LLM cost: ~$300-400 (Claude Sonnet, ~5K avg input + ~1.5K avg output tokens per doc).
+Concurrency is a capacity control, not a correctness mechanism. Cost and latency
+are measured per Source Unit, including CandidateLedger, entity adjudication,
+and relation-classification calls.
 
 ---
 
@@ -2089,7 +1593,7 @@ Estimated LLM cost: ~$300-400 (Claude Sonnet, ~5K avg input + ~1.5K avg output t
 | Concern | Mitigation |
 |---------|-----------|
 | Private emails indexed without consent | Outlook gene is opt-in per shared mailbox/folder. Personal mailboxes require explicit admin opt-in with confirmation dialog. |
-| PII in extracted memories | Enrichment prompt includes: "Do NOT extract personal information (phone numbers, home addresses, personal medical info). Extract only work-relevant technical and project knowledge." |
+| PII in extracted memories | The Source Unit extraction contract forbids personal or secret data that is not required durable team knowledge. |
 | GDPR right-to-deletion | `purge_source_data(source_id)` deletes all memories, documents, and entities from a source. Admin UI provides per-source purge button. |
 | Sensitive content in Teams DMs | Teams gene only syncs **channel** messages, not 1:1 or group chats. Configurable channel include/exclude patterns. |
 | Access control on memories | All memories are team-visible (by design). If per-team isolation is needed, run separate MemForge instances. |
@@ -2136,11 +1640,14 @@ chroma_path = "vectors/chroma"        # ChromaDB path (relative to base_dir)
 docs_path = "documents"               # Document content path (relative to base_dir)
 
 [llm]
+# The existing enrichment_* setting names are retained as configuration/API
+# identifiers. They configure structured semantic calls; there is no separate
+# default enrichment stage.
 enrichment_model = "claude-sonnet-4-20250514"
 enrichment_base_url = "https://api.anthropic.com"
 enrichment_api_key = ""               # or MEMFORGE_ENRICHMENT_API_KEY env var
 enrichment_max_tokens = 4000
-enrichment_max_concurrent = 3         # Semaphore limit
+enrichment_max_concurrent = 3
 embedding_model = "text-embedding-3-small"
 embedding_base_url = "https://api.openai.com/v1"
 embedding_api_key = ""               # or MEMFORGE_EMBEDDING_API_KEY env var
@@ -2165,6 +1672,7 @@ Supported environment overrides include:
 - `MEMFORGE_BASE_DIR`
 - `MEMFORGE_STORAGE_DB_PATH`, `MEMFORGE_STORAGE_CHROMA_PATH`, `MEMFORGE_STORAGE_DOCS_PATH`
 - `MEMFORGE_ENRICHMENT_MODEL`, `MEMFORGE_ENRICHMENT_BASE_URL`, `MEMFORGE_ENRICHMENT_API_KEY`
+  (legacy setting names for the provider-neutral structured LLM runtime)
 - `MEMFORGE_EMBEDDING_MODEL`, `MEMFORGE_EMBEDDING_BASE_URL`, `MEMFORGE_EMBEDDING_API_KEY`
 - `MEMFORGE_ADMIN_API_PORT`, `MEMFORGE_CORS_ORIGINS`, `MEMFORGE_JWT_SECRET`
 - `MEMFORGE_SECRET_KEY` optionally overrides the app-managed local key for encrypting stored source secrets and shared auth sessions, including Atlassian PATs and Jira browser-session cookies. This must be a 32-byte url-safe base64 Fernet key when set.
@@ -2348,7 +1856,7 @@ All log entries include: `timestamp`, `level`, `component`, `source_id` (if appl
 
 ```python
 logger.info("memory_extracted", extra={
-    "component": "enricher", "doc_id": "confluence-12345",
+    "component": "source_unit_extractor", "doc_id": "confluence-12345",
     "memory_count": 7, "duration_ms": 1823
 })
 ```
@@ -2358,7 +1866,9 @@ logger.info("memory_extracted", extra={
 | Metric | Source | Alert Threshold |
 |--------|--------|----------------|
 | Memory count (total, by type, by status) | SQLite | -- |
-| Extraction success rate | enricher logs | < 90% |
+| Extraction success rate | Source Unit lifecycle logs | < 90% |
+| Structured LLM calls and latency per Source Unit | lifecycle metrics | Regression from accepted baseline |
+| Relation candidates checked per Source Unit | relation-run metrics | Unbounded growth |
 | Average confidence | SQLite aggregate | < 0.6 |
 | Dedup hit rate | MemoryStore logs | -- (informational) |
 | Contradiction rate | SQLite (contradiction_count > 0) / total | > 10% |
@@ -2375,7 +1885,7 @@ logger.info("memory_extracted", extra={
 {
   "status": "healthy",
   "database": {"status": "ok", "detail": "962 memories"},
-  "vector_store": {"status": "ok", "detail": "2 collection(s)"},
+  "vector_store": {"status": "ok", "detail": "1 Memory collection"},
   "index_consistency": {"status": "ok", "detail": "No index consistency issues"},
   "genes": {
     "PAY Architecture": {"status": "success", "detail": "2026-05-25T14:38:16.163088+00:00"},
@@ -2385,8 +1895,8 @@ logger.info("memory_extracted", extra={
 }
 ```
 
-`index_consistency` checks SQLite, FTS5, memory Chroma, document Chroma, hash
-drift, orphan rows, stale non-search-visible vectors, and required source
+`index_consistency` checks SQLite, FTS5, Memory Chroma, hash drift, orphan rows,
+stale non-search-visible vectors, and required source
 artifacts such as Confluence PDF URIs. A failed source can appear in `genes`
 while the derived indexes remain clean.
 
@@ -2401,61 +1911,26 @@ The `memories_fts` virtual table must be kept in sync manually.
 | FTS5 Column | Source |
 |-------------|--------|
 | `content` | `memories.content` |
-| `entities_text` | Space-joined canonical names from `memory_entities` JOIN `entities` |
-| `tags_text` | Space-joined values from `memories.tags` JSON array |
+| `entities_text` | Space-joined visible canonical names and aliases from entity linkage |
 
 ### Sync Points
 
 ```python
 class MemoryStore:
-    async def insert_memory(self, mem: Memory, entity_ids: list[int]):
-        await db.insert_memory(mem)
-        await db.add_memory_source(mem.id, doc_id, source_type, excerpt)
-        for entity_id in entity_ids:
-            await db.link_memory_entity(mem.id, entity_id)
-
-        await db.rebuild_memory_fts(mem.id)
-        embedding_text = await canonical_memory_embedding_text(mem.id)
-        embedding = await embed(embedding_text)
-        upsert_with_stored_vector_hash(
-            collection,
-            ids=[mem.id],
-            embeddings=[embedding],
-            metadatas=[{
-                "status": mem.status,
-                "content_hash": mem.content_hash,
-                "embedding_text_hash": hash(embedding_text),
-            }],
-        )
-
-    async def supersede_memory(self, old_id: str, replacement: Memory, entity_ids: list[int]):
-        await db.supersede_memory(old_id, replacement)
-        await remove_from_search_indexes(old_id)
-        await db.add_memory_source(replacement.id, doc_id, source_type, excerpt)
-        for entity_id in entity_ids:
-            await db.link_memory_entity(replacement.id, entity_id)
-
-        await db.rebuild_memory_fts(replacement.id)
-        embedding_text = await canonical_memory_embedding_text(replacement.id)
-        embedding = await embed(embedding_text)
-        upsert_with_stored_vector_hash(..., metadatas=[{
-            "embedding_text_hash": hash(embedding_text),
-        }])
-
-    async def update_memory(self, mem_id: str, new_content: str, ...):
-        await db.update_memory_content(mem_id, new_content, ...)
-        await db.rebuild_memory_fts(mem_id)
-        await upsert_chroma_from_canonical_sqlite(mem_id)
-
-    async def delete_memory(self, mem_id: str):
-        await db.update_memory_status(mem_id, "retired")
-        await remove_from_search_indexes(mem_id)
+    async def apply_lifecycle_plan(self, plan: LifecyclePlan):
+        async with db.transaction() as tx:
+            await tx.apply_memory_actions(plan.actions)
+            await tx.replace_revision_pinned_evidence(plan.evidence)
+            await tx.rebuild_affected_memory_fts(plan.memory_ids)
+            await tx.enqueue_memory_vector_tasks(plan.vector_actions)
+            await tx.enqueue_relation_work(plan.relation_work)
 ```
 
-The database helper deletes and reinserts each FTS row during rebuild. Health
-checks compare FTS5 and ChromaDB against SQLite because both are derived indexes.
-Health checks also detect duplicate FTS rows because FTS5 itself does not enforce a
-unique `memory_id`.
+The relational transaction is the source of truth. FTS is updated with the core
+lifecycle state, while Memory-vector materialization and bounded Relation
+Discovery run after commit from durable work records. Health checks compare all
+derived visibility against current lifecycle state and detect duplicate FTS rows,
+stale vector tasks, or invalid ownership.
 
 ---
 

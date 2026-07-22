@@ -889,6 +889,17 @@ class SqliteRelationalStore:
             source_id=source_id,
         )
 
+    async def get_active_memory_support_evidence_many(
+        self,
+        memory_ids: Sequence[str],
+        *,
+        source_id: str | None = None,
+    ) -> Mapping[str, tuple[ActiveSupportEvidence, ...]]:
+        return await self._db.get_active_memory_support_evidence_many(
+            memory_ids,
+            source_id=source_id,
+        )
+
     async def get_source_unit_support_reference_ids(
         self,
         source_unit_id: str,
@@ -1623,7 +1634,9 @@ class SqliteRelationalStore:
             f"FROM entities e WHERE {entity_match} "
             "UNION ALL "
             f"SELECT ea.canonical_id, ea.alias, ea.alias_normalized, {alias_match_key} "
-            f"FROM entity_aliases ea WHERE {alias_match}"
+            f"FROM entity_aliases ea WHERE {alias_match} "
+            "AND ea.access_context_hash = '' "
+            "AND ea.source IN ('manual', 'admin_manual', 'deterministic')"
             ") "
             "SELECT ma.entity_id, e.canonical_name, ma.matched_alias, "
             f"ma.alias_normalized, ma.match_key, {count_select} "

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
@@ -320,6 +321,12 @@ class RelationDiscovery:
                 doc_id=evidence_unit.doc_id or request.doc_id,
                 source_id=request.source_id,
                 excluded_source_ids=disabled_source_ids,
+                expected_support_set_hashes={
+                    pair.candidate.id: candidate_support[
+                        pair.candidate.id
+                    ].current_support_set_hash
+                    for pair in pairs
+                },
             )
             bundle, reviews = await self._build_outcome(
                 work=work,
@@ -332,6 +339,12 @@ class RelationDiscovery:
                 classification_llm_calls=classification.llm_calls,
                 classification_prompt_chars=classification.prompt_chars,
                 reused_pair_count=len(reused_decisions),
+                candidate_support_set_hashes={
+                    pair.candidate.id: candidate_support[
+                        pair.candidate.id
+                    ].current_support_set_hash
+                    for pair in pairs
+                },
             )
         except Exception as error:
             raise _WorkProcessingError(
@@ -365,6 +378,7 @@ class RelationDiscovery:
         classification_llm_calls: int,
         classification_prompt_chars: int,
         reused_pair_count: int,
+        candidate_support_set_hashes: Mapping[str, str],
     ) -> tuple[RelationOutcomeBundle, tuple[MemoryReview, ...]]:
         relation_run_id = _relation_run_id(work, selection)
         universe = build_candidate_universe(
@@ -469,6 +483,7 @@ class RelationDiscovery:
             candidates=universe.candidates,
             relations=tuple(relations),
             candidate_provenance=tuple(candidate.memory for candidate in selection.discovery),
+            expected_candidate_support_set_hashes=dict(candidate_support_set_hashes),
         )
         reviews = tuple(
             _cross_source_review(

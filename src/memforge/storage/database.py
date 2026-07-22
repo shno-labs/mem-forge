@@ -3016,7 +3016,41 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
     (
         70,
         "Fence learned entity aliases by lifecycle access context",
-        ["ALTER TABLE entity_aliases ADD COLUMN access_context_hash TEXT"],
+        [
+            "ALTER TABLE entity_aliases RENAME TO entity_aliases_unscoped",
+            """CREATE TABLE entity_aliases (
+                alias               TEXT NOT NULL,
+                alias_normalized    TEXT NOT NULL,
+                canonical_id        INTEGER NOT NULL REFERENCES entities(id),
+                source              TEXT NOT NULL,
+                access_context_hash TEXT NOT NULL DEFAULT '',
+                created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (alias_normalized, canonical_id, access_context_hash)
+            )""",
+            """INSERT INTO entity_aliases (
+                   alias, alias_normalized, canonical_id, source,
+                   access_context_hash, created_at
+               )
+               SELECT alias, alias_normalized, canonical_id, source, '', created_at
+                 FROM entity_aliases_unscoped
+                WHERE source IN ('manual', 'admin_manual', 'deterministic')""",
+            "DROP TABLE entity_aliases_unscoped",
+            "CREATE INDEX idx_entity_aliases_compact ON entity_aliases(REPLACE(alias_normalized, ' ', ''))",
+            "DELETE FROM entity_alias_search_fts",
+            """INSERT INTO entity_alias_search_fts (
+                   entity_id, canonical_name, alias_normalized, search_text
+               )
+               SELECT e.id, e.canonical_name, e.canonical_name,
+                      COALESCE(e.canonical_name, '') || ' ' || COALESCE(e.display_name, '')
+                 FROM entities e
+               UNION ALL
+               SELECT ea.canonical_id, e.canonical_name, ea.alias_normalized,
+                      COALESCE(ea.alias, '') || ' ' || COALESCE(ea.alias_normalized, '')
+                 FROM entity_aliases ea
+                 JOIN entities e ON e.id = ea.canonical_id
+                WHERE ea.access_context_hash = ''
+                  AND ea.source IN ('manual', 'admin_manual', 'deterministic')""",
+        ],
     ),
 ]
 
@@ -6408,44 +6442,65 @@ class Database:
         *,
         source_id: str | None = None,
     ) -> tuple[ActiveSupportEvidence, ...]:
-        params: list[object] = [memory_id]
-        source_clause = ""
-        if source_id is not None:
-            source_clause = " AND msa.source_id = ?"
-            params.append(source_id)
-        rows = await self.db.execute_fetchall(
-            """SELECT msa.memory_id, msa.source_id,
-                      er.id AS reference_id, er.evidence_unit_id, er.role,
-                      er.anchor_kind, er.observation_id,
-                      er.observation_revision_id, er.fragment_id,
-                      er.range_start, er.range_end, eu.excerpt
-               FROM memory_support_assertions msa
-               JOIN evidence_references er ON er.id = msa.evidence_reference_id
-               JOIN evidence_units eu ON eu.id = er.evidence_unit_id
-               WHERE msa.memory_id = ? AND msa.active = 1"""
-            + source_clause
-            + " ORDER BY msa.source_id, er.id",
-            tuple(params),
+        evidence = await self.get_active_memory_support_evidence_many(
+            (memory_id,),
+            source_id=source_id,
         )
-        return tuple(
-            ActiveSupportEvidence(
-                memory_id=str(row["memory_id"]),
-                source_id=str(row["source_id"]),
-                reference_id=str(row["reference_id"]),
-                evidence_unit_id=str(row["evidence_unit_id"]),
-                role=EvidenceRole(str(row["role"])),
-                anchor=SourceAnchor(
-                    kind=AnchorKind(str(row["anchor_kind"])),
-                    observation_id=str(row["observation_id"]),
-                    observation_revision_id=str(row["observation_revision_id"]),
-                    fragment_id=row["fragment_id"],
-                    range_start=row["range_start"],
-                    range_end=row["range_end"],
-                ),
-                excerpt=row["excerpt"],
+        return evidence.get(memory_id, ())
+
+    async def get_active_memory_support_evidence_many(
+        self,
+        memory_ids: Sequence[str],
+        *,
+        source_id: str | None = None,
+    ) -> Mapping[str, tuple[ActiveSupportEvidence, ...]]:
+        """Return active Support Evidence for each requested Memory in bounded chunks."""
+
+        ids = tuple(dict.fromkeys(str(memory_id) for memory_id in memory_ids if memory_id))
+        grouped: dict[str, list[ActiveSupportEvidence]] = {memory_id: [] for memory_id in ids}
+        for offset in range(0, len(ids), STORAGE_BIND_CHUNK_SIZE):
+            chunk = ids[offset : offset + STORAGE_BIND_CHUNK_SIZE]
+            placeholders = ", ".join("?" for _ in chunk)
+            params: list[object] = list(chunk)
+            source_clause = ""
+            if source_id is not None:
+                source_clause = " AND msa.source_id = ?"
+                params.append(source_id)
+            rows = await self.db.execute_fetchall(
+                f"""SELECT msa.memory_id, msa.source_id,
+                           er.id AS reference_id, er.evidence_unit_id, er.role,
+                           er.anchor_kind, er.observation_id,
+                           er.observation_revision_id, er.fragment_id,
+                           er.range_start, er.range_end, eu.excerpt
+                    FROM memory_support_assertions msa
+                    JOIN evidence_references er ON er.id = msa.evidence_reference_id
+                    JOIN evidence_units eu ON eu.id = er.evidence_unit_id
+                    WHERE msa.memory_id IN ({placeholders}) AND msa.active = 1"""
+                + source_clause
+                + " ORDER BY msa.memory_id, msa.source_id, er.id",
+                tuple(params),
             )
-            for row in rows
-        )
+            for row in rows:
+                memory_id = str(row["memory_id"])
+                grouped[memory_id].append(
+                    ActiveSupportEvidence(
+                        memory_id=memory_id,
+                        source_id=str(row["source_id"]),
+                        reference_id=str(row["reference_id"]),
+                        evidence_unit_id=str(row["evidence_unit_id"]),
+                        role=EvidenceRole(str(row["role"])),
+                        anchor=SourceAnchor(
+                            kind=AnchorKind(str(row["anchor_kind"])),
+                            observation_id=str(row["observation_id"]),
+                            observation_revision_id=str(row["observation_revision_id"]),
+                            fragment_id=row["fragment_id"],
+                            range_start=row["range_start"],
+                            range_end=row["range_end"],
+                        ),
+                        excerpt=row["excerpt"],
+                    )
+                )
+        return {memory_id: tuple(grouped[memory_id]) for memory_id in ids}
 
     async def get_source_unit_support_reference_ids(
         self,
@@ -7887,6 +7942,16 @@ class Database:
         candidate_ids = tuple(dict.fromkeys(candidate.memory_id for candidate in outcome.candidates))
         if not candidate_ids:
             return
+        expected_support_hashes = dict(outcome.expected_candidate_support_set_hashes)
+        if set(expected_support_hashes) != set(candidate_ids):
+            raise ValueError("relation discovery candidate Support fence is incomplete")
+        current_support = await self.get_active_memory_support_states(candidate_ids)
+        if any(
+            current_support[memory_id].current_support_set_hash
+            != expected_support_hashes[memory_id]
+            for memory_id in candidate_ids
+        ):
+            raise ValueError("relation discovery candidate current Support is stale")
         placeholders = ", ".join("?" for _ in candidate_ids)
         rows = await self.db.execute_fetchall(
             f"""SELECT id, status, visibility, owner_user_id, repo_identifier
@@ -9307,17 +9372,19 @@ class Database:
         ordered_ids = tuple(dict.fromkeys(memory_ids))
         if not ordered_ids:
             return []
-        placeholders = ", ".join("?" for _ in ordered_ids)
         rows: dict[str, Memory] = {}
-        async with self.db.execute(
-            f"""SELECT m.* FROM memories AS m
-                WHERE m.id IN ({placeholders})
-                  AND m.status = 'active'""",
-            ordered_ids,
-        ) as cursor:
-            async for row in cursor:
-                memory = self._row_to_memory(row)
-                rows[memory.id] = memory
+        for offset in range(0, len(ordered_ids), STORAGE_BIND_CHUNK_SIZE):
+            chunk = ordered_ids[offset : offset + STORAGE_BIND_CHUNK_SIZE]
+            placeholders = ", ".join("?" for _ in chunk)
+            async with self.db.execute(
+                f"""SELECT m.* FROM memories AS m
+                    WHERE m.id IN ({placeholders})
+                      AND m.status = 'active'""",
+                chunk,
+            ) as cursor:
+                async for row in cursor:
+                    memory = self._row_to_memory(row)
+                    rows[memory.id] = memory
         return [rows[memory_id] for memory_id in ordered_ids if memory_id in rows]
 
     async def list_active_candidate_memories(
@@ -11591,61 +11658,107 @@ class Database:
                 entity = _entity_from_row(dict(row))
                 exact[entity.canonical_name] = entity
 
-        aliases: dict[str, EntityAlias] = {}
+        eligible_aliases: dict[str, list[tuple[int, EntityAlias, Entity]]] = {}
         async with self.db.execute(
-            f"""SELECT * FROM entity_aliases
-                WHERE alias_normalized IN ({placeholders})
-                  AND (access_context_hash = ? OR (
-                      access_context_hash IS NULL
-                      AND source IN ('admin_manual', 'deterministic')
-                  ))""",
+            f"""SELECT ea.*, e.canonical_name, e.display_name
+                  FROM entity_aliases ea
+                  JOIN entities e ON e.id = ea.canonical_id
+                 WHERE ea.alias_normalized IN ({placeholders})
+                   AND (ea.access_context_hash = ? OR (
+                       ea.access_context_hash = ''
+                       AND ea.source IN ('manual', 'admin_manual', 'deterministic')
+                   ))
+                 ORDER BY ea.alias_normalized,
+                          CASE ea.source
+                              WHEN 'manual' THEN 0
+                              WHEN 'admin_manual' THEN 0
+                              WHEN 'deterministic' THEN 1
+                              ELSE 2
+                          END,
+                          ea.canonical_id""",
             (*names, scope.access_context_hash),
         ) as cursor:
             async for row in cursor:
                 data = dict(row)
-                aliases.setdefault(
-                    data["alias_normalized"],
-                    EntityAlias(
-                        alias=data["alias"],
-                        alias_normalized=data["alias_normalized"],
-                        canonical_id=int(data["canonical_id"]),
-                        source=data["source"],
-                        access_context_hash=data["access_context_hash"],
-                        created_at=_parse_dt(data["created_at"]),
-                    ),
+                source_priority = (
+                    0
+                    if data["source"] in {"manual", "admin_manual"}
+                    else 1
+                    if data["source"] == "deterministic"
+                    else 2
+                )
+                eligible_aliases.setdefault(data["alias_normalized"], []).append(
+                    (
+                        source_priority,
+                        EntityAlias(
+                            alias=data["alias"],
+                            alias_normalized=data["alias_normalized"],
+                            canonical_id=int(data["canonical_id"]),
+                            source=data["source"],
+                            access_context_hash=data["access_context_hash"] or None,
+                            created_at=_parse_dt(data["created_at"]),
+                        ),
+                        Entity(
+                            id=int(data["canonical_id"]),
+                            canonical_name=data["canonical_name"],
+                            display_name=data["display_name"],
+                        ),
+                    )
+                )
+
+        aliases: dict[str, EntityAlias] = {}
+        alias_conflict_candidates: dict[str, tuple[Entity, ...]] = {}
+        for name, rows in eligible_aliases.items():
+            highest_priority = min(row[0] for row in rows)
+            highest = tuple(row for row in rows if row[0] == highest_priority)
+            canonical_ids = {row[1].canonical_id for row in highest}
+            if len(canonical_ids) == 1:
+                aliases[name] = highest[0][1]
+            else:
+                alias_conflict_candidates[name] = tuple(
+                    {row[2].id: row[2] for row in highest}.values()
                 )
 
         unresolved = tuple(name for name in names if name not in exact and name not in aliases)
-        candidates: dict[str, tuple[Entity, ...]] = {name: () for name in unresolved}
+        candidates: dict[str, tuple[Entity, ...]] = {
+            name: alias_conflict_candidates.get(name, ())[:candidate_limit]
+            for name in unresolved
+        }
         terms = tuple(
             dict.fromkeys(
                 token
                 for name in unresolved
-                for token in name.split()
-                if len(token) >= 3 and token.replace(".", "").isalnum()
+                for token in tuple(
+                    item
+                    for item in name.split()
+                    if len(item) >= 3 and item.replace(".", "").isalnum()
+                )[:4]
             )
-        )[: max(1, candidate_limit * 4)]
+        )
         if terms:
             max_rows = max(candidate_limit, len(unresolved) * candidate_limit * 2)
-            term_predicate = " OR ".join(
-                "LOWER(canonical_name) LIKE ? OR LOWER(display_name) LIKE ?"
-                for _term in terms
-            )
-            term_params = tuple(
-                value
-                for term in terms
-                for value in (f"%{term}%", f"%{term}%")
-            )
             pool: list[Entity] = []
-            async with self.db.execute(
-                f"""SELECT * FROM entities
-                    WHERE {term_predicate}
-                    ORDER BY canonical_name
-                    LIMIT ?""",
-                (*term_params, max_rows),
-            ) as cursor:
-                async for row in cursor:
-                    pool.append(_entity_from_row(dict(row)))
+            for start in range(0, len(terms), 400):
+                term_batch = terms[start : start + 400]
+                term_predicate = " OR ".join(
+                    "LOWER(canonical_name) LIKE ? OR LOWER(display_name) LIKE ?"
+                    for _term in term_batch
+                )
+                term_params = tuple(
+                    value
+                    for term in term_batch
+                    for value in (f"%{term}%", f"%{term}%")
+                )
+                async with self.db.execute(
+                    f"""SELECT * FROM entities
+                        WHERE {term_predicate}
+                        ORDER BY canonical_name
+                        LIMIT ?""",
+                    (*term_params, max_rows),
+                ) as cursor:
+                    async for row in cursor:
+                        pool.append(_entity_from_row(dict(row)))
+            pool = list({entity.id: entity for entity in pool}.values())
             for name in unresolved:
                 name_tokens = set(name.split())
                 ranked = sorted(
@@ -11655,10 +11768,13 @@ class Database:
                         entity.canonical_name,
                     ),
                 )
-                candidates[name] = tuple(
+                lexical = tuple(
                     entity
                     for entity in ranked
                     if name_tokens.intersection(entity.canonical_name.split())
+                )
+                candidates[name] = tuple(
+                    {entity.id: entity for entity in (*candidates[name], *lexical)}.values()
                 )[:candidate_limit]
         return EntityResolutionContext(exact, aliases, candidates)
 
@@ -11688,8 +11804,7 @@ class Database:
                 ) as cursor:
                     async for row in cursor:
                         resolved[str(row["canonical_name"])] = int(row["id"])
-                for entity_id in resolved.values():
-                    await self._refresh_entity_alias_search_unlocked(entity_id)
+                await self._refresh_entity_alias_search_many_unlocked(tuple(resolved.values()))
                 await self.db.commit()
                 return resolved
             except BaseException:
@@ -11705,23 +11820,33 @@ class Database:
             return
         async with self._write_lock:
             try:
-                await self.db.executemany(
-                    """INSERT OR IGNORE INTO entity_aliases (
-                           alias, alias_normalized, canonical_id, source, access_context_hash
-                       ) VALUES (?, ?, ?, ?, ?)""",
-                    tuple(
-                        (
-                            item.alias,
-                            item.alias_normalized,
-                            item.canonical_id,
-                            item.source,
-                            item.access_context_hash,
-                        )
-                        for item in values
-                    ),
+                normalized_values = tuple(
+                    (
+                        item.alias,
+                        item.alias_normalized,
+                        item.canonical_id,
+                        item.source,
+                        item.access_context_hash or "",
+                    )
+                    for item in values
                 )
-                for entity_id in dict.fromkeys(item.canonical_id for item in values):
-                    await self._refresh_entity_alias_search_unlocked(entity_id)
+                if any(
+                    source == "resolver_confirmed" and not access_context_hash
+                    for _alias, _normalized, _canonical_id, source, access_context_hash
+                    in normalized_values
+                ):
+                    raise ValueError("resolver-confirmed aliases require an access context")
+                await self.db.executemany(
+                    """INSERT INTO entity_aliases (
+                           alias, alias_normalized, canonical_id, source, access_context_hash
+                       ) VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT(alias_normalized, canonical_id, access_context_hash)
+                       DO UPDATE SET alias=excluded.alias, source=excluded.source""",
+                    normalized_values,
+                )
+                await self._refresh_entity_alias_search_many_unlocked(
+                    tuple(dict.fromkeys(item.canonical_id for item in values))
+                )
                 await self.db.commit()
             except BaseException:
                 rollback_task = asyncio.create_task(self.db.rollback())
@@ -11759,55 +11884,68 @@ class Database:
                 raise
 
     async def _refresh_entity_alias_search_unlocked(self, entity_id: int) -> None:
-        await self.db.execute(
-            "DELETE FROM entity_alias_search_fts WHERE entity_id = ?",
-            (entity_id,),
-        )
-        async with self.db.execute("SELECT * FROM entities WHERE id = ?", (entity_id,)) as cursor:
-            entity_row = await cursor.fetchone()
-        if entity_row is None:
+        await self._refresh_entity_alias_search_many_unlocked((entity_id,))
+
+    async def _refresh_entity_alias_search_many_unlocked(
+        self,
+        entity_ids: Sequence[int],
+    ) -> None:
+        ids = tuple(dict.fromkeys(int(entity_id) for entity_id in entity_ids))
+        if not ids:
             return
-        search_text = " ".join(
-            part
-            for part in (
-                entity_row["canonical_name"] or "",
-                entity_row["display_name"] or "",
+        for start in range(0, len(ids), 400):
+            batch = ids[start : start + 400]
+            placeholders = ",".join("?" for _ in batch)
+            await self.db.execute(
+                f"DELETE FROM entity_alias_search_fts WHERE entity_id IN ({placeholders})",
+                batch,
             )
-            if part
-        )
-        await self.db.execute(
-            """INSERT INTO entity_alias_search_fts (
-                   entity_id,
-                   canonical_name,
-                   alias_normalized,
-                   search_text
-               ) VALUES (?, ?, ?, ?)""",
-            (
-                entity_id,
-                entity_row["canonical_name"],
-                entity_row["canonical_name"],
-                search_text,
-            ),
-        )
-        async with self.db.execute(
-            "SELECT alias, alias_normalized FROM entity_aliases WHERE canonical_id = ?",
-            (entity_id,),
-        ) as cursor:
-            async for row in cursor:
-                alias_text = " ".join(part for part in (row["alias"] or "", row["alias_normalized"] or "") if part)
-                await self.db.execute(
-                    """INSERT INTO entity_alias_search_fts (
-                           entity_id,
-                           canonical_name,
-                           alias_normalized,
-                           search_text
-                       ) VALUES (?, ?, ?, ?)""",
-                    (
-                        entity_id,
-                        entity_row["canonical_name"],
-                        row["alias_normalized"],
-                        alias_text,
+            entity_rows = await self.db.execute_fetchall(
+                f"SELECT id, canonical_name, display_name FROM entities WHERE id IN ({placeholders})",
+                batch,
+            )
+            aliases = await self.db.execute_fetchall(
+                f"""SELECT canonical_id, alias, alias_normalized
+                       FROM entity_aliases
+                      WHERE canonical_id IN ({placeholders})
+                        AND access_context_hash = ''
+                        AND source IN ('manual', 'admin_manual', 'deterministic')""",
+                batch,
+            )
+            canonical_by_id = {int(row["id"]): str(row["canonical_name"]) for row in entity_rows}
+            projection_rows = [
+                (
+                    int(row["id"]),
+                    str(row["canonical_name"]),
+                    str(row["canonical_name"]),
+                    " ".join(
+                        part
+                        for part in (row["canonical_name"] or "", row["display_name"] or "")
+                        if part
                     ),
+                )
+                for row in entity_rows
+            ]
+            projection_rows.extend(
+                (
+                    int(row["canonical_id"]),
+                    canonical_by_id[int(row["canonical_id"])],
+                    str(row["alias_normalized"]),
+                    " ".join(
+                        part
+                        for part in (row["alias"] or "", row["alias_normalized"] or "")
+                        if part
+                    ),
+                )
+                for row in aliases
+                if int(row["canonical_id"]) in canonical_by_id
+            )
+            if projection_rows:
+                await self.db.executemany(
+                    """INSERT INTO entity_alias_search_fts (
+                           entity_id, canonical_name, alias_normalized, search_text
+                       ) VALUES (?, ?, ?, ?)""",
+                    projection_rows,
                 )
 
     async def get_entity_by_canonical(self, canonical_name: str) -> Entity | None:
@@ -11819,7 +11957,10 @@ class Database:
 
     async def get_entity_by_alias(self, alias_normalized: str) -> EntityAlias | None:
         async with self.db.execute(
-            "SELECT * FROM entity_aliases WHERE alias_normalized = ? LIMIT 1",
+            """SELECT * FROM entity_aliases
+                WHERE alias_normalized = ? AND access_context_hash = ''
+                  AND source IN ('manual', 'admin_manual', 'deterministic')
+                LIMIT 1""",
             (alias_normalized,),
         ) as cursor:
             row = await cursor.fetchone()
@@ -11831,7 +11972,7 @@ class Database:
                 alias_normalized=d["alias_normalized"],
                 canonical_id=d["canonical_id"],
                 source=d["source"],
-                access_context_hash=d["access_context_hash"],
+                access_context_hash=d["access_context_hash"] or None,
                 created_at=_parse_dt(d["created_at"]),
             )
 
@@ -11954,7 +12095,9 @@ class Database:
         async with self._write_lock:
             try:
                 result = await self.db.execute(
-                    "DELETE FROM entity_aliases WHERE alias_normalized = ? AND canonical_id = ?",
+                    """DELETE FROM entity_aliases
+                        WHERE alias_normalized = ? AND canonical_id = ?
+                          AND access_context_hash = ''""",
                     (alias_normalized, entity_id),
                 )
                 if result.rowcount > 0:
@@ -11976,8 +12119,8 @@ class Database:
         async with self._write_lock:
             await self.db.execute(
                 """INSERT OR IGNORE INTO entity_aliases (
-                    alias, alias_normalized, canonical_id, source
-                ) VALUES (?, ?, ?, ?)""",
+                    alias, alias_normalized, canonical_id, source, access_context_hash
+                ) VALUES (?, ?, ?, ?, '')""",
                 (alias, alias_normalized, canonical_id, source),
             )
             await self._refresh_entity_alias_search_unlocked(canonical_id)
@@ -11985,7 +12128,12 @@ class Database:
 
     async def get_aliases_for_entity(self, entity_id: int) -> list[EntityAlias]:
         results: list[EntityAlias] = []
-        async with self.db.execute("SELECT * FROM entity_aliases WHERE canonical_id = ?", (entity_id,)) as cursor:
+        async with self.db.execute(
+            """SELECT * FROM entity_aliases
+                WHERE canonical_id = ? AND access_context_hash = ''
+                  AND source IN ('manual', 'admin_manual', 'deterministic')""",
+            (entity_id,),
+        ) as cursor:
             async for row in cursor:
                 d = dict(row)
                 results.append(
@@ -11994,7 +12142,7 @@ class Database:
                         alias_normalized=d["alias_normalized"],
                         canonical_id=d["canonical_id"],
                         source=d["source"],
-                        access_context_hash=d["access_context_hash"],
+                        access_context_hash=d["access_context_hash"] or None,
                         created_at=_parse_dt(d["created_at"]),
                     )
                 )
@@ -12003,7 +12151,11 @@ class Database:
     async def get_all_aliases(self) -> list[tuple[str, int]]:
         """Return all (alias_normalized, canonical_id) pairs for entity detection."""
         results: list[tuple[str, int]] = []
-        async with self.db.execute("SELECT alias_normalized, canonical_id FROM entity_aliases") as cursor:
+        async with self.db.execute(
+            """SELECT alias_normalized, canonical_id FROM entity_aliases
+                WHERE access_context_hash = ''
+                  AND source IN ('manual', 'admin_manual', 'deterministic')"""
+        ) as cursor:
             async for row in cursor:
                 results.append((row["alias_normalized"], row["canonical_id"]))
         return results

@@ -259,7 +259,9 @@ class RelationalStore(Protocol):
         source_unit_id: str,
     ) -> EvidenceUnit | None: ...
     async def list_disabled_source_ids_for_user(self, user_id: str) -> list[str]: ...
-    async def list_active_memories(self, memory_ids: Sequence[str]) -> list[Memory]: ...
+    async def list_active_memories(self, memory_ids: Sequence[str]) -> list[Memory]:
+        """Return active rows in caller order, chunked by each adapter's bind limit."""
+        ...
     async def list_active_candidate_memories(
         self,
         memory_ids: Sequence[str],
@@ -523,6 +525,14 @@ class RelationalStore(Protocol):
         *,
         source_id: str | None = None,
     ) -> tuple[ActiveSupportEvidence, ...]: ...
+    async def get_active_memory_support_evidence_many(
+        self,
+        memory_ids: Sequence[str],
+        *,
+        source_id: str | None = None,
+    ) -> Mapping[str, tuple[ActiveSupportEvidence, ...]]:
+        """Map every requested id to active Evidence using adapter-bounded chunks."""
+        ...
     async def get_source_unit_support_reference_ids(
         self,
         source_unit_id: str,

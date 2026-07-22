@@ -135,11 +135,10 @@ class MemoryEngine:
         keep pre-cutover rows visible to the conservative lineage gate.
         """
         unit_support = await self.db.get_source_unit_support_reference_ids(source_unit_id)
-        incumbents_by_id: dict[str, Memory] = {}
-        for memory_id in sorted(unit_support):
-            memory = await self.db.get_memory(memory_id)
-            if memory is not None and memory.status == "active":
-                incumbents_by_id[memory.id] = memory
+        incumbents_by_id = {
+            memory.id: memory
+            for memory in await self.db.list_active_memories(tuple(sorted(unit_support)))
+        }
         for memory in await self.db.get_memories_by_source_doc(
             doc_id,
             support_kind="extracted",
@@ -163,17 +162,19 @@ class MemoryEngine:
         """
 
         delta = projection.deltas[0]
+        ordered_incumbent_ids = tuple(sorted(incumbent_ids))
+        evidence_by_memory_id = await self.db.get_active_memory_support_evidence_many(
+            ordered_incumbent_ids,
+            source_id=projection.source_id,
+        )
         resolved: dict[str, ImpactResult] = {}
-        for memory_id in incumbent_ids:
+        for memory_id in ordered_incumbent_ids:
             reference_ids = unit_support.get(memory_id)
             if not reference_ids:
                 resolved[memory_id] = ImpactResult.UNKNOWN
                 continue
             scoped_reference_ids = frozenset(reference_ids)
-            evidence = await self.db.get_active_memory_support_evidence(
-                memory_id,
-                source_id=projection.source_id,
-            )
+            evidence = evidence_by_memory_id.get(memory_id, ())
             impacts = {
                 resolve_anchor_impact(item.anchor, delta)
                 for item in evidence
@@ -663,7 +664,16 @@ class MemoryEngine:
                     excluded_memory_ids=frozenset(incumbents_by_id),
                 )
             )
-        identity_resolutions = await self.identity_resolver.resolve(tuple(identity_requests))
+        identity_resolution = await self.identity_resolver.resolve(tuple(identity_requests))
+        identity_resolutions = identity_resolution.resolutions
+        stats.update(
+            {
+                "identity_resolution_pair_count": identity_resolution.metrics.pair_count,
+                "identity_resolution_llm_calls": identity_resolution.metrics.llm_calls,
+                "identity_resolution_prompt_chars": identity_resolution.metrics.prompt_chars,
+                "identity_resolution_elapsed_ms": identity_resolution.metrics.elapsed_ms,
+            }
+        )
         classified_candidate_ids = tuple(
             dict.fromkeys(
                 memory_id
