@@ -1384,11 +1384,12 @@ CREATE TABLE IF NOT EXISTS memories (
 CREATE TABLE IF NOT EXISTS memory_sources (
     memory_id   TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     doc_id      TEXT NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
+    source_id   TEXT NOT NULL,
     source_type TEXT NOT NULL,
     excerpt     TEXT,                -- specific passage supporting this memory
     support_kind TEXT NOT NULL DEFAULT 'extracted',
     added_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (memory_id, doc_id)
+    PRIMARY KEY (memory_id, source_id, doc_id)
 );
 
 -- Entity linkage

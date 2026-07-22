@@ -1076,6 +1076,21 @@ class SqliteRelationalStore:
             source_updated_at=source_updated_at,
         )
 
+    async def remove_memory_source(
+        self,
+        memory_id: str,
+        doc_id: str,
+        *,
+        source_id: str,
+        retire_reason: str = "source_deleted",
+    ) -> bool:
+        return await self._db.remove_memory_source(
+            memory_id,
+            doc_id,
+            source_id=source_id,
+            retire_reason=retire_reason,
+        )
+
     async def promote_to_workspace(
         self,
         memory_id: str,

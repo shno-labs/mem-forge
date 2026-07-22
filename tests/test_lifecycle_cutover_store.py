@@ -54,6 +54,7 @@ from memforge.models import (
     DocumentRecord,
     Memory,
     MemoryReview,
+    MemorySource,
     NormalizedContent,
     RawContent,
     ReconcileAction,
@@ -754,10 +755,7 @@ async def test_gate_ignores_inactive_historical_memory_without_support(db: Datab
 
 
 async def _persist_exact_support_and_provenance(db: Database) -> EvidenceReference:
-    if not any(
-        source.source_id == "src-1"
-        for source in await db.get_memory_sources("mem-legacy")
-    ):
+    if not any(source.source_id == "src-1" for source in await db.get_memory_sources("mem-legacy")):
         await _attach_legacy_source(db)
     unit = _unit()
     await db.upsert_evidence_unit(unit)
@@ -782,6 +780,364 @@ async def _persist_exact_support_and_provenance(db: Database) -> EvidenceReferen
         )
     )
     return reference
+
+
+def _overlapping_source_projection():
+    """Project the same provider object through a distinct Configured Source."""
+
+    original = _projection()
+    observation = replace(
+        original.observations[0],
+        id="obs-page-1-body-source-2",
+        source_id="src-2",
+        source_unit_id="unit-page-1-source-2",
+    )
+    observation_revision = replace(
+        original.observation_revisions[0],
+        id="obsrev-page-1-v2-source-2",
+        observation_id=observation.id,
+    )
+    source_unit = replace(
+        original.source_units[0],
+        id="unit-page-1-source-2",
+        source_id="src-2",
+    )
+    source_unit_revision = replace(
+        original.source_unit_revisions[0],
+        id="unitrev-page-1-v2-source-2",
+        source_unit_id=source_unit.id,
+        observation_revision_ids=(observation_revision.id,),
+    )
+    relation = replace(original.relations[0], from_id=source_unit.id)
+    delta = replace(
+        original.deltas[0],
+        source_unit_id=source_unit.id,
+        previous_unit_revision_id="unitrev-page-1-v1-source-2",
+        current_unit_revision_id=source_unit_revision.id,
+        changed_anchors=(
+            replace(
+                original.deltas[0].changed_anchors[0],
+                observation_id=observation.id,
+                observation_revision_id=observation_revision.id,
+            ),
+        ),
+        fragment_mappings=(
+            replace(
+                original.deltas[0].fragment_mappings[0],
+                observation_id=observation.id,
+                previous_revision_id="obsrev-page-1-v1-source-2",
+                current_revision_id=observation_revision.id,
+            ),
+        ),
+    )
+    return replace(
+        original,
+        run_id="projection-run-source-2",
+        source_id="src-2",
+        observations=(observation,),
+        observation_revisions=(observation_revision,),
+        source_units=(source_unit,),
+        source_unit_revisions=(source_unit_revision,),
+        relations=(relation,),
+        deltas=(delta,),
+    )
+
+
+def _overlapping_support_plan(
+    *,
+    plan_id: str,
+    mutation_type: LifecycleMutationType,
+    reference: EvidenceReference,
+    evidence_unit: EvidenceUnit | None = None,
+    support_hash: str | None = None,
+) -> LifecyclePlan:
+    removing = mutation_type is LifecycleMutationType.REMOVE_SUPPORT
+    return LifecyclePlan(
+        id=plan_id,
+        scope=ReconciliationScope(
+            id=f"scope-{plan_id}",
+            source_id="src-2",
+            source_unit_id="unit-page-1-source-2",
+            base_unit_revision_id="unitrev-page-1-v1-source-2",
+            target_unit_revision_id="unitrev-page-1-v2-source-2",
+        ),
+        gate_state=(LifecycleGateState.ENABLED if removing else LifecycleGateState.GATED),
+        coverage_proof=CoverageProof(
+            mandatory_incumbent_ids=(("mem-legacy",) if removing else ()),
+            incumbent_decisions=(
+                (
+                    IncumbentDecision(
+                        "mem-legacy",
+                        IncumbentDisposition.REMOVE_SUPPORT,
+                        "overlapping source no longer supports claim",
+                    ),
+                )
+                if removing
+                else ()
+            ),
+            batch_ids=("batch-overlap",),
+            completed_batch_ids=("batch-overlap",),
+        ),
+        stale_guard=StaleGuard(
+            observation_revision_ids=("obsrev-page-1-v2-source-2",),
+            support_set_hashes=({"mem-legacy": support_hash} if isinstance(support_hash, str) else {}),
+        ),
+        mutations=(
+            LifecycleMutation(
+                mutation_type,
+                memory_id="mem-legacy",
+                source_id="src-2",
+                evidence_reference_ids=(reference.id or "",),
+                payload={
+                    "access_context_hash": "workspace",
+                    "document_id": "legacy-gate-doc",
+                },
+            ),
+        ),
+        evidence_units=((evidence_unit,) if evidence_unit is not None else ()),
+        evidence_references=((reference,) if evidence_unit is not None else ()),
+    )
+
+
+async def _attach_overlapping_source_support(
+    db: Database,
+    *,
+    plan_id: str,
+) -> tuple[EvidenceUnit, EvidenceReference]:
+    await _persist_exact_support_and_provenance(db)
+    await db.upsert_source(
+        id="src-2",
+        type="confluence",
+        name="Engineering overlap",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="owner-1",
+    )
+    await db.record_source_projection(_overlapping_source_projection())
+    unit = replace(
+        _unit(),
+        id=f"eu-{plan_id}",
+        source_id="src-2",
+        doc_revision_id="obsrev-page-1-v2-source-2",
+        source_lineage_id="unit-page-1-source-2",
+    )
+    reference = EvidenceReference(
+        role=EvidenceRole.PRIMARY,
+        anchor=SourceAnchor(
+            kind=AnchorKind.WHOLE_OBSERVATION,
+            observation_id="obs-page-1-body-source-2",
+            observation_revision_id="obsrev-page-1-v2-source-2",
+        ),
+        evidence_unit_id=unit.id,
+    )
+    reference = replace(reference, id=evidence_reference_id_for(unit.id, reference))
+    await db.apply_lifecycle_plan(
+        _overlapping_support_plan(
+            plan_id=plan_id,
+            mutation_type=LifecycleMutationType.ATTACH_SUPPORT,
+            reference=reference,
+            evidence_unit=unit,
+        )
+    )
+    return unit, reference
+
+
+@pytest.mark.asyncio
+async def test_overlapping_configured_sources_keep_independent_support_projection(
+    db: Database,
+) -> None:
+    _, reference = await _attach_overlapping_source_support(
+        db,
+        plan_id="plan-overlapping-attach",
+    )
+
+    rows = await db.db.execute_fetchall(
+        """SELECT source_id FROM memory_sources
+             WHERE memory_id = ? AND doc_id = ? ORDER BY source_id""",
+        ("mem-legacy", "legacy-gate-doc"),
+    )
+    assert [row["source_id"] for row in rows] == ["src-1", "src-2"]
+    assert await db.count_active_supported_memories_without_source_provenance("src-1") == 0
+    assert await db.count_active_supported_memories_without_source_provenance("src-2") == 0
+
+    await db.enable_lifecycle_gate("src-2")
+    await db.apply_lifecycle_plan(
+        _overlapping_support_plan(
+            plan_id="plan-overlapping-remove",
+            mutation_type=LifecycleMutationType.REMOVE_SUPPORT,
+            reference=reference,
+            support_hash=await db.get_memory_support_set_hash("mem-legacy"),
+        )
+    )
+
+    rows = await db.db.execute_fetchall(
+        """SELECT source_id FROM memory_sources
+             WHERE memory_id = ? AND doc_id = ? ORDER BY source_id""",
+        ("mem-legacy", "legacy-gate-doc"),
+    )
+    assert [row["source_id"] for row in rows] == ["src-1"]
+    assert await db.count_active_supported_memories_without_source_provenance("src-1") == 0
+    metadata_rows = await db.db.execute_fetchall(
+        """SELECT source_id FROM memory_search_metadata_trigram
+             WHERE memory_id = ? AND doc_id = ? ORDER BY source_id""",
+        ("mem-legacy", "legacy-gate-doc"),
+    )
+    assert [row["source_id"] for row in metadata_rows] == ["src-1"]
+
+
+@pytest.mark.asyncio
+async def test_document_owned_corroboration_preserves_an_overlapping_source_projection(
+    db: Database,
+) -> None:
+    await _attach_overlapping_source_support(
+        db,
+        plan_id="plan-overlapping-corroborate",
+    )
+
+    outcome = await db.corroborate_memory(
+        "mem-legacy",
+        "legacy-gate-doc",
+        "confluence",
+        "longer owner source excerpt",
+        support_kind="extracted",
+        source_updated_at=None,
+    )
+
+    assert outcome == "updated"
+    rows = await db.db.execute_fetchall(
+        """SELECT source_id, excerpt FROM memory_sources
+             WHERE memory_id = ? AND doc_id = ? ORDER BY source_id""",
+        ("mem-legacy", "legacy-gate-doc"),
+    )
+    assert [(row["source_id"], row["excerpt"]) for row in rows] == [
+        ("src-1", "longer owner source excerpt"),
+        ("src-2", "Legacy claim"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_remove_memory_source_removes_only_the_named_configured_source(
+    db: Database,
+) -> None:
+    overlapping_unit, _ = await _attach_overlapping_source_support(
+        db,
+        plan_id="plan-overlapping-direct-remove",
+    )
+    retired = await db.remove_memory_source(
+        "mem-legacy",
+        "legacy-gate-doc",
+        source_id="src-2",
+    )
+
+    assert retired is False
+    sources = await db.get_memory_sources("mem-legacy")
+    assert [(source.source_id, source.doc_id) for source in sources] == [
+        ("src-1", "legacy-gate-doc"),
+    ]
+    assert await db.get_evidence_unit("eu-backfill-1") is not None
+    assert await db.get_evidence_unit(overlapping_unit.id) is not None
+    assert await db.get_active_memory_support_evidence("mem-legacy", source_id="src-2") == ()
+    metadata_rows = await db.db.execute_fetchall(
+        """SELECT source_id FROM memory_search_metadata_trigram
+             WHERE memory_id = ? AND doc_id = ? ORDER BY source_id""",
+        ("mem-legacy", "legacy-gate-doc"),
+    )
+    assert [row["source_id"] for row in metadata_rows] == ["src-1"]
+
+
+@pytest.mark.asyncio
+async def test_remove_memory_source_preserves_shared_evidence_for_another_memory(
+    db: Database,
+) -> None:
+    unit, reference = await _attach_overlapping_source_support(
+        db,
+        plan_id="plan-shared-evidence-remove",
+    )
+    other = Memory(
+        id="mem-other-shared-evidence",
+        memory_type="fact",
+        content="Another claim uses the same evidence unit.",
+        content_hash=content_hash("Another claim uses the same evidence unit."),
+    )
+    await db.insert_memory(other)
+    await db.restore_memory_source_snapshot(
+        MemorySource(
+            memory_id=other.id,
+            doc_id=unit.doc_id,
+            source_id=unit.source_id,
+            source_type=unit.source_type,
+            excerpt=unit.excerpt,
+            source_updated_at=None,
+        )
+    )
+    await db.upsert_memory_support_assertion(
+        MemorySupportAssertion(
+            id="support-other-shared-evidence",
+            memory_id=other.id,
+            evidence_reference_id=reference.id or "",
+            source_id=unit.source_id,
+            access_context_hash="workspace",
+        )
+    )
+
+    await db.remove_memory_source("mem-legacy", unit.doc_id, source_id=unit.source_id)
+
+    stored_unit = await db.get_evidence_unit(unit.id)
+    assert stored_unit is not None
+    assert stored_unit.id == unit.id
+    assert await db.get_active_memory_support_reference_ids(other.id) == (reference.id,)
+
+
+@pytest.mark.asyncio
+async def test_delete_source_preserves_a_document_projected_by_another_configured_source(
+    db: Database,
+) -> None:
+    overlapping_unit, _ = await _attach_overlapping_source_support(
+        db,
+        plan_id="plan-overlapping-delete-owner",
+    )
+
+    result = await db.delete_source_cascade("src-1")
+
+    assert result.retired_memory_ids == ()
+    document = await db.get_document("legacy-gate-doc")
+    assert document is not None
+    assert document.source == "src-2"
+    sources = await db.get_memory_sources("mem-legacy")
+    assert [(source.source_id, source.doc_id) for source in sources] == [
+        ("src-2", "legacy-gate-doc"),
+    ]
+    assert await db.get_evidence_unit("eu-backfill-1") is None
+    assert await db.get_evidence_unit(overlapping_unit.id) is not None
+    memory = await db.get_memory("mem-legacy")
+    assert memory is not None
+    assert memory.status == "active"
+
+
+@pytest.mark.asyncio
+async def test_delete_non_owner_source_removes_its_exact_shared_document_projection(
+    db: Database,
+) -> None:
+    overlapping_unit, _ = await _attach_overlapping_source_support(
+        db,
+        plan_id="plan-overlapping-delete-non-owner",
+    )
+
+    result = await db.delete_source_cascade("src-2")
+
+    assert result.retired_memory_ids == ()
+    document = await db.get_document("legacy-gate-doc")
+    assert document is not None
+    assert document.source == "src-1"
+    sources = await db.get_memory_sources("mem-legacy")
+    assert [(source.source_id, source.doc_id) for source in sources] == [
+        ("src-1", "legacy-gate-doc"),
+    ]
+    assert await db.get_evidence_unit("eu-backfill-1") is not None
+    assert await db.get_evidence_unit(overlapping_unit.id) is None
+    memory = await db.get_memory("mem-legacy")
+    assert memory is not None
+    assert memory.status == "active"
 
 
 def _retirement_plan(reference: EvidenceReference, support_hash: str) -> LifecyclePlan:
