@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
-import threading
-import time
-
 import pytest
 
-from memforge.memory.entity_resolver import validate_alias, EntityResolver
-from memforge.models import Entity, canonicalize_entity_name
+from memforge.llm.structured import EntityBatchValidationDecision, EntityBatchValidationResponse
+from memforge.memory.entity_resolver import EntityResolutionContext, EntityResolver, validate_alias
+from memforge.models import Entity, EntityAlias, canonicalize_entity_name
+from memforge.storage.database import Database
+
+
+@pytest.fixture
+async def db(tmp_path):
+    database = Database(str(tmp_path / "entity-resolution.db"))
+    await database.connect()
+    yield database
+    await database.close()
 
 
 # ---------------------------------------------------------------------------
@@ -107,182 +113,158 @@ class TestValidateAlias:
 
 
 # ---------------------------------------------------------------------------
-# Entity model (tags)
+# Batched entity resolution
 # ---------------------------------------------------------------------------
 
 
-class TestEntityTags:
-    def test_entity_tags_default(self):
-        """Entity tags default to empty list."""
-        e = Entity(id=1, canonical_name="test")
-        assert e.tags == []
+class FakeEntityStore:
+    def __init__(self, context: EntityResolutionContext) -> None:
+        self.context = context
+        self.context_calls = 0
+        self.created: list[tuple[str, str]] = []
+        self.aliases: list[EntityAlias] = []
 
-    def test_entity_tags_multi(self):
-        """Entity can have multiple tags."""
-        e = Entity(id=1, canonical_name="auth-service", tags=["service", "api"])
-        assert e.tags == ["service", "api"]
+    async def load_entity_resolution_context(self, canonical_names, *, candidate_limit):
+        assert candidate_limit == 10
+        self.context_calls += 1
+        assert tuple(canonical_names) == tuple(dict.fromkeys(canonical_names))
+        return self.context
 
-    def test_entity_type_backward_compat(self):
-        """Deprecated entity_type property returns first tag."""
-        e = Entity(id=1, canonical_name="postgresql", tags=["technology"])
-        assert e.entity_type == "technology"
+    async def upsert_entities(self, entities):
+        self.created.extend(entities)
+        return {canonical: 100 + index for index, (canonical, _display) in enumerate(entities)}
 
-    def test_entity_type_empty_tags(self):
-        """entity_type returns 'unknown' when no tags."""
-        e = Entity(id=1, canonical_name="test")
-        assert e.entity_type == "unknown"
+    async def insert_aliases(self, aliases):
+        self.aliases.extend(aliases)
 
-    def test_entity_resolver_class_exists(self):
-        """EntityResolver class is importable and has resolve method."""
-        assert hasattr(EntityResolver, "resolve")
-        assert hasattr(EntityResolver, "invalidate_cache")
 
-    @pytest.mark.asyncio
-    async def test_embedding_cache_load_is_single_flight_under_concurrent_resolve(self, monkeypatch):
-        class FakeDb:
-            def __init__(self) -> None:
-                self.entities = [
-                    Entity(id=1, canonical_name="pay api", display_name="pay-api"),
-                    Entity(id=2, canonical_name="auth service", display_name="auth-service"),
-                ]
-                self.full_embedding_batches = 0
+class BatchEntityClient:
+    def __init__(self, decisions: list[EntityBatchValidationDecision]) -> None:
+        self.decisions = decisions
+        self.calls = 0
 
-            async def get_entity_by_canonical(self, canonical_name: str):
-                del canonical_name
-                return None
+    async def validate_entity_batch(self, prompt, *, max_tokens, model):
+        del prompt, max_tokens, model
+        self.calls += 1
+        return EntityBatchValidationResponse(decisions=self.decisions)
 
-            async def get_entity_by_alias(self, alias_normalized: str):
-                del alias_normalized
-                return None
 
-            async def get_all_entities(self):
-                await asyncio.sleep(0.01)
-                return self.entities
-
-            async def insert_alias(self, **_kwargs):
-                return None
-
-            async def upsert_entity(self, canonical_name: str, display_name: str, tags=None):
-                raise AssertionError(f"unexpected new entity: {canonical_name}/{display_name}/{tags}")
-
-        db = FakeDb()
-
-        def fake_embed_texts(names, base_url, api_key, model):
-            del base_url, api_key, model
-            if len(names) == len(db.entities):
-                db.full_embedding_batches += 1
-            return [[1.0, 0.0] for _ in names]
-
-        monkeypatch.setattr("memforge.retrieval.embeddings.embed_texts", fake_embed_texts)
-
-        resolver = EntityResolver(
-            db=db,  # type: ignore[arg-type]
-            embed_cfg={"base_url": "http://embed", "api_key": "key", "model": "model"},
+@pytest.mark.asyncio
+async def test_resolve_many_batches_lookup_embedding_and_ambiguity(monkeypatch):
+    pay = Entity(id=1, canonical_name="payroll service", display_name="Payroll Service")
+    auth = Entity(id=2, canonical_name="authentication service", display_name="Authentication Service")
+    known = Entity(id=3, canonical_name="memforge", display_name="MemForge")
+    store = FakeEntityStore(
+        EntityResolutionContext(
+            exact_matches={"memforge": known},
+            alias_matches={},
+            candidates={
+                "pay service": (pay,),
+                "auth svc": (auth,),
+                "new component": (),
+            },
         )
-
-        results = await asyncio.gather(*(resolver.resolve("pay-api") for _ in range(5)))
-
-        assert results == [1, 1, 1, 1, 1]
-        assert db.full_embedding_batches == 1
-
-    @pytest.mark.asyncio
-    async def test_embedding_cache_full_load_is_single_flight_across_resolvers(self, monkeypatch):
-        class FakeDb:
-            def __init__(self) -> None:
-                self.entities = [
-                    Entity(id=1, canonical_name="pay api", display_name="pay-api"),
-                    Entity(id=2, canonical_name="auth service", display_name="auth-service"),
-                ]
-
-            async def get_entity_by_canonical(self, canonical_name: str):
-                del canonical_name
-                return None
-
-            async def get_entity_by_alias(self, alias_normalized: str):
-                del alias_normalized
-                return None
-
-            async def get_all_entities(self):
-                await asyncio.sleep(0.01)
-                return self.entities
-
-            async def insert_alias(self, **_kwargs):
-                return None
-
-            async def upsert_entity(self, canonical_name: str, display_name: str, tags=None):
-                raise AssertionError(f"unexpected new entity: {canonical_name}/{display_name}/{tags}")
-
-        active_full_loads = 0
-        max_active_full_loads = 0
-        counter_lock = threading.Lock()
-        db = FakeDb()
-
-        def fake_embed_texts(names, base_url, api_key, model):
-            nonlocal active_full_loads, max_active_full_loads
-            del base_url, api_key, model
-            if len(names) == len(db.entities):
-                with counter_lock:
-                    active_full_loads += 1
-                    max_active_full_loads = max(max_active_full_loads, active_full_loads)
-                try:
-                    time.sleep(0.05)
-                finally:
-                    with counter_lock:
-                        active_full_loads -= 1
-            return [[1.0, 0.0] for _ in names]
-
-        monkeypatch.setattr("memforge.retrieval.embeddings.embed_texts", fake_embed_texts)
-
-        resolvers = [
-            EntityResolver(
-                db=db,  # type: ignore[arg-type]
-                embed_cfg={"base_url": "http://embed", "api_key": "key", "model": "model"},
-            )
-            for _ in range(3)
+    )
+    client = BatchEntityClient(
+        [
+            EntityBatchValidationDecision(mention="pay service", matched_id=1, confidence=0.96),
+            EntityBatchValidationDecision(mention="auth svc", matched_id=2, confidence=0.97),
         ]
+    )
+    embedding_batches: list[list[str]] = []
 
-        results = await asyncio.gather(*(resolver.resolve("pay-api") for resolver in resolvers))
+    def fake_embed_texts(texts, *_args):
+        embedding_batches.append(list(texts))
+        return [[1.0, 0.0] for _ in texts]
 
-        assert results == [1, 1, 1]
-        assert max_active_full_loads == 1
+    monkeypatch.setattr("memforge.retrieval.embeddings.embed_texts", fake_embed_texts)
+    resolver = EntityResolver(
+        store=store,  # type: ignore[arg-type]
+        embed_cfg={"base_url": "http://embed", "api_key": "key", "model": "model"},
+        structured_llm_client=client,
+    )
 
-    @pytest.mark.asyncio
-    async def test_embedding_cache_refresh_embeds_only_new_or_changed_entities(self, monkeypatch):
-        class FakeDb:
-            def __init__(self) -> None:
-                self.entities = [
-                    Entity(id=1, canonical_name="pay api", display_name="pay-api"),
-                    Entity(id=2, canonical_name="auth service", display_name="auth-service"),
-                ]
+    result = await resolver.resolve_many(
+        ["MemForge", "pay-service", "auth_svc", "pay-service", "new component"],
+        doc_context="bounded source unit",
+    )
 
-            async def get_all_entities(self):
-                return list(self.entities)
+    assert store.context_calls == 1
+    assert len(embedding_batches) == 1
+    assert client.calls == 1
+    assert result.entity_id("MemForge") == 3
+    assert result.entity_id("pay-service") == 1
+    assert result.entity_id("auth_svc") == 2
+    assert result.entity_id("new component") == 100
+    assert store.created == [("new component", "new component")]
+    assert {(item.alias_normalized, item.canonical_id) for item in store.aliases} == {
+        ("auth svc", 2),
+        ("pay service", 1),
+    }
+    assert result.metrics.unique_mentions == 4
+    assert result.metrics.embedding_batches == 1
+    assert result.metrics.structured_llm_calls == 1
 
-        db = FakeDb()
-        batches: list[list[str]] = []
 
-        def fake_embed_texts(names, base_url, api_key, model):
-            del base_url, api_key, model
-            batches.append(list(names))
-            return [[float(len(name)), 0.0] for name in names]
-
-        monkeypatch.setattr("memforge.retrieval.embeddings.embed_texts", fake_embed_texts)
-        resolver = EntityResolver(
-            db=db,  # type: ignore[arg-type]
-            embed_cfg={"base_url": "http://embed", "api_key": "key", "model": "model"},
+@pytest.mark.asyncio
+async def test_resolve_many_rejects_classifier_id_outside_candidate_set(monkeypatch):
+    candidate = Entity(id=1, canonical_name="payroll service", display_name="Payroll Service")
+    store = FakeEntityStore(
+        EntityResolutionContext(
+            exact_matches={},
+            alias_matches={},
+            candidates={"pay service": (candidate,)},
         )
+    )
+    client = BatchEntityClient(
+        [EntityBatchValidationDecision(mention="pay service", matched_id=999, confidence=1.0)]
+    )
+    monkeypatch.setattr(
+        "memforge.retrieval.embeddings.embed_texts",
+        lambda texts, *_args: [[1.0, 0.0] for _ in texts],
+    )
+    resolver = EntityResolver(
+        store=store,  # type: ignore[arg-type]
+        embed_cfg={"base_url": "http://embed", "api_key": "key", "model": "model"},
+        structured_llm_client=client,
+    )
 
-        await resolver._load_entity_embeddings(db)  # type: ignore[arg-type]
-        db.entities = [
-            Entity(id=1, canonical_name="pay service", display_name="pay-service"),
-            db.entities[1],
-            Entity(id=3, canonical_name="memory forge", display_name="MemForge"),
-        ]
-        resolver.invalidate_cache()
-        await resolver._load_entity_embeddings(db)  # type: ignore[arg-type]
+    result = await resolver.resolve_many(["pay service"])
 
-        assert batches == [
-            ["pay api", "auth service"],
-            ["pay service", "memory forge"],
-        ]
-        assert set(resolver._entity_embeddings) == {1, 2, 3}
+    assert result.entity_id("pay service") == 100
+    assert store.aliases == []
+
+
+@pytest.mark.asyncio
+async def test_sqlite_entity_resolution_context_is_bounded_and_bulk(db):
+    exact_id = await db.upsert_entity("memforge", "MemForge")
+    candidate_id = await db.upsert_entity("payroll service", "Payroll Service")
+    await db.insert_alias(
+        alias="MF",
+        alias_normalized="mf",
+        canonical_id=exact_id,
+        source="admin_manual",
+    )
+
+    context = await db.load_entity_resolution_context(
+        ("memforge", "mf", "pay service", "missing"),
+        candidate_limit=2,
+    )
+
+    assert context.exact_matches["memforge"].id == exact_id
+    assert context.alias_matches["mf"].canonical_id == exact_id
+    assert [item.id for item in context.candidates["pay service"]] == [candidate_id]
+    assert context.candidates["missing"] == ()
+
+    created = await db.upsert_entities((("new component", "New Component"),))
+    await db.insert_aliases(
+        (
+            EntityAlias(
+                alias="NC",
+                alias_normalized="nc",
+                canonical_id=created["new component"],
+                source="resolver_confirmed",
+            ),
+        )
+    )
+    assert (await db.get_entity_by_alias("nc")).canonical_id == created["new component"]

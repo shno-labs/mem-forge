@@ -72,7 +72,6 @@ async def test_sync_runtime_wires_structured_llm_client_into_memory_engine(db, t
     assert sync_runtime.structured_llm_client is captured["client"]
     assert sync_runtime.memory_engine.structured_llm_client is captured["client"]
     assert sync_runtime.memory_engine.llm_model == "claude-sonnet-4-20250514"
-    assert sync_runtime.enricher.max_tokens == 8192
     assert sync_runtime.memory_extractor.max_tokens == 32768
 
 
@@ -162,7 +161,6 @@ async def test_build_sync_runtime_wires_litellm_structured_source_support_client
     assert runtime.source_support_detector is not None
     assert runtime.source_support_detector.structured_llm_client is captured["client"]
     assert runtime.memory_extractor.structured_llm_client is captured["client"]
-    assert runtime.enricher.structured_llm_client is captured["client"]
     assert runtime.memory_engine.structured_llm_client is captured["client"]
     assert captured["config"].model == "anthropic--claude-sonnet-latest"
     assert captured["config"].base_url == "http://localhost:6655/anthropic"
@@ -201,21 +199,17 @@ async def test_build_sync_runtime_wires_env_backed_provider_model_without_api_ke
 
     assert runtime.structured_llm_client is captured["client"]
     assert runtime.memory_extractor.structured_llm_client is captured["client"]
-    assert runtime.enricher.structured_llm_client is captured["client"]
     assert captured["config"].model == "provider/chat-model"
     assert captured["config"].base_url is None
     assert captured["config"].api_key is None
 
 
-def test_enrichment_and_extraction_clients_bound_request_timeout(monkeypatch):
-    """Document LLM clients should use the configured request timeout."""
-    from memforge.pipeline.enricher import Enricher
+def test_extraction_client_bounds_request_timeout():
+    """The single document extraction client uses the configured timeout."""
     from memforge.pipeline.memory_extractor import MemoryExtractor
 
-    enricher = Enricher(api_key="test-key", request_timeout_s=42.0)
     extractor = MemoryExtractor(api_key="test-key", request_timeout_s=42.0)
 
-    assert enricher.structured_llm_client.config.timeout_s == 42.0
     assert extractor.structured_llm_client.config.timeout_s == 42.0
 
 
@@ -230,12 +224,9 @@ def test_sync_runtime_uses_injected_orchestrator_factory():
         db=object(),
         config=AppConfig(),
         doc_store=object(),
-        enricher=object(),
         memory_extractor=object(),
         memory_store=object(),
         memory_engine=object(),
-        vector_store=object(),
-        embed_cfg={},
         structured_llm_client=None,
         llm_model="test-model",
         source_support_detector=None,
@@ -1219,15 +1210,14 @@ async def test_admin_sources_exposes_running_stored_counts_separately(db, tmp_pa
         )
         await db.db.execute(
             """INSERT INTO memories (
-                id, memory_type, content, content_hash, tags,
+                id, memory_type, content, content_hash,
                 project_key, confidence, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 f"mem-{index}",
                 "fact",
                 f"Memory {index}",
                 f"memory-hash-{index}",
-                "[]",
                 None,
                 0.8,
                 "active",

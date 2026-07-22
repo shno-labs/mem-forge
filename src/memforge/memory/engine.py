@@ -20,7 +20,7 @@ from memforge.memory.candidate_ledger import (
     CandidateLedgerResult,
     select_unique_memory_candidates,
 )
-from memforge.memory.entity_resolver import EntityResolver, insert_llm_alias, resolve_entity
+from memforge.memory.entity_resolver import EntityResolver
 from memforge.memory.evidence import EvidenceRole
 from memforge.memory.identity_resolver import (
     IdentityResolutionRequest,
@@ -35,7 +35,11 @@ from memforge.memory.lifecycle_planner import (
 )
 from memforge.memory.quality import classify_memory_candidate
 from memforge.memory.relation_candidate_retrieval import CrossDocumentCandidateRetriever
-from memforge.memory.relation_classifier import StructuredMemoryPairClassifier
+from memforge.memory.relation_classifier import (
+    MEMORY_PAIR_CLASSIFIER_VERSION,
+    StructuredMemoryPairClassifier,
+)
+from memforge.memory.relation_discovery_contract import PreclassifiedRelationDecision
 from memforge.source_access import memory_visibility_for_document
 from memforge.source_projection import ImpactResult, ProjectionCoverage, resolve_anchor_impact
 from memforge.models import (
@@ -50,7 +54,6 @@ from memforge.models import (
 
 if TYPE_CHECKING:
     from memforge.memory.store import MemoryStore
-    from memforge.models import EnrichmentResult
     from memforge.source_projection import SourceProjection
     from memforge.storage.database import Database
 
@@ -111,79 +114,11 @@ class MemoryEngine:
         )
         # Entity resolver with embedding + LLM capabilities
         self.entity_resolver = EntityResolver(
-            db=db,
+            store=db,
             embed_cfg=embed_cfg,
             structured_llm_client=structured_llm_client,
             llm_model=llm_model,
         )
-
-    # -------------------------------------------------------------------
-    # Process Call 1: Entity resolution + alias insertion
-    # -------------------------------------------------------------------
-
-    async def process_enrichment(
-        self,
-        doc_id: str,
-        enrichment: EnrichmentResult,
-        doc_context: str | None = None,
-    ) -> list[int]:
-        """Process enrichment result: resolve entities and register their aliases.
-
-        For each entity extracted by Call 1, resolves it against the DB
-        (exact match → alias lookup → embedding search → create new),
-        then registers any aliases the LLM found for it.
-
-        Returns list of resolved entity IDs (passed to Call 2 as context).
-        """
-        from memforge.pipeline.entity_filter import filter_entities
-
-        # Filter low-confidence or malformed entities
-        raw_dicts = [
-            {"name": e.name, "type": e.type, "tags": e.tags, "confidence": e.confidence} for e in enrichment.entities
-        ]
-        filtered_dicts, filter_stats = filter_entities(raw_dicts)
-        filtered_names = {d["name"] for d in filtered_dicts}
-
-        logger.info(
-            "Entity filter: %d → %d (removed %d noise)",
-            len(enrichment.entities),
-            len(filtered_dicts),
-            len(enrichment.entities) - len(filtered_dicts),
-        )
-
-        resolved_ids: list[int] = []
-
-        for raw_entity in enrichment.entities:
-            if raw_entity.name not in filtered_names:
-                continue
-
-            tags = (
-                raw_entity.tags
-                if raw_entity.tags
-                else ([raw_entity.type] if raw_entity.type and raw_entity.type != "unknown" else [])
-            )
-
-            # Resolve: find existing entity or create new
-            entity_id = await self.entity_resolver.resolve(
-                extracted_name=raw_entity.name,
-                db=self.db,
-                extracted_tags=tags,
-                doc_context=doc_context,
-            )
-            resolved_ids.append(entity_id)
-
-            # Register aliases the LLM found for this entity
-            for alias_name in raw_entity.aliases or []:
-                await insert_llm_alias(
-                    alias_name=alias_name,
-                    canonical_name=raw_entity.name,
-                    canonical_id=entity_id,
-                    evidence="",
-                    db=self.db,
-                )
-
-        self.entity_resolver.invalidate_cache()
-        return resolved_ids
 
     async def _active_projected_incumbents(
         self,
@@ -411,7 +346,6 @@ class MemoryEngine:
                         content=incumbent.content,
                         memory_type=incumbent.memory_type,
                         confidence=incumbent.confidence,
-                        tags=list(incumbent.tags),
                         extraction_context=current_primary_quote,
                         evidence_quote=current_primary_quote,
                         evidence_anchor="revalidated_noop",
@@ -434,7 +368,6 @@ class MemoryEngine:
         doc_type: str,
         project_key: str | None,
         repo_identifier: str | None,
-        entity_ids: list[int],
         document_content: str,
         update_mode: str,
         changed_hunks: str | None,
@@ -625,12 +558,16 @@ class MemoryEngine:
             projection=projection,
         )
         gate = await self.db.get_lifecycle_gate(scope.source_id)
+        incumbent_support_states = await self.db.get_active_memory_support_states(
+            tuple(incumbents_by_id)
+        )
         all_support = {
-            memory_id: await self.db.get_active_memory_support_reference_ids(memory_id)
-            for memory_id in incumbents_by_id
+            memory_id: state.reference_ids
+            for memory_id, state in incumbent_support_states.items()
         }
         support_hashes = {
-            memory_id: await self.db.get_memory_support_set_hash(memory_id) for memory_id in incumbents_by_id
+            memory_id: state.support_set_hash
+            for memory_id, state in incumbent_support_states.items()
         }
         visibility, owner_user_id = await memory_visibility_for_document(self.db, doc_id=doc_id)
         if visibility == "private" and user_id is not None and user_id != owner_user_id:
@@ -643,8 +580,44 @@ class MemoryEngine:
         )
         corroboration_targets: dict[str, Memory] = {}
         corroboration_proofs: dict[str, dict[str, object]] = {}
+        preclassified_relations: dict[str, tuple[PreclassifiedRelationDecision, ...]] = {}
         identity_claim_hashes: list[str] = []
         identity_requests: list[IdentityResolutionRequest] = []
+        operation_memories = tuple(
+            operation.memory for operation in operations if operation.memory is not None
+        )
+        entity_resolution = await self.entity_resolver.resolve_many(
+            tuple(
+                entity_ref
+                for raw_memory in operation_memories
+                for entity_ref in raw_memory.entity_refs
+            ),
+            doc_context=document_content[:2000],
+        )
+        stats.update(
+            {
+                "entity_resolution_unique_mentions": entity_resolution.metrics.unique_mentions,
+                "entity_resolution_exact_hits": entity_resolution.metrics.exact_hits,
+                "entity_resolution_alias_hits": entity_resolution.metrics.alias_hits,
+                "entity_resolution_embedded_mentions": entity_resolution.metrics.embedded_mentions,
+                "entity_resolution_ambiguous_mentions": entity_resolution.metrics.ambiguous_mentions,
+                "entity_resolution_embedding_batches": entity_resolution.metrics.embedding_batches,
+                "entity_resolution_llm_calls": entity_resolution.metrics.structured_llm_calls,
+                "entity_resolution_candidate_count": entity_resolution.metrics.candidate_count,
+                "entity_resolution_new_entities": entity_resolution.metrics.new_entities,
+                "entity_resolution_elapsed_ms": entity_resolution.metrics.elapsed_ms,
+            }
+        )
+        entity_ids_by_claim_hash = {
+            content_hash(raw_memory.content.strip()): tuple(
+                dict.fromkeys(
+                    entity_id
+                    for entity_ref in raw_memory.entity_refs
+                    if (entity_id := entity_resolution.entity_id(entity_ref)) is not None
+                )
+            )
+            for raw_memory in operation_memories
+        }
         for operation in operations:
             if operation.action is not ReconcileAction.ADD or operation.memory is None:
                 continue
@@ -660,11 +633,15 @@ class MemoryEngine:
                 IdentityResolutionRequest(
                     challenger=candidate,
                     doc_id=doc_id,
-                    entity_ids=tuple(entity_ids),
+                    entity_ids=entity_ids_by_claim_hash.get(
+                        content_hash(operation.memory.content.strip()),
+                        (),
+                    ),
                     excluded_memory_ids=frozenset(incumbents_by_id),
                 )
             )
         identity_resolutions = await self.identity_resolver.resolve(tuple(identity_requests))
+        attached_target_ids: list[str] = []
         for claim_hash, resolution in zip(
             identity_claim_hashes,
             identity_resolutions,
@@ -672,12 +649,26 @@ class MemoryEngine:
         ):
             target = resolution.target
             equivalence_proof = resolution.equivalence_proof
+            preclassified_relations[claim_hash] = tuple(
+                PreclassifiedRelationDecision(
+                    candidate_memory_id=decision.pair.candidate.id,
+                    expected_candidate_content_hash=decision.pair.candidate.content_hash,
+                    relation_type=decision.relation_type,
+                    direction=decision.direction,
+                    reason=decision.reason,
+                    classifier_version=MEMORY_PAIR_CLASSIFIER_VERSION,
+                )
+                for decision in resolution.classified_pairs
+            )
             if target is None or equivalence_proof is None:
                 continue
             corroboration_targets[claim_hash] = target
             corroboration_proofs[claim_hash] = dict(equivalence_proof)
-            all_support[target.id] = await self.db.get_active_memory_support_reference_ids(target.id)
-            support_hashes[target.id] = await self.db.get_memory_support_set_hash(target.id)
+            attached_target_ids.append(target.id)
+        attached_support_states = await self.db.get_active_memory_support_states(attached_target_ids)
+        for memory_id, state in attached_support_states.items():
+            all_support[memory_id] = state.reference_ids
+            support_hashes[memory_id] = state.support_set_hash
         evidence_memories = [operation.memory for operation in operations if operation.memory is not None]
         projected_evidence = build_projected_claim_evidence(
             projection=projection,
@@ -716,7 +707,8 @@ class MemoryEngine:
                 source_type=source_type,
                 access_context_hash=access_context_hash,
                 actor_user_id=user_id,
-                entity_ids=tuple(entity_ids),
+                entity_ids_by_claim_hash=entity_ids_by_claim_hash,
+                preclassified_relations_by_claim_hash=preclassified_relations,
                 source_updated_at=(source_updated_at.isoformat() if source_updated_at is not None else None),
             ),
             evidence_units=projected_evidence.units,
@@ -893,12 +885,12 @@ class MemoryEngine:
             for memory_id in sorted(incumbents_by_id)
         )
         gate = await self.db.get_lifecycle_gate(scope.source_id)
+        support_states = await self.db.get_active_memory_support_states(tuple(incumbents_by_id))
         all_support = {
-            memory_id: await self.db.get_active_memory_support_reference_ids(memory_id)
-            for memory_id in incumbents_by_id
+            memory_id: state.reference_ids for memory_id, state in support_states.items()
         }
         support_hashes = {
-            memory_id: await self.db.get_memory_support_set_hash(memory_id) for memory_id in incumbents_by_id
+            memory_id: state.support_set_hash for memory_id, state in support_states.items()
         }
         visibility, owner_user_id = await memory_visibility_for_document(self.db, doc_id=doc_id)
         plan = build_lifecycle_plan(
@@ -986,7 +978,6 @@ class MemoryEngine:
             project_key=project_key,
             repo_identifier=repo_identifier,
             entity_refs=raw.entity_refs,
-            tags=raw.tags,
             confidence=raw.confidence,
             corroboration_count=1,
             contradiction_count=0,
@@ -997,18 +988,6 @@ class MemoryEngine:
             status="active",
             extraction_context=raw.extraction_context,
         )
-
-    async def _resolve_entity_refs(self, entity_refs: list[str]) -> list[int]:
-        """Resolve entity names to IDs."""
-        ids: list[int] = []
-        for name in entity_refs:
-            try:
-                eid = await resolve_entity(name, db=self.db)
-                ids.append(eid)
-            except Exception as e:
-                logger.warning("Failed to resolve entity %r: %s", name, e)
-        return ids
-
 
 def _observation_semantic_class(
     projection: SourceProjection,

@@ -77,6 +77,14 @@ class KeywordCandidate:
     matched_text: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class ActiveMemorySupportState:
+    """One transaction-independent snapshot used by lifecycle stale guards."""
+
+    reference_ids: tuple[str, ...]
+    support_set_hash: str
+
+
 DEFAULT_ENTITY_LINK_LIMIT = 5
 """Default maximum linked entities per query; keeps graph fan-out bounded."""
 
@@ -112,6 +120,15 @@ class EntityLinkResult:
     unmatched_explicit_entities: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class EntityResolutionContext:
+    """Bounded exact, alias, and recall candidates for one resolver batch."""
+
+    exact_matches: Mapping[str, Entity]
+    alias_matches: Mapping[str, EntityAlias]
+    candidates: Mapping[str, tuple[Entity, ...]]
+
+
 class RankingMetadata(TypedDict, total=False):
     """The per-memory inputs the ranker needs alongside RRF scores.
 
@@ -140,6 +157,17 @@ class RelationalStore(Protocol):
     """
 
     async def insert_memory(self, memory: Memory) -> str: ...
+    async def load_entity_resolution_context(
+        self,
+        canonical_names: Sequence[str],
+        *,
+        candidate_limit: int,
+    ) -> EntityResolutionContext: ...
+    async def upsert_entities(
+        self,
+        entities: Sequence[tuple[str, str]],
+    ) -> Mapping[str, int]: ...
+    async def insert_aliases(self, aliases: Sequence[EntityAlias]) -> None: ...
     async def get_memory(self, memory_id: str) -> Memory | None: ...
     async def get_memory_entity_ids(self, memory_id: str) -> list[int]: ...
     async def get_current_relation_evidence_unit(
@@ -404,6 +432,10 @@ class RelationalStore(Protocol):
     ) -> None: ...
     async def get_memory_support_set_hash(self, memory_id: str) -> str: ...
     async def get_active_memory_support_reference_ids(self, memory_id: str) -> tuple[str, ...]: ...
+    async def get_active_memory_support_states(
+        self,
+        memory_ids: Sequence[str],
+    ) -> Mapping[str, ActiveMemorySupportState]: ...
     async def get_active_memory_support_evidence(
         self,
         memory_id: str,
@@ -433,7 +465,6 @@ class RelationalStore(Protocol):
         display_anchor: str,
         claim_text: str,
         memory_type: str,
-        tags: list[str],
         confidence: float,
         observed_at: datetime,
         citations: list[str] | None = None,

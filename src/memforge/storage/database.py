@@ -40,10 +40,10 @@ from memforge.source_activity import (
     SourceActivityLease,
 )
 from memforge.sync_progress import normalize_sync_progress_snapshot
+from memforge.storage.adapters.protocols import ActiveMemorySupportState
 from memforge.models import (
     AgentHookReceipt,
     AgentSessionReceipt,
-    DocumentMetadata,
     DocumentRecord,
     Entity,
     EntityAlias,
@@ -67,6 +67,7 @@ from memforge.models import (
     slugify,
     source_artifact_cleanup_task_id,
 )
+
 from memforge.memory.evidence import (
     ActiveSupportEvidence,
     AuthorityCase,
@@ -120,6 +121,7 @@ from memforge.memory.lifecycle_plan import (
 )
 from memforge.memory.relation_discovery_contract import (
     CURRENT_RELATION_EVIDENCE_PREDICATE_SQL,
+    PreclassifiedRelationDecision,
     RelationDiscoveryRequest,
     RelationDiscoveryWork,
     RelationDiscoveryWorkStatus,
@@ -165,6 +167,11 @@ from memforge.storage.admin_source import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _support_rows_hash(rows: Sequence[tuple[str, str, str]]) -> str:
+    payload = json.dumps(list(rows), separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 async def _drain_task_despite_cancellation(task: asyncio.Future[Any]) -> Any:
@@ -457,17 +464,10 @@ def _normalize_project_key(project_key: str | None) -> str:
 
 
 def _entity_from_row(d: dict) -> Entity:
-    """Deserialize an entity row, handling both old (entity_type) and new (tags) columns."""
-    tags_raw = d.get("tags", "[]")
-    try:
-        tags = json.loads(tags_raw) if tags_raw else []
-    except (json.JSONDecodeError, TypeError):
-        # Fallback: use entity_type as single-element list
-        tags = [d.get("entity_type", "unknown")]
+    """Deserialize the durable Entity identity fields."""
     return Entity(
         id=d["id"],
         canonical_name=d["canonical_name"],
-        tags=tags if isinstance(tags, list) else [tags],
         display_name=d["display_name"],
         created_at=_parse_dt(d.get("created_at")),
     )
@@ -540,26 +540,6 @@ CREATE TABLE IF NOT EXISTS documents (
     last_synced         TEXT NOT NULL,
     created_at          TEXT DEFAULT (datetime('now')),
     updated_at          TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS document_metadata (
-    doc_id          TEXT PRIMARY KEY REFERENCES documents(doc_id),
-    summary         TEXT NOT NULL,
-    tags            TEXT NOT NULL,           -- JSON array
-    entities        TEXT NOT NULL,           -- JSON array of {name, type}
-    doc_type        TEXT NOT NULL,
-    complexity      TEXT NOT NULL,
-    enriched_at     TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS document_relationships (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_doc_id   TEXT REFERENCES documents(doc_id),
-    target_doc_id   TEXT,
-    target_title    TEXT NOT NULL,
-    relation_type   TEXT NOT NULL,
-    confidence      REAL NOT NULL,
-    link_source     TEXT NOT NULL DEFAULT 'enrichment'
 );
 
 CREATE TABLE IF NOT EXISTS changelog (
@@ -1087,6 +1067,7 @@ CREATE TABLE IF NOT EXISTS relation_discovery_work (
     doc_id                   TEXT NOT NULL,
     actor_user_id            TEXT,
     entity_ids_json          TEXT NOT NULL DEFAULT '[]',
+    preclassified_decisions_json TEXT NOT NULL DEFAULT '[]',
     status                   TEXT NOT NULL CHECK (status IN ('pending','running','completed','failed','obsolete')),
     attempts                 INTEGER NOT NULL DEFAULT 0,
     lease_owner              TEXT,
@@ -1447,8 +1428,6 @@ CREATE INDEX IF NOT EXISTS idx_documents_source ON documents(source);
 CREATE INDEX IF NOT EXISTS idx_documents_space ON documents(space_or_project);
 CREATE INDEX IF NOT EXISTS idx_changelog_doc ON changelog(doc_id);
 CREATE INDEX IF NOT EXISTS idx_changelog_detected ON changelog(detected_at);
-CREATE INDEX IF NOT EXISTS idx_relationships_source ON document_relationships(source_doc_id);
-CREATE INDEX IF NOT EXISTS idx_relationships_target ON document_relationships(target_doc_id);
 CREATE INDEX IF NOT EXISTS idx_sync_history_finished ON sync_history(finished_at);
 CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(canonical_name);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type);
@@ -2996,6 +2975,41 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
                )""",
         ],
     ),
+    (
+        68,
+        "Remove unused Entity kind and tag columns",
+        [
+            "ALTER TABLE entities DROP COLUMN entity_type",
+            "ALTER TABLE entities DROP COLUMN tags",
+            "ALTER TABLE memories DROP COLUMN tags",
+            "ALTER TABLE agent_claims DROP COLUMN tags",
+            "DROP TABLE memories_fts",
+            """CREATE VIRTUAL TABLE memories_fts USING fts5(
+                memory_id UNINDEXED,
+                content,
+                entities_text,
+                tokenize='porter unicode61'
+            )""",
+            """INSERT INTO memories_fts (memory_id, content, entities_text)
+               SELECT M.ID, M.CONTENT,
+                      COALESCE((
+                          SELECT GROUP_CONCAT(E.CANONICAL_NAME, ' ')
+                            FROM MEMORY_ENTITIES ME
+                            JOIN ENTITIES E ON E.ID = ME.ENTITY_ID
+                           WHERE ME.MEMORY_ID = M.ID
+                      ), '')
+                 FROM MEMORIES M
+                WHERE M.STATUS IN ('active', 'pending_review')""",
+        ],
+    ),
+    (
+        69,
+        "Persist reusable identity pair decisions for relation discovery",
+        [
+            "ALTER TABLE relation_discovery_work ADD COLUMN "
+            "preclassified_decisions_json TEXT NOT NULL DEFAULT '[]'",
+        ],
+    ),
 ]
 
 
@@ -3619,8 +3633,6 @@ class Database:
         """Capture document-adjacent rows removed by document/source cascades."""
         unique_doc_ids = list(dict.fromkeys(doc_ids))
         snapshots = {
-            "document_metadata": [],
-            "document_relationships": [],
             "changelog": [],
             "agent_session_receipts": [],
             "sync_state": [],
@@ -3637,16 +3649,6 @@ class Database:
         if unique_doc_ids:
             placeholders = ",".join("?" for _ in unique_doc_ids)
             params = tuple(unique_doc_ids)
-            snapshots["document_metadata"] = await fetch_rows(
-                f"SELECT * FROM document_metadata WHERE doc_id IN ({placeholders})",
-                params,
-            )
-            snapshots["document_relationships"] = await fetch_rows(
-                f"""SELECT * FROM document_relationships
-                    WHERE source_doc_id IN ({placeholders})
-                       OR target_doc_id IN ({placeholders})""",
-                params + params,
-            )
             snapshots["changelog"] = await fetch_rows(
                 f"SELECT * FROM changelog WHERE doc_id IN ({placeholders})",
                 params,
@@ -3684,8 +3686,6 @@ class Database:
         """Restore document-adjacent rows captured before a cascade delete."""
         async with self._write_lock:
             for table in (
-                "document_metadata",
-                "document_relationships",
                 "changelog",
                 "agent_session_receipts",
                 "sync_state",
@@ -4220,11 +4220,6 @@ class Database:
                 await self.db.execute("DELETE FROM memory_sources WHERE doc_id = ?", (doc_id,))
                 await self._delete_evidence_graph_for_doc_ids_unlocked([doc_id])
                 retired_ids = await self._refresh_support_after_source_removal_unlocked(memory_ids)
-                await self.db.execute("DELETE FROM document_metadata WHERE doc_id = ?", (doc_id,))
-                await self.db.execute(
-                    "DELETE FROM document_relationships WHERE source_doc_id = ? OR target_doc_id = ?",
-                    (doc_id, doc_id),
-                )
                 await self.db.execute("DELETE FROM changelog WHERE doc_id = ?", (doc_id,))
                 await self.db.execute("DELETE FROM agent_session_receipts WHERE doc_id = ?", (doc_id,))
                 await self.db.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
@@ -4297,11 +4292,6 @@ class Database:
                     "DELETE FROM memory_search_metadata_trigram WHERE doc_id = ?",
                     (doc_id,),
                 )
-                await self.db.execute("DELETE FROM document_metadata WHERE doc_id = ?", (doc_id,))
-                await self.db.execute(
-                    "DELETE FROM document_relationships WHERE source_doc_id = ? OR target_doc_id = ?",
-                    (doc_id, doc_id),
-                )
                 await self.db.execute("DELETE FROM changelog WHERE doc_id = ?", (doc_id,))
                 await self.db.execute("DELETE FROM agent_session_receipts WHERE doc_id = ?", (doc_id,))
                 await self.db.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
@@ -4356,55 +4346,6 @@ class Database:
             except Exception:
                 await self.db.rollback()
                 raise
-
-    async def upsert_metadata(self, meta: DocumentMetadata) -> None:
-        async with self._write_lock:
-            entities_json = json.dumps([{"name": e.canonical_name, "tags": e.tags} for e in meta.entities])
-            await self.db.execute(
-                """INSERT INTO document_metadata (
-                    doc_id, summary, tags, entities, doc_type, complexity, enriched_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(doc_id) DO UPDATE SET
-                    summary=excluded.summary, tags=excluded.tags,
-                    entities=excluded.entities, doc_type=excluded.doc_type,
-                    complexity=excluded.complexity, enriched_at=excluded.enriched_at""",
-                (
-                    meta.doc_id,
-                    meta.summary,
-                    json.dumps(meta.tags),
-                    entities_json,
-                    meta.doc_type,
-                    meta.complexity,
-                    meta.enriched_at.isoformat() if meta.enriched_at else _now_iso(),
-                ),
-            )
-            await self.db.commit()
-
-    async def get_metadata(self, doc_id: str) -> DocumentMetadata | None:
-        async with self.db.execute("SELECT * FROM document_metadata WHERE doc_id = ?", (doc_id,)) as cursor:
-            row = await cursor.fetchone()
-            if not row:
-                return None
-            d = dict(row)
-            raw_entities = json.loads(d["entities"])
-            entities = [
-                Entity(
-                    id=0,
-                    canonical_name=e["name"],
-                    tags=e.get("tags", [e.get("type", "unknown")]),  # backward compat
-                    display_name=e["name"],
-                )
-                for e in raw_entities
-            ]
-            return DocumentMetadata(
-                doc_id=d["doc_id"],
-                summary=d["summary"],
-                tags=json.loads(d["tags"]),
-                entities=entities,
-                doc_type=d["doc_type"],
-                complexity=d["complexity"],
-                enriched_at=_parse_dt(d["enriched_at"]),
-            )
 
     # ==================================================================
     # Source Projection lineage
@@ -6419,6 +6360,38 @@ class Database:
         )
         return tuple(row["evidence_reference_id"] for row in rows)
 
+    async def get_active_memory_support_states(
+        self,
+        memory_ids: Sequence[str],
+    ) -> Mapping[str, ActiveMemorySupportState]:
+        ids = tuple(dict.fromkeys(str(memory_id) for memory_id in memory_ids if memory_id))
+        if not ids:
+            return {}
+        placeholders = ", ".join("?" for _ in ids)
+        rows = await self.db.execute_fetchall(
+            f"""SELECT memory_id, evidence_reference_id, source_id, access_context_hash
+                FROM memory_support_assertions
+                WHERE active = 1 AND memory_id IN ({placeholders})
+                ORDER BY memory_id, evidence_reference_id, source_id, access_context_hash""",
+            ids,
+        )
+        values: dict[str, list[tuple[str, str, str]]] = {memory_id: [] for memory_id in ids}
+        for row in rows:
+            values[str(row["memory_id"])].append(
+                (
+                    str(row["evidence_reference_id"]),
+                    str(row["source_id"]),
+                    str(row["access_context_hash"]),
+                )
+            )
+        return {
+            memory_id: ActiveMemorySupportState(
+                reference_ids=tuple(reference_id for reference_id, _source_id, _access_hash in rows),
+                support_set_hash=_support_rows_hash(rows),
+            )
+            for memory_id, rows in values.items()
+        }
+
     async def get_active_memory_support_evidence(
         self,
         memory_id: str,
@@ -6499,8 +6472,7 @@ class Database:
                         row["access_context_hash"],
                     )
                 )
-        payload = json.dumps(values, separators=(",", ":"))
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        return _support_rows_hash(values)
 
     async def get_lifecycle_plan_status(self, plan_id: str) -> str | None:
         async with self.db.execute(
@@ -6558,7 +6530,6 @@ class Database:
         display_anchor: str,
         claim_text: str,
         memory_type: str,
-        tags: list[str],
         confidence: float,
         observed_at: datetime,
         citations: list[str] | None = None,
@@ -6616,7 +6587,6 @@ class Database:
                     display_anchor=display_anchor,
                     claim_text=claim_text,
                     memory_type=memory_type,
-                    tags=tags,
                     confidence=confidence,
                     memory_id=memory_id,
                     observed=observed,
@@ -7044,7 +7014,6 @@ class Database:
                 project_key=raw.get("project_key") if isinstance(raw.get("project_key"), str) else None,
                 repo_identifier=raw.get("repo_identifier") if isinstance(raw.get("repo_identifier"), str) else None,
                 entity_refs=[str(value) for value in raw.get("entity_refs", [])],
-                tags=[str(value) for value in raw.get("tags", [])],
                 confidence=float(raw.get("confidence", 0.7)),
                 valid_from=_parse_date(raw.get("valid_from")),
                 valid_until=_parse_date(raw.get("valid_until")),
@@ -7382,10 +7351,10 @@ class Database:
             """INSERT OR IGNORE INTO relation_discovery_work (
                    id, lifecycle_plan_id, memory_id, expected_content_hash,
                    source_id, source_unit_id, source_unit_revision_id, doc_id,
-                   actor_user_id, entity_ids_json, status, attempts,
+                   actor_user_id, entity_ids_json, preclassified_decisions_json, status, attempts,
                    lease_owner, lease_token, lease_until, error,
                    created_at, updated_at, completed_at
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0,
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0,
                          NULL, NULL, NULL, NULL, ?, ?, NULL)""",
             (
                 request.id,
@@ -7398,6 +7367,11 @@ class Database:
                 request.doc_id,
                 request.actor_user_id,
                 json.dumps(list(request.entity_ids)),
+                json.dumps(
+                    [item.to_payload() for item in request.preclassified_decisions],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
                 now,
                 now,
             ),
@@ -7991,6 +7965,10 @@ class Database:
             doc_id=str(row["doc_id"]),
             actor_user_id=row["actor_user_id"],
             entity_ids=tuple(int(value) for value in json.loads(row["entity_ids_json"])),
+            preclassified_decisions=tuple(
+                PreclassifiedRelationDecision.from_payload(item)
+                for item in json.loads(row["preclassified_decisions_json"] or "[]")
+            ),
         )
         return RelationDiscoveryWork(
             request=request,
@@ -8869,20 +8847,19 @@ class Database:
         status = normalize_memory_status(mem.status)
         await self.db.execute(
             """INSERT INTO memories (
-                id, memory_type, content, content_hash, tags, visibility, owner_user_id,
+                id, memory_type, content, content_hash, visibility, owner_user_id,
                 project_key, repo_identifier,
                 confidence, corroboration_count,
                 contradiction_count, valid_from, valid_until,
                 superseded_by, status, retirement_reason, retired_at,
                 superseded_at, replacement_reason, replacement_kind, extraction_context,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 mem.id,
                 mem.memory_type,
                 mem.content,
                 mem.content_hash,
-                json.dumps(mem.tags),
                 mem.visibility,
                 mem.owner_user_id,
                 project_key,
@@ -8905,10 +8882,9 @@ class Database:
             ),
         )
         entities_text = " ".join(mem.entity_refs)
-        tags_text = " ".join(mem.tags)
         await self.db.execute(
-            "INSERT INTO memories_fts (memory_id, content, entities_text, tags_text) VALUES (?, ?, ?, ?)",
-            (mem.id, mem.content, entities_text, tags_text),
+            "INSERT INTO memories_fts (memory_id, content, entities_text) VALUES (?, ?, ?)",
+            (mem.id, mem.content, entities_text),
         )
 
     async def _upsert_memory_preserving_created_at_unlocked(self, mem: Memory) -> None:
@@ -8919,19 +8895,18 @@ class Database:
         status = normalize_memory_status(mem.status)
         await self.db.execute(
             """INSERT INTO memories (
-                id, memory_type, content, content_hash, tags, visibility, owner_user_id,
+                id, memory_type, content, content_hash, visibility, owner_user_id,
                 project_key, repo_identifier,
                 confidence, corroboration_count,
                 contradiction_count, valid_from, valid_until,
                 superseded_by, status, retirement_reason, retired_at,
                 superseded_at, replacement_reason, replacement_kind, extraction_context,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 memory_type=excluded.memory_type,
                 content=excluded.content,
                 content_hash=excluded.content_hash,
-                tags=excluded.tags,
                 visibility=excluded.visibility,
                 owner_user_id=excluded.owner_user_id,
                 project_key=excluded.project_key,
@@ -8955,7 +8930,6 @@ class Database:
                 mem.memory_type,
                 mem.content,
                 mem.content_hash,
-                json.dumps(mem.tags),
                 mem.visibility,
                 mem.owner_user_id,
                 project_key,
@@ -9099,7 +9073,6 @@ class Database:
         display_anchor: str,
         claim_text: str,
         memory_type: str,
-        tags: list[str],
         confidence: float,
         observed_at: datetime,
         source_updated_at: datetime | None,
@@ -9156,7 +9129,6 @@ class Database:
                     display_anchor=display_anchor,
                     claim_text=claim_text,
                     memory_type=memory_type,
-                    tags=tags,
                     confidence=confidence,
                     memory_id=mem.id,
                     observed=observed,
@@ -9201,7 +9173,7 @@ class Database:
         search_visible_statuses: set[str],
     ) -> bool:
         async with self.db.execute(
-            "SELECT content, tags, status FROM memories WHERE id = ?",
+            "SELECT content, status FROM memories WHERE id = ?",
             (memory_id,),
         ) as cursor:
             row = await cursor.fetchone()
@@ -9222,10 +9194,9 @@ class Database:
                 async for entity_row in entity_cursor:
                     entity_names.append(entity_row[0])
 
-            tags = json.loads(row["tags"] or "[]")
             await self.db.execute(
-                "INSERT INTO memories_fts (memory_id, content, entities_text, tags_text) VALUES (?, ?, ?, ?)",
-                (memory_id, row["content"], " ".join(entity_names), " ".join(tags)),
+                "INSERT INTO memories_fts (memory_id, content, entities_text) VALUES (?, ?, ?)",
+                (memory_id, row["content"], " ".join(entity_names)),
             )
         return True
 
@@ -9561,13 +9532,12 @@ class Database:
         memory_id: str,
         new_content: str,
         new_confidence: float | None,
-        new_tags: list[str] | None,
     ) -> None:
         async with self._write_lock:
             from memforge.models import content_hash
 
             async with self.db.execute(
-                "SELECT content_hash, confidence, tags FROM memories WHERE id = ?",
+                "SELECT content_hash, confidence FROM memories WHERE id = ?",
                 (memory_id,),
             ) as cursor:
                 row = await cursor.fetchone()
@@ -9577,18 +9547,15 @@ class Database:
                 await self._assert_no_active_source_support_unlocked(memory_id)
 
             confidence = new_confidence if new_confidence is not None else row["confidence"]
-            tags = new_tags if new_tags is not None else json.loads(row["tags"] or "[]")
             now = _now_iso()
             await self.db.execute(
                 """UPDATE memories SET
-                    content = ?, content_hash = ?, confidence = ?,
-                    tags = ?, updated_at = ?
+                    content = ?, content_hash = ?, confidence = ?, updated_at = ?
                    WHERE id = ?""",
                 (
                     new_content,
                     content_hash(new_content),
                     confidence,
-                    json.dumps(tags),
                     now,
                     memory_id,
                 ),
@@ -9769,13 +9736,12 @@ class Database:
         _validate_visibility(memory.visibility, memory.owner_user_id)
         project_key = _normalize_project_key(memory.project_key)
         entity_names = await self.get_memory_entity_names(memory.id)
-        tags_text = " ".join(memory.tags)
         entities_text = " ".join(entity_names)
         search_visible = memory.status in search_visible_statuses
         async with self._write_lock:
             await self.db.execute(
                 """UPDATE memories SET
-                    memory_type = ?, content = ?, content_hash = ?, tags = ?,
+                    memory_type = ?, content = ?, content_hash = ?,
                     visibility = ?, owner_user_id = ?, project_key = ?,
                     repo_identifier = ?,
                     confidence = ?,
@@ -9789,7 +9755,6 @@ class Database:
                     memory.memory_type,
                     memory.content,
                     memory.content_hash,
-                    json.dumps(memory.tags),
                     memory.visibility,
                     memory.owner_user_id,
                     project_key,
@@ -9814,8 +9779,8 @@ class Database:
             await self.db.execute("DELETE FROM memories_fts WHERE memory_id = ?", (memory.id,))
             if search_visible:
                 await self.db.execute(
-                    "INSERT INTO memories_fts (memory_id, content, entities_text, tags_text) VALUES (?, ?, ?, ?)",
-                    (memory.id, memory.content, entities_text, tags_text),
+                    "INSERT INTO memories_fts (memory_id, content, entities_text) VALUES (?, ?, ?)",
+                    (memory.id, memory.content, entities_text),
                 )
             await self.db.commit()
 
@@ -10203,10 +10168,9 @@ class Database:
                 async for row in cursor:
                     entity_names.append(row[0])
             entities_text = " ".join(entity_names)
-            tags_text = " ".join(challenger.tags)
             await self.db.execute(
-                "INSERT INTO memories_fts (memory_id, content, entities_text, tags_text) VALUES (?, ?, ?, ?)",
-                (challenger.id, challenger.content, entities_text, tags_text),
+                "INSERT INTO memories_fts (memory_id, content, entities_text) VALUES (?, ?, ?)",
+                (challenger.id, challenger.content, entities_text),
             )
             await self.db.commit()
 
@@ -10943,7 +10907,6 @@ class Database:
         display_anchor: str,
         claim_text: str,
         memory_type: str,
-        tags: list[str],
         confidence: float,
         memory_id: str,
         observed_at: datetime,
@@ -10956,7 +10919,6 @@ class Database:
                 display_anchor=display_anchor,
                 claim_text=claim_text,
                 memory_type=memory_type,
-                tags=tags,
                 confidence=confidence,
                 memory_id=memory_id,
                 observed=observed,
@@ -10971,7 +10933,6 @@ class Database:
         display_anchor: str,
         claim_text: str,
         memory_type: str,
-        tags: list[str],
         confidence: float,
         memory_id: str,
         observed: str,
@@ -10979,15 +10940,14 @@ class Database:
         await self.db.execute(
             """INSERT INTO agent_claims (
                 id, concept_id, display_anchor, claim_text, memory_type,
-                tags, confidence, memory_id, created_at, updated_at,
+                confidence, memory_id, created_at, updated_at,
                 last_observed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 concept_id=excluded.concept_id,
                 display_anchor=excluded.display_anchor,
                 claim_text=excluded.claim_text,
                 memory_type=excluded.memory_type,
-                tags=excluded.tags,
                 confidence=excluded.confidence,
                 memory_id=excluded.memory_id,
                 updated_at=excluded.updated_at,
@@ -10998,7 +10958,6 @@ class Database:
                 display_anchor,
                 claim_text,
                 memory_type,
-                json.dumps(tags),
                 confidence,
                 memory_id,
                 observed,
@@ -11024,7 +10983,6 @@ class Database:
         display_anchor: str,
         claim_text: str,
         memory_type: str,
-        tags: list[str],
         confidence: float,
         observed_at: datetime,
         source_updated_at: datetime | None,
@@ -11051,20 +11009,19 @@ class Database:
                 new_status = normalize_memory_status(new_memory.status)
                 await self.db.execute(
                     """INSERT INTO memories (
-                    id, memory_type, content, content_hash, tags, visibility, owner_user_id,
+                    id, memory_type, content, content_hash, visibility, owner_user_id,
                     project_key, repo_identifier,
                     confidence, corroboration_count,
                     contradiction_count, valid_from, valid_until,
                     superseded_by, status, retirement_reason, retired_at,
                     superseded_at, replacement_reason, replacement_kind, extraction_context,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         new_memory.id,
                         new_memory.memory_type,
                         new_memory.content,
                         new_memory.content_hash,
-                        json.dumps(new_memory.tags),
                         new_memory.visibility,
                         new_memory.owner_user_id,
                         project_key,
@@ -11100,15 +11057,14 @@ class Database:
                 await self.db.execute(
                     """INSERT INTO agent_claims (
                     id, concept_id, display_anchor, claim_text, memory_type,
-                    tags, confidence, memory_id, created_at, updated_at,
+                    confidence, memory_id, created_at, updated_at,
                     last_observed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     concept_id=excluded.concept_id,
                     display_anchor=excluded.display_anchor,
                     claim_text=excluded.claim_text,
                     memory_type=excluded.memory_type,
-                    tags=excluded.tags,
                     confidence=excluded.confidence,
                     memory_id=excluded.memory_id,
                     updated_at=excluded.updated_at,
@@ -11119,7 +11075,6 @@ class Database:
                         display_anchor,
                         claim_text,
                         memory_type,
-                        json.dumps(tags),
                         confidence,
                         new_memory.id,
                         created_at,
@@ -11270,12 +11225,7 @@ class Database:
         return citations
 
     def _row_to_agent_claim(self, row) -> dict[str, Any]:
-        data = dict(row)
-        try:
-            data["tags"] = json.loads(data.get("tags") or "[]")
-        except (TypeError, json.JSONDecodeError):
-            data["tags"] = []
-        return data
+        return dict(row)
 
     async def get_origin_source_pairs(
         self, memory_ids: list[str]
@@ -11604,26 +11554,162 @@ class Database:
     # Entities
     # ==================================================================
 
+    async def load_entity_resolution_context(
+        self,
+        canonical_names: Sequence[str],
+        *,
+        candidate_limit: int,
+    ):
+        """Load exact, alias, and bounded lexical candidates in fixed queries."""
+
+        from memforge.storage.adapters.protocols import EntityResolutionContext
+
+        names = tuple(dict.fromkeys(name for name in canonical_names if name))
+        if not names:
+            return EntityResolutionContext({}, {}, {})
+        placeholders = ",".join("?" for _ in names)
+        exact: dict[str, Entity] = {}
+        async with self.db.execute(
+            f"SELECT * FROM entities WHERE canonical_name IN ({placeholders})",
+            names,
+        ) as cursor:
+            async for row in cursor:
+                entity = _entity_from_row(dict(row))
+                exact[entity.canonical_name] = entity
+
+        aliases: dict[str, EntityAlias] = {}
+        async with self.db.execute(
+            f"SELECT * FROM entity_aliases WHERE alias_normalized IN ({placeholders})",
+            names,
+        ) as cursor:
+            async for row in cursor:
+                data = dict(row)
+                aliases.setdefault(
+                    data["alias_normalized"],
+                    EntityAlias(
+                        alias=data["alias"],
+                        alias_normalized=data["alias_normalized"],
+                        canonical_id=int(data["canonical_id"]),
+                        source=data["source"],
+                        created_at=_parse_dt(data["created_at"]),
+                    ),
+                )
+
+        unresolved = tuple(name for name in names if name not in exact and name not in aliases)
+        candidates: dict[str, tuple[Entity, ...]] = {name: () for name in unresolved}
+        terms = tuple(
+            dict.fromkeys(
+                token
+                for name in unresolved
+                for token in name.split()
+                if len(token) >= 3 and token.replace(".", "").isalnum()
+            )
+        )
+        if terms:
+            query = " OR ".join(f'"{term}"*' for term in terms)
+            max_rows = max(candidate_limit, len(unresolved) * candidate_limit * 2)
+            pool: list[Entity] = []
+            async with self.db.execute(
+                """SELECT DISTINCT e.*
+                   FROM entity_alias_search_fts f
+                   JOIN entities e ON e.id = f.entity_id
+                   WHERE entity_alias_search_fts MATCH ?
+                   ORDER BY e.canonical_name
+                   LIMIT ?""",
+                (query, max_rows),
+            ) as cursor:
+                async for row in cursor:
+                    pool.append(_entity_from_row(dict(row)))
+            for name in unresolved:
+                name_tokens = set(name.split())
+                ranked = sorted(
+                    pool,
+                    key=lambda entity: (
+                        -len(name_tokens.intersection(entity.canonical_name.split())),
+                        entity.canonical_name,
+                    ),
+                )
+                candidates[name] = tuple(
+                    entity
+                    for entity in ranked
+                    if name_tokens.intersection(entity.canonical_name.split())
+                )[:candidate_limit]
+        return EntityResolutionContext(exact, aliases, candidates)
+
+    async def upsert_entities(
+        self,
+        entities: Sequence[tuple[str, str]],
+    ) -> Mapping[str, int]:
+        """Create missing canonical entities in one transaction."""
+
+        values = tuple(dict.fromkeys(entities))
+        if not values:
+            return {}
+        async with self._write_lock:
+            try:
+                await self.db.executemany(
+                    """INSERT INTO entities (canonical_name, display_name)
+                       VALUES (?, ?)
+                       ON CONFLICT(canonical_name) DO UPDATE SET display_name=excluded.display_name""",
+                    values,
+                )
+                names = tuple(canonical for canonical, _display in values)
+                placeholders = ",".join("?" for _ in names)
+                resolved: dict[str, int] = {}
+                async with self.db.execute(
+                    f"SELECT id, canonical_name FROM entities WHERE canonical_name IN ({placeholders})",
+                    names,
+                ) as cursor:
+                    async for row in cursor:
+                        resolved[str(row["canonical_name"])] = int(row["id"])
+                for entity_id in resolved.values():
+                    await self._refresh_entity_alias_search_unlocked(entity_id)
+                await self.db.commit()
+                return resolved
+            except BaseException:
+                rollback_task = asyncio.create_task(self.db.rollback())
+                await _drain_task_despite_cancellation(rollback_task)
+                raise
+
+    async def insert_aliases(self, aliases: Sequence[EntityAlias]) -> None:
+        """Insert confirmed aliases and refresh their lexical projection once."""
+
+        values = tuple(aliases)
+        if not values:
+            return
+        async with self._write_lock:
+            try:
+                await self.db.executemany(
+                    """INSERT OR IGNORE INTO entity_aliases (
+                           alias, alias_normalized, canonical_id, source
+                       ) VALUES (?, ?, ?, ?)""",
+                    tuple(
+                        (item.alias, item.alias_normalized, item.canonical_id, item.source)
+                        for item in values
+                    ),
+                )
+                for entity_id in dict.fromkeys(item.canonical_id for item in values):
+                    await self._refresh_entity_alias_search_unlocked(entity_id)
+                await self.db.commit()
+            except BaseException:
+                rollback_task = asyncio.create_task(self.db.rollback())
+                await _drain_task_despite_cancellation(rollback_task)
+                raise
+
     async def upsert_entity(
         self,
         canonical_name: str,
         display_name: str,
-        tags: list[str] | None = None,
     ) -> int:
         """Insert or update an entity. Returns the entity id."""
-        tags_json = json.dumps(tags or [])
-        # Also write entity_type for backward compat (first tag or 'unknown')
-        entity_type = tags[0] if tags else "unknown"
         async with self._write_lock:
             try:
                 await self.db.execute(
-                    """INSERT INTO entities (canonical_name, entity_type, tags, display_name)
-                       VALUES (?, ?, ?, ?)
+                    """INSERT INTO entities (canonical_name, display_name)
+                       VALUES (?, ?)
                        ON CONFLICT(canonical_name) DO UPDATE SET
-                       entity_type=excluded.entity_type,
-                       tags=excluded.tags,
                        display_name=excluded.display_name""",
-                    (canonical_name, entity_type, tags_json, display_name),
+                    (canonical_name, display_name),
                 )
                 async with self.db.execute(
                     "SELECT id FROM entities WHERE canonical_name = ?",
@@ -11716,18 +11802,6 @@ class Database:
                 created_at=_parse_dt(d["created_at"]),
             )
 
-    async def get_entities_by_tag(self, tag: str) -> list[Entity]:
-        """Get entities that have a specific tag."""
-        results: list[Entity] = []
-        # Use LIKE with JSON pattern for simple tag matching
-        async with self.db.execute(
-            """SELECT * FROM entities WHERE tags LIKE ? ORDER BY display_name""",
-            (f'%"{tag}"%',),
-        ) as cursor:
-            async for row in cursor:
-                results.append(_entity_from_row(dict(row)))
-        return results
-
     async def get_all_entities(self) -> list[Entity]:
         results: list[Entity] = []
         async with self.db.execute("SELECT * FROM entities ORDER BY canonical_name") as cursor:
@@ -11738,7 +11812,6 @@ class Database:
     async def list_entities(
         self,
         *,
-        tag: str | None = None,
         search: str | None = None,
         limit: int = 100,
         offset: int = 0,
@@ -11746,9 +11819,6 @@ class Database:
         """List entities for the admin API without exposing the DB connection."""
         query = "SELECT * FROM entities WHERE 1=1"
         params: list[Any] = []
-        if tag:
-            query += " AND tags LIKE ?"
-            params.append(f'%"{tag}"%')
         if search:
             query += " AND (canonical_name LIKE ? OR display_name LIKE ?)"
             like = f"%{search}%"
@@ -13422,11 +13492,6 @@ class Database:
                         await self._delete_evidence_graph_for_doc_ids_unlocked([doc_id])
 
                     if doc_id in exclusive_doc_ids:
-                        await self.db.execute("DELETE FROM document_metadata WHERE doc_id = ?", (doc_id,))
-                        await self.db.execute(
-                            "DELETE FROM document_relationships WHERE source_doc_id = ? OR target_doc_id = ?",
-                            (doc_id, doc_id),
-                        )
                         await self.db.execute("DELETE FROM changelog WHERE doc_id = ?", (doc_id,))
                         await self.db.execute("DELETE FROM agent_session_receipts WHERE doc_id = ?", (doc_id,))
                         await self.db.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
@@ -16431,7 +16496,6 @@ class Database:
             memory_type=d["memory_type"],
             content=d["content"],
             content_hash=d["content_hash"],
-            tags=json.loads(d.get("tags") or "[]"),
             visibility=d["visibility"],
             owner_user_id=d["owner_user_id"],
             project_key=d["project_key"],
