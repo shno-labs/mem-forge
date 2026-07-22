@@ -17,8 +17,9 @@
 
 ## Memory lifecycle migration
 
-- **Lifecycle Migration Inventory** — A backend scan of every active Configured Source in the datastore, without applying a caller's source-discoverability filter. Agent Session sources are candidates when they own active Memories and either the Lifecycle Gate is not Enabled or an active Memory lacks an active same-source Support Assertion. Inventory output contains identifiers and counts, never private source content or owner identity.
-- **Active Same-Source Support Invariant** — Every active source-backed Memory has at least one active Support Assertion whose source matches that provenance edge. An Enabled gate does not override a violation.
+- **Lifecycle Migration Inventory** — A backend scan of every active Configured Source in the datastore, without applying a caller's source-discoverability filter. Agent Session sources are candidates when the Lifecycle Gate is not Enabled or the bidirectional Active Same-Source Support Invariant is violated in either direction. Inventory output contains identifiers and counts, never private source content or owner identity.
+- **Active Same-Source Support Invariant** — Support authority and its source provenance projection are bidirectionally complete for active configured-source Memories: every `memory_sources` edge has active same-source Support, and every active Support has the exact `memory_sources` edge for its Evidence document. An Enabled gate does not override either violation.
+- **Support Provenance Projection** — The `memory_sources` read model used by source facets, source-card counts, timestamps, access filtering, and document provenance. It materializes exact active Support membership but is not lifecycle authority; a cross-document Relation without Support does not create this projection.
 - **Lifecycle Migration Attempt** — One idempotent durable recovery job identified by an explicit attempt label. Unprovable lineage remains a durable open finding and keeps destructive lifecycle gated; semantic similarity cannot close it.
 - **Non-Migrating SQLite Open** — An existing SQLite workspace opened through `Database.connect(run_migrations=False)`. It uses SQLite read-only/query-only mode, does not create the database or parent directories, and does not create schema or run migrations. It is for operator evaluation, never normal serving or repair.
 
