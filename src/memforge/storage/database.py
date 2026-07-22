@@ -3014,7 +3014,7 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
         ],
     ),
     (
-        69,
+        70,
         "Fence learned entity aliases by lifecycle access context",
         ["ALTER TABLE entity_aliases ADD COLUMN access_context_hash TEXT"],
     ),
