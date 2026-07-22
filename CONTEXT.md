@@ -10,6 +10,9 @@
 - **Source Readiness** — The compact source-row outcome derived from execution location, Device Readiness when collection is local, and Connection Readiness when the connector exposes it.
 - **Source Sync Activity** — The user-visible lifecycle of current or recent work to bring one source up to date. It can cover both collection from the source and processing into memories.
 - **Collection** — Reading source items and, when required, transferring them from the execution device to MemForge.
+- **Collection Manifest** — An attempt-scoped declaration of stable Source Item identities and opaque revisions. It describes discovered membership without carrying every item body.
+- **Collection Coverage** — The proof attached to one collection result: a Complete Snapshot covers the whole configured scope, a Bounded Delta covers only explicit changes since a checkpoint, and Partial coverage proves neither absence nor a safe checkpoint advance.
+- **Candidate Checkpoint** — A provider position proposed by collection but not made current until the corresponding Source Projection and lifecycle transaction succeeds.
 - **Processing** — Turning collected source items into stored documents and memories.
 - **Progress Snapshot** — The latest trustworthy statement of an activity's phase and measurable progress. It is a current observation, not a history of progress events.
 - **Determinate Progress** — Progress with a trustworthy total, presented as completed out of total.

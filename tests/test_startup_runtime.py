@@ -2777,6 +2777,16 @@ async def test_local_process_route_translates_atomic_activity_race_to_409(
         local_agent_lease_validator=allow_lease,
     )
     with TestClient(app) as client:
+        manifest = client.post(
+            f"/api/sources/{source_id}/adapter/manifest",
+            json={
+                "items": [],
+                "coverage": "complete_snapshot",
+                "sync_snapshot_id": "atomic-race-job:attempt:1",
+                "local_agent_job_id": "atomic-race-job",
+                "local_agent_attempt_count": 1,
+            },
+        )
         response = client.post(
             f"/api/sources/{source_id}/process",
             json={
@@ -2785,6 +2795,7 @@ async def test_local_process_route_translates_atomic_activity_race_to_409(
             },
         )
 
+    assert manifest.status_code == 200
     assert response.status_code == 409
     assert response.json()["detail"] == (
         "source activity started during local enqueue"
@@ -2952,6 +2963,16 @@ async def test_local_agent_process_endpoint_enqueues_server_processing(db, tmp_p
     )
     with TestClient(app) as client:
         app.state.sync_service = fake_sync_service
+        manifest = client.post(
+            f"/api/sources/{source_id}/adapter/manifest",
+            json={
+                "items": [],
+                "coverage": "complete_snapshot",
+                "sync_snapshot_id": "test-job:attempt:1",
+                "local_agent_job_id": "test-job",
+                "local_agent_attempt_count": 1,
+            },
+        )
         response = client.post(
             f"/api/sources/{source_id}/process",
             json={
@@ -2961,6 +2982,7 @@ async def test_local_agent_process_endpoint_enqueues_server_processing(db, tmp_p
             },
         )
 
+    assert manifest.status_code == 200
     assert response.status_code == 202
     assert response.json() == {
         "ok": True,
