@@ -457,6 +457,9 @@ async def test_cold_baseline_collapses_exact_duplicates_before_lifecycle_writes(
 
     assert stats["added"] == 1
     assert stats["skipped"] == 1
+    assert stats["candidate_ledger_input_count"] == 2
+    assert stats["candidate_ledger_selected_count"] == 1
+    assert stats["candidate_ledger_llm_calls"] == 0
     assert [row["content"] for row in rows] == [canonical.content]
     assert len(events) == 1
     assert events[0].source_id == "src-1"
@@ -466,8 +469,12 @@ async def test_cold_baseline_collapses_exact_duplicates_before_lifecycle_writes(
         "semantic_input_count": 1,
         "selected_count": 1,
         "dropped_exact_count": 1,
-        "dropped_redundant_count": 0,
-        "drops": [
+            "dropped_redundant_count": 0,
+            "structured_llm_calls": 0,
+            "structured_llm_elapsed_ms": 0,
+            "validation_retries": 0,
+            "prompt_chars": 0,
+            "drops": [
             {
                 "candidate_content_hash": content_hash(duplicate.content),
                 "candidate_source_observation_id": observation_id,
@@ -1041,6 +1048,11 @@ async def test_review_preserves_its_exact_contested_incumbent_support(
     assert current_unit is not None
     assert current_unit.id == second.source_unit_revisions[0].id
     assert await db.get_active_memory_support_reference_ids(incumbent.id) == old_support
+    support_state = (await db.get_active_memory_support_states((incumbent.id,)))[
+        incumbent.id
+    ]
+    assert support_state.reference_ids == old_support
+    assert support_state.current_reference_ids == ()
     review = await db.get_lifecycle_review(str(plan.mutations[0].payload["review_id"]))
     assert review is not None
     assert review.status is LifecycleReviewStatus.PENDING

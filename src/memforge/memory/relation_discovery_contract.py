@@ -30,10 +30,13 @@ class RelationDiscoveryWorkStatus(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class PreclassifiedRelationDecision:
-    """Reusable pair decision fenced by both persisted Memory content hashes."""
+    """Reusable pair decision fenced by content, current Evidence, and access."""
 
     candidate_memory_id: str
     expected_candidate_content_hash: str
+    expected_candidate_support_set_hash: str
+    expected_candidate_access_context_hash: str
+    expected_challenger_access_context_hash: str
     relation_type: MemoryRelationType
     direction: RelationDirection
     reason: str
@@ -43,6 +46,9 @@ class PreclassifiedRelationDecision:
         return {
             "candidate_memory_id": self.candidate_memory_id,
             "expected_candidate_content_hash": self.expected_candidate_content_hash,
+            "expected_candidate_support_set_hash": self.expected_candidate_support_set_hash,
+            "expected_candidate_access_context_hash": self.expected_candidate_access_context_hash,
+            "expected_challenger_access_context_hash": self.expected_challenger_access_context_hash,
             "relation_type": self.relation_type.value,
             "direction": self.direction.value,
             "reason": self.reason,
@@ -54,6 +60,15 @@ class PreclassifiedRelationDecision:
         return cls(
             candidate_memory_id=str(payload["candidate_memory_id"]),
             expected_candidate_content_hash=str(payload["expected_candidate_content_hash"]),
+            expected_candidate_support_set_hash=str(
+                payload.get("expected_candidate_support_set_hash") or ""
+            ),
+            expected_candidate_access_context_hash=str(
+                payload.get("expected_candidate_access_context_hash") or ""
+            ),
+            expected_challenger_access_context_hash=str(
+                payload.get("expected_challenger_access_context_hash") or ""
+            ),
             relation_type=MemoryRelationType(str(payload["relation_type"])),
             direction=RelationDirection(str(payload["direction"])),
             reason=str(payload["reason"]),

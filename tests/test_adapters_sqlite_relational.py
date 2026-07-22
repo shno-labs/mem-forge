@@ -70,6 +70,9 @@ async def test_sqlite_relation_work_round_trips_preclassified_identity_decisions
             PreclassifiedRelationDecision(
                 candidate_memory_id="mem-candidate",
                 expected_candidate_content_hash="candidate-hash",
+                expected_candidate_support_set_hash="support-hash",
+                expected_candidate_access_context_hash="candidate-access",
+                expected_challenger_access_context_hash="challenger-access",
                 relation_type=MemoryRelationType.REFINES,
                 direction=RelationDirection.CANDIDATE_TO_CHALLENGER,
                 reason="identity stage checked this pair",
@@ -102,6 +105,35 @@ def _scope(statuses=("active",)) -> AccessScope:
         active_project=None,
         scope_mode="project-first",
     )
+
+
+@pytest.mark.asyncio
+async def test_sqlite_active_support_states_chunk_large_bind_sets(
+    db: Database,
+    monkeypatch,
+) -> None:
+    calls = 0
+    support_queries: list[str] = []
+    original = db.db.execute_fetchall
+
+    async def execute_fetchall(sql, parameters=None):
+        nonlocal calls
+        if "FROM memory_support_assertions msa" in sql:
+            calls += 1
+            support_queries.append(sql)
+        return await original(sql, parameters)
+
+    monkeypatch.setattr(db.db, "execute_fetchall", execute_fetchall)
+    memory_ids = tuple(f"mem-{index}" for index in range(501))
+
+    states = await db.get_active_memory_support_states(memory_ids)
+
+    assert calls == 2
+    assert all("LEFT JOIN evidence_references" in sql for sql in support_queries)
+    assert all("LEFT JOIN source_observations" in sql for sql in support_queries)
+    assert tuple(states) == memory_ids
+    assert all(state.reference_ids == () for state in states.values())
+    assert all(state.current_reference_ids == () for state in states.values())
 
 
 def _memory(

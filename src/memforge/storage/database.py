@@ -40,7 +40,15 @@ from memforge.source_activity import (
     SourceActivityLease,
 )
 from memforge.sync_progress import normalize_sync_progress_snapshot
-from memforge.storage.adapters.protocols import ActiveMemorySupportState
+from memforge.storage.adapters.protocols import (
+    ActiveMemorySupportRow,
+    ActiveMemorySupportState,
+    EntityResolutionScope,
+    EntityUpsert,
+    STORAGE_BIND_CHUNK_SIZE,
+    active_support_rows_hash,
+    build_active_memory_support_states,
+)
 from memforge.models import (
     AgentHookReceipt,
     AgentSessionReceipt,
@@ -167,11 +175,6 @@ from memforge.storage.admin_source import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _support_rows_hash(rows: Sequence[tuple[str, str, str]]) -> str:
-    payload = json.dumps(list(rows), separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 async def _drain_task_despite_cancellation(task: asyncio.Future[Any]) -> Any:
@@ -3009,6 +3012,11 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
             "ALTER TABLE relation_discovery_work ADD COLUMN "
             "preclassified_decisions_json TEXT NOT NULL DEFAULT '[]'",
         ],
+    ),
+    (
+        69,
+        "Fence learned entity aliases by lifecycle access context",
+        ["ALTER TABLE entity_aliases ADD COLUMN access_context_hash TEXT"],
     ),
 ]
 
@@ -6367,30 +6375,32 @@ class Database:
         ids = tuple(dict.fromkeys(str(memory_id) for memory_id in memory_ids if memory_id))
         if not ids:
             return {}
-        placeholders = ", ".join("?" for _ in ids)
-        rows = await self.db.execute_fetchall(
-            f"""SELECT memory_id, evidence_reference_id, source_id, access_context_hash
-                FROM memory_support_assertions
-                WHERE active = 1 AND memory_id IN ({placeholders})
-                ORDER BY memory_id, evidence_reference_id, source_id, access_context_hash""",
-            ids,
-        )
-        values: dict[str, list[tuple[str, str, str]]] = {memory_id: [] for memory_id in ids}
-        for row in rows:
-            values[str(row["memory_id"])].append(
-                (
-                    str(row["evidence_reference_id"]),
-                    str(row["source_id"]),
-                    str(row["access_context_hash"]),
+        support_rows: list[ActiveMemorySupportRow] = []
+        for offset in range(0, len(ids), STORAGE_BIND_CHUNK_SIZE):
+            chunk = ids[offset : offset + STORAGE_BIND_CHUNK_SIZE]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = await self.db.execute_fetchall(
+                f"""SELECT msa.memory_id, msa.evidence_reference_id,
+                           msa.source_id, msa.access_context_hash,
+                           er.observation_revision_id = so.current_revision_id AS is_current
+                    FROM memory_support_assertions msa
+                    LEFT JOIN evidence_references er ON er.id = msa.evidence_reference_id
+                    LEFT JOIN source_observations so ON so.id = er.observation_id
+                    WHERE msa.active = 1
+                      AND msa.memory_id IN ({placeholders})""",
+                chunk,
+            )
+            support_rows.extend(
+                ActiveMemorySupportRow(
+                    memory_id=str(row["memory_id"]),
+                    evidence_reference_id=str(row["evidence_reference_id"]),
+                    source_id=str(row["source_id"]),
+                    access_context_hash=str(row["access_context_hash"]),
+                    is_current=bool(row["is_current"]),
                 )
+                for row in rows
             )
-        return {
-            memory_id: ActiveMemorySupportState(
-                reference_ids=tuple(reference_id for reference_id, _source_id, _access_hash in rows),
-                support_set_hash=_support_rows_hash(rows),
-            )
-            for memory_id, rows in values.items()
-        }
+        return build_active_memory_support_states(ids, support_rows)
 
     async def get_active_memory_support_evidence(
         self,
@@ -6455,7 +6465,10 @@ class Database:
             values[row["memory_id"]].append(row["evidence_reference_id"])
         return {memory_id: tuple(reference_ids) for memory_id, reference_ids in values.items()}
 
-    async def _memory_support_set_hash_unlocked(self, memory_id: str) -> str:
+    async def _memory_support_set_hash_unlocked(
+        self,
+        memory_id: str,
+    ) -> str:
         values: list[tuple[str, str, str]] = []
         async with self.db.execute(
             """SELECT evidence_reference_id, source_id, access_context_hash
@@ -6472,7 +6485,7 @@ class Database:
                         row["access_context_hash"],
                     )
                 )
-        return _support_rows_hash(values)
+        return active_support_rows_hash(values)
 
     async def get_lifecycle_plan_status(self, plan_id: str) -> str | None:
         async with self.db.execute(
@@ -11559,6 +11572,7 @@ class Database:
         canonical_names: Sequence[str],
         *,
         candidate_limit: int,
+        scope: EntityResolutionScope,
     ):
         """Load exact, alias, and bounded lexical candidates in fixed queries."""
 
@@ -11579,8 +11593,13 @@ class Database:
 
         aliases: dict[str, EntityAlias] = {}
         async with self.db.execute(
-            f"SELECT * FROM entity_aliases WHERE alias_normalized IN ({placeholders})",
-            names,
+            f"""SELECT * FROM entity_aliases
+                WHERE alias_normalized IN ({placeholders})
+                  AND (access_context_hash = ? OR (
+                      access_context_hash IS NULL
+                      AND source IN ('admin_manual', 'deterministic')
+                  ))""",
+            (*names, scope.access_context_hash),
         ) as cursor:
             async for row in cursor:
                 data = dict(row)
@@ -11591,6 +11610,7 @@ class Database:
                         alias_normalized=data["alias_normalized"],
                         canonical_id=int(data["canonical_id"]),
                         source=data["source"],
+                        access_context_hash=data["access_context_hash"],
                         created_at=_parse_dt(data["created_at"]),
                     ),
                 )
@@ -11604,19 +11624,25 @@ class Database:
                 for token in name.split()
                 if len(token) >= 3 and token.replace(".", "").isalnum()
             )
-        )
+        )[: max(1, candidate_limit * 4)]
         if terms:
-            query = " OR ".join(f'"{term}"*' for term in terms)
             max_rows = max(candidate_limit, len(unresolved) * candidate_limit * 2)
+            term_predicate = " OR ".join(
+                "LOWER(canonical_name) LIKE ? OR LOWER(display_name) LIKE ?"
+                for _term in terms
+            )
+            term_params = tuple(
+                value
+                for term in terms
+                for value in (f"%{term}%", f"%{term}%")
+            )
             pool: list[Entity] = []
             async with self.db.execute(
-                """SELECT DISTINCT e.*
-                   FROM entity_alias_search_fts f
-                   JOIN entities e ON e.id = f.entity_id
-                   WHERE entity_alias_search_fts MATCH ?
-                   ORDER BY e.canonical_name
-                   LIMIT ?""",
-                (query, max_rows),
+                f"""SELECT * FROM entities
+                    WHERE {term_predicate}
+                    ORDER BY canonical_name
+                    LIMIT ?""",
+                (*term_params, max_rows),
             ) as cursor:
                 async for row in cursor:
                     pool.append(_entity_from_row(dict(row)))
@@ -11638,7 +11664,7 @@ class Database:
 
     async def upsert_entities(
         self,
-        entities: Sequence[tuple[str, str]],
+        entities: Sequence[EntityUpsert],
     ) -> Mapping[str, int]:
         """Create missing canonical entities in one transaction."""
 
@@ -11651,9 +11677,9 @@ class Database:
                     """INSERT INTO entities (canonical_name, display_name)
                        VALUES (?, ?)
                        ON CONFLICT(canonical_name) DO UPDATE SET display_name=excluded.display_name""",
-                    values,
+                    tuple((item.canonical_name, item.display_name) for item in values),
                 )
-                names = tuple(canonical for canonical, _display in values)
+                names = tuple(item.canonical_name for item in values)
                 placeholders = ",".join("?" for _ in names)
                 resolved: dict[str, int] = {}
                 async with self.db.execute(
@@ -11681,10 +11707,16 @@ class Database:
             try:
                 await self.db.executemany(
                     """INSERT OR IGNORE INTO entity_aliases (
-                           alias, alias_normalized, canonical_id, source
-                       ) VALUES (?, ?, ?, ?)""",
+                           alias, alias_normalized, canonical_id, source, access_context_hash
+                       ) VALUES (?, ?, ?, ?, ?)""",
                     tuple(
-                        (item.alias, item.alias_normalized, item.canonical_id, item.source)
+                        (
+                            item.alias,
+                            item.alias_normalized,
+                            item.canonical_id,
+                            item.source,
+                            item.access_context_hash,
+                        )
                         for item in values
                     ),
                 )
@@ -11799,6 +11831,7 @@ class Database:
                 alias_normalized=d["alias_normalized"],
                 canonical_id=d["canonical_id"],
                 source=d["source"],
+                access_context_hash=d["access_context_hash"],
                 created_at=_parse_dt(d["created_at"]),
             )
 
@@ -11961,6 +11994,7 @@ class Database:
                         alias_normalized=d["alias_normalized"],
                         canonical_id=d["canonical_id"],
                         source=d["source"],
+                        access_context_hash=d["access_context_hash"],
                         created_at=_parse_dt(d["created_at"]),
                     )
                 )

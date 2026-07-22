@@ -8,6 +8,10 @@ from memforge.llm.structured import EntityBatchValidationDecision, EntityBatchVa
 from memforge.memory.entity_resolver import EntityResolutionContext, EntityResolver, validate_alias
 from memforge.models import Entity, EntityAlias, canonicalize_entity_name
 from memforge.storage.database import Database
+from memforge.storage.adapters.protocols import EntityResolutionScope, EntityUpsert
+
+
+_SCOPE = EntityResolutionScope(access_context_hash="access-a")
 
 
 @pytest.fixture
@@ -121,18 +125,19 @@ class FakeEntityStore:
     def __init__(self, context: EntityResolutionContext) -> None:
         self.context = context
         self.context_calls = 0
-        self.created: list[tuple[str, str]] = []
+        self.created: list[EntityUpsert] = []
         self.aliases: list[EntityAlias] = []
 
-    async def load_entity_resolution_context(self, canonical_names, *, candidate_limit):
+    async def load_entity_resolution_context(self, canonical_names, *, candidate_limit, scope):
         assert candidate_limit == 10
+        assert scope == _SCOPE
         self.context_calls += 1
         assert tuple(canonical_names) == tuple(dict.fromkeys(canonical_names))
         return self.context
 
     async def upsert_entities(self, entities):
         self.created.extend(entities)
-        return {canonical: 100 + index for index, (canonical, _display) in enumerate(entities)}
+        return {item.canonical_name: 100 + index for index, item in enumerate(entities)}
 
     async def insert_aliases(self, aliases):
         self.aliases.extend(aliases)
@@ -186,6 +191,7 @@ async def test_resolve_many_batches_lookup_embedding_and_ambiguity(monkeypatch):
 
     result = await resolver.resolve_many(
         ["MemForge", "pay-service", "auth_svc", "pay-service", "new component"],
+        scope=_SCOPE,
         doc_context="bounded source unit",
     )
 
@@ -196,7 +202,7 @@ async def test_resolve_many_batches_lookup_embedding_and_ambiguity(monkeypatch):
     assert result.entity_id("pay-service") == 1
     assert result.entity_id("auth_svc") == 2
     assert result.entity_id("new component") == 100
-    assert store.created == [("new component", "new component")]
+    assert store.created == [EntityUpsert("new component", "new component")]
     assert {(item.alias_normalized, item.canonical_id) for item in store.aliases} == {
         ("auth svc", 2),
         ("pay service", 1),
@@ -229,7 +235,7 @@ async def test_resolve_many_rejects_classifier_id_outside_candidate_set(monkeypa
         structured_llm_client=client,
     )
 
-    result = await resolver.resolve_many(["pay service"])
+    result = await resolver.resolve_many(["pay service"], scope=_SCOPE)
 
     assert result.entity_id("pay service") == 100
     assert store.aliases == []
@@ -249,6 +255,7 @@ async def test_sqlite_entity_resolution_context_is_bounded_and_bulk(db):
     context = await db.load_entity_resolution_context(
         ("memforge", "mf", "pay service", "missing"),
         candidate_limit=2,
+        scope=_SCOPE,
     )
 
     assert context.exact_matches["memforge"].id == exact_id
@@ -256,7 +263,7 @@ async def test_sqlite_entity_resolution_context_is_bounded_and_bulk(db):
     assert [item.id for item in context.candidates["pay service"]] == [candidate_id]
     assert context.candidates["missing"] == ()
 
-    created = await db.upsert_entities((("new component", "New Component"),))
+    created = await db.upsert_entities((EntityUpsert("new component", "New Component"),))
     await db.insert_aliases(
         (
             EntityAlias(
@@ -264,7 +271,15 @@ async def test_sqlite_entity_resolution_context_is_bounded_and_bulk(db):
                 alias_normalized="nc",
                 canonical_id=created["new component"],
                 source="resolver_confirmed",
+                access_context_hash=_SCOPE.access_context_hash,
             ),
         )
     )
     assert (await db.get_entity_by_alias("nc")).canonical_id == created["new component"]
+
+    other_scope = await db.load_entity_resolution_context(
+        ("nc",),
+        candidate_limit=2,
+        scope=EntityResolutionScope(access_context_hash="access-b"),
+    )
+    assert "nc" not in other_scope.alias_matches

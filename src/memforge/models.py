@@ -154,6 +154,7 @@ class EntityAlias:
     alias_normalized: str
     canonical_id: int
     source: str  # "exact" | "fuzzy_auto" | "llm_extracted" | "admin_manual"
+    access_context_hash: str | None = None
     created_at: datetime | None = None
 
 

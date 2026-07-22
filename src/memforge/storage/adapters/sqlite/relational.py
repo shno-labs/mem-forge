@@ -67,6 +67,8 @@ from memforge.storage.adapters.protocols import (
     DEFAULT_ENTITY_LINK_LIMIT,
     EntityLinkCandidate,
     EntityLinkResult,
+    EntityResolutionScope,
+    EntityUpsert,
 )
 
 logger = logging.getLogger(__name__)
@@ -361,15 +363,17 @@ class SqliteRelationalStore:
         canonical_names: Sequence[str],
         *,
         candidate_limit: int,
+        scope: EntityResolutionScope,
     ):
         return await self._db.load_entity_resolution_context(
             canonical_names,
             candidate_limit=candidate_limit,
+            scope=scope,
         )
 
     async def upsert_entities(
         self,
-        entities: Sequence[tuple[str, str]],
+        entities: Sequence[EntityUpsert],
     ):
         return await self._db.upsert_entities(entities)
 

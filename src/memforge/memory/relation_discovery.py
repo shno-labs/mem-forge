@@ -36,6 +36,7 @@ from memforge.memory.relation_discovery_contract import (
     RelationDiscoveryWork,
     resolve_relation_discovery_actor_user_id,
 )
+from memforge.memory.lifecycle_planner import lifecycle_access_context_hash
 from memforge.models import (
     Memory,
     MemoryReview,
@@ -257,6 +258,15 @@ class RelationDiscovery:
             item.candidate_memory_id: item
             for item in request.preclassified_decisions
         }
+        candidate_support = await self._store.get_active_memory_support_states(
+            tuple(pair.candidate.id for pair in pairs)
+        )
+        challenger_access_context_hash = lifecycle_access_context_hash(
+            visibility=challenger.visibility,
+            owner_user_id=challenger.owner_user_id,
+            project_key=challenger.project_key,
+            repo_identifier=challenger.repo_identifier,
+        )
         reused_decisions: dict[tuple[str, str], MemoryPairDecision] = {}
         pending_pairs: list[MemoryPair] = []
         for pair in pairs:
@@ -264,6 +274,17 @@ class RelationDiscovery:
             if (
                 saved is None
                 or saved.expected_candidate_content_hash != pair.candidate.content_hash
+                or saved.expected_candidate_support_set_hash
+                != candidate_support[pair.candidate.id].current_support_set_hash
+                or saved.expected_candidate_access_context_hash
+                != lifecycle_access_context_hash(
+                    visibility=pair.candidate.visibility,
+                    owner_user_id=pair.candidate.owner_user_id,
+                    project_key=pair.candidate.project_key,
+                    repo_identifier=pair.candidate.repo_identifier,
+                )
+                or saved.expected_challenger_access_context_hash
+                != challenger_access_context_hash
                 or saved.classifier_version != RELATION_DISCOVERY_CLASSIFIER_VERSION
             ):
                 pending_pairs.append(pair)

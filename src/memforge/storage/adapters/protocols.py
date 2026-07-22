@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
+import json
 from typing import Any, Mapping, Protocol, Sequence, TypedDict, runtime_checkable
 
 from memforge.models import (
@@ -79,14 +81,77 @@ class KeywordCandidate:
 
 @dataclass(frozen=True, slots=True)
 class ActiveMemorySupportState:
-    """One transaction-independent snapshot used by lifecycle stale guards."""
+    """All active assertions plus the current-revision subset."""
 
     reference_ids: tuple[str, ...]
     support_set_hash: str
+    current_reference_ids: tuple[str, ...]
+    current_support_set_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveMemorySupportRow:
+    """Canonical current-revision support row shared by every adapter."""
+
+    memory_id: str
+    evidence_reference_id: str
+    source_id: str
+    access_context_hash: str
+    is_current: bool
+
+
+def build_active_memory_support_states(
+    memory_ids: Sequence[str],
+    rows: Sequence[ActiveMemorySupportRow],
+) -> Mapping[str, ActiveMemorySupportState]:
+    """Build explicit empty states and one canonical support hash per Memory."""
+
+    ids = tuple(dict.fromkeys(str(memory_id) for memory_id in memory_ids if memory_id))
+    grouped: dict[str, list[tuple[str, str, str]]] = {memory_id: [] for memory_id in ids}
+    current_grouped: dict[str, list[tuple[str, str, str]]] = {
+        memory_id: [] for memory_id in ids
+    }
+    for row in sorted(
+        rows,
+        key=lambda item: (
+            item.memory_id,
+            item.evidence_reference_id,
+            item.source_id,
+            item.access_context_hash,
+        ),
+    ):
+        if row.memory_id in grouped:
+            value = (row.evidence_reference_id, row.source_id, row.access_context_hash)
+            grouped[row.memory_id].append(value)
+            if row.is_current:
+                current_grouped[row.memory_id].append(value)
+    return {
+        memory_id: ActiveMemorySupportState(
+            reference_ids=tuple(reference_id for reference_id, _source_id, _access_hash in state_rows),
+            support_set_hash=active_support_rows_hash(state_rows),
+            current_reference_ids=tuple(
+                reference_id
+                for reference_id, _source_id, _access_hash in current_grouped[memory_id]
+            ),
+            current_support_set_hash=active_support_rows_hash(current_grouped[memory_id]),
+        )
+        for memory_id, state_rows in grouped.items()
+    }
+
+
+def active_support_rows_hash(rows: Sequence[tuple[str, str, str]]) -> str:
+    """Hash canonical current Evidence support without adapter-specific drift."""
+
+    return hashlib.sha256(
+        json.dumps(list(rows), separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 DEFAULT_ENTITY_LINK_LIMIT = 5
 """Default maximum linked entities per query; keeps graph fan-out bounded."""
+
+STORAGE_BIND_CHUNK_SIZE = 500
+"""Shared conservative bind-set size used inside relational adapters."""
 
 
 @dataclass(frozen=True)
@@ -129,6 +194,21 @@ class EntityResolutionContext:
     candidates: Mapping[str, tuple[Entity, ...]]
 
 
+@dataclass(frozen=True, slots=True)
+class EntityResolutionScope:
+    """Access fence for learned aliases during one extraction batch."""
+
+    access_context_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class EntityUpsert:
+    """One canonical Entity requested by the batch resolver."""
+
+    canonical_name: str
+    display_name: str
+
+
 class RankingMetadata(TypedDict, total=False):
     """The per-memory inputs the ranker needs alongside RRF scores.
 
@@ -162,10 +242,11 @@ class RelationalStore(Protocol):
         canonical_names: Sequence[str],
         *,
         candidate_limit: int,
+        scope: EntityResolutionScope,
     ) -> EntityResolutionContext: ...
     async def upsert_entities(
         self,
-        entities: Sequence[tuple[str, str]],
+        entities: Sequence[EntityUpsert],
     ) -> Mapping[str, int]: ...
     async def insert_aliases(self, aliases: Sequence[EntityAlias]) -> None: ...
     async def get_memory(self, memory_id: str) -> Memory | None: ...

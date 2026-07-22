@@ -13,7 +13,12 @@ from time import perf_counter
 from typing import Any
 
 from memforge.models import Entity, EntityAlias, canonicalize_entity_name
-from memforge.storage.adapters.protocols import EntityResolutionContext, RelationalStore
+from memforge.storage.adapters.protocols import (
+    EntityResolutionContext,
+    EntityResolutionScope,
+    EntityUpsert,
+    RelationalStore,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,33 +106,12 @@ class EntityResolver:
         self.embedding_threshold = embedding_threshold
         self.candidate_limit = candidate_limit
         self.confidence_threshold = confidence_threshold
-        self._last_metrics: EntityResolutionMetrics | None = None
-
-    @property
-    def stats(self) -> dict[str, int]:
-        """Return the latest batch metrics for existing observability callers."""
-
-        metrics = self._last_metrics
-        if metrics is None:
-            return {}
-        return {
-            "unique_mentions": metrics.unique_mentions,
-            "exact_match": metrics.exact_hits,
-            "alias_match": metrics.alias_hits,
-            "embedded_mentions": metrics.embedded_mentions,
-            "ambiguous_mentions": metrics.ambiguous_mentions,
-            "embedding_batches": metrics.embedding_batches,
-            "structured_llm_calls": metrics.structured_llm_calls,
-            "candidate_count": metrics.candidate_count,
-            "new_entity": metrics.new_entities,
-            "total_resolved": metrics.unique_mentions,
-            "elapsed_ms": metrics.elapsed_ms,
-        }
 
     async def resolve_many(
         self,
         mentions: Sequence[str],
         *,
+        scope: EntityResolutionScope,
         doc_context: str | None = None,
     ) -> EntityResolutionBatch:
         """Resolve distinct mentions with bounded storage and model batches."""
@@ -145,6 +129,7 @@ class EntityResolver:
         context = await self.store.load_entity_resolution_context(
             canonical_names,
             candidate_limit=self.candidate_limit,
+            scope=scope,
         )
         resolved: dict[str, int] = {
             canonical: entity.id
@@ -247,13 +232,17 @@ class EntityResolver:
                         alias_normalized=mention,
                         canonical_id=int(matched_id),
                         source="resolver_confirmed",
+                        access_context_hash=scope.access_context_hash,
                     )
                 )
 
         new_names = tuple(canonical for canonical in unresolved if canonical not in resolved)
         if new_names:
             created = await self.store.upsert_entities(
-                tuple((canonical, display_by_canonical[canonical]) for canonical in new_names)
+                tuple(
+                    EntityUpsert(canonical, display_by_canonical[canonical])
+                    for canonical in new_names
+                )
             )
             missing = set(new_names).difference(created)
             if missing:
@@ -274,20 +263,6 @@ class EntityResolver:
             candidate_count=candidate_count,
             new_entities=len(new_names),
         )
-
-    async def resolve(
-        self,
-        extracted_name: str,
-        *,
-        doc_context: str | None = None,
-    ) -> int:
-        """Resolve one mention through the same batch contract."""
-
-        result = await self.resolve_many((extracted_name,), doc_context=doc_context)
-        entity_id = result.entity_id(extracted_name)
-        if entity_id is None:
-            raise RuntimeError("entity resolution produced no ID")
-        return entity_id
 
     def _finish_batch(
         self,
@@ -315,7 +290,6 @@ class EntityResolver:
             new_entities=new_entities,
             elapsed_ms=max(0, round((perf_counter() - started) * 1000)),
         )
-        self._last_metrics = metrics
         logger.info(
             "entity_resolution_batch unique=%d exact=%d alias=%d embedded=%d "
             "ambiguous=%d candidates=%d embedding_batches=%d llm_calls=%d new=%d elapsed_ms=%d",

@@ -42,6 +42,7 @@ from memforge.memory.relation_classifier import (
 from memforge.memory.relation_discovery_contract import PreclassifiedRelationDecision
 from memforge.source_access import memory_visibility_for_document
 from memforge.source_projection import ImpactResult, ProjectionCoverage, resolve_anchor_impact
+from memforge.storage.adapters.protocols import EntityResolutionScope
 from memforge.models import (
     Memory,
     RawMemory,
@@ -422,10 +423,31 @@ class MemoryEngine:
             ):
                 filtered_memories.append(raw)
         quality_candidate_count = len(filtered_memories)
-        filtered_memories = await self._select_projected_candidates(
+        candidate_ledger = await self._select_projected_candidates(
             projection=projection,
             doc_id=doc_id,
             candidates=filtered_memories,
+        )
+        filtered_memories = list(candidate_ledger.candidates)
+        stats.update(
+            {
+                "candidate_ledger_input_count": candidate_ledger.input_count,
+                "candidate_ledger_selected_count": len(candidate_ledger.candidates),
+                "candidate_ledger_dropped_exact_count": (
+                    candidate_ledger.dropped_exact_count
+                ),
+                "candidate_ledger_dropped_redundant_count": (
+                    candidate_ledger.dropped_redundant_count
+                ),
+                "candidate_ledger_llm_calls": candidate_ledger.structured_llm_calls,
+                "candidate_ledger_llm_elapsed_ms": (
+                    candidate_ledger.structured_llm_elapsed_ms
+                ),
+                "candidate_ledger_validation_retries": (
+                    candidate_ledger.validation_retries
+                ),
+                "candidate_ledger_prompt_chars": candidate_ledger.prompt_chars,
+            }
         )
         stats["skipped"] += quality_candidate_count - len(filtered_memories)
         reconciliation_started = perf_counter()
@@ -592,6 +614,7 @@ class MemoryEngine:
                 for raw_memory in operation_memories
                 for entity_ref in raw_memory.entity_refs
             ),
+            scope=EntityResolutionScope(access_context_hash=access_context_hash),
             doc_context=document_content[:2000],
         )
         stats.update(
@@ -641,6 +664,19 @@ class MemoryEngine:
                 )
             )
         identity_resolutions = await self.identity_resolver.resolve(tuple(identity_requests))
+        classified_candidate_ids = tuple(
+            dict.fromkeys(
+                memory_id
+                for resolution in identity_resolutions
+                for memory_id in (
+                    *(decision.pair.candidate.id for decision in resolution.classified_pairs),
+                    *((resolution.target.id,) if resolution.target is not None else ()),
+                )
+            )
+        )
+        classified_candidate_support = await self.db.get_active_memory_support_states(
+            classified_candidate_ids
+        )
         attached_target_ids: list[str] = []
         for claim_hash, resolution in zip(
             identity_claim_hashes,
@@ -653,6 +689,18 @@ class MemoryEngine:
                 PreclassifiedRelationDecision(
                     candidate_memory_id=decision.pair.candidate.id,
                     expected_candidate_content_hash=decision.pair.candidate.content_hash,
+                    expected_candidate_support_set_hash=(
+                        classified_candidate_support[
+                            decision.pair.candidate.id
+                        ].current_support_set_hash
+                    ),
+                    expected_candidate_access_context_hash=lifecycle_access_context_hash(
+                        visibility=decision.pair.candidate.visibility,
+                        owner_user_id=decision.pair.candidate.owner_user_id,
+                        project_key=decision.pair.candidate.project_key,
+                        repo_identifier=decision.pair.candidate.repo_identifier,
+                    ),
+                    expected_challenger_access_context_hash=access_context_hash,
                     relation_type=decision.relation_type,
                     direction=decision.direction,
                     reason=decision.reason,
@@ -665,7 +713,10 @@ class MemoryEngine:
             corroboration_targets[claim_hash] = target
             corroboration_proofs[claim_hash] = dict(equivalence_proof)
             attached_target_ids.append(target.id)
-        attached_support_states = await self.db.get_active_memory_support_states(attached_target_ids)
+        attached_support_states = {
+            memory_id: classified_candidate_support[memory_id]
+            for memory_id in attached_target_ids
+        }
         for memory_id, state in attached_support_states.items():
             all_support[memory_id] = state.reference_ids
             support_hashes[memory_id] = state.support_set_hash
@@ -754,7 +805,7 @@ class MemoryEngine:
         projection: SourceProjection,
         doc_id: str,
         candidates: list[RawMemory],
-    ) -> list[RawMemory]:
+    ) -> CandidateLedgerResult:
         """Select one complete within-revision candidate ledger before writes."""
 
         try:
@@ -773,6 +824,10 @@ class MemoryEngine:
                     "input_count": exc.input_count,
                     "semantic_input_count": exc.semantic_input_count,
                     "selected_count": 0,
+                    "structured_llm_calls": exc.structured_llm_calls,
+                    "structured_llm_elapsed_ms": exc.structured_llm_elapsed_ms,
+                    "validation_retries": exc.validation_retries,
+                    "prompt_chars": exc.prompt_chars,
                     "candidate_fingerprints": _candidate_fingerprints(candidates),
                     "fingerprints_truncated": len(candidates) > 200,
                 },
@@ -788,7 +843,7 @@ class MemoryEngine:
                 reason="complete_candidate_ledger",
                 payload=_candidate_ledger_audit_payload(result),
             )
-        return list(result.candidates)
+        return result
 
     async def _record_candidate_ledger_audit(
         self,
@@ -1010,6 +1065,10 @@ def _candidate_ledger_audit_payload(result: CandidateLedgerResult) -> dict[str, 
         "selected_count": len(result.candidates),
         "dropped_exact_count": result.dropped_exact_count,
         "dropped_redundant_count": result.dropped_redundant_count,
+        "structured_llm_calls": result.structured_llm_calls,
+        "structured_llm_elapsed_ms": result.structured_llm_elapsed_ms,
+        "validation_retries": result.validation_retries,
+        "prompt_chars": result.prompt_chars,
         "drops": [
             {
                 "candidate_content_hash": content_hash(drop.candidate.content),
