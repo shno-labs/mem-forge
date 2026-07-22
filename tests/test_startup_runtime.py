@@ -433,6 +433,8 @@ def test_admin_source_create_and_update_persist_sync_schedule(tmp_path, monkeypa
 
     monkeypatch.setenv("MEMFORGE_SECRET_KEY", TEST_SOURCE_KEY)
     cfg = _config(tmp_path)
+    cfg.sync.scheduler_enabled = False
+    cfg.sync.worker_enabled = False
     app = create_admin_app(config=cfg)
 
     with TestClient(app) as client:
