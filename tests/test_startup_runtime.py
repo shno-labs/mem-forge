@@ -2511,7 +2511,10 @@ async def test_source_scope_update_terminates_durable_pending_run(db, tmp_path, 
         source_id=source_id,
         trigger="manual",
     )
-    app = create_admin_app(db=db, config=_config(tmp_path))
+    config = _config(tmp_path)
+    config.sync.worker_enabled = False
+    config.sync.scheduler_enabled = False
+    app = create_admin_app(db=db, config=config)
 
     with TestClient(app) as client:
         response = client.put(
@@ -3393,10 +3396,7 @@ async def test_llm_config_put_can_preserve_and_clear_keys(db, tmp_path):
             "embedding_api_key": "embed-secret",
         }
     )
-    config = _config(tmp_path)
-    config.sync.worker_enabled = False
-    config.sync.scheduler_enabled = False
-    app = create_admin_app(db=db, config=config)
+    app = create_admin_app(db=db, config=_config(tmp_path))
 
     with TestClient(app) as client:
         preserve_response = client.put("/api/llm-config", json={"embedding_api_key": None})
