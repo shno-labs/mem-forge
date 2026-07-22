@@ -2511,10 +2511,7 @@ async def test_source_scope_update_terminates_durable_pending_run(db, tmp_path, 
         source_id=source_id,
         trigger="manual",
     )
-    config = _config(tmp_path)
-    config.sync.worker_enabled = False
-    config.sync.scheduler_enabled = False
-    app = create_admin_app(db=db, config=config)
+    app = create_admin_app(db=db, config=_config(tmp_path))
 
     with TestClient(app) as client:
         response = client.put(
@@ -3427,8 +3424,6 @@ async def test_llm_config_put_can_be_disabled_for_deployment_managed_config(db, 
         }
     )
     cfg = _config(tmp_path)
-    cfg.sync.worker_enabled = False
-    cfg.sync.scheduler_enabled = False
     cfg.server.llm_config_writable = False
     app = create_admin_app(db=db, config=cfg)
 
