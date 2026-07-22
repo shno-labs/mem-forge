@@ -13,6 +13,15 @@ leased as a new attempt. Local progress distinguishes provider discovery,
 content fetching, and Cloud upload so a refresh-safe UI does not present a slow
 collection phase as a frozen previous phase.
 
+Local package intake also preserves web-runtime liveness. Document artifact
+stores remain synchronous shared adapters, but an async HTTP intake must run
+their blocking object-store or filesystem writes outside the request event
+loop before it records the resulting package URI in the durable source input.
+This is one provider-neutral persistence boundary for local Markdown, GitHub,
+Jira, and Teams packages; Cloud routes must not add source-specific offload
+branches, and liveness timeouts are not a substitute for keeping blocking I/O
+off the event loop.
+
 A terminal source-sync failure remains available through Last sync details, but
 the Source row presents it as actionable only when the current viewer has the
 Source capability to run sync. This prevents a managed or read-only Source from
