@@ -131,7 +131,7 @@ def _unit() -> EvidenceUnit:
     return EvidenceUnit(
         id="eu-backfill-1",
         source_id="src-1",
-        doc_id=None,
+        doc_id="legacy-gate-doc",
         doc_revision_id="obsrev-page-1-v2",
         source_type="confluence",
         source_anchor="legacy-compatible-anchor",
@@ -358,6 +358,7 @@ async def test_agent_session_migration_inventory_includes_hidden_gate_and_enable
     ]
     assert [candidate.active_memory_count for candidate in candidates] == [1, 1]
     assert [candidate.missing_support_count for candidate in candidates] == [1, 1]
+    assert [candidate.missing_source_provenance_count for candidate in candidates] == [0, 0]
     assert candidates[0].gate_state is LifecycleGateState.ENABLED
     assert candidates[1].gate_state is LifecycleGateState.GATED
 
@@ -569,6 +570,7 @@ async def test_resolved_finding_retry_preserves_history_and_enabled_gate(
     with pytest.raises(ValueError, match="open lifecycle cutover findings"):
         await db.enable_lifecycle_gate("src-1")
 
+    await _attach_legacy_source(db)
     unit = _unit()
     await db.upsert_evidence_unit(unit)
     reference = EvidenceReference(
@@ -679,6 +681,68 @@ async def test_gate_requires_validated_support_for_active_source_backed_memory(d
 
 
 @pytest.mark.asyncio
+async def test_gate_rejects_active_support_without_matching_source_provenance(
+    db: Database,
+) -> None:
+    await _attach_legacy_source(db)
+    await _persist_exact_support_and_provenance(db)
+    await db.db.execute(
+        "DELETE FROM memory_sources WHERE memory_id = ? AND source_id = ?",
+        ("mem-legacy", "src-1"),
+    )
+    await db.db.commit()
+
+    assert await db.count_active_supported_memories_without_source_provenance("src-1") == 1
+    with pytest.raises(ValueError, match="active support lacks source provenance"):
+        await db.enable_lifecycle_gate("src-1")
+
+
+@pytest.mark.asyncio
+async def test_gate_rejects_source_provenance_without_exact_document_support(
+    db: Database,
+) -> None:
+    await _attach_legacy_source(db)
+    await _persist_exact_support_and_provenance(db)
+    await _add_unsupported_legacy_source_edge(db, doc_id="wrong-support-doc")
+
+    assert await db.count_active_supported_memories_without_source_provenance("src-1") == 0
+    assert await db.count_active_source_memories_without_support("src-1") == 1
+    with pytest.raises(ValueError, match="source-backed Memory lacks validated support lineage"):
+        await db.enable_lifecycle_gate("src-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "corrupt_statement, corrupt_params",
+    (
+        (
+            "DELETE FROM evidence_references WHERE id = ?",
+            ("er-eu-backfill-1-106109283a0fd70a",),
+        ),
+        ("DELETE FROM evidence_units WHERE id = ?", ("eu-backfill-1",)),
+        ("UPDATE evidence_units SET doc_id = NULL WHERE id = ?", ("eu-backfill-1",)),
+    ),
+    ids=("missing-reference", "missing-evidence-unit", "null-document"),
+)
+async def test_reverse_support_projection_audit_fails_closed_for_corrupt_evidence_chain(
+    db: Database,
+    corrupt_statement: str,
+    corrupt_params: tuple[str, ...],
+) -> None:
+    await _attach_legacy_source(db)
+    reference = await _persist_exact_support_and_provenance(db)
+    if "evidence_references" in corrupt_statement:
+        corrupt_params = (reference.id or "",)
+    await db.db.commit()
+    await db.db.execute("PRAGMA foreign_keys = OFF")
+    await db.db.execute(corrupt_statement, corrupt_params)
+    await db.db.commit()
+    await db.db.execute("PRAGMA foreign_keys = ON")
+
+    assert await db.count_active_supported_memories_without_source_provenance("src-1") == 1
+
+
+@pytest.mark.asyncio
 async def test_gate_ignores_inactive_historical_memory_without_support(db: Database) -> None:
     await _attach_legacy_source(db)
     await db.db.execute("UPDATE memories SET status = 'retired' WHERE id = ?", ("mem-legacy",))
@@ -689,7 +753,12 @@ async def test_gate_ignores_inactive_historical_memory_without_support(db: Datab
     assert gate.state is LifecycleGateState.ENABLED
 
 
-async def _persist_support_lineage(db: Database) -> EvidenceReference:
+async def _persist_exact_support_and_provenance(db: Database) -> EvidenceReference:
+    if not any(
+        source.source_id == "src-1"
+        for source in await db.get_memory_sources("mem-legacy")
+    ):
+        await _attach_legacy_source(db)
     unit = _unit()
     await db.upsert_evidence_unit(unit)
     reference = EvidenceReference(
@@ -802,7 +871,7 @@ def _gated_retirement_plan(
 
 @pytest.mark.asyncio
 async def test_lifecycle_plan_applies_support_removal_and_retirement_atomically(db: Database) -> None:
-    reference = await _persist_support_lineage(db)
+    reference = await _persist_exact_support_and_provenance(db)
     await db.enable_lifecycle_gate("src-1")
     plan = _retirement_plan(reference, await db.get_memory_support_set_hash("mem-legacy"))
     other = Database(db.db_path)
@@ -850,7 +919,7 @@ async def test_terminal_lifecycle_mutation_stales_all_pending_reviews(
             challenger_memory_id=challenger.id,
         )
     )
-    reference = await _persist_support_lineage(db)
+    reference = await _persist_exact_support_and_provenance(db)
     incumbent = await db.get_memory("mem-legacy")
     assert incumbent is not None
     support_hash = await db.get_memory_support_set_hash(incumbent.id)
@@ -888,7 +957,7 @@ async def test_terminal_lifecycle_mutation_stales_all_pending_reviews(
 async def test_gated_review_approval_applies_proposal_and_resolves_review_atomically(
     db: Database,
 ) -> None:
-    reference = await _persist_support_lineage(db)
+    reference = await _persist_exact_support_and_provenance(db)
     incumbent = await db.get_memory("mem-legacy")
     assert incumbent is not None
     support_hash = await db.get_memory_support_set_hash(incumbent.id)
@@ -957,7 +1026,7 @@ async def test_failed_vector_tasks_rotate_without_starving_new_pending_cleanup(
 
 @pytest.mark.asyncio
 async def test_stale_lifecycle_plan_rolls_back_without_partial_mutation(db: Database) -> None:
-    reference = await _persist_support_lineage(db)
+    reference = await _persist_exact_support_and_provenance(db)
     await db.enable_lifecycle_gate("src-1")
     stale = _retirement_plan(reference, "not-the-current-support-hash")
 
@@ -971,7 +1040,7 @@ async def test_stale_lifecycle_plan_rolls_back_without_partial_mutation(db: Data
 
 @pytest.mark.asyncio
 async def test_mutation_failure_rolls_back_staged_evidence_with_the_plan(db: Database) -> None:
-    active_reference = await _persist_support_lineage(db)
+    active_reference = await _persist_exact_support_and_provenance(db)
     await db.enable_lifecycle_gate("src-1")
     staged_unit = replace(
         _unit(),
@@ -1017,7 +1086,7 @@ async def test_mutation_failure_rolls_back_staged_evidence_with_the_plan(db: Dat
 
 @pytest.mark.asyncio
 async def test_mutation_failure_rolls_back_source_projection_with_the_plan(db: Database) -> None:
-    active_reference = await _persist_support_lineage(db)
+    active_reference = await _persist_exact_support_and_provenance(db)
     await db.enable_lifecycle_gate("src-1")
     previous = _projection()
     observation_revision = replace(
@@ -1089,7 +1158,7 @@ async def test_mutation_failure_rolls_back_source_projection_with_the_plan(db: D
 async def test_stale_source_activity_epoch_rejects_projected_lifecycle_commit(
     db: Database,
 ) -> None:
-    active_reference = await _persist_support_lineage(db)
+    active_reference = await _persist_exact_support_and_provenance(db)
     await db.enable_lifecycle_gate("src-1")
     lease = await db.acquire_source_activity(
         activity_id="sync-before-rebaseline",
@@ -1127,7 +1196,7 @@ async def test_stale_source_activity_epoch_rejects_projected_lifecycle_commit(
 async def test_memory_version_stale_guard_rejects_concurrent_incumbent_change(
     db: Database,
 ) -> None:
-    reference = await _persist_support_lineage(db)
+    reference = await _persist_exact_support_and_provenance(db)
     await db.enable_lifecycle_gate("src-1")
     plan = _retirement_plan(
         reference,
@@ -1842,20 +1911,28 @@ async def test_completed_job_retry_gates_a_new_support_invariant_violation(
     "runner",
     [run_source_lifecycle_backfill_job, run_source_lifecycle_recovery_job],
 )
+@pytest.mark.parametrize(
+    "preflight_method",
+    [
+        "count_active_source_memories_without_support",
+        "count_active_supported_memories_without_source_provenance",
+    ],
+)
 async def test_support_preflight_failure_does_not_create_job_or_activity(
     db: Database,
     monkeypatch,
     runner,
+    preflight_method: str,
 ) -> None:
     async def fail_preflight(_source_id: str) -> int:
         raise RuntimeError("support invariant unavailable")
 
     monkeypatch.setattr(
         db,
-        "count_active_source_memories_without_support",
+        preflight_method,
         fail_preflight,
     )
-    job_id = f"preflight-failed-{runner.__name__}"
+    job_id = f"preflight-failed-{runner.__name__}-{preflight_method}"
 
     with pytest.raises(RuntimeError, match="support invariant unavailable"):
         await runner(db, "src-1", job_id=job_id)

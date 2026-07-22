@@ -648,6 +648,12 @@ class SqliteRelationalStore:
     async def count_active_source_memories_without_support(self, source_id: str) -> int:
         return await self._db.count_active_source_memories_without_support(source_id)
 
+    async def count_active_supported_memories_without_source_provenance(
+        self,
+        source_id: str,
+    ) -> int:
+        return await self._db.count_active_supported_memories_without_source_provenance(source_id)
+
     async def count_active_source_memories(self, source_id: str) -> int:
         return await self._db.count_active_source_memories(source_id)
 

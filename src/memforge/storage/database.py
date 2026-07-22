@@ -5028,10 +5028,45 @@ class Database:
                WHERE ms.source_id = ?
                  AND m.status = 'active'
                  AND NOT EXISTS (
-                     SELECT 1 FROM memory_support_assertions msa
+                     SELECT 1
+                     FROM memory_support_assertions msa
+                     JOIN evidence_references er
+                       ON er.id = msa.evidence_reference_id
+                     JOIN evidence_units eu
+                       ON eu.id = er.evidence_unit_id
                      WHERE msa.memory_id = ms.memory_id
                        AND msa.source_id = ms.source_id
                        AND msa.active = 1
+                       AND eu.source_id = msa.source_id
+                       AND eu.doc_id = ms.doc_id
+                 )""",
+            (source_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        return int(row["count"] if row is not None else 0)
+
+    async def count_active_supported_memories_without_source_provenance(
+        self,
+        source_id: str,
+    ) -> int:
+        """Count active supported Memories missing their same-source provenance projection."""
+
+        async with self.db.execute(
+            """SELECT COUNT(DISTINCT msa.memory_id) AS count
+               FROM memory_support_assertions msa
+               JOIN memories m ON m.id = msa.memory_id
+               LEFT JOIN evidence_references er ON er.id = msa.evidence_reference_id
+               LEFT JOIN evidence_units eu ON eu.id = er.evidence_unit_id
+               WHERE msa.source_id = ?
+                 AND msa.active = 1
+                 AND m.status = 'active'
+                 AND (
+                     eu.id IS NULL OR eu.doc_id IS NULL OR NOT EXISTS (
+                         SELECT 1 FROM memory_sources ms
+                         WHERE ms.memory_id = msa.memory_id
+                           AND ms.source_id = msa.source_id
+                           AND ms.doc_id = eu.doc_id
+                     )
                  )""",
             (source_id,),
         ) as cursor:
@@ -5131,24 +5166,12 @@ class Database:
                     finding_count = int((await cursor.fetchone())["count"])
                 if finding_count:
                     raise ValueError("open lifecycle cutover findings block the lifecycle gate")
-                async with self.db.execute(
-                    """SELECT DISTINCT ms.memory_id
-                       FROM memory_sources ms
-                       JOIN memories m ON m.id = ms.memory_id
-                       WHERE ms.source_id = ?
-                         AND m.status = 'active'
-                         AND NOT EXISTS (
-                             SELECT 1 FROM memory_support_assertions msa
-                             WHERE msa.memory_id = ms.memory_id
-                               AND msa.source_id = ms.source_id
-                               AND msa.active = 1
-                         )
-                       LIMIT 1""",
-                    (source_id,),
-                ) as cursor:
-                    missing_lineage = await cursor.fetchone()
-                if missing_lineage is not None:
+                if await self.count_active_source_memories_without_support(source_id):
                     raise ValueError("source-backed Memory lacks validated support lineage")
+                if await self.count_active_supported_memories_without_source_provenance(
+                    source_id
+                ):
+                    raise ValueError("active support lacks source provenance")
                 now = _now_iso()
                 await self.db.execute(
                     """INSERT INTO source_lifecycle_gates (
