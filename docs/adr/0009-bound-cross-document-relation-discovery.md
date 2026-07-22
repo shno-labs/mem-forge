@@ -52,7 +52,10 @@ Request creation, candidate retrieval, relation authority, and the final storage
 fence resolve the same effective access principal. Private work persists its
 owner as the durable principal, while execution and completion rederive that
 principal from the current locked challenger Memory; an optional request actor
-cannot widen or erase the boundary. A contradiction is a cross-source conflict
+cannot widen or erase the boundary. Private candidates and Reviews require the
+same owner and an exactly matching optional repository scope: all records may
+be unscoped, but scoped/unscoped mixtures and different repositories fail
+closed. A contradiction is a cross-source conflict
 only when the two Evidence lineages belong to different sources, and only that
 exact authority case may create the pending Review. A same-source contradiction
 remains an independent, non-destructive relation. Sharing an owner or repository
