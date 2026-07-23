@@ -57,6 +57,14 @@ arbitrary row by `(memory_id, doc_id)`. A secondary Configured Source that
 overlaps the same provider document is attached or removed only through a
 validated Lifecycle Plan that already carries its explicit `source_id`.
 
+Applying an authoritative projected tombstone does not make its Document
+deletable merely because the resulting Plan opened no Review. After the Plan
+commits, the lifecycle engine reads the complete document provenance
+projection, without filtering by support kind, and permits physical Document
+deletion only when no row remains. Re-entering an already-applied Plan repeats
+the same postcondition read. The storage deletion guard remains the final
+fail-closed enforcement of this invariant.
+
 Removing one Support deletes only that exact Support Assertion, its mutable
 current Evidence Relation, and its provenance read-model row. Evidence Units,
 Relation Runs, Relation Candidates, and immutable per-run relation snapshots
@@ -90,6 +98,9 @@ SQLite, HANA, and future adapters expose the same aggregate invariant at the
 storage seam and must pass adapter contract tests. Tests that insert Support
 without its provenance projection are invalid fixtures rather than acceptable
 shortcuts. A strict lifecycle audit fails closed on either direction of drift.
+The lifecycle deletion decision and the storage deletion guard therefore use
+the same committed provenance state; Review counts are audit workflow state,
+not a substitute for document-reference liveness.
 
 Existing two-column projection tables are migrated only after every row has a
 non-empty `source_id`. SQLite rebuilds the read-model and metadata projection
