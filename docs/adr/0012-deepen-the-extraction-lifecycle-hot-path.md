@@ -152,13 +152,24 @@ deadline; exhausted transport failures, authentication failures, and deadline
 expiry do not trigger a second strategy that cannot repair them. Deadline
 expiry remains fail-closed.
 
-The same boundary emits one content-free terminal metric containing issued
-attempts, transport retries, schema fallback count, final mode, elapsed time,
-terminal category, and provider token usage only when every relevant response
-reports it. Missing or failed-attempt usage stays unknown rather than being
-estimated. Source Unit latency continues through the existing extraction-stage
-metric so this shared contract does not introduce a tracing table or
-source-specific telemetry path.
+The same boundary emits one content-free terminal metric per logical call
+containing issued attempts, transport retries, schema fallback count, final
+mode, elapsed time, terminal category, and provider token usage only when every
+relevant response reports it. A context-local collector aggregates those
+terminal outcomes across all structured operations that execute inside one
+bounded Source Unit lifecycle. Child async tasks inherit the collector, while
+concurrent Source Units remain isolated; no process-global callback is used.
+
+After a real Source Unit identity has been bound, each lifecycle execution
+records exactly one `source_unit_llm_summary` through the existing audit and log
+path, including executions with zero logical calls and executions that fail.
+The summary reports logical calls, issued provider attempts, retries, schema
+fallbacks, known/unknown usage counts, reported input/output/total token sums,
+terminal and operation counts, summed logical-call latency, and independent
+Source Unit wall latency. Missing or failed-attempt usage stays unknown rather
+than being estimated as zero. Failures before a Source Unit exists have no
+Source Unit summary. This shared contract introduces neither a tracing table nor
+a source-specific telemetry path.
 
 ## Storage consequences
 
