@@ -130,6 +130,31 @@ Inputs into Python. Inputs created before normalized manifest membership exists
 are intentionally materialized once; there is no metadata-JSON fallback scan or
 silent backfill.
 
+After an immutable input has completed that first projection, a later run may
+also reuse its current Source Projection without reading the retained body or
+entering the per-document lifecycle pipeline. This is a run-level planning
+decision, not a connector shortcut. The shared storage contract admits a member
+only when the current manifest reuses the same input under the exact document
+identity, revision, and change kind; the current Document revision and active
+Source Unit lineage still exist; the current Source Unit revision has the exact
+access-context fingerprint; the earlier and current manifests carry the same
+source activity epoch and configuration revision; and no Projection Scope
+transition is open. Force, repair, and rebaseline execution never use this
+path. Any missing or mismatched fact sends that member through the existing
+full path.
+
+Projection reuse does not remove collection membership evidence. Reused members
+remain part of `crawled_doc_ids`, complete-snapshot absence reconciliation, and
+run progress, while their Document `last_synced` timestamp is not rewritten as a
+surrogate membership ledger. The immutable attempt manifest is the run's
+membership proof. SQLite and Cloud adapters resolve all eligible members with
+one set query rather than one lookup per member.
+
+Lifecycle vector delivery is attempted once after the run-level projection
+work. A pending durable outbox is not a reason to replay unchanged Source
+Projections: delivery retries the existing outbox independently, and a transient
+delivery failure cannot reverse the authoritative relational commit.
+
 ## References
 
 - [Local daemon incremental sync capability review](../research/local-daemon-incremental-sync-capability-review.md)
