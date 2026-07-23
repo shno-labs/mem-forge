@@ -150,6 +150,18 @@ surrogate membership ledger. The immutable attempt manifest is the run's
 membership proof. SQLite and Cloud adapters resolve all eligible members with
 one set query rather than one lookup per member.
 
+Document body reuse and Source Projection completion are independent facts. An
+equal Document content hash permits reuse of existing raw and normalized
+artifacts, but it does not prove that the current Source Unit revision,
+Observation revisions, or Lifecycle Plan committed. Per-item semantic work is
+skipped only when the Source Projection delta says extraction is unnecessary;
+a staged Document with no current projection must enter extraction even when
+its body hash matches. Failed processing retains a newly staged Document as a
+content read model so a retry can reuse its artifacts; the absent projection
+still requires semantic work. Existing Documents restore their prior snapshot.
+Neither the legacy lifecycle-inferencing deletion path nor projected
+post-lifecycle deletion is a per-attempt sync compensation mechanism.
+
 Lifecycle vector delivery is attempted once after the run-level projection
 work. A pending durable outbox is not a reason to replay unchanged Source
 Projections: delivery retries the existing outbox independently, and a transient
