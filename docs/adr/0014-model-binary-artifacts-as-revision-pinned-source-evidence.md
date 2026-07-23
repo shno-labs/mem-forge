@@ -120,6 +120,15 @@ a current `binary_artifact` Observation revision, the source detail includes an
 Artifact resource descriptor containing the exact resource URL, revision
 identity, media type, filename, size, and byte hash.
 
+Active Support authorizes the complete revision-pinned Evidence bundle, not
+only the one Reference that grants support. Artifact lookup first resolves an
+active Support to its Evidence Unit, then returns current binary Artifact
+References from that same unit. The returned Evidence role remains explicit:
+`primary` and `required` can grant authority, while `context` remains associated
+reading material and must not be promoted to supporting evidence. This lets an
+agent retrieve an image that was inspected alongside a text-grounded claim
+without weakening the claim's authority or inventing a second Support edge.
+
 The Artifact route accepts the immutable Observation revision identity, applies
 the same workspace/source visibility predicate as the supported Memory, and
 reads only the URI recorded on that revision. Replaying a previously observed
