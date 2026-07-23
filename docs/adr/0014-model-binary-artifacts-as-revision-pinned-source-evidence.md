@@ -93,10 +93,19 @@ the Artifact Anchor and store a content-free Evidence excerpt. Required
 text/image observations may accompany the Primary Artifact using the existing
 Evidence roles.
 
-Supported image MIME types, maximum bytes, maximum images per Source Unit, and
-aggregate request size are fixed provider-neutral limits. Multiple current
-images are coalesced into one bounded Source Unit structured call where safe;
-the pipeline never performs one unconditional LLM call per attachment.
+Enumeration, persistence, and inference have separate provider-neutral
+budgets. A Gene scans at most 200 provider descriptors, then admits at most 100
+supported Artifacts whose exact bytes also satisfy the 10 MiB per-Artifact and
+30 MiB per-Source-Unit limits. Unsupported descriptors consume only the scan
+budget, not the supported Artifact budget.
+
+Inference reuses the generic Projection extraction planner. One structured call
+contains at most eight Primary Observations, so a large image collection is
+coalesced into bounded multimodal batches without dropping revision-pinned
+Artifacts or changing Source Unit identity. The pipeline never performs one
+unconditional LLM call per attachment. Enumeration or storage limits do not
+silently become model-input limits, and model-input limits do not discard
+retrievable Evidence.
 
 The structured LLM module owns the standard multimodal message shape, one
 logical-call deadline, retry/fallback accounting, and schema validation.
