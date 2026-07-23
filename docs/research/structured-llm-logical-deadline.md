@@ -180,6 +180,37 @@ accurate retry telemetry; otherwise choose the second for a smaller change but
 document its observability boundary.  Both modes must use the outer absolute
 deadline and cap the JSON-text fallback to one application-owned transition.
 
+## Source Unit aggregation contract
+
+The per-call event is the provider-boundary fact, not the operational unit used
+to evaluate extraction cost. A request-local collector therefore aggregates
+completed logical-call events across extraction, entity resolution, identity
+admission, candidate validation, and reconciliation when those operations run
+inside the same Source Unit lifecycle.
+
+The collector is attached with a context variable on the configured structured
+client. Async child tasks inherit it and concurrent Source Units receive
+different collectors. This avoids a LiteLLM global callback, a new tracing
+subsystem, and caller-managed metric plumbing at every operation. The collector
+does not influence request correctness.
+
+One summary is emitted after each execution for which a real Source Unit
+identity was established, including no-call and failed executions. It records:
+
+- logical calls, issued provider attempts, wrapper-owned retries, and schema
+  fallbacks;
+- reported input, output, and total token sums plus separate known/unknown call
+  counts;
+- terminal-category and operation counts;
+- the sum of logical-call elapsed time and the independent Source Unit
+  wall-clock elapsed time.
+
+The two latency fields are intentionally different: concurrent calls can make
+the sum of call durations exceed wall time. Usage is summed only for calls
+whose relevant usage values are all present; unknown usage is not converted to
+zero. The summary uses the existing content-free audit/log path and adds no
+HANA table or provider-specific branch.
+
 ## Risks and tests to require
 
 - A per-attempt `timeout_s` reset for native and fallback can consume roughly
