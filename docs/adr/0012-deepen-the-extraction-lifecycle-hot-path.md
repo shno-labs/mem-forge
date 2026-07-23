@@ -142,6 +142,24 @@ The Candidate Ledger reports input/selected/exact-drop/semantic-drop counts,
 logical structured calls, validation retries, prompt characters, and elapsed
 model time through the same Source Unit result and audit path.
 
+One configured request timeout is the wall-clock budget for the complete
+logical structured call, not a fresh allowance for each provider retry or
+native-schema-to-JSON transition. The boundary computes one monotonic deadline,
+passes only the remaining budget to each provider attempt, and owns one shared
+bounded transport-retry budget with LiteLLM internal retries disabled. A native
+schema incompatibility may transition once to JSON text under that same
+deadline; exhausted transport failures, authentication failures, and deadline
+expiry do not trigger a second strategy that cannot repair them. Deadline
+expiry remains fail-closed.
+
+The same boundary emits one content-free terminal metric containing issued
+attempts, transport retries, schema fallback count, final mode, elapsed time,
+terminal category, and provider token usage only when every relevant response
+reports it. Missing or failed-attempt usage stays unknown rather than being
+estimated. Source Unit latency continues through the existing extraction-stage
+metric so this shared contract does not introduce a tracing table or
+source-specific telemetry path.
+
 ## Storage consequences
 
 SQLite and HANA keep one shared behavioral contract for surviving fields and
@@ -179,3 +197,4 @@ is not part of this decision.
 - [ADR 0006: Bound Memory identity recall before semantic proof](0006-bound-memory-identity-recall-before-semantic-proof.md)
 - [ADR 0008: Prune only proven-disjoint incumbents before reconciliation](0008-prune-only-proven-disjoint-incumbents.md)
 - [ADR 0009: Bound cross-document relation discovery](0009-bound-cross-document-relation-discovery.md)
+- [Structured LLM logical deadline research](../research/structured-llm-logical-deadline.md)
