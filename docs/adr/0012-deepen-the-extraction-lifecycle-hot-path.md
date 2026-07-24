@@ -200,6 +200,26 @@ than being estimated as zero. Failures before a Source Unit exists have no
 Source Unit summary. This shared contract introduces neither a tracing table nor
 a source-specific telemetry path.
 
+External provider failures cross the structured-LLM seam as a content-free
+failure value containing only a stable category and error code. Raw provider
+exception text is neither chained nor copied into the returned error because it
+may contain prompts, encoded image requests, credentials, or other unbounded
+transport state. Provider retry backoff begins only after the caught exception
+and its traceback have been released. The source pipeline likewise projects a
+document exception into a bounded failure value before retry delay or durable
+state; it never retains an Exception or traceback across that delay or through
+the remainder of a source run. This is both a confidentiality contract and a
+transient-memory contract.
+
+Document-level retry remains the owner of retryable item failures. Once those
+attempts are exhausted, a `partial` source result is terminal for the durable
+run: successful document commits are preserved and the complete source run is
+not automatically replayed. Run-level retry remains for failures that prevent a
+final source result, including lease recovery after a process crash. Any future
+targeted failed-document recovery must use the existing bounded reprocess input
+rather than silently repeating successful extraction, provider, or lifecycle
+work.
+
 ## Storage consequences
 
 SQLite and HANA keep one shared behavioral contract for surviving fields and
@@ -232,6 +252,12 @@ parity, source-type canaries, end-to-end latency, queue impact, and worker RSS.
 Document lifecycle concurrency may increase only after the bounded transient
 work above is deployed and representative text, attachment, and mixed cohorts
 prove lifecycle parity and sufficient single-lifecycle memory headroom.
+Necessary optimized multimodal working-set cost may remain higher than
+text-only extraction; that does not justify globally serializing text work.
+When the optimized attachment cohort still lacks headroom, keep complete
+document admission and multimodal admission conservative and evaluate the
+existing deployment's process-memory split before introducing a more granular
+scheduler.
 
 ## References
 
@@ -240,4 +266,6 @@ prove lifecycle parity and sufficient single-lifecycle memory headroom.
 - [ADR 0009: Bound cross-document relation discovery](0009-bound-cross-document-relation-discovery.md)
 - [ADR 0014: Model binary Artifacts as revision-pinned Source Evidence](0014-model-binary-artifacts-as-revision-pinned-source-evidence.md)
 - [Structured LLM logical deadline research](../research/structured-llm-logical-deadline.md)
+- [Python traceback object and frame lifetime](https://docs.python.org/3/library/traceback.html)
+- [Python exception chaining semantics](https://docs.python.org/3/reference/simple_stmts.html#the-raise-statement)
 - `memforge-cloud` Issue #220
