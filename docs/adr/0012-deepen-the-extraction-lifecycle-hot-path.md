@@ -142,6 +142,35 @@ The Candidate Ledger reports input/selected/exact-drop/semantic-drop counts,
 logical structured calls, validation retries, prompt characters, and elapsed
 model time through the same Source Unit result and audit path.
 
+### Bound transient work before increasing document admission
+
+`DocumentLifecycleAdmission` remains the count-based process-wide guard around
+one complete document lifecycle. It does not guess a weight before collection
+has established the Source Unit, extraction batches, and Artifact sizes.
+Increasing its deployed limit is a measured capacity rollout, gated by
+single-lifecycle RSS/HWM headroom rather than source type or worker count.
+
+Within an admitted document, extraction uses a bounded worker loop instead of
+creating one task per unit or Projection batch. Document outline and glossary
+context are derived once and shared immutably across unit prompts.
+`ExtractionWorkPool` remains the process-wide source-fair heavy-work boundary
+and additionally admits at most one multimodal batch initially. A multimodal
+batch acquires that permit before general worker capacity, so image work waiting
+for its conservative memory budget cannot occupy the text worker pool.
+Model-supported image inputs are identified from the provider-neutral planned
+batch, not a source type. Image bodies are loaded only after both permits are
+held and remain batch-local. Other stored binary media, such as PDFs, do not
+consume multimodal admission or report model-input bytes unless the structured
+LLM contract actually accepts and sends them.
+
+This deliberately introduces no byte-weighted scheduler, live-RSS controller,
+provider-specific branch, or second executor. The existing Artifact persistence
+and inference budgets in
+[ADR 0014](0014-model-binary-artifacts-as-revision-pinned-source-evidence.md)
+remain unchanged. Queue wait, raw binary input, multimodal-call count, and
+maximum concurrent multimodal work are added to the existing content-free
+extraction metrics; no tracing table is introduced.
+
 One configured request timeout is the wall-clock budget for the complete
 logical structured call, not a fresh allowance for each provider retry or
 native-schema-to-JSON transition. The boundary computes one monotonic deadline,
@@ -200,12 +229,15 @@ fail-closed.
 Acceptance covers call and query counts, attribution, invalid/stale classifier
 output, complete Coverage Proof, relation-decision reuse, SQLite/HANA adapter
 parity, source-type canaries, end-to-end latency, queue impact, and worker RSS.
-Increasing document lifecycle concurrency is a separate, measured follow-up and
-is not part of this decision.
+Document lifecycle concurrency may increase only after the bounded transient
+work above is deployed and representative text, attachment, and mixed cohorts
+prove lifecycle parity and sufficient single-lifecycle memory headroom.
 
 ## References
 
 - [ADR 0006: Bound Memory identity recall before semantic proof](0006-bound-memory-identity-recall-before-semantic-proof.md)
 - [ADR 0008: Prune only proven-disjoint incumbents before reconciliation](0008-prune-only-proven-disjoint-incumbents.md)
 - [ADR 0009: Bound cross-document relation discovery](0009-bound-cross-document-relation-discovery.md)
+- [ADR 0014: Model binary Artifacts as revision-pinned Source Evidence](0014-model-binary-artifacts-as-revision-pinned-source-evidence.md)
 - [Structured LLM logical deadline research](../research/structured-llm-logical-deadline.md)
+- `memforge-cloud` Issue #220
