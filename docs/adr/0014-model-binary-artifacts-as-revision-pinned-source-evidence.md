@@ -48,11 +48,17 @@ An Artifact descriptor contains:
 - parent provider Observation key;
 - opaque provider revision when available;
 - filename and authoritative media type;
-- byte size when available;
+- exact byte size only when the provider contract guarantees it for the
+  revision-pinned response;
 - provider locator needed only by the owning Gene.
 
+Provider-reported estimates do not become integrity assertions. In particular,
+Confluence `extensions.fileSize` may disagree with the bytes returned by a
+version-pinned attachment download, so the Confluence Gene leaves the optional
+exact-size field unset.
+
 The shared transfer module copies each body into a small-memory spooled file
-while counting bytes and computing SHA-256. It verifies declared,
+while counting bytes and computing SHA-256. It verifies any exact declared,
 transport-reported, and observed size, media type, identity, and revision before
 projection, then rewinds the same file-like body for persistence. Unsupported
 media types, oversized payloads, truncated downloads, identity drift, and
