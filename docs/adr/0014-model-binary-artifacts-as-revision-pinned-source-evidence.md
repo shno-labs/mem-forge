@@ -30,7 +30,8 @@ Every hop must preserve the same Artifact revision and active Evidence lineage.
 The shared implementation defines a small provider-neutral interface:
 
 1. a Gene enumerates immutable Artifact descriptors for one fetched item and
-   materializes the bytes for descriptors selected by the pipeline;
+   opens a bounded body stream only when the shared transfer module requests
+   that descriptor;
 2. the Artifact store writes and reads exact bytes by stable Artifact identity;
 3. Source Projection represents each Artifact as a typed Source Observation
    whose current revision is derived from the authoritative byte hash;
@@ -50,10 +51,12 @@ An Artifact descriptor contains:
 - byte size when available;
 - provider locator needed only by the owning Gene.
 
-Materialization verifies the declared identity, size, media type, and content
-hash before projection. Unsupported media types, oversized payloads, truncated
-downloads, identity drift, and revision drift fail closed. Metadata alone never
-becomes content Evidence.
+The shared transfer module copies each body into a small-memory spooled file
+while counting bytes and computing SHA-256. It verifies declared,
+transport-reported, and observed size, media type, identity, and revision before
+projection, then rewinds the same file-like body for persistence. Unsupported
+media types, oversized payloads, truncated downloads, identity drift, and
+revision drift fail closed. Metadata alone never becomes content Evidence.
 
 ### Reuse Source Observation lifecycle authority
 
@@ -94,18 +97,31 @@ text/image observations may accompany the Primary Artifact using the existing
 Evidence roles.
 
 Enumeration, persistence, and inference have separate provider-neutral
-budgets. A Gene scans at most 200 provider descriptors, then admits at most 100
-supported Artifacts whose exact bytes also satisfy the 10 MiB per-Artifact and
-30 MiB per-Source-Unit limits. Unsupported descriptors consume only the scan
-budget, not the supported Artifact budget.
+budgets. A Gene scans at most 200 provider descriptors and admits at most 100
+supported Artifacts. The initial storage defaults admit at most 64 MiB per
+Artifact and 128 MiB per Source Unit; these guard transfer, spool, and storage
+resources rather than model input.
+
+The prior design used the same 10 MiB per-Artifact and 30 MiB aggregate limits
+for both persistence and inference because complete bodies were materialized as
+`bytes`. That coupling is superseded. The initial inference defaults remain 10
+MiB per Artifact and 30 MiB per extraction batch. The 30 MiB value is a
+calibratable raw-binary worker/request safety budget, not a provider or MCP
+protocol limit: encoded requests and decoded images consume materially more
+memory than the compressed source bytes. An Artifact that exceeds the inference
+limit but remains inside the storage limit is preserved exactly and marked
+inference-ineligible; it is not silently discarded.
 
 Inference reuses the generic Projection extraction planner. One structured call
-contains at most eight Primary Observations, so a large image collection is
-coalesced into bounded multimodal batches without dropping revision-pinned
-Artifacts or changing Source Unit identity. The pipeline never performs one
+contains at most eight Primary Observations and satisfies the aggregate binary
+byte budget, so a large image collection is coalesced into bounded multimodal
+batches without dropping revision-pinned Artifacts or changing Source Unit
+identity. The pipeline loads binary bodies only for the admitted batch, inside
+the existing extraction admission slot; it does not retain all Source Unit
+images while waiting for that slot. The pipeline never performs one
 unconditional LLM call per attachment. Enumeration or storage limits do not
 silently become model-input limits, and model-input limits do not discard
-retrievable Evidence.
+retrievable originals.
 
 The structured LLM module owns the standard multimodal message shape, one
 logical-call deadline, retry/fallback accounting, and schema validation.
@@ -131,12 +147,14 @@ without weakening the claim's authority or inventing a second Support edge.
 
 The Artifact route accepts the immutable Observation revision identity, applies
 the same workspace/source visibility predicate as the supported Memory, and
-reads only the URI recorded on that revision. Replaying a previously observed
-URL after access is lost returns not found.
+streams only the URI recorded on that revision. It emits the authoritative
+length and hash and verifies the streamed byte count and digest. Replaying a
+previously observed URL after access is lost returns not found.
 
 `get_resource` accepts Document and Source Artifact URLs through one parser.
-File mode writes an exact local cache file. Base64 mode retains authoritative
-MIME and byte hash. For image media, the MCP tool result emits native MCP
+File mode streams to a local cache file and rejects a byte-count or SHA-256
+mismatch against authoritative response headers before publishing the path.
+Base64 mode retains authoritative MIME and byte hash. For image media, the MCP tool result emits native MCP
 `ImageContent` (`type=image`, base64 data, MIME type) plus compact text metadata;
 it does not wrap the binary payload only inside JSON text.
 
@@ -145,6 +163,14 @@ it does not wrap the binary payload only inside JSON text.
 Confluence and Jira become two adapters for one real seam. A future attachment
 provider implements the same descriptor/materialization interface without
 changing lifecycle, Evidence, retrieval, or MCP modules.
+
+Local storage performs an atomic streamed copy from the validated file-like
+body into a content-addressed revision path under the stable Artifact identity.
+Cloud adapters use the same stable-identity-plus-hash key shape with their
+managed file-like upload path. A new provider revision therefore cannot
+overwrite bytes still referenced by an older immutable Observation revision.
+Neither adapter requires a second complete in-memory copy, and retrieval uses
+the shared streaming route rather than `read_artifact()` materialization.
 
 The database gains no parallel Artifact ownership model. SQLite and HANA must
 both implement exact revision lookup and the same visibility/currentness
