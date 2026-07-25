@@ -135,6 +135,22 @@ Callers do not know provider message formats. If the configured model cannot
 consume the accepted media contract, extraction fails visibly rather than
 silently substituting attachment metadata.
 
+The same structured multimodal response also returns one concise selection
+summary for each image actually supplied to the call. Summary identities must
+exactly equal the supplied Artifact Observation identities; missing, duplicate,
+or invented identities fail the extraction batch before Source Projection or
+Lifecycle state commits. The summary is bounded to 240 characters, omits
+unnecessary customer, case, person, and credential identifiers, and describes
+only enough visible purpose or content for an agent to choose whether to fetch
+the Artifact.
+
+The summary is stored as optional metadata on the exact immutable Artifact
+Observation revision. It does not alter the revision identity, byte hash,
+Evidence role, Support, retrieval ranking, or lifecycle authority. Historical
+revisions without summaries remain valid and are not silently reprocessed.
+Because the summary shares the existing extraction response, it adds no
+steady-state logical LLM call, executor, queue, or retrieval-time model request.
+
 ### Retrieval and MCP transport
 
 `get_memory` resolves active Support Evidence. When an Evidence Anchor targets
@@ -164,6 +180,14 @@ Base64 mode retains authoritative MIME and byte hash. For image media, the MCP t
 `ImageContent` (`type=image`, base64 data, MIME type) plus compact text metadata;
 it does not wrap the binary payload only inside JSON text.
 
+Internal storage and REST representations retain revision, Evidence, and hash
+fields for authorization and audit. The agent-facing MCP `get_memory`
+projection exposes only the Artifact summary, Evidence role, filename, media
+type, size, and resource URL. `get_memory` is a deterministic read and never
+generates or repairs a summary. A missing summary therefore remains explicit
+for historical or inference-ineligible Artifacts instead of triggering hidden
+work.
+
 ## Consequences
 
 Confluence and Jira become two adapters for one real seam. A future attachment
@@ -185,7 +209,10 @@ resistant paths from stable Artifact identity, never filename or title.
 
 Acceptance tests live at the provider adapter, Artifact/Projection, and
 agent-facing retrieval seams. They use known bytes and independent hashes,
-exercise real storage adapters where available, and avoid mocked LLM judgment.
+exercise real storage adapters where available, and avoid treating mocked LLM
+judgment as semantic proof. Deterministic tests enforce summary identity,
+length, revision persistence, adapter parity, and MCP projection; the live
+multimodal smoke verifies description usefulness and privacy.
 A real EA Customer Support image and a real Jira screenshot must complete the
 full MCP client path before this decision is considered deployed.
 
