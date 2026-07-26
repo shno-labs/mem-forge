@@ -211,14 +211,23 @@ state; it never retains an Exception or traceback across that delay or through
 the remainder of a source run. This is both a confidentiality contract and a
 transient-memory contract.
 
-Document-level retry remains the owner of retryable item failures. Once those
-attempts are exhausted, a `partial` source result is terminal for the durable
-run: successful document commits are preserved and the complete source run is
-not automatically replayed. Run-level retry remains for failures that prevent a
-final source result, including lease recovery after a process crash. Any future
-targeted failed-document recovery must use the existing bounded reprocess input
-rather than silently repeating successful extraction, provider, or lifecycle
-work.
+Retry ownership is stage-specific and single-layer. The structured-LLM boundary
+owns bounded transient retry for extraction calls under its one logical
+deadline. When extraction returns a terminal failure, the document loop does
+not replay fetch, Projection planning, successful extraction batches, or the
+failed logical call under another retry budget. Document-level retry remains
+available for later storage and lifecycle-application failures that are fenced
+and safe to repeat. This prevents one failed batch from multiplying every
+successful batch while preserving atomic Lifecycle Plan application: transient
+batch results are committed only when the complete extraction outcome succeeds.
+
+Once the owning retry attempts are exhausted, a `partial` source result is
+terminal for the durable run: successful document commits are preserved and the
+complete source run is not automatically replayed. Run-level retry remains for
+failures that prevent a final source result, including lease recovery after a
+process crash. Any future targeted failed-document recovery must use the
+existing bounded reprocess input rather than silently repeating successful
+extraction, provider, or lifecycle work.
 
 ## Storage consequences
 
