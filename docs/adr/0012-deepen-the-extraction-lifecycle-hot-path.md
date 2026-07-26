@@ -167,9 +167,33 @@ This deliberately introduces no byte-weighted scheduler, live-RSS controller,
 provider-specific branch, or second executor. The existing Artifact persistence
 and inference budgets in
 [ADR 0014](0014-model-binary-artifacts-as-revision-pinned-source-evidence.md)
-remain unchanged. Queue wait, raw binary input, multimodal-call count, and
-maximum concurrent multimodal work are added to the existing content-free
-extraction metrics; no tracing table is introduced.
+continue to govern immutable evidence storage and inference eligibility. The
+per-call raw-image batch budget additionally leaves explicit headroom for
+base64 and JSON request expansion. Queue wait, raw binary input,
+multimodal-call count, and maximum concurrent multimodal work are added to the
+existing content-free extraction metrics; no tracing table is introduced.
+
+The structured-LLM boundary validates every image before provider invocation.
+It preserves a valid image already inside the portable transport envelope.
+Otherwise it derives one bounded JPEG transport representation: EXIF
+orientation is applied, animation is reduced to its first frame, transparency
+is flattened against white, the longest dimension is at most 2000 pixels, and
+the encoded body fits the partner-safe image byte limit. The current envelope
+follows the portable recommendations and partner-platform limits documented by
+[Anthropic vision](https://platform.claude.com/docs/en/build-with-claude/vision)
+and
+[Amazon Bedrock Anthropic messages](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages-request-response.html).
+The derivative is transient: the original Object Store bytes, Evidence hash,
+media metadata, Source Observation identity, and Evidence Reference remain
+unchanged. The response continues to attribute the image to that original
+Source Observation.
+
+Image preparation happens once per logical call outside the retry/fallback
+loop, and every attempt reuses the same prepared bytes. Invalid or still
+oversized image evidence fails closed before a provider request; it is never
+silently omitted and cannot produce a text-only success. Preparation is
+provider- and source-type-neutral and adds neither a caption model call nor a
+second persisted artifact.
 
 One configured request timeout is the wall-clock budget for the complete
 logical structured call, not a fresh allowance for each provider retry or
