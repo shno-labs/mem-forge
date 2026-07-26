@@ -1205,10 +1205,13 @@ Codex / Claude Code
 ```
 
 The local proxy is the transport bridge, not a memory engine. It owns MCP stdio,
-service URL/token configuration, artifact URL validation, and agent-local cache
-writes. The service owns search, memory detail, session intake, artifact bytes,
-provenance, tenancy, and future SaaS auth. The non-MCP `/api/recent-changes`
-endpoint remains an API surface for source-change views.
+service URL/token configuration, local Repository Context resolution, artifact
+URL validation, and agent-local cache writes. Repository Context accepts an
+optional per-call working directory, resolves its Git `origin` locally, and
+forwards only the normalized repository identifier. The service owns search,
+memory detail, session intake, artifact bytes, provenance, tenancy, and future
+SaaS auth. The non-MCP `/api/recent-changes` endpoint remains an API surface for
+source-change views.
 
 The CLI exposes the same read flow for humans and scripts:
 `memforge search`, `memforge get-memory`, and `memforge get-resource`. These
@@ -1218,7 +1221,8 @@ directly.
 
 | Agent call | Local proxy behavior | MemForge service call |
 | --- | --- | --- |
-| `search` | Normalize MCP args and forward | `POST /api/memories/search` |
+| `search` | Normalize args, resolve optional repository affinity, and forward | `POST /api/memories/search` |
+| `create_memory` | Resolve optional repository attribution and forward confirmed content | `POST /api/memories/create` |
 | `get_memory` | Forward by memory ID | `GET /api/memories/{memory_id}` |
 | `submit_agent_session_document` | Forward generated markdown summary | `POST /api/agent-sessions/documents` |
 | `get_resource(mode="text")` | Fetch and return text inline | `GET` service artifact URL |
@@ -1237,6 +1241,9 @@ It does not return host-local, container-local, or SaaS-local file paths.
   "description": "Search visible MemForge memories. Returns memory cards only.",
   "inputSchema": {
     "query": "string (optional when source_filter or time_range is present)",
+    "repository_context": {
+      "working_directory": "absolute path or file:// URI (optional)"
+    },
     "source_filter": {
       "source_ids": "array of exact IDs returned by list_sources (optional)",
       "clients": "array of exact client ids: codex|claude-code (optional)"
@@ -1254,10 +1261,13 @@ It does not return host-local, container-local, or SaaS-local file paths.
 `source_filter` is exact and optional. If an agent is unsure, it should omit the
 facet and search all visible memories. The request boundary rejects unknown
 source IDs or clients instead of guessing, normalizing, or returning an
-accidentally empty result set. Repo-scoped MCP search is disabled until MCP
-workspace roots are reliable across supported hosts. The schema does not expose
-`current_repo_only`; if a stale caller still sends it, the proxy rejects the
-request and tells the agent to omit the filter for a broader search.
+accidentally empty result set. The optional
+`repository_context.working_directory` is consumed by the local proxy and
+never forwarded as a filesystem path. When it resolves exactly one Git remote,
+the normalized identifier becomes a soft ranking affinity. Compatible MCP
+roots can supply the same hint during their deprecation period. The schema does
+not expose `current_repo_only`; if a stale caller still sends it, the proxy
+rejects the request and tells the agent to omit the filter for a broader search.
 
 **Output per result (Level 0 -- memory card):**
 
