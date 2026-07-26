@@ -211,6 +211,15 @@ state; it never retains an Exception or traceback across that delay or through
 the remainder of a source run. This is both a confidentiality contract and a
 transient-memory contract.
 
+When an adapter such as LiteLLM flattens a transport cause into a generic
+connection exception, the shared boundary may refine that outer code through a
+small provider-neutral allowlist such as remote disconnect, connect/read
+timeout, TLS, DNS, or payload-too-large. It examines only exception types and a
+bounded transient message prefix, then discards them; telemetry and audit state
+receive only the stable code and its aggregate count. Unknown failures retain
+the outer exception code. This is diagnostic classification, not a new retry
+policy or provider compatibility branch.
+
 Retry ownership is stage-specific and single-layer. The structured-LLM boundary
 owns bounded transient retry for extraction calls under its one logical
 deadline. When extraction returns a terminal failure, the document loop does
@@ -278,3 +287,4 @@ scheduler.
 - [Python traceback object and frame lifetime](https://docs.python.org/3/library/traceback.html)
 - [Python exception chaining semantics](https://docs.python.org/3/reference/simple_stmts.html#the-raise-statement)
 - `memforge-cloud` Issue #220
+- `memforge-cloud` Issue #266
