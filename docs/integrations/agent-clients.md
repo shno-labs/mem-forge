@@ -15,6 +15,8 @@ The agent-client package owns:
 - redacting obvious client-visible secrets before upload
 - uploading the window to `POST /api/agent-sessions/windows`
 - exposing a local MCP proxy that forwards memory operations to the service
+- resolving optional per-call repository context into a normalized Git remote
+  without sending the local path to the service
 - downloading source artifacts into a client-local cache when an agent calls
   `get_resource(mode="file")`
 
@@ -33,6 +35,22 @@ The proxy accepts the common stdio JSON-RPC framings used by agent clients:
 newline-delimited JSON and `Content-Length` framed messages. This is a client
 compatibility boundary only; it does not change the MemForge service contract.
 
+### Repository context
+
+`search` and `create_memory` accept an optional
+`repository_context.working_directory`. A coding host should pass its exact
+current working directory when known and omit the object when unavailable; it
+must not guess or use the plugin installation directory. The local proxy
+resolves the Git `origin` into a portable `repo_identifier`, removes the local
+path from the request, and sends only the normalized identifier to OSS or
+Cloud.
+
+The same tool contract applies to Codex, Claude Code, Cursor, and other MCP
+clients. Existing MCP `roots/list` handling is retained only as a compatibility
+adapter for hosts that provide it. No client-specific workspace environment
+variable is required. Missing, invalid, non-Git, or multi-repository context
+never blocks ordinary search or manual Memory creation.
+
 The service never creates agent-local filesystem paths. When an agent asks for a
 source artifact in `file` mode, the local proxy downloads the bytes from the
 service, writes the file on the agent machine, and returns that `local_path`.
@@ -46,8 +64,9 @@ sequenceDiagram
 
   Agent->>Proxy: MCP stdio tools/list
   Proxy-->>Agent: search, get_memory, get_resource schemas
-  Agent->>Proxy: MCP stdio tools/call search
-  Proxy->>Service: POST /api/memories/search
+  Agent->>Proxy: MCP stdio tools/call search + optional working directory
+  Proxy->>Proxy: Resolve Git origin; discard local path
+  Proxy->>Service: POST /api/memories/search + normalized repository affinity
   Service-->>Proxy: ranked memory cards
   Proxy-->>Agent: MCP text result
   Agent->>Proxy: MCP stdio tools/call get_memory
@@ -62,7 +81,8 @@ sequenceDiagram
 
 | MCP tool | Proxy action | Service endpoint | Local state |
 | --- | --- | --- | --- |
-| `search` | Forward query | `POST /api/memories/search` | None |
+| `search` | Resolve optional repository context and forward query | `POST /api/memories/search` | None |
+| `create_memory` | Resolve optional repository attribution and forward confirmed content | `POST /api/memories/create` | None |
 | `get_memory` | Fetch memory detail | `GET /api/memories/{memory_id}` | None |
 | `submit_agent_session_document` | Submit generated summary | `POST /api/agent-sessions/documents` | None |
 | `get_resource(mode="text")` | Fetch artifact text | Service `content_url` | None |
