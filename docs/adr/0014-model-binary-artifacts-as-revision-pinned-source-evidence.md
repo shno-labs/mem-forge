@@ -57,12 +57,57 @@ Confluence `extensions.fileSize` may disagree with the bytes returned by a
 version-pinned attachment download, so the Confluence Gene leaves the optional
 exact-size field unset.
 
+### Collection topology does not change the Artifact contract
+
+A provider may be reachable from the service or only from the user's local
+agent. Both topologies implement the same descriptor and byte contract.
+Service-executed Genes stream provider bytes directly into the shared transfer
+module. A local agent first submits provider bytes to one generic raw Artifact
+intake, then submits its source package with the resulting immutable input
+hashes. The service resolves those hashes only inside the same source,
+workspace, current source-activity epoch, and Source Unit while the package
+request itself holds a current local-agent lease. This permits safe immutable
+deduplication across retries in one source epoch without letting a stale input
+cross a reconfiguration or lifecycle fence. The resolved package reconstructs
+the same `RawSourceArtifact` interface and verifies stored bytes against the
+attested content hash when they are opened.
+
+The local agent runs the provider's lightweight inventory or message collection
+before materialization. It uploads Artifacts only for Source Units selected by
+the fenced manifest, one Artifact at a time. Unchanged Jira issues, GitHub files,
+and Teams windows therefore perform no attachment download or binary upload.
+The package semantic attestation includes each Artifact provider key, provider
+revision, and byte hash, while service-owned storage URIs remain internal.
+
+Current provider capabilities are explicit:
+
+| Source | Supported binary evidence | Exact boundary |
+| --- | --- | --- |
+| Confluence | Page image/PDF attachments | Version-pinned attachment response |
+| Jira | Issue and comment image/PDF attachments in service and local-agent execution | Attachment id, revision, and exact issue/comment parent |
+| GitHub Repository | Explicitly selected image/PDF repository files in cloud-pull and local-push execution | Immutable blob SHA and repository path |
+| Microsoft Teams | Inline image hosted content in chats, channel roots, and channel replies | Exact message id plus hosted-content id; channel retrieval also requires the exact team id, and replies retain the root-message id required by the Graph route |
+| Microsoft Teams file attachment | Not hosted content | SharePoint/OneDrive ownership and permission are a separate provider capability and must not be guessed from a message URL |
+| GitHub Pages | No implicit referenced-image crawl | Use a GitHub Repository source when repository blob identity is required |
+| Local Markdown | No implicit referenced-file crawl | Arbitrary Markdown links are not authoritative Artifact identities |
+| Agent Session | No attachment contract | A future producer must supply stable attachment identity, revision, bytes, and parent Observation before this path is enabled |
+
+Unsupported rows do not silently drop an enumerated Artifact: they define that
+the source has no authoritative enumeration contract for that object class.
+Extraction and lifecycle code remain provider-neutral and receive Artifacts
+only from supported Gene capabilities.
+
 The shared transfer module copies each body into a small-memory spooled file
 while counting bytes and computing SHA-256. It verifies any exact declared,
 transport-reported, and observed size, media type, identity, and revision before
 projection, then rewinds the same file-like body for persistence. Unsupported
 media types, oversized payloads, truncated downloads, identity drift, and
 revision drift fail closed. Metadata alone never becomes content Evidence.
+Local-agent collection additionally materializes only manifest-selected Source
+Units and holds at most one bounded Artifact body while uploading it. Provider
+responses are read incrementally where the provider client supports streaming;
+APIs that return one encoded blob are rejected from their declared inventory
+size before retrieval and remain subject to the same per-Artifact limit.
 
 ### Reuse Source Observation lifecycle authority
 
@@ -111,7 +156,7 @@ resources rather than model input.
 The prior design used the same 10 MiB per-Artifact and 30 MiB aggregate limits
 for both persistence and inference because complete bodies were materialized as
 `bytes`. That coupling is superseded. The initial inference defaults remain 10
-MiB per Artifact and 30 MiB per extraction batch. The 30 MiB value is a
+MiB per Artifact and 15 MiB per extraction batch. The 15 MiB value is a
 calibratable raw-binary worker/request safety budget, not a provider or MCP
 protocol limit: encoded requests and decoded images consume materially more
 memory than the compressed source bytes. An Artifact that exceeds the inference
@@ -224,4 +269,8 @@ full MCP client path before this decision is considered deployed.
 - `memforge-cloud` Issue #193
 - [Confluence attachment API](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-attachment/)
 - [Jira attachment content API](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-attachments/)
+- [Microsoft Graph hosted content resource](https://learn.microsoft.com/en-us/graph/api/resources/chatmessagehostedcontent)
+- [Microsoft Graph hosted content bytes](https://learn.microsoft.com/en-us/graph/api/chatmessagehostedcontent-get)
+- [GitHub repository contents API](https://docs.github.com/en/rest/repos/contents)
+- [GitHub Git blobs API](https://docs.github.com/en/rest/git/blobs)
 - [MCP tool result content](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
