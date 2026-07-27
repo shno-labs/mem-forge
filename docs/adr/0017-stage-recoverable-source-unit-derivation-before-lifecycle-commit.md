@@ -172,6 +172,29 @@ database. It is not a second Source Artifact or Memory lifecycle state machine:
 Source Observation and Lifecycle Plan records remain the only current evidence
 and mutation authorities.
 
+### Compose reconciliation completeness from bounded ledgers
+
+Lifecycle reconciliation completeness is a proof over all candidates and all
+active incumbents; it is not a requirement that one model response contain the
+entire Cartesian comparison. A response-sized candidate set may close the
+candidate and incumbent ledgers together. A larger set is partitioned without
+dropping candidates into:
+
+1. bounded candidate-by-incumbent relation cells, each of which returns exactly
+   one decision for every candidate index in that cell; and
+2. one independent bounded support audit for every incumbent.
+
+The deterministic reducer authorizes ADD only after a candidate has crossed
+every incumbent cell. It rejects ambiguous destructive matches, merges
+compatible duplicate NOOP relations, and uses the independent support audit
+only for incumbents not consumed by a candidate relation. Every cell and audit
+must validate before the existing atomic Lifecycle Plan may be built.
+
+This separates semantic completeness from provider response size. Increasing a
+token limit, retrying one oversized response, truncating candidates, or treating
+a missing decision as ADD would weaken the proof and is not an accepted recovery
+path.
+
 ### Make model schemas contain judgments only
 
 The structured LLM response contains only values the model must judge:
@@ -305,6 +328,10 @@ schema-valid output can be semantically invalid.
 - A deterministic multi-batch test proves that one retryable failure preserves
   completed sibling results, stages the exact target, leaves current lifecycle
   unchanged, and resumes only failed work.
+- A reconciliation-matrix test proves that a candidate population larger than
+  one model response is completely partitioned across bounded relation cells,
+  receives one independent incumbent-support audit, and produces one merged
+  operation per candidate without truncation.
 - A stale target and a changed source-activity epoch both fail before current
   state changes.
 - Closed coverage with an inference-ineligible Artifact preserves its exact
