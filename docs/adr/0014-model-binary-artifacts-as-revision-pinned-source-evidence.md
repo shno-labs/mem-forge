@@ -2,6 +2,8 @@
 
 Status: Accepted (2026-07-23)
 
+Amended: 2026-07-27 by [ADR 0017](0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md).
+
 ## Context
 
 Source providers can attach screenshots, diagrams, PDFs, and other binary
@@ -148,10 +150,12 @@ text/image observations may accompany the Primary Artifact using the existing
 Evidence roles.
 
 Enumeration, persistence, and inference have separate provider-neutral
-budgets. A Gene scans at most 200 provider descriptors and admits at most 100
-supported Artifacts. The initial storage defaults admit at most 64 MiB per
-Artifact and 128 MiB per Source Unit; these guard transfer, spool, and storage
-resources rather than model input.
+budgets. Provider inventory is paginated until the provider proves completion;
+cursor cycles, non-advancing pages, malformed pages, and incomplete coverage
+fail collection. Artifact count is an operational metric, not a correctness
+limit. The initial storage defaults admit at most 64 MiB per Artifact and
+128 MiB per Source Unit; these guard transfer, spool, and storage resources
+rather than model input.
 
 The prior design used the same 10 MiB per-Artifact and 30 MiB aggregate limits
 for both persistence and inference because complete bodies were materialized as
@@ -159,9 +163,12 @@ for both persistence and inference because complete bodies were materialized as
 MiB per Artifact and 15 MiB per extraction batch. The 15 MiB value is a
 calibratable raw-binary worker/request safety budget, not a provider or MCP
 protocol limit: encoded requests and decoded images consume materially more
-memory than the compressed source bytes. An Artifact that exceeds the inference
-limit but remains inside the storage limit is preserved exactly and marked
-inference-ineligible; it is not silently discarded.
+memory than the compressed source bytes. Image structure, encoding/MIME
+consistency, decompression pixels, and inference bytes are classified while the
+bounded materialization spool is available. An Artifact that fails an
+inference criterion but remains inside the storage contract is preserved
+exactly with a safe ineligibility reason; it is not silently discarded or sent
+to the model.
 
 Inference reuses the generic Projection extraction planner. One structured call
 contains at most eight Primary Observations and satisfies the aggregate binary
@@ -180,14 +187,14 @@ Callers do not know provider message formats. If the configured model cannot
 consume the accepted media contract, extraction fails visibly rather than
 silently substituting attachment metadata.
 
-The same structured multimodal response also returns one concise selection
-summary for each image actually supplied to the call. Summary identities must
-exactly equal the supplied Artifact Observation identities; missing, duplicate,
-or invented identities fail the extraction batch before Source Projection or
-Lifecycle state commits. The summary is bounded to 240 characters, omits
-unnecessary customer, case, person, and credential identifiers, and describes
-only enough visible purpose or content for an agent to choose whether to fetch
-the Artifact.
+The same structured multimodal response may return one concise selection
+summary for an image supplied to the call. Each valid unique summary must name
+one supplied Artifact Observation. Missing, duplicate, invented, or invalid
+summaries are discarded and counted without invalidating otherwise valid
+Memory candidates. The summary is bounded to 240 characters, omits unnecessary
+customer, case, person, and credential identifiers, and describes only enough
+visible purpose or content for an agent to choose whether to fetch the
+Artifact.
 
 The summary is stored as optional metadata on the exact immutable Artifact
 Observation revision. It does not alter the revision identity, byte hash,
