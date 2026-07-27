@@ -206,24 +206,34 @@ recovery path.
 
 Lifecycle reconciliation completeness is a proof over all candidates and all
 active incumbents; it is not a requirement that one model response contain the
-entire Cartesian comparison. A response-sized candidate set may close the
-candidate and incumbent ledgers together. A larger set is partitioned without
-dropping candidates into:
+entire Cartesian comparison. Every input size uses the same two protocols and
+is partitioned without dropping candidates into:
 
 1. bounded candidate-by-incumbent relation cells, each of which returns exactly
-   one decision for every candidate index in that cell; and
+   one decision in every active candidate slot in that cell; and
 2. one independent bounded support audit for every incumbent.
 
 The deterministic reducer authorizes ADD only after a candidate has crossed
 every incumbent cell. It rejects ambiguous destructive matches, merges
-compatible duplicate NOOP relations, and uses the independent support audit
-only for incumbents not consumed by a candidate relation. Every cell and audit
-must validate before the existing atomic Lifecycle Plan may be built.
+compatible duplicate NOOP relations, and requires each candidate relation to
+agree with the independent incumbent-support audit. Every cell and audit must
+validate before the existing atomic Lifecycle Plan may be built.
 
-The two phases use different structured response schemas. A relation-cell row
-requires a candidate index and cannot express DELETE. An incumbent-audit row
-requires a Memory ID, cannot contain a candidate index, and can express only
-NOOP or DELETE. Prompt instructions are not the phase boundary; the schema is.
+The two phases use different fixed-slot structured response schemas. Candidate
+slots and incumbent-audit slots are schema-required named fields. The request
+maps active slots to datastore-owned identities and unused slots to null; code
+binds judgments back to those identities. A candidate relation cannot emit its
+candidate index or a Memory ID. It may choose only a bounded incumbent slot as
+its semantic target and cannot express DELETE. An incumbent audit cannot emit
+a Memory ID or candidate identity and can express only NOOP or DELETE. Missing,
+duplicated, out-of-range, or model-invented row identities are therefore not
+representable by a schema-valid response. Prompt instructions are not the
+identity or phase boundary; the schema and request-owned slot maps are.
+
+The previous combined-list protocol and its candidate-indexed decision arrays
+are removed from the lifecycle path. Keeping a smaller-input list protocol
+would preserve the same identity ambiguity that fixed slots eliminate for
+larger inputs.
 
 This separates semantic completeness from provider response size. Increasing a
 token limit, retrying one oversized response, truncating candidates, or treating
