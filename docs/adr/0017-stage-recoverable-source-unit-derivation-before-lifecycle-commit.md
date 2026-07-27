@@ -172,6 +172,27 @@ database. It is not a second Source Artifact or Memory lifecycle state machine:
 Source Observation and Lifecycle Plan records remain the only current evidence
 and mutation authorities.
 
+### Compose candidate uniqueness from bounded decision ledgers
+
+Candidate uniqueness is a proof over every extracted candidate, but the proof
+does not require one model response to contain every decision. Before model
+work, candidates receive a deterministic specificity precedence based on
+normalized content length, Memory type, content, and original position. The
+complete candidate inventory remains visible to every decision batch, while
+each response is responsible for exactly one bounded set of candidate indices.
+
+A redundant candidate may point only to a lower-precedence index. This makes
+the decision graph acyclic without relying on model compliance across batches.
+After all bounded batches validate, a deterministic reducer resolves each
+canonical chain to a terminal KEEP decision, validates one complete global
+ledger, and restores the original candidate order. No candidate enters
+reconciliation until that global completeness proof closes.
+
+This bounds response cardinality independently from Source Unit cardinality.
+Raising the output-token limit, retrying an oversized monolithic response,
+truncating candidates, or accepting a partial ledger is not an accepted
+recovery path.
+
 ### Compose reconciliation completeness from bounded ledgers
 
 Lifecycle reconciliation completeness is a proof over all candidates and all
