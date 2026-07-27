@@ -190,6 +190,11 @@ compatible duplicate NOOP relations, and uses the independent support audit
 only for incumbents not consumed by a candidate relation. Every cell and audit
 must validate before the existing atomic Lifecycle Plan may be built.
 
+The two phases use different structured response schemas. A relation-cell row
+requires a candidate index and cannot express DELETE. An incumbent-audit row
+requires a Memory ID, cannot contain a candidate index, and can express only
+NOOP or DELETE. Prompt instructions are not the phase boundary; the schema is.
+
 This separates semantic completeness from provider response size. Increasing a
 token limit, retrying one oversized response, truncating candidates, or treating
 a missing decision as ADD would weaken the proof and is not an accepted recovery
