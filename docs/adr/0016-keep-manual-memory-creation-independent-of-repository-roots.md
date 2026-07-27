@@ -67,6 +67,14 @@ Source rows. Their Memories stay readable under the normal owner/visibility
 predicate. Configured-source access checks continue to apply to configured
 Source support, and a dangling non-virtual source edge does not widen access.
 
+Memory provenance exposes one derived Origin Kind rather than persisting a
+parallel classification: `user_memory` and `user_correction` are
+`direct_user`, `agent_session` is `managed_capture`, and other source types are
+`configured_source`. Client and Repository Context remain independent
+dimensions. Storage adapters derive this classification from the canonical
+source type, so no schema migration or historical backfill is required and the
+classification cannot drift from the provenance edge that owns it.
+
 ## Consequences
 
 Codex, Claude Code, Cursor, and future MCP clients share one tool contract.
