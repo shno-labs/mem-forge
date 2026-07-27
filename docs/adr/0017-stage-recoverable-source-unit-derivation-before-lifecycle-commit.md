@@ -181,6 +181,15 @@ normalized content length, Memory type, content, and original position. The
 complete candidate inventory remains visible to every decision batch, while
 each response is responsible for exactly one bounded set of candidate indices.
 
+A candidate index is datastore-owned identity and is never emitted by the
+model. Each batch uses a fixed response object whose named slots are all
+schema-required. The request maps active slots to candidate indices and unused
+slots to null; the model returns only the ordered judgment or null required by
+each slot. Code binds active slots back to their indices. Duplicate,
+out-of-range, omitted, or model-invented decision-row identities are therefore
+not representable by a schema-valid response. Canonical target indices remain
+model judgments and are validated against the lower-precedence rule.
+
 A redundant candidate may point only to a lower-precedence index. This makes
 the decision graph acyclic without relying on model compliance across batches.
 After all bounded batches validate, a deterministic reducer resolves each
