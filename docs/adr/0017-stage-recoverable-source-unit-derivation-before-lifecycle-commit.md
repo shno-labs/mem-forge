@@ -193,6 +193,12 @@ single-batch bypass around this boundary. One local datastore transaction then:
 
 A stale or superseded derivation cannot update any current pointer or Memory
 state. Retrying an already applied derivation is an idempotent no-op.
+Recovery may encounter an older completed attempt after another attempt for
+the same immutable Projection scope has already committed its deterministic
+Lifecycle Plan. The committed plan is authoritative: recovery marks the older
+attempt `superseded` and skips extraction and reconciliation. It must not call
+the model again and then compare a newly inferred payload with the already
+applied plan.
 
 This is a transactional staging/outbox use inside the existing workspace
 database. It is not a second Source Artifact or Memory lifecycle state machine:
