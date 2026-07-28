@@ -2,7 +2,8 @@
 
 Status: Accepted (2026-07-23)
 
-Amended: 2026-07-27 by [ADR 0017](0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md).
+Amended: 2026-07-27 by [ADR 0017](0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md);
+2026-07-28 to define current-body Artifact membership.
 
 ## Context
 
@@ -43,6 +44,43 @@ The shared implementation defines a small provider-neutral interface:
 Provider-specific attachment URLs, pagination, authentication, and revision
 formats remain inside Genes. Lifecycle, storage protocols, extraction, routes,
 and MCP do not branch on Confluence, Jira, or any future provider.
+
+### Current body reachability defines Artifact membership
+
+A provider-owned attachment inventory is not itself current Source Evidence.
+The owning Gene resolves authoritative Artifact-producing constructs from the
+exact current source-body revision against a complete provider inventory and
+returns only **Effective Source Artifacts** for materialization. An attachment
+that remains owned by a page but is no longer referenced by its current body is
+inventory residue: it is neither downloaded nor projected into the target
+Source Unit revision.
+
+Resolution is structural and provider-native. Confluence parses documented
+storage-format constructs such as `ac:image` plus `ri:attachment`, then joins
+the case-sensitive `ri:filename` to exactly one current attachment entity.
+The filename is only a provider reference key for this join; the resolved
+attachment ID and current provider revision remain the durable Artifact
+identity. Duplicate body occurrences resolve to one Artifact. Filename
+substrings, rendered download URLs, Markdown output, and browser pixels never
+establish Artifact identity.
+
+Artifact membership has explicit coverage. Complete coverage means every
+supported Artifact-producing construct was resolved against authoritative
+inventory; only then may omission of a previously current Artifact establish
+removal. Missing or ambiguous inventory matches, malformed constructs, and
+unsupported dynamic inventory filters fail closed without falling back to the
+whole attachment inventory or to an empty authoritative set. External URL
+images and attachments explicitly owned by another provider container remain
+outside the current Source Unit rather than being copied under guessed
+identity.
+
+Provider-native collection constructs are supported only when their membership
+can be reproduced deterministically. A local Confluence Gallery may resolve
+the current page's images using its documented case-sensitive include/exclude
+parameters. Label-filtered or cross-page Galleries require authoritative label
+or container data; until that data is present, they are incomplete rather than
+best-effort. Future body representations such as Atlas Doc Format require a
+separate adapter at the same seam instead of reusing storage-format guesses.
 
 An Artifact descriptor contains:
 
