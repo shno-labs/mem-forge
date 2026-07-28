@@ -22,6 +22,13 @@
 - **Determinate Progress** — Progress with a trustworthy total, presented as completed out of total.
 - **Indeterminate Progress** — Progress whose total is not yet knowable, presented without a percentage while still reporting useful counts when available.
 
+## Memory provenance
+
+- **Memory Origin Kind** — The derived category describing how one provenance source introduced knowledge into MemForge: **Direct User** for an explicit user lifecycle action, **Managed Capture** for a system-managed coding-agent capture, or **Configured Source** for a user-configured ingestion connection. It does not replace Source Type, Client, Repository Context, ownership, or visibility.
+- **Direct User** — Knowledge explicitly confirmed through a user lifecycle action such as creating or correcting a Memory. The submitting coding agent is the Client, and an associated repository is Repository Context; neither becomes the Source.
+- **Managed Capture** — Knowledge produced from a system-created capture Source, such as an Agent Session Source, without requiring the user to configure an ingestion connection.
+- **Configured Source** — Knowledge produced from a user-configured ingestion connection such as Confluence, Jira, Teams, GitHub Repository, or Local Repository.
+
 ## Memory lifecycle migration
 
 - **Lifecycle Migration Inventory** — A backend scan of every active Configured Source in the datastore, without applying a caller's source-discoverability filter. Agent Session sources are candidates when the Lifecycle Gate is not Enabled or the bidirectional Active Same-Source Support Invariant is violated in either direction. Inventory output contains identifiers and counts, never private source content or owner identity.
