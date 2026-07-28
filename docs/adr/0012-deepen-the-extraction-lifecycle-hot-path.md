@@ -5,6 +5,10 @@ Status: Accepted (2026-07-22)
 Amended: 2026-07-28 to bind entity-adjudication judgments through
 datastore-owned fixed response slots instead of model-repeated mention strings.
 
+Amended: 2026-07-29 to bound the complete Memory identity-resolution working
+set, including challenger embeddings and semantic-pair objects, rather than
+only bounding the final structured-model calls.
+
 ## Context
 
 The source-processing path performs a document-wide enrichment call before
@@ -103,6 +107,24 @@ batch storage operations. Adapters apply the same current-state, source,
 visibility, owner, repository, and access predicates and may internally chunk
 bind sets. Database round trips scale with adapter batches, not with the number
 of returned entities, Memories, or supports.
+
+Memory identity resolution applies exact active-identity lookup before semantic
+recall, then processes unresolved challengers through one bounded workset at a
+time. Challenger embeddings are submitted together for that workset, while
+each challenger still receives the fixed top-k, access-compatible candidate
+recall required by [ADR 0006](0006-bound-memory-identity-recall-before-semantic-proof.md).
+Only that workset's embeddings, recalled Memories, and semantic-pair objects
+remain live during classification. The resolver retains ordered compact
+decisions across worksets and releases the transient recall objects before the
+complete Source Unit enters its one atomic Lifecycle Plan.
+
+This batching is an execution partition, not a reduction in lifecycle or
+identity scope. It must not introduce a global candidate cap, discard a large
+but valid Source Unit, change exact/equivalence authority, or commit partial
+worksets independently. If measured peak RSS remains unsafe after this bounded
+working-set design, deployment memory is increased; the algorithm is not
+fragmented into progressively smaller semantic units merely to fit an
+undersized worker.
 
 When Memory identity admission classifies a pair but does not select an
 `EQUIVALENT` target, its complete `REFINES`, `CONTRADICTS`, or `UNRELATED`
