@@ -17,14 +17,17 @@ content fetching, and Cloud upload so a refresh-safe UI does not present a slow
 collection phase as a frozen previous phase.
 
 Server-processing progress belongs to the durable run, not to one worker lease.
-A recovered lease resumes from the last monotonic Progress Snapshot and must
-not clear it merely because the process attempt changed. If process death
-bypasses normal failure handling after the configured execution-attempt budget
-has been consumed, a recovery worker may claim the expired lease only to apply
-the fenced terminal failure. It must not reconstruct the runtime, call a
-provider, or execute the Source again. This keeps storage adapters free of
-runtime retry policy while ensuring that an OOM cannot create an unbounded
-recovery loop.
+After validating the Source and before constructing its runtime or calling its
+provider, a first attempt with no snapshot persists `discovering: 0`; the
+pipeline replaces that placeholder with real totals as soon as discovery
+produces them. A recovered lease resumes from the last monotonic Progress
+Snapshot and must neither clear it merely because the process attempt changed
+nor regress it to the initial placeholder. If process death bypasses normal
+failure handling after the configured execution-attempt budget has been
+consumed, a recovery worker may claim the expired lease only to apply the fenced
+terminal failure. It must not reconstruct the runtime, call a provider, or
+execute the Source again. This keeps storage adapters free of runtime retry
+policy while ensuring that an OOM cannot create an unbounded recovery loop.
 
 Local package intake also preserves web-runtime liveness. Document artifact
 stores remain synchronous shared adapters, but an async HTTP intake must run
