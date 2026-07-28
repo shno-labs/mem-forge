@@ -7,7 +7,8 @@ datastore-owned fixed response slots instead of model-repeated mention strings.
 
 Amended: 2026-07-29 to bound the complete Memory identity-resolution working
 set, including challenger embeddings and semantic-pair objects, rather than
-only bounding the final structured-model calls.
+only bounding the final structured-model calls, and to make Candidate Ledger
+actions authoritative over non-applicable response fields.
 
 ## Context
 
@@ -148,7 +149,15 @@ chunk large bind sets internally. Callers do not issue separate reference and
 hash queries per incumbent.
 
 The transient complete Candidate Ledger remains until measured cohorts show it
-adds no quality value. It has no lifecycle or provenance authority.
+adds no quality value. It has no lifecycle or provenance authority. Its action
+is the response discriminator: `canonical_index` is consumed and validated only
+for `DROP_REDUNDANT`; a value returned in that inactive field for `KEEP` or
+`DROP_LOW_VALUE` is discarded at the structured-response boundary. Missing,
+forward, invisible, or otherwise invalid canonical identity for an actual
+`DROP_REDUNDANT` remains a deterministic contract failure. This preserves the
+model's explicit admission action without allowing a non-applicable field to
+abort a complete large Source Unit after every bounded decision batch has
+already succeeded.
 
 ### Keep observability aggregate and content-free
 
