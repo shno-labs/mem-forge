@@ -3,7 +3,7 @@
 Status: Accepted (2026-07-27)
 
 Amended: 2026-07-28 to define lifecycle handling for authoritatively removed
-supporting Observations.
+supporting Observations and complete relation/audit disagreements.
 
 ## Context
 
@@ -245,6 +245,20 @@ every incumbent cell. It rejects ambiguous destructive matches, merges
 compatible duplicate NOOP relations, and requires each candidate relation to
 agree with the independent incumbent-support audit. Every cell and audit must
 validate before the existing atomic Lifecycle Plan may be built.
+
+When every required relation cell and support audit is complete and valid but
+their dispositions disagree for one incumbent, the disagreement is a complete
+Lifecycle Review decision rather than failed derivation coverage. A candidate
+replacement paired with an audit KEEP stages that exact replacement for Review;
+a candidate KEEP paired with an audit support removal stages that exact removal
+for Review. The pending Review retains the incumbent's exact active Support,
+while non-conflicting decisions in the same complete Lifecycle Plan may commit
+and the Source Projection may advance.
+
+Missing slots, invalid identities, multiple destructive candidate targets, and
+incomplete incumbent coverage do not become Reviews. They remain failed
+reconciliation because no single complete proposal exists for a reviewer to
+approve or reject.
 
 The two phases use different fixed-slot structured response schemas. Candidate
 slots and incumbent-audit slots are schema-required named fields. The request
