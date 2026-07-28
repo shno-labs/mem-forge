@@ -2,6 +2,9 @@
 
 Status: Accepted (2026-07-27)
 
+Amended: 2026-07-28 to define lifecycle handling for authoritatively removed
+supporting Observations.
+
 ## Context
 
 Source synchronization currently treats four different facts as one
@@ -71,6 +74,22 @@ independent, fully derived observations from the same Source Unit.
 
 `pending` and `retryable_failure` do not authorize a Lifecycle Plan. They retain
 the staged target and completed sibling batches for a later bounded attempt.
+
+### Review authoritatively removed support before advancing Projection
+
+A complete proposed Source Projection can prove that an Observation which
+currently supports an active Memory is no longer a member of its Source Unit.
+An incumbent audit `NOOP` does not override that structural fact. Before
+building the Lifecycle Plan, the engine converts that operation into a
+review-gated support-removal proposal.
+
+The exact incumbent Support remains active and contested while the Review is
+pending, so no historical Evidence is invented or silently discarded. The
+atomic apply may advance the complete Projection because the existing support
+invariant recognizes that exact pending Review as the explicit disposition of
+the old edge. Approval or rejection later uses the normal lifecycle review
+contract. Partial Projection, unresolved provider membership, and ambiguous
+identity never prove removal and cannot enter this path.
 
 ### One deep Source Unit Derivation module
 
@@ -381,6 +400,9 @@ schema-valid output can be semantically invalid.
   state changes.
 - Closed coverage with an inference-ineligible Artifact preserves its exact
   bytes and protects affected incumbent Support.
+- Complete coverage that removes a supporting Observation stages an exact
+  pending Review and advances Projection without silently retiring the Memory;
+  partial or ambiguous coverage cannot do so.
 - Missing, duplicate, invented, or invalid optional summaries cannot invalidate
   valid candidates and are never persisted.
 - The model-facing schema has no internal evidence-anchor field.

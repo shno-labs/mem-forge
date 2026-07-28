@@ -3,7 +3,8 @@
 Status: Accepted (2026-07-23)
 
 Amended: 2026-07-27 by [ADR 0017](0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md);
-2026-07-28 to define current-body Artifact membership.
+2026-07-28 to define current-body Artifact membership and provider encoding
+normalization.
 
 ## Context
 
@@ -58,11 +59,16 @@ Source Unit revision.
 Resolution is structural and provider-native. Confluence parses documented
 storage-format constructs such as `ac:image` plus `ri:attachment`, then joins
 the case-sensitive `ri:filename` to exactly one current attachment entity.
-The filename is only a provider reference key for this join; the resolved
-attachment ID and current provider revision remain the durable Artifact
-identity. Duplicate body occurrences resolve to one Artifact. Filename
-substrings, rendered download URLs, Markdown output, and browser pixels never
-establish Artifact identity.
+Both sides of this comparison receive the same single XHTML character-reference
+decoding because Confluence may expose a storage-body character as Unicode
+while returning its attachment title as an encoded entity. No broader Unicode,
+case, whitespace, or path normalization is permitted. If this exact decoding
+causes multiple entities to share a comparison key, resolution remains
+ambiguous and fails closed. The filename is only a provider reference key for
+this join; the resolved attachment ID and current provider revision remain the
+durable Artifact identity. Duplicate body occurrences resolve to one Artifact.
+Filename substrings, rendered download URLs, Markdown output, and browser
+pixels never establish Artifact identity.
 
 Artifact membership has explicit coverage. Complete coverage means every
 supported Artifact-producing construct was resolved against authoritative
