@@ -171,6 +171,14 @@ stable identity hashes authorize reuse and the final commit. Optional summaries
 are authorized separately by the completed, hash-verified batch output that
 produced them.
 
+Observation membership is unordered in the Source Unit revision identity.
+New Source Unit revisions therefore persist Observation revision IDs in
+canonical sorted order. When an identity-equivalent historical revision
+already exists with the same exact member set in a different order, projection
+reuses that immutable row verbatim. Provider enumeration order and retry order
+cannot create a second payload for the same revision ID; a different member set
+still fails the immutable identity check.
+
 When Derivation Coverage closes, the pipeline assembles one complete candidate
 ledger and one complete Lifecycle Plan. There is no single-Observation or
 single-batch bypass around this boundary. One local datastore transaction then:
@@ -398,6 +406,8 @@ schema-valid output can be semantically invalid.
   operation per candidate without truncation.
 - A stale target and a changed source-activity epoch both fail before current
   state changes.
+- Reordering an unchanged provider Artifact inventory reuses the exact prior
+  Source Unit revision and cannot create an immutable-identity retry conflict.
 - Closed coverage with an inference-ineligible Artifact preserves its exact
   bytes and protects affected incumbent Support.
 - Complete coverage that removes a supporting Observation stages an exact
