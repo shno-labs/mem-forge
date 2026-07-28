@@ -246,6 +246,15 @@ destructive lifecycle action. Existing candidate identity admission,
 same-source reconciliation, and Relation/Review contracts remain responsible
 for their own complete safety proofs.
 
+Candidate admission is also non-authoritative when the structured client
+cannot return a valid response after its provider fallback. Code closes that
+bounded batch locally with KEEP for every active candidate, continues later
+batches, and records only fixed fallback batch/candidate counts. It does not
+persist provider text or treat the failed quality optimization as lifecycle
+authority. A response that reaches application validation but violates the
+fixed-slot or canonical-target contract remains a deterministic contract
+failure rather than being silently accepted.
+
 The same bounded admission judgment may reject a candidate as low value only
 when the candidate is merely instance output or source-recoverable detail and
 does not preserve a reusable decision, rule, invariant, conclusion, or
@@ -443,6 +452,9 @@ schema-valid output can be semantically invalid.
 - A deterministic multi-batch test proves that one retryable failure preserves
   completed sibling results, stages the exact target, leaves current lifecycle
   unchanged, and resumes only failed work.
+- A Candidate Ledger test proves that a structured-client failure keeps every
+  candidate in only that bounded admission batch, records safe fallback counts,
+  and continues later batches without exposing response content.
 - A reconciliation-matrix test proves that a candidate population larger than
   one model response is completely partitioned across bounded relation cells,
   receives one independent incumbent-support audit, and produces one merged
