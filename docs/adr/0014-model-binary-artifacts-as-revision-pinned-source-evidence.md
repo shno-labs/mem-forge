@@ -2,6 +2,10 @@
 
 Status: Accepted (2026-07-23)
 
+Amended: 2026-07-27 by [ADR 0017](0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md);
+2026-07-28 to define current-body Artifact membership and provider encoding
+normalization.
+
 ## Context
 
 Source providers can attach screenshots, diagrams, PDFs, and other binary
@@ -41,6 +45,48 @@ The shared implementation defines a small provider-neutral interface:
 Provider-specific attachment URLs, pagination, authentication, and revision
 formats remain inside Genes. Lifecycle, storage protocols, extraction, routes,
 and MCP do not branch on Confluence, Jira, or any future provider.
+
+### Current body reachability defines Artifact membership
+
+A provider-owned attachment inventory is not itself current Source Evidence.
+The owning Gene resolves authoritative Artifact-producing constructs from the
+exact current source-body revision against a complete provider inventory and
+returns only **Effective Source Artifacts** for materialization. An attachment
+that remains owned by a page but is no longer referenced by its current body is
+inventory residue: it is neither downloaded nor projected into the target
+Source Unit revision.
+
+Resolution is structural and provider-native. Confluence parses documented
+storage-format constructs such as `ac:image` plus `ri:attachment`, then joins
+the case-sensitive `ri:filename` to exactly one current attachment entity.
+Both sides of this comparison receive the same single XHTML character-reference
+decoding because Confluence may expose a storage-body character as Unicode
+while returning its attachment title as an encoded entity. No broader Unicode,
+case, whitespace, or path normalization is permitted. If this exact decoding
+causes multiple entities to share a comparison key, resolution remains
+ambiguous and fails closed. The filename is only a provider reference key for
+this join; the resolved attachment ID and current provider revision remain the
+durable Artifact identity. Duplicate body occurrences resolve to one Artifact.
+Filename substrings, rendered download URLs, Markdown output, and browser
+pixels never establish Artifact identity.
+
+Artifact membership has explicit coverage. Complete coverage means every
+supported Artifact-producing construct was resolved against authoritative
+inventory; only then may omission of a previously current Artifact establish
+removal. Missing or ambiguous inventory matches, malformed constructs, and
+unsupported dynamic inventory filters fail closed without falling back to the
+whole attachment inventory or to an empty authoritative set. External URL
+images and attachments explicitly owned by another provider container remain
+outside the current Source Unit rather than being copied under guessed
+identity.
+
+Provider-native collection constructs are supported only when their membership
+can be reproduced deterministically. A local Confluence Gallery may resolve
+the current page's images using its documented case-sensitive include/exclude
+parameters. Label-filtered or cross-page Galleries require authoritative label
+or container data; until that data is present, they are incomplete rather than
+best-effort. Future body representations such as Atlas Doc Format require a
+separate adapter at the same seam instead of reusing storage-format guesses.
 
 An Artifact descriptor contains:
 
@@ -148,10 +194,12 @@ text/image observations may accompany the Primary Artifact using the existing
 Evidence roles.
 
 Enumeration, persistence, and inference have separate provider-neutral
-budgets. A Gene scans at most 200 provider descriptors and admits at most 100
-supported Artifacts. The initial storage defaults admit at most 64 MiB per
-Artifact and 128 MiB per Source Unit; these guard transfer, spool, and storage
-resources rather than model input.
+budgets. Provider inventory is paginated until the provider proves completion;
+cursor cycles, non-advancing pages, malformed pages, and incomplete coverage
+fail collection. Artifact count is an operational metric, not a correctness
+limit. The initial storage defaults admit at most 64 MiB per Artifact and
+128 MiB per Source Unit; these guard transfer, spool, and storage resources
+rather than model input.
 
 The prior design used the same 10 MiB per-Artifact and 30 MiB aggregate limits
 for both persistence and inference because complete bodies were materialized as
@@ -159,9 +207,12 @@ for both persistence and inference because complete bodies were materialized as
 MiB per Artifact and 15 MiB per extraction batch. The 15 MiB value is a
 calibratable raw-binary worker/request safety budget, not a provider or MCP
 protocol limit: encoded requests and decoded images consume materially more
-memory than the compressed source bytes. An Artifact that exceeds the inference
-limit but remains inside the storage limit is preserved exactly and marked
-inference-ineligible; it is not silently discarded.
+memory than the compressed source bytes. Image structure, encoding/MIME
+consistency, decompression pixels, and inference bytes are classified while the
+bounded materialization spool is available. An Artifact that fails an
+inference criterion but remains inside the storage contract is preserved
+exactly with a safe ineligibility reason; it is not silently discarded or sent
+to the model.
 
 Inference reuses the generic Projection extraction planner. One structured call
 contains at most eight Primary Observations and satisfies the aggregate binary
@@ -180,14 +231,14 @@ Callers do not know provider message formats. If the configured model cannot
 consume the accepted media contract, extraction fails visibly rather than
 silently substituting attachment metadata.
 
-The same structured multimodal response also returns one concise selection
-summary for each image actually supplied to the call. Summary identities must
-exactly equal the supplied Artifact Observation identities; missing, duplicate,
-or invented identities fail the extraction batch before Source Projection or
-Lifecycle state commits. The summary is bounded to 240 characters, omits
-unnecessary customer, case, person, and credential identifiers, and describes
-only enough visible purpose or content for an agent to choose whether to fetch
-the Artifact.
+The same structured multimodal response may return one concise selection
+summary for an image supplied to the call. Each valid unique summary must name
+one supplied Artifact Observation. Missing, duplicate, invented, or invalid
+summaries are discarded and counted without invalidating otherwise valid
+Memory candidates. The summary is bounded to 240 characters, omits unnecessary
+customer, case, person, and credential identifiers, and describes only enough
+visible purpose or content for an agent to choose whether to fetch the
+Artifact.
 
 The summary is stored as optional metadata on the exact immutable Artifact
 Observation revision. It does not alter the revision identity, byte hash,

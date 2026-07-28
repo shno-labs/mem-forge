@@ -14,6 +14,10 @@
 - **Collection Coverage** — The proof attached to one collection result: a Complete Snapshot covers the whole configured scope, a Bounded Delta covers only explicit changes since a checkpoint, and Partial coverage proves neither absence nor a safe checkpoint advance.
 - **Candidate Checkpoint** — A provider position proposed by collection but not made current until the corresponding Source Projection and lifecycle transaction succeeds.
 - **Processing** — Turning collected source items into stored documents and memories.
+- **Attachment Inventory** — The current provider entities owned by a source item, whether or not the item's current body references or displays them. Inventory membership alone does not make an attachment current Source Evidence.
+- **Body Artifact Reference** — An authoritative reference from one exact current source-body revision to a provider Artifact. It preserves the provider's reference semantics rather than inferring reachability from filenames, URLs, or attachment ownership.
+- **Effective Source Artifact** — A current provider Artifact reached through a resolved Body Artifact Reference and pinned to its exact provider identity and revision. Only Effective Source Artifacts enter current materialization, Source Projection, and derivation.
+- **Artifact Membership Coverage** — Whether every Artifact-producing construct in one current source-body revision was resolved against authoritative provider inventory. Only Complete coverage makes an omitted prior Artifact an authoritative removal.
 - **Progress Snapshot** — The latest trustworthy statement of an activity's phase and measurable progress. It is a current observation, not a history of progress events.
 - **Determinate Progress** — Progress with a trustworthy total, presented as completed out of total.
 - **Indeterminate Progress** — Progress whose total is not yet knowable, presented without a percentage while still reporting useful counts when available.
