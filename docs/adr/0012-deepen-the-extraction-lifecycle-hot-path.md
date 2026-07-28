@@ -2,6 +2,9 @@
 
 Status: Accepted (2026-07-22)
 
+Amended: 2026-07-28 to bind entity-adjudication judgments through
+datastore-owned fixed response slots instead of model-repeated mention strings.
+
 ## Context
 
 The source-processing path performs a document-wide enrichment call before
@@ -60,10 +63,17 @@ mentions in bounded batches, retrieves bounded top-k candidates through the
 shared storage contract, and coalesces genuinely ambiguous matches into
 case- and prompt-bounded structured adjudication calls. The hard prompt bound
 applies to the final rendered prompt, including its template and document
-context; a single oversized case fails closed. Every adjudication batch must
-return exactly one decision per supplied mention before any Entity or alias
-write occurs. It validates every returned ID against the supplied candidate set
-and maps resolved IDs back only to the Memory candidates that mentioned them.
+context; a single oversized case fails closed.
+
+Each adjudication batch maps its ordered mentions to datastore-owned, named
+response slots. Every slot is schema-required: active slots must contain one
+judgment and unused slots must be null. The model returns only `matched_id`,
+confidence, and reason; it never repeats or invents the mention identity. Code
+binds each active slot back to its request-owned mention before any Entity or
+alias write occurs. Missing active judgments, non-null unused slots, and
+out-of-capacity batch configuration fail closed. Every returned ID is validated
+against the candidate set supplied in that slot, and resolved IDs map back only
+to the Memory candidates that mentioned them.
 
 Embedding is recall, never merge authority. No retrieved candidate means a new
 Entity without an LLM call. A confirmed same-entity decision may learn an alias;
