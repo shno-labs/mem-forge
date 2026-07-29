@@ -1,5 +1,8 @@
 # Project source sync activity from existing execution records
 
+Amended: 2026-07-29 to preserve run-level progress across lease recovery and to
+fence recovery after the configured execution-attempt budget is exhausted.
+
 Local collection jobs, server processing runs, and lifecycle-maintenance jobs keep their independent durable lifecycles because they have different owners, leases, retries, and storage transactions. The Sources UI consumes one Source Sync Activity read model projected from those records, rather than introducing a cross-store master operation or extending one execution record to own the others.
 
 This keeps execution recovery local to each existing state machine while giving every source type one refresh-safe progress contract and presenter. Server processing persists its latest Progress Snapshot on its run; local collection exposes the snapshot already persisted with its job; lifecycle maintenance contributes its durable status without pretending to have per-document progress. Active maintenance outranks stale terminal sync history, uses provider-neutral memory-update language, and blocks conflicting source mutations in the UI while storage remains authoritative. Completed maintenance shows a short terminal acknowledgement and then becomes visually quiet while still suppressing obsolete failed-sync history. A failed maintenance attempt remains in lifecycle history, but remains actionable on the Source row only while current lifecycle state is still blocking: the Source is gated, an open cutover finding exists, or lifecycle vector delivery remains incomplete. The projection selects the relevant activity and never treats progress-delivery failure as source-sync failure.
@@ -12,6 +15,26 @@ checkpoint and never submits a terminal completion; the durable job may then be
 leased as a new attempt. Local progress distinguishes provider discovery,
 content fetching, and Cloud upload so a refresh-safe UI does not present a slow
 collection phase as a frozen previous phase.
+
+Server-processing progress belongs to the durable run, not to one worker lease.
+After validating the Source and before constructing its runtime or calling its
+provider, a first attempt with no snapshot persists `discovering: 0`; the
+pipeline replaces that placeholder with real totals as soon as discovery
+produces them. A recovered lease resumes from the last monotonic Progress
+Snapshot and must neither clear it merely because the process attempt changed
+nor regress it to the initial placeholder. If process death bypasses normal
+failure handling after the configured execution-attempt budget has been
+consumed, a recovery worker may claim the expired lease only to apply the fenced
+terminal failure. It must not reconstruct the runtime, call a provider, or
+execute the Source again. This keeps storage adapters free of runtime retry
+policy while ensuring that an OOM cannot create an unbounded recovery loop.
+
+Durable Source Unit derivation recovery is exposed as
+`recovering_derivations`, with its outer completed/total workset measured in
+the Source's normal item unit. The presenter describes this as resuming Memory
+creation and leaves inner extraction, Candidate Ledger, identity, and lifecycle
+work indeterminate. `reconciling` is reserved for authoritative removed-item
+detection, so a recovery attempt cannot be presented as deletion checking.
 
 Local package intake also preserves web-runtime liveness. Document artifact
 stores remain synchronous shared adapters, but an async HTTP intake must run

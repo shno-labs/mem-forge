@@ -33,23 +33,45 @@ The source supports two authentication modes:
 ```text
 github_pat
   Use a GitHub personal access token stored through the encrypted source-secret
-  path and sent as a bearer token.
+  path. Read repository Markdown through the GitHub API so private-mode Pages
+  sites do not depend on an interactive browser session.
 
 none
-  Fetch pages without authentication.
+  Fetch rendered pages without authentication.
 ```
 
 Browser-cookie authentication is intentionally not part of the first version.
 Enterprise deployments should prefer `github_pat` when the Pages site requires
-authenticated access.
+authenticated access. Repository-backed PAT mode accepts both standard GitHub
+Enterprise Server project-site layouts:
+
+```text
+subdomain isolation enabled
+  https://pages.<github-host>/<owner>/<repo>/...
+
+subdomain isolation disabled
+  https://<github-host>/pages/<owner>/<repo>/...
+```
+
+For the subdomain-isolated form, repository API requests use
+`https://<github-host>/api/v3/repos/<owner>/<repo>`. The published Pages URL
+remains the document identity and the URL shown to users. This split follows
+GitHub Enterprise Server's documented Pages URL layouts and subdomain-isolation
+model.
+
+References:
+
+- [GitHub Enterprise Server: What is GitHub Pages?](https://docs.github.com/en/enterprise-server@3.20/pages/getting-started-with-github-pages/what-is-github-pages)
+- [GitHub Enterprise Server: Enabling subdomain isolation](https://docs.github.com/en/enterprise-server@3.20/admin/configuring-settings/configuring-network-settings/enabling-subdomain-isolation)
 
 ## Discovery
 
-Subtree discovery prefers `sitemap.xml` when available. If no sitemap is
-available, the source crawls same-origin links from the subtree root and keeps
-only links under the configured root path. Discovery is bounded by `max_depth`
-and `max_pages`; hitting `max_pages` is a loud error, not a silent partial
-sync.
+For PAT-backed sources, subtree discovery reads the repository tree and maps
+Markdown paths back to published page URLs. For no-auth sources, subtree
+discovery prefers `sitemap.xml`; if no sitemap is available, the source crawls
+same-origin links from the subtree root and keeps only links under the
+configured root path. Discovery is bounded by `max_depth` and `max_pages`;
+hitting `max_pages` is a loud error, not a silent partial sync.
 
 URLs are canonicalized before identity and scope checks:
 
@@ -69,8 +91,9 @@ github-pages-<sha1(canonical_url)>
 
 ## Fetch And Normalize
 
-Fetch retrieves rendered HTML. Normalization extracts the main article content
-and removes documentation chrome:
+No-auth fetch retrieves rendered HTML. PAT-backed fetch retrieves the matching
+Markdown blob through the repository API. Rendered HTML normalization extracts
+the main article content and removes documentation chrome:
 
 ```text
 header

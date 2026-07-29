@@ -2,6 +2,24 @@
 
 Status: Accepted (2026-07-22)
 
+Amended: 2026-07-28 to bind entity-adjudication judgments through
+datastore-owned fixed response slots instead of model-repeated mention strings.
+
+Amended: 2026-07-29 to bound the complete Memory identity-resolution working
+set, including challenger embeddings and semantic-pair objects, rather than
+only bounding the final structured-model calls, and to make Candidate Ledger
+actions authoritative over non-applicable response fields. A bounded Candidate
+Ledger batch whose provider response remains invalid after its validation retry
+now conservatively keeps that batch; deterministic invariants over the assembled
+datastore-bound ledger still fail closed.
+
+Amended: 2026-07-29 to admit structured-model calls through one process-wide
+bounded concurrency contract and to run only already-independent batch plans
+concurrently. Candidate Ledger, entity adjudication, and relation
+classification preserve deterministic input order and complete validation
+before results escape. Memory identity worksets remain sequential and bounded;
+their storage recall is batched instead of increasing semantic concurrency.
+
 ## Context
 
 The source-processing path performs a document-wide enrichment call before
@@ -60,10 +78,17 @@ mentions in bounded batches, retrieves bounded top-k candidates through the
 shared storage contract, and coalesces genuinely ambiguous matches into
 case- and prompt-bounded structured adjudication calls. The hard prompt bound
 applies to the final rendered prompt, including its template and document
-context; a single oversized case fails closed. Every adjudication batch must
-return exactly one decision per supplied mention before any Entity or alias
-write occurs. It validates every returned ID against the supplied candidate set
-and maps resolved IDs back only to the Memory candidates that mentioned them.
+context; a single oversized case fails closed.
+
+Each adjudication batch maps its ordered mentions to datastore-owned, named
+response slots. Every slot is schema-required: active slots must contain one
+judgment and unused slots must be null. The model returns only `matched_id`,
+confidence, and reason; it never repeats or invents the mention identity. Code
+binds each active slot back to its request-owned mention before any Entity or
+alias write occurs. Missing active judgments, non-null unused slots, and
+out-of-capacity batch configuration fail closed. Every returned ID is validated
+against the candidate set supplied in that slot, and resolved IDs map back only
+to the Memory candidates that mentioned them.
 
 Embedding is recall, never merge authority. No retrieved candidate means a new
 Entity without an LLM call. A confirmed same-entity decision may learn an alias;
@@ -94,6 +119,28 @@ visibility, owner, repository, and access predicates and may internally chunk
 bind sets. Database round trips scale with adapter batches, not with the number
 of returned entities, Memories, or supports.
 
+Memory identity resolution applies exact active-identity lookup before semantic
+recall, then processes unresolved challengers through one bounded workset at a
+time. Challenger embeddings are submitted together for that workset, while
+each challenger still receives the fixed top-k, access-compatible candidate
+recall required by [ADR 0006](0006-bound-memory-identity-recall-before-semantic-proof.md).
+Only that workset's embeddings, recalled Memories, and semantic-pair objects
+remain live during classification. The resolver retains ordered compact
+decisions across worksets: candidate identity, content and access stale-guard
+inputs, relation, direction, and reason. A selected `EQUIVALENT` target remains
+available for corroboration and Lifecycle Plan stale guards; non-target Memory
+content, extraction context, and semantic-pair objects do not survive the
+workset. The resolver releases those transient recall objects before the
+complete Source Unit enters its one atomic Lifecycle Plan.
+
+This batching is an execution partition, not a reduction in lifecycle or
+identity scope. It must not introduce a global candidate cap, discard a large
+but valid Source Unit, change exact/equivalence authority, or commit partial
+worksets independently. If measured peak RSS remains unsafe after this bounded
+working-set design, deployment memory is increased; the algorithm is not
+fragmented into progressively smaller semantic units merely to fit an
+undersized worker.
+
 When Memory identity admission classifies a pair but does not select an
 `EQUIVALENT` target, its complete `REFINES`, `CONTRADICTS`, or `UNRELATED`
 decision is carried into the existing durable Relation Discovery request as a
@@ -116,7 +163,20 @@ chunk large bind sets internally. Callers do not issue separate reference and
 hash queries per incumbent.
 
 The transient complete Candidate Ledger remains until measured cohorts show it
-adds no quality value. It has no lifecycle or provenance authority.
+adds no quality value. It has no lifecycle or provenance authority. Its action
+is the response discriminator: `canonical_index` is consumed and validated only
+for `DROP_REDUNDANT`; a value returned in that inactive field for `KEEP` or
+`DROP_LOW_VALUE` is discarded at the structured-response boundary. Missing,
+forward, invisible, or otherwise invalid canonical identity for an actual
+`DROP_REDUNDANT` rejects that provider response and receives the existing one
+bounded validation retry. If the batch still cannot satisfy the response
+contract, the optional admission gate conservatively emits `KEEP` for every
+candidate in that batch and continues, with fixed fallback batch and candidate
+counts. Once responses have been bound and accepted, complete coverage,
+datastore-owned index identity, and canonical-chain invariants over the
+assembled ledger remain deterministic code contracts and fail closed. This
+preserves the model's explicit valid admission actions without allowing one
+stochastic invalid batch to abort and replay a complete large Source Unit.
 
 ### Keep observability aggregate and content-free
 
@@ -142,6 +202,35 @@ The Candidate Ledger reports input/selected/exact-drop/semantic-drop counts,
 logical structured calls, validation retries, prompt characters, and elapsed
 model time through the same Source Unit result and audit path.
 
+### Bound provider concurrency without serializing independent batches
+
+Every structured-model client in one process participates in the same bounded
+admission limit. One permit covers the complete logical call, including
+provider retries and schema fallback, so a retry cannot temporarily exceed the
+configured provider concurrency. Queue time does not consume the logical
+provider deadline. Source processing and background Relation Discovery use the
+same admission boundary rather than independently multiplying concurrency.
+
+After request payloads and datastore-owned response identities have been
+planned, Candidate Ledger batches, entity-adjudication batches, and relation
+classification batches may execute concurrently up to that shared limit.
+Their results are restored to deterministic plan order and the existing
+coverage, slot, canonical-identity, access, and stale-guard validations still
+close before any result becomes lifecycle input. An exception cancels sibling
+work and no partial aggregate escapes. This is execution concurrency only: it
+does not widen a batch, reduce candidate or Evidence scope, change fallback
+semantics, or weaken the one atomic Lifecycle Plan.
+
+Memory identity worksets remain sequential because each workset owns bounded
+embeddings, recalled Memories, and semantic-pair objects whose release is part
+of the memory-safety design. Within one workset, exact and reactivation lookup,
+embedding transport, vector recall, and vector-hit Memory loading use adapter
+batch operations so their round trips scale with bounded adapter batches rather
+than challenger count. The bounded entity fallback retains its per-challenger
+ranking and exclusions; it is not replaced by an unmeasured, cross-query
+overfetch. The optimization does not retain non-target pair objects or make
+multiple identity worksets live at once.
+
 ### Bound transient work before increasing document admission
 
 `DocumentLifecycleAdmission` remains the count-based process-wide guard around
@@ -149,6 +238,16 @@ one complete document lifecycle. It does not guess a weight before collection
 has established the Source Unit, extraction batches, and Artifact sizes.
 Increasing its deployed limit is a measured capacity rollout, gated by
 single-lifecycle RSS/HWM headroom rather than source type or worker count.
+Resuming a durable Source Unit derivation is the same lifecycle at a later
+execution boundary, not lightweight run setup. Recovery therefore acquires the
+same process-wide document admission before resuming extraction, Candidate
+Ledger, identity, reconciliation, and the atomic Lifecycle Plan. It reports the
+bounded derivation workset as `recovering_derivations` progress while it waits
+and runs; `reconciling` remains reserved for authoritative removed-item
+detection.
+This prevents a recovered large document from overlapping another source's
+admitted PDF, image, extraction, or lifecycle work, without adding a second
+scheduler or reducing semantic scope.
 
 Within an admitted document, extraction uses a bounded worker loop instead of
 creating one task per unit or Projection batch. Document outline and glossary

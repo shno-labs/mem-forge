@@ -3,7 +3,8 @@
 Status: Accepted (2026-07-27)
 
 Amended: 2026-07-28 to define lifecycle handling for authoritatively removed
-supporting Observations and complete relation/audit disagreements.
+supporting Observations and complete relation/audit disagreements, and to bound
+Candidate Ledger request input independently from Source Unit cardinality.
 
 ## Context
 
@@ -200,19 +201,38 @@ attempt `superseded` and skips extraction and reconciliation. It must not call
 the model again and then compare a newly inferred payload with the already
 applied plan.
 
+One immutable Projection scope may also have more than one non-terminal
+derivation context when an earlier execution persisted the target Projection
+and a later retry deliberately changed execution strategy, for example from
+diff-guided to full-document derivation. Those contexts are alternatives, not
+independent lifecycle work. Before recovery, the pipeline keeps only the latest
+context for each source-activity epoch, Source Unit, target revision, and stable
+Projection identity, and marks older contexts `superseded`. Progress counts
+only the selected contexts. This prevents an obsolete strategy from failing
+again before its later fallback can run, while preserving the complete target
+Projection, Evidence authority, and one atomic Lifecycle Plan.
+
 This is a transactional staging/outbox use inside the existing workspace
 database. It is not a second Source Artifact or Memory lifecycle state machine:
 Source Observation and Lifecycle Plan records remain the only current evidence
 and mutation authorities.
 
-### Compose candidate uniqueness from bounded decision ledgers
+### Compose bounded candidate admission without a Source Unit count limit
 
-Candidate uniqueness is a proof over every extracted candidate, but the proof
-does not require one model response to contain every decision. Before model
-work, candidates receive a deterministic specificity precedence based on
-normalized content length, Memory type, content, and original position. The
-complete candidate inventory remains visible to every decision batch, while
-each response is responsible for exactly one bounded set of candidate indices.
+Candidate admission is a quality operation over every extracted candidate, not
+lifecycle or provenance authority and not a proof that no semantic duplicate
+exists anywhere in the Source Unit. Exact normalized-content deduplication
+remains complete and deterministic over the whole Source Unit. Semantic
+admission then gives every exact-unique candidate one disposition through
+bounded request and response batches.
+
+Before model work, candidates receive deterministic specificity precedence
+based on normalized content length, Memory type, content, and original
+position. Each decision batch sees only its bounded candidate set and is
+responsible for exactly those candidate indices. A batch may shrink below its
+fixed response-slot capacity to satisfy the request-context budget. Total
+Source Unit candidate cardinality is never a request budget and never a
+document failure condition.
 
 A candidate index is datastore-owned identity and is never emitted by the
 model. Each batch uses a fixed response object whose named slots are all
@@ -221,19 +241,42 @@ slots to null; the model returns only the ordered judgment or null required by
 each slot. Code binds active slots back to their indices. Duplicate,
 out-of-range, omitted, or model-invented decision-row identities are therefore
 not representable by a schema-valid response. Canonical target indices remain
-model judgments and are validated against the lower-precedence rule.
+model judgments and are validated against both the lower-precedence rule and
+the candidate set visible in that request.
 
-A redundant candidate may point only to a lower-precedence index. This makes
-the decision graph acyclic without relying on model compliance across batches.
-After all bounded batches validate, a deterministic reducer resolves each
-canonical chain to a terminal KEEP decision, validates one complete global
-ledger, and restores the original candidate order. No candidate enters
-reconciliation until that global completeness proof closes.
+A redundant candidate may point only to a visible lower-precedence index. This
+makes each decision graph acyclic without relying on model compliance. After
+all bounded batches validate, a deterministic reducer resolves canonical
+chains to terminal KEEP decisions, verifies that every exact-unique candidate
+has one disposition, and restores the original candidate order. No candidate
+enters reconciliation until that coverage proof closes.
 
-This bounds response cardinality independently from Source Unit cardinality.
-Raising the output-token limit, retrying an oversized monolithic response,
-truncating candidates, or accepting a partial ledger is not an accepted
-recovery path.
+A semantic duplicate outside the bounded comparison set is conservatively
+kept. Missing a quality optimization cannot discard knowledge or authorize a
+destructive lifecycle action. Existing candidate identity admission,
+same-source reconciliation, and Relation/Review contracts remain responsible
+for their own complete safety proofs.
+
+Candidate admission is also non-authoritative when the structured client
+cannot return a valid response after its provider fallback. Code closes that
+bounded batch locally with KEEP for every active candidate, continues later
+batches, and records only fixed fallback batch/candidate counts. It does not
+persist provider text or treat the failed quality optimization as lifecycle
+authority. A response that reaches application validation but violates the
+fixed-slot or canonical-target contract remains a deterministic contract
+failure rather than being silently accepted.
+
+The same bounded admission judgment may reject a candidate as low value only
+when the candidate is merely instance output or source-recoverable detail and
+does not preserve a reusable decision, rule, invariant, conclusion, or
+procedure. Low-value rejection is distinct from redundancy and has no
+canonical target. Uncertainty, partial overlap, or conflicting claims resolve
+to KEEP; conflict handling belongs to Relation/Review rather than admission.
+
+This bounds request and response cardinality independently from Source Unit
+cardinality. Raising a global candidate limit, raising the output-token limit,
+retrying an oversized monolithic request, truncating candidates, or accepting
+a partial disposition ledger is not an accepted recovery path.
 
 ### Compose reconciliation completeness from bounded ledgers
 
@@ -420,6 +463,9 @@ schema-valid output can be semantically invalid.
 - A deterministic multi-batch test proves that one retryable failure preserves
   completed sibling results, stages the exact target, leaves current lifecycle
   unchanged, and resumes only failed work.
+- A Candidate Ledger test proves that a structured-client failure keeps every
+  candidate in only that bounded admission batch, records safe fallback counts,
+  and continues later batches without exposing response content.
 - A reconciliation-matrix test proves that a candidate population larger than
   one model response is completely partitioned across bounded relation cells,
   receives one independent incumbent-support audit, and produces one merged
