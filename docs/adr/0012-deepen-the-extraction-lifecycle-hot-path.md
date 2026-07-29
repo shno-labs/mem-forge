@@ -116,7 +116,11 @@ each challenger still receives the fixed top-k, access-compatible candidate
 recall required by [ADR 0006](0006-bound-memory-identity-recall-before-semantic-proof.md).
 Only that workset's embeddings, recalled Memories, and semantic-pair objects
 remain live during classification. The resolver retains ordered compact
-decisions across worksets and releases the transient recall objects before the
+decisions across worksets: candidate identity, content and access stale-guard
+inputs, relation, direction, and reason. A selected `EQUIVALENT` target remains
+available for corroboration and Lifecycle Plan stale guards; non-target Memory
+content, extraction context, and semantic-pair objects do not survive the
+workset. The resolver releases those transient recall objects before the
 complete Source Unit enters its one atomic Lifecycle Plan.
 
 This batching is an execution partition, not a reduction in lifecycle or
