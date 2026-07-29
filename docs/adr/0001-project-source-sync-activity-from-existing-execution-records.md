@@ -29,6 +29,13 @@ terminal failure. It must not reconstruct the runtime, call a provider, or
 execute the Source again. This keeps storage adapters free of runtime retry
 policy while ensuring that an OOM cannot create an unbounded recovery loop.
 
+Durable Source Unit derivation recovery is exposed as
+`recovering_derivations`, with its outer completed/total workset measured in
+the Source's normal item unit. The presenter describes this as resuming Memory
+creation and leaves inner extraction, Candidate Ledger, identity, and lifecycle
+work indeterminate. `reconciling` is reserved for authoritative removed-item
+detection, so a recovery attempt cannot be presented as deletion checking.
+
 Local package intake also preserves web-runtime liveness. Document artifact
 stores remain synchronous shared adapters, but an async HTTP intake must run
 their blocking object-store or filesystem writes outside the request event
