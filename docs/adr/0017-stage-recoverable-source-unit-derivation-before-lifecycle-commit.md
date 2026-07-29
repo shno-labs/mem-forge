@@ -201,6 +201,17 @@ attempt `superseded` and skips extraction and reconciliation. It must not call
 the model again and then compare a newly inferred payload with the already
 applied plan.
 
+One immutable Projection scope may also have more than one non-terminal
+derivation context when an earlier execution persisted the target Projection
+and a later retry deliberately changed execution strategy, for example from
+diff-guided to full-document derivation. Those contexts are alternatives, not
+independent lifecycle work. Before recovery, the pipeline keeps only the latest
+context for each source-activity epoch, Source Unit, target revision, and stable
+Projection identity, and marks older contexts `superseded`. Progress counts
+only the selected contexts. This prevents an obsolete strategy from failing
+again before its later fallback can run, while preserving the complete target
+Projection, Evidence authority, and one atomic Lifecycle Plan.
+
 This is a transactional staging/outbox use inside the existing workspace
 database. It is not a second Source Artifact or Memory lifecycle state machine:
 Source Observation and Lifecycle Plan records remain the only current evidence
