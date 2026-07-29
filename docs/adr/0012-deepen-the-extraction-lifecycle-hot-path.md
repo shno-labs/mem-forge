@@ -13,6 +13,13 @@ Ledger batch whose provider response remains invalid after its validation retry
 now conservatively keeps that batch; deterministic invariants over the assembled
 datastore-bound ledger still fail closed.
 
+Amended: 2026-07-29 to admit structured-model calls through one process-wide
+bounded concurrency contract and to run only already-independent batch plans
+concurrently. Candidate Ledger, entity adjudication, and relation
+classification preserve deterministic input order and complete validation
+before results escape. Memory identity worksets remain sequential and bounded;
+their storage recall is batched instead of increasing semantic concurrency.
+
 ## Context
 
 The source-processing path performs a document-wide enrichment call before
@@ -194,6 +201,35 @@ characters, and elapsed time through that same event.
 The Candidate Ledger reports input/selected/exact-drop/semantic-drop counts,
 logical structured calls, validation retries, prompt characters, and elapsed
 model time through the same Source Unit result and audit path.
+
+### Bound provider concurrency without serializing independent batches
+
+Every structured-model client in one process participates in the same bounded
+admission limit. One permit covers the complete logical call, including
+provider retries and schema fallback, so a retry cannot temporarily exceed the
+configured provider concurrency. Queue time does not consume the logical
+provider deadline. Source processing and background Relation Discovery use the
+same admission boundary rather than independently multiplying concurrency.
+
+After request payloads and datastore-owned response identities have been
+planned, Candidate Ledger batches, entity-adjudication batches, and relation
+classification batches may execute concurrently up to that shared limit.
+Their results are restored to deterministic plan order and the existing
+coverage, slot, canonical-identity, access, and stale-guard validations still
+close before any result becomes lifecycle input. An exception cancels sibling
+work and no partial aggregate escapes. This is execution concurrency only: it
+does not widen a batch, reduce candidate or Evidence scope, change fallback
+semantics, or weaken the one atomic Lifecycle Plan.
+
+Memory identity worksets remain sequential because each workset owns bounded
+embeddings, recalled Memories, and semantic-pair objects whose release is part
+of the memory-safety design. Within one workset, exact and reactivation lookup,
+embedding transport, vector recall, and vector-hit Memory loading use adapter
+batch operations so their round trips scale with bounded adapter batches rather
+than challenger count. The bounded entity fallback retains its per-challenger
+ranking and exclusions; it is not replaced by an unmeasured, cross-query
+overfetch. The optimization does not retain non-target pair objects or make
+multiple identity worksets live at once.
 
 ### Bound transient work before increasing document admission
 
