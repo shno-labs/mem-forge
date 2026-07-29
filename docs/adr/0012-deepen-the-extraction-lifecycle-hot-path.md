@@ -202,6 +202,14 @@ one complete document lifecycle. It does not guess a weight before collection
 has established the Source Unit, extraction batches, and Artifact sizes.
 Increasing its deployed limit is a measured capacity rollout, gated by
 single-lifecycle RSS/HWM headroom rather than source type or worker count.
+Resuming a durable Source Unit derivation is the same lifecycle at a later
+execution boundary, not lightweight run setup. Recovery therefore acquires the
+same process-wide document admission before resuming extraction, Candidate
+Ledger, identity, reconciliation, and the atomic Lifecycle Plan. It reports the
+bounded derivation workset as `reconciling` progress while it waits and runs.
+This prevents a recovered large document from overlapping another source's
+admitted PDF, image, extraction, or lifecycle work, without adding a second
+scheduler or reducing semantic scope.
 
 Within an admitted document, extraction uses a bounded worker loop instead of
 creating one task per unit or Projection batch. Document outline and glossary
