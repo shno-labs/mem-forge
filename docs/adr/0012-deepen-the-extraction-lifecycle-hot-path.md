@@ -8,7 +8,10 @@ datastore-owned fixed response slots instead of model-repeated mention strings.
 Amended: 2026-07-29 to bound the complete Memory identity-resolution working
 set, including challenger embeddings and semantic-pair objects, rather than
 only bounding the final structured-model calls, and to make Candidate Ledger
-actions authoritative over non-applicable response fields.
+actions authoritative over non-applicable response fields. A bounded Candidate
+Ledger batch whose provider response remains invalid after its validation retry
+now conservatively keeps that batch; deterministic invariants over the assembled
+datastore-bound ledger still fail closed.
 
 ## Context
 
@@ -158,10 +161,15 @@ is the response discriminator: `canonical_index` is consumed and validated only
 for `DROP_REDUNDANT`; a value returned in that inactive field for `KEEP` or
 `DROP_LOW_VALUE` is discarded at the structured-response boundary. Missing,
 forward, invisible, or otherwise invalid canonical identity for an actual
-`DROP_REDUNDANT` remains a deterministic contract failure. This preserves the
-model's explicit admission action without allowing a non-applicable field to
-abort a complete large Source Unit after every bounded decision batch has
-already succeeded.
+`DROP_REDUNDANT` rejects that provider response and receives the existing one
+bounded validation retry. If the batch still cannot satisfy the response
+contract, the optional admission gate conservatively emits `KEEP` for every
+candidate in that batch and continues, with fixed fallback batch and candidate
+counts. Once responses have been bound and accepted, complete coverage,
+datastore-owned index identity, and canonical-chain invariants over the
+assembled ledger remain deterministic code contracts and fail closed. This
+preserves the model's explicit valid admission actions without allowing one
+stochastic invalid batch to abort and replay a complete large Source Unit.
 
 ### Keep observability aggregate and content-free
 
