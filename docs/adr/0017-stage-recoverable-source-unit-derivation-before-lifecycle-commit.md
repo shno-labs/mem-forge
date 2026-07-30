@@ -2,6 +2,10 @@
 
 Status: Accepted (2026-07-27)
 
+Amended: 2026-07-31 to make provider-neutral work planning part of the deep
+Source Unit Derivation module. The work kind and its bounded input identity are
+now durable manifest data rather than a transient caller branch.
+
 Amended: 2026-07-30 to advance the projection extraction contract when the
 shared candidate-language semantics changed. Completed batch output may be
 reused only under the exact extractor contract that produced it.
@@ -129,6 +133,33 @@ The implementation hides deterministic planning, durable staging, bounded
 parallel model calls, idempotent batch-result reuse, inference eligibility,
 summary validation, safe diagnostics, and final assembly. SQLite and HANA are
 adapters at one internal persistence seam.
+
+The deriver selects one of three provider-neutral work shapes before staging:
+
+- one textual Observation with a safe small-diff plan uses one changed-range
+  work item and validates every returned exact quote against the current
+  changed ranges;
+- one textual Observation that requires full-document extraction is partitioned
+  into deterministic structural Markdown units;
+- multiple Observations, or any Artifact-bearing projection, retains
+  Observation/Artifact projection batches.
+
+Callers execute the work item chosen by the deriver but do not choose or
+reconstruct that plan. The work kind, changed-hunk or structural-unit identity,
+and exact content hashes participate in the manifest and derivation identity.
+Recovery therefore resumes only outputs produced for the same immutable
+Projection, context, strategy, and extraction contract. Changing this planning
+contract advances the extraction contract version.
+
+If diff-guided work raises or returns a terminal extraction error, the deriver
+persists that failed attempt and stages one alternative structural-work
+manifest for the same immutable target. The document update remains
+`diff_guided`; an explicit derivation work-strategy override selects structural
+execution without changing the lifecycle meaning of the update. The override
+is operational and is excluded from stable lifecycle-context identity, while
+the structural batch hashes still produce a distinct derivation identity.
+Successful structural fallback supersedes the failed diff attempt. Callers do
+not implement or reconstruct this policy.
 
 ### Stage before remote work; commit current state once
 
