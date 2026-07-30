@@ -26,3 +26,10 @@ empty Evidence Unit content and uses `NO_EXCERPT`; it must not claim
 `SOURCE_EXCERPT` authority. This prevents lifecycle plans and Evidence storage
 from multiplying one large Observation by the number of extracted claims while
 preserving the complete revision-pinned audit path.
+
+The public `get_memory` contract preserves that claim-local text Evidence after
+the normal caller-visibility filter has been applied. MCP compaction therefore
+keeps each source's `excerpt` together with its source and resource locators,
+and keeps Artifact Evidence as separately fetchable metadata. It does not inline
+the complete Source Observation Revision. Callers can inspect the claim's exact
+support without multiplying or transferring the full document for every Memory.
