@@ -33,3 +33,21 @@ keeps each source's `excerpt` together with its source and resource locators,
 and keeps Artifact Evidence as separately fetchable metadata. It does not inline
 the complete Source Observation Revision. Callers can inspect the claim's exact
 support without multiplying or transferring the full document for every Memory.
+
+## Revision-range localization
+
+A Primary exact quote that occurs exactly once in the authoritative current
+Observation Revision is materialized as a half-open `REVISION_RANGE` Anchor.
+An empty, missing, or repeated quote remains a conservative
+`WHOLE_OBSERVATION` Anchor. Required and contextual references also remain
+whole-Observation authority because they do not claim that one quote alone
+contains their complete support.
+
+`STABLE_FRAGMENT` is reserved for provider-backed fragment identity with a
+proven mapping across revisions. Markdown headings, offsets, and similar
+derived structure must not be promoted to stable fragment identity by
+guessing. Range overlap can prove affected or disjoint only when both sides
+use the same Observation Revision coordinate space. A whole-Observation
+change or a range from another revision therefore resolves to `UNKNOWN`;
+lifecycle processing expands that uncertainty conservatively instead of
+claiming false disjointness.
