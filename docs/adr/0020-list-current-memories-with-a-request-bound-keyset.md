@@ -50,7 +50,7 @@ index snapshot requires a separate point-in-time resource:
 <https://www.elastic.co/docs/reference/elasticsearch/rest-apis/paginate-search-results>.
 
 The existing queryless `search` path remains compatibility-only for this
-release. It now honors Memory types but retains its legacy offset pagination
-and source-state behavior. Its description directs active-source time listings
-to `list_recent_memories` and forbids filler queries such as `updates` or
-`recent changes`.
+release. It now honors Memory types and the same active-source semantics, but
+retains its legacy offset pagination. Its description directs active-source
+time listings to `list_recent_memories` and forbids filler queries such as
+`updates` or `recent changes`.

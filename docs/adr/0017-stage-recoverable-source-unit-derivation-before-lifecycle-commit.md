@@ -151,6 +151,16 @@ Recovery therefore resumes only outputs produced for the same immutable
 Projection, context, strategy, and extraction contract. Changing this planning
 contract advances the extraction contract version.
 
+If diff-guided work raises or returns a terminal extraction error, the deriver
+persists that failed attempt and stages one alternative structural-work
+manifest for the same immutable target. The document update remains
+`diff_guided`; an explicit derivation work-strategy override selects structural
+execution without changing the lifecycle meaning of the update. The override
+is operational and is excluded from stable lifecycle-context identity, while
+the structural batch hashes still produce a distinct derivation identity.
+Successful structural fallback supersedes the failed diff attempt. Callers do
+not implement or reconstruct this policy.
+
 ### Stage before remote work; commit current state once
 
 Before the first remote model call, the datastore atomically stages:
