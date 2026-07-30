@@ -20,6 +20,11 @@ classification preserve deterministic input order and complete validation
 before results escape. Memory identity worksets remain sequential and bounded;
 their storage recall is batched instead of increasing semantic concurrency.
 
+Amended: 2026-07-30 to make every extraction entrypoint consume one shared,
+source-neutral durable-Memory quality contract. Projection batches may not
+weaken the code-recoverable, future-usefulness, deduplication, or meta-Memory
+rules applied by full-document, change, and deterministic-unit extraction.
+
 ## Context
 
 The source-processing path performs a document-wide enrichment call before
@@ -45,6 +50,17 @@ One structured semantic extraction pass runs per token-bounded Source Unit
 batch. It emits the existing transient Memory candidate shape, including exact
 revision-pinned Evidence localization and the entity mentions attributable to
 that candidate. Extraction does not receive unbounded workspace history.
+
+All extraction modes apply the same durable-Memory quality contract before a
+candidate enters lifecycle processing. Generated query text, schema columns,
+aliases, file paths, and other facts directly recoverable from current source
+are not Memories merely because they occur in a large authoritative document.
+Reusable decisions, reasons, constraints, invariants, conclusions, and
+procedures in that same document remain eligible. This is a content-quality
+contract, not a source-type, path, file-size, SQL-ratio, or provider special
+case. The optional Candidate Ledger can remove additional explicit low-value
+or redundant candidates, but its conservative `KEEP` semantics do not replace
+the extraction boundary.
 
 Same-source destructive reconciliation still covers every Memory in the
 Mandatory Incumbent Scope. Exact Evidence anchors and Revision Delta impact may
