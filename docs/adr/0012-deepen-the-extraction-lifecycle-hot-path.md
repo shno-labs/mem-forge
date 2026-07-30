@@ -25,6 +25,11 @@ source-neutral durable-Memory quality contract. Projection batches may not
 weaken the code-recoverable, future-usefulness, deduplication, or meta-Memory
 rules applied by full-document, change, and deterministic-unit extraction.
 
+Amended: 2026-07-30 to make the language of each candidate follow its owned
+source Evidence through that same shared contract. Read-only context may
+resolve meaning but cannot translate a candidate or select a different
+language.
+
 ## Context
 
 The source-processing path performs a document-wide enrichment call before
@@ -61,6 +66,20 @@ contract, not a source-type, path, file-size, SQL-ratio, or provider special
 case. The optional Candidate Ledger can remove additional explicit low-value
 or redundant candidates, but its conservative `KEEP` semantics do not replace
 the extraction boundary.
+
+That shared contract also preserves the language of each candidate's owned
+source Evidence. Chinese Primary Evidence produces Chinese Memory content;
+English Primary Evidence produces English Memory content; exact technical
+identifiers and genuinely mixed-language evidence remain unchanged. Context
+Evidence may resolve references and chronology but does not own the claim and
+cannot select its language. This is a per-candidate Evidence rule, not a
+document-, batch-, source-type-, or adapter-level heuristic.
+
+Changing this extraction contract governs new derivations and real source
+changes only. An unchanged Source Projection has no extraction batch, so a
+contract deployment does not reprocess, translate, or rewrite existing
+Memories. Explicit recovery and reprocessing operations retain their existing
+authority and lifecycle safeguards.
 
 Same-source destructive reconciliation still covers every Memory in the
 Mandatory Incumbent Scope. Exact Evidence anchors and Revision Delta impact may

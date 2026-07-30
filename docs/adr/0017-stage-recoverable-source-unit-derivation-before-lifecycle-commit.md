@@ -2,6 +2,10 @@
 
 Status: Accepted (2026-07-27)
 
+Amended: 2026-07-30 to advance the projection extraction contract when the
+shared candidate-language semantics changed. Completed batch output may be
+reused only under the exact extractor contract that produced it.
+
 Amended: 2026-07-28 to define lifecycle handling for authoritatively removed
 supporting Observations and complete relation/audit disagreements, and to bound
 Candidate Ledger request input independently from Source Unit cardinality.
@@ -147,6 +151,13 @@ contract version, Primary Observation revision identities, and deterministic
 segment ranges. It never contains the operational sync run id. Retrying the
 same immutable target therefore reuses completed outputs and executes only
 missing or failed batches.
+
+A material extraction prompt or response-schema change advances the extractor
+contract version. The new version changes derivation and batch input identity,
+so a staged output produced under an older semantic contract cannot be reused
+as if it satisfied the new contract. This invalidation applies only when a
+derivation is planned or resumed; it does not manufacture changed observations
+or reprocess an already-applied, unchanged Source Projection.
 
 Derivation identity additionally includes the stable context identity and
 source-activity epoch. The primary derivation ID is the sole datastore
