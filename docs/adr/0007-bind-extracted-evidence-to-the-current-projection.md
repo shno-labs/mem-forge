@@ -34,6 +34,44 @@ and keeps Artifact Evidence as separately fetchable metadata. It does not inline
 the complete Source Observation Revision. Callers can inspect the claim's exact
 support without multiplying or transferring the full document for every Memory.
 
+## Canonical claim Evidence excerpt
+
+Provider-returned `evidence_quote` is an untrusted localization proposal. Before
+durable derivation output is staged, the shared Evidence localization module
+validates that proposal against the immutable work scope and produces one
+canonical claim Evidence excerpt or no inline excerpt. Accepted text is
+preserved verbatim; the pipeline must not silently truncate it into a different
+quote. A generous operational byte envelope may prevent an unbounded inline
+payload, but exceeding that envelope omits or rejects the excerpt according to
+the work contract instead of changing its text.
+
+Changed-range work requires an exact current-revision quote that intersects the
+authoritative changed ranges. An unavailable inline excerpt therefore rejects
+that candidate and may activate the existing structural fallback. Structural
+work retains its deterministic unit-ownership gate; projection-batch work
+retains its Primary Observation gate. In those whole-scope cases an otherwise
+valid claim may remain revision-pinned with `WHOLE_OBSERVATION` and
+`NO_EXCERPT`, but the complete unit or Observation is not copied into claim
+Evidence. Short atomic Observations may still be preserved verbatim when the
+whole Observation is the actual claim Evidence. The Source Projection adapter,
+not downstream source-type branching, declares that atomic Evidence scope in
+Observation revision metadata. Artifact Evidence remains empty-text
+`SOURCE_ARTIFACT`.
+
+The canonical excerpt is the sole durable text authority for the claim.
+`EvidenceUnit.content`, `EvidenceUnit.excerpt`, `MemorySource.excerpt`, and the
+deprecated compatibility field `Memory.extraction_context` are all derived
+from that same value. The provider may not independently populate
+`extraction_context`, and downstream code may not use
+`evidence_quote or extraction_context` fallback selection. The compatibility
+field remains temporarily to avoid coupling this correctness change to a
+cross-adapter schema migration; its removal is tracked separately.
+
+Legacy cutover follows the same storage rule. An exact legacy excerpt may be
+preserved, while lineage that lacks one uses empty `LEGACY_LIMITED` Evidence.
+Cutover must never copy a complete Source Observation Revision into each
+backfilled Evidence Unit.
+
 ## Revision-range localization
 
 A Primary exact quote that occurs exactly once in the authoritative current
