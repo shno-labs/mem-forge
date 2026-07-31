@@ -2,6 +2,11 @@
 
 Status: Accepted (2026-07-27)
 
+Amended: 2026-07-31 to require canonical claim Evidence localization before a
+successful batch output becomes durable. Provider-returned quotes from an older
+extractor contract cannot be reused as if they satisfied the canonical excerpt
+contract.
+
 Amended: 2026-07-31 to make provider-neutral work planning part of the deep
 Source Unit Derivation module. The work kind and its bounded input identity are
 now durable manifest data rather than a transient caller branch.
@@ -203,9 +208,11 @@ payload hashes detect stored snapshot corruption. The two are never
 interchangeable.
 
 Each successful batch result is written before another remote call is required.
-The record contains validated candidate values and valid optional summaries,
-not prompt or raw response payloads. A crash can repeat at most the in-flight
-call; it cannot erase previously completed batches.
+The record contains validated candidate values, canonical claim Evidence
+excerpts, and valid optional summaries, not prompt or raw response payloads.
+Provider-returned `evidence_quote` and `extraction_context` are not two durable
+authorities. A crash can repeat at most the in-flight call; it cannot erase
+previously completed batches.
 
 Stable identity excludes only operational sync-run fields, observation
 timestamps, and optional Artifact summaries produced by this derivation. Exact
