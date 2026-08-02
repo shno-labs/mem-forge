@@ -339,6 +339,15 @@ deadline; exhausted transport failures, authentication failures, and deadline
 expiry do not trigger a second strategy that cannot repair them. Deadline
 expiry remains fail-closed.
 
+Native strict-schema admission is determined by the provider/model capability
+contract; a provider-prefixed model alias does not override that result. This
+matters when an orchestration adapter accepts a response-format parameter but
+the downstream model rejects the emitted schema complexity. A model that does
+not advertise native response-schema support uses the existing JSON-text path
+from its first attempt and validates the response locally against the same
+Pydantic contract. Provider transport constraints do not become domain fields,
+source-specific branches, or additional lifecycle states.
+
 The same boundary emits one content-free terminal metric per logical call
 containing issued attempts, transport retries, schema fallback count, final
 mode, elapsed time, terminal category, and provider token usage only when every
