@@ -279,19 +279,17 @@ Before model work, candidates receive deterministic specificity precedence
 based on normalized content length, Memory type, content, and original
 position. Each decision batch sees only its bounded candidate set and is
 responsible for exactly those candidate indices. A batch may shrink below its
-fixed response-slot capacity to satisfy the request-context budget. Total
+bounded decision-batch limit to satisfy the request-context budget. Total
 Source Unit candidate cardinality is never a request budget and never a
 document failure condition.
 
 A candidate index is datastore-owned identity and is never emitted by the
-model. Each batch uses a fixed response object whose named slots are all
-schema-required. The request maps active slots to candidate indices and unused
-slots to null; the model returns only the ordered judgment or null required by
-each slot. Code binds active slots back to their indices. Duplicate,
-out-of-range, omitted, or model-invented decision-row identities are therefore
-not representable by a schema-valid response. Canonical target indices remain
-model judgments and are validated against both the lower-precedence rule and
-the candidate set visible in that request.
+model. Each batch returns an ordered decision array. Application code requires
+its length to equal the active candidate count, then binds each array position
+back to the corresponding candidate index. Missing or excess judgments reject
+the response; no model-emitted decision-row identity is accepted. Canonical
+target indices remain model judgments and are validated against both the
+lower-precedence rule and the candidate set visible in that request.
 
 A redundant candidate may point only to a visible lower-precedence index. This
 makes each decision graph acyclic without relying on model compliance. After
@@ -312,7 +310,7 @@ bounded batch locally with KEEP for every active candidate, continues later
 batches, and records only fixed fallback batch/candidate counts. It does not
 persist provider text or treat the failed quality optimization as lifecycle
 authority. A response that reaches application validation but violates the
-fixed-slot or canonical-target contract remains a deterministic contract
+exact-coverage or canonical-target contract remains a deterministic contract
 failure rather than being silently accepted.
 
 The same bounded admission judgment may reject a candidate as low value only

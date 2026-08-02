@@ -30,6 +30,13 @@ source Evidence through that same shared contract. Read-only context may
 resolve meaning but cannot translate a candidate or select a different
 language.
 
+Amended: 2026-08-03 to replace the transient Candidate Ledger and entity
+adjudication nullable fixed-slot responses with ordered decision arrays.
+Request-specific exact coverage is validated in application code. Candidate
+Ledger retains one validation retry and all-KEEP fallback; entity adjudication
+retains one validation retry and fails before Entity or alias writes. The
+authoritative lifecycle fixed-slot protocols remain unchanged.
+
 ## Context
 
 The source-processing path performs a document-wide enrichment call before
@@ -115,15 +122,15 @@ case- and prompt-bounded structured adjudication calls. The hard prompt bound
 applies to the final rendered prompt, including its template and document
 context; a single oversized case fails closed.
 
-Each adjudication batch maps its ordered mentions to datastore-owned, named
-response slots. Every slot is schema-required: active slots must contain one
-judgment and unused slots must be null. The model returns only `matched_id`,
-confidence, and reason; it never repeats or invents the mention identity. Code
-binds each active slot back to its request-owned mention before any Entity or
-alias write occurs. Missing active judgments, non-null unused slots, and
-out-of-capacity batch configuration fail closed. Every returned ID is validated
-against the candidate set supplied in that slot, and resolved IDs map back only
-to the Memory candidates that mentioned them.
+Each adjudication batch returns an ordered decision array with exactly one
+judgment per ordered mention. The model returns only `matched_id`, confidence,
+and reason; it never repeats or invents mention identity. Code validates the
+exact response count and binds each array position back to its request-owned
+mention before any Entity or alias write occurs. A count mismatch receives one
+bounded validation retry; a second mismatch fails the complete resolver call
+before Entity or alias writes. Every returned ID is validated against the
+candidate set supplied for that mention, and resolved IDs map back only to the
+Memory candidates that mentioned them.
 
 Embedding is recall, never merge authority. No retrieved candidate means a new
 Entity without an LLM call. A confirmed same-entity decision may learn an alias;
@@ -212,6 +219,10 @@ datastore-owned index identity, and canonical-chain invariants over the
 assembled ledger remain deterministic code contracts and fail closed. This
 preserves the model's explicit valid admission actions without allowing one
 stochastic invalid batch to abort and replay a complete large Source Unit.
+The response is an ordered decision array: application code requires exactly
+one decision per active candidate and binds it to the datastore-owned candidate
+index by array position. No provider-specific batch size or dynamic schema is
+used to express request-specific length.
 
 ### Keep observability aggregate and content-free
 
@@ -227,10 +238,10 @@ The first implementation records extraction prompt character count, structured
 call count and model elapsed time, then aggregates those content-free values
 across bounded Source Unit batches. Entity resolution additionally reports
 unique mentions, exact/alias hits, embedded and ambiguous mentions, candidate
-count, embedding batches, adjudication calls, new identities, and elapsed time
-through the existing memory/RSS stage event. Provider token counts remain
-optional until the configured client exposes them; prompt text is never
-persisted as telemetry.
+count, embedding batches, adjudication calls, validation retries, new
+identities, and elapsed time through the existing memory/RSS stage event.
+Provider token counts remain optional until the configured client exposes them;
+prompt text is never persisted as telemetry.
 Identity admission reports classified pair count, structured call count, prompt
 characters, and elapsed time through that same event.
 The Candidate Ledger reports input/selected/exact-drop/semantic-drop counts,
@@ -250,7 +261,7 @@ After request payloads and datastore-owned response identities have been
 planned, Candidate Ledger batches, entity-adjudication batches, and relation
 classification batches may execute concurrently up to that shared limit.
 Their results are restored to deterministic plan order and the existing
-coverage, slot, canonical-identity, access, and stale-guard validations still
+coverage, positional-binding, canonical-identity, access, and stale-guard validations still
 close before any result becomes lifecycle input. An exception cancels sibling
 work and no partial aggregate escapes. This is execution concurrency only: it
 does not widen a batch, reduce candidate or Evidence scope, change fallback
