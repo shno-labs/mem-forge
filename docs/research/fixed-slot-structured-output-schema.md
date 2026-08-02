@@ -133,6 +133,41 @@ Then retain deterministic boundary checks:
 
 For OpenAI/Gemini, exact `minItems`/`maxItems` may additionally be pushed into the wire schema. For Claude, use its supported simplified array schema and keep the same Pydantic/application checks. This preserves the 24/32 business batch sizes, caller-owned identity, and coverage invariant without creating 24/32 outer nullable unions.
 
+### Native Anthropic transport through SAP orchestration
+
+The ordered array removes the schema-complexity blocker but does not by itself
+select native structured output. LiteLLM 1.86 reports no native response-schema
+capability for `sap/anthropic--claude-4.6-sonnet`, so an automatic-only client
+would still choose JSON text even when the deployed gateway supports Claude
+structured output.
+
+A bounded live probe against the Cloud Foundry-bound SAP AI Core environment on
+2026-08-03 established the current transport behavior:
+
+- a minimal schema succeeded through both SAP's documented `response_format`
+  prompt field and Anthropic's current `output_config.format` model parameter;
+- the raw Pydantic Candidate Ledger and Entity Batch schemas failed because
+  they still contained unsupported generation constraints such as `minimum`,
+  `maximum`, and `maxLength`;
+- the same two schemas succeeded after the public
+  `anthropic.transform_schema()` conversion, returning one schema-valid ordered
+  decision in each probe.
+
+Anthropic documents `output_config.format` as the current API shape and explains
+that its SDK transformer removes unsupported wire constraints, adds
+`additionalProperties: false`, and validates the result against the original
+schema. See [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
+SAP's orchestration API permits model-specific parameters through the model
+configuration, while its response-formatting guide separately documents the
+prompt-level `response_format` field. See [SAP response formatting](https://help.sap.com/docs/sap-ai-core/generative-ai/response-formatting).
+
+The adopted seam is therefore one explicit transport choice at deployment
+construction: `auto` keeps LiteLLM capability discovery for ordinary models;
+`anthropic_output_config` sends the provider-transformed schema through
+`output_config.format`. This does not add a lifecycle state or a second domain
+schema. The original Pydantic model and application-level coverage checks remain
+authoritative after the provider response.
+
 If schema-level completeness on Claude is explicitly judged more important than portability, keep named slots—but generate only the active required non-null slots rather than padding a fixed maximum with nullable fields. That alternative should be adopted only with evidence because every active batch size changes the schema and may reduce grammar-cache reuse.
 
 ## Bottom line
