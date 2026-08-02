@@ -42,6 +42,11 @@ Amended: 2026-08-03 to let a deployment explicitly select Anthropic's current
 registry lags the deployed model. The provider SDK simplifies only the wire
 schema; the original Pydantic model remains response authority.
 
+Amended: 2026-08-03 to give Memory-pair relation classification one bounded
+coverage retry. A missing, duplicate, or unexpected caller-owned `pair_index`
+regenerates the complete batch with explicit expected indices; a second invalid
+ledger fails closed and leaves the durable Relation Discovery work retryable.
+
 ## Context
 
 The source-processing path performs a document-wide enrichment call before
@@ -199,6 +204,13 @@ completion transaction, including candidate current-Support-set hashes. It
 reuses valid overlapping decisions while still retrieving and classifying
 additional candidates. This input is part of normal relation work, not a replay
 or classification ledger.
+
+Each relation-classification batch returns one decision array keyed only by its
+caller-owned `pair_index` values. Application code requires the returned set to
+equal the issued set exactly. It does not collapse duplicate decisions or fill
+missing ones. An invalid coverage set receives one bounded regeneration of the
+complete batch with the exact expected indices; a second invalid response fails
+closed before relation outcomes are committed.
 
 Lifecycle stale-guard input is loaded through one batch support-state operation
 that returns the active Evidence Reference IDs and canonical support-set hash
