@@ -214,6 +214,15 @@ inference criterion but remains inside the storage contract is preserved
 exactly with a safe ineligibility reason; it is not silently discarded or sent
 to the model.
 
+Historical revisions written before deterministic eligibility metadata remain
+readable through one shared compatibility parser. A missing eligibility field
+uses the complete contract of that historical writer: the Artifact is admitted
+only when its recorded size is inside the inference byte budget. The
+intermediate writer that stored a boolean without a reason may be interpreted
+as byte-limit ineligible only when the recorded size independently proves that
+condition. No other missing or inconsistent field combination is accepted, and
+this compatibility does not introduce another Artifact or lifecycle state.
+
 Inference reuses the generic Projection extraction planner. One structured call
 contains at most eight Primary Observations and satisfies the aggregate binary
 byte budget, so a large image collection is coalesced into bounded multimodal

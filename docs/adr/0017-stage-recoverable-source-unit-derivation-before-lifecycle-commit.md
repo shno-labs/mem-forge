@@ -413,6 +413,14 @@ limit, or inference byte limit. The original exact bytes, MIME type, size, and
 hash remain revision-pinned and retrievable. The planner never includes such an
 Artifact in a remote model request.
 
+Artifact revisions created before this classifier are interpreted only through
+the historical writer contract centralized in the Source Artifact module.
+Missing eligibility is not proof of ineligibility: the pre-classifier contract
+admits the revision only within its recorded inference byte budget. A legacy
+false value without a reason is accepted only when that same size proves the
+byte-limit reason. Lifecycle and derivation callers consume this one parsed
+result and do not compose their own legacy field combinations.
+
 Integrity failures that make the stored bytes untrustworthy still fail
 materialization. Inference failures do not masquerade as storage failures.
 
