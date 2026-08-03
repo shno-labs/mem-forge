@@ -4,6 +4,12 @@ Extractor-provided Source Observation identities are localization hints, not evi
 
 This rule lives in the shared evidence-localization module and does not branch on provider type. Valid in-scope hints must still contain the quote, and revalidated no-op evidence retains its explicit current-revision validation. The same contract therefore applies to document-based and conversational sources without weakening changed-scope ownership.
 
+When only Required Evidence changes, revalidated no-op Support may retain an
+unchanged, revision-pinned Primary `WHOLE_OBSERVATION` with `NO_EXCERPT`.
+An exact current-revision quote is required only when the Primary itself must
+be re-anchored; the engine must not add a model dependency merely to replace
+already valid whole-Observation authority with a range.
+
 When a revised Primary Observation requires semantic revalidation but the
 structured provider cannot return a valid decision, or reports support without
 an exact quote from the current revision, the engine must not invent or

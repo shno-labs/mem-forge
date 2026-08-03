@@ -46,6 +46,16 @@ Provider-specific attachment URLs, pagination, authentication, and revision
 formats remain inside Genes. Lifecycle, storage protocols, extraction, routes,
 and MCP do not branch on Confluence, Jira, or any future provider.
 
+For Jira Data Center secure-attachment locators, the attachment id is the
+provider identity and the final path segment is only a display filename. The
+Jira Gene rejects a secure-route id that differs from the descriptor id, then
+retains the same-origin secure route and replaces its display segment with the
+deterministic safe name `attachment-{id}` before streaming. This avoids
+container-level rejection of historical filenames while preserving the exact
+attachment id, bytes, media type, declared size, and revision. REST
+content-by-id locators and non-secure attachment routes remain unchanged;
+thumbnails are never substituted for originals.
+
 ### Current body reachability defines Artifact membership
 
 A provider-owned attachment inventory is not itself current Source Evidence.
@@ -193,6 +203,12 @@ the Artifact Anchor and store a content-free Evidence excerpt. Required
 text/image observations may accompany the Primary Artifact using the existing
 Evidence roles.
 
+If changed Required Evidence revalidates a claim whose Primary Artifact
+revision is unchanged, the rebound Support retains that Primary's
+`SOURCE_ARTIFACT` provenance and whole-observation Anchor. It must not demand a
+text quote from binary content or silently downgrade the Artifact to generic
+`NO_EXCERPT` Evidence.
+
 Enumeration, persistence, and inference have separate provider-neutral
 budgets. Provider inventory is paginated until the provider proves completion;
 cursor cycles, non-advancing pages, malformed pages, and incomplete coverage
@@ -213,6 +229,19 @@ bounded materialization spool is available. An Artifact that fails an
 inference criterion but remains inside the storage contract is preserved
 exactly with a safe ineligibility reason; it is not silently discarded or sent
 to the model.
+
+Historical revisions written before deterministic eligibility metadata remain
+readable through one shared compatibility parser. Only the proven legacy shape,
+where both eligibility fields are absent, uses that historical writer contract:
+the Artifact is admitted only when its recorded size is inside the inference
+byte budget. The intermediate writer that stored a boolean without a reason may
+be interpreted as byte-limit ineligible only when the recorded size independently
+proves that condition. An explicit null eligibility, a reason without an
+eligibility decision, and every other missing or inconsistent combination are
+invalid rather than guessed. Projection admission consumes this normalized
+decision and does not reapply its own size-based eligibility rule; size remains
+available separately for batch byte accounting. This compatibility does not
+introduce migration, metadata versions, or another Artifact or lifecycle state.
 
 Inference reuses the generic Projection extraction planner. One structured call
 contains at most eight Primary Observations and satisfies the aggregate binary
