@@ -15,8 +15,8 @@ The agent-client package owns:
 - redacting obvious client-visible secrets before upload
 - uploading the window to `POST /api/agent-sessions/windows`
 - exposing a local MCP proxy that forwards memory operations to the service
-- resolving optional per-call repository context into a normalized Git remote
-  without sending the local path to the service
+- resolving optional per-call repository context into one immutable workspace
+  target and normalized Git remote without sending the local path to the service
 - downloading source artifacts into a client-local cache when an agent calls
   `get_resource(mode="file")`
 
@@ -37,19 +37,21 @@ compatibility boundary only; it does not change the MemForge service contract.
 
 ### Repository context
 
-`search` and `create_memory` accept an optional
+Every workspace-bound MCP tool accepts an optional
 `repository_context.working_directory`. A coding host should pass its exact
 current working directory when known and omit the object when unavailable; it
-must not guess or use the plugin installation directory. The local proxy
-resolves the Git `origin` into a portable `repo_identifier`, removes the local
-path from the request, and sends only the normalized identifier to OSS or
-Cloud.
+must not guess or use the plugin installation directory. The local proxy uses
+the repository root to select the effective workspace and resolves Git
+`origin` into a portable `repo_identifier`. It removes the local path before
+HTTP and sends the normalized identifier only on operations that use repository
+attribution.
 
 The same tool contract applies to Codex, Claude Code, Cursor, and other MCP
 clients. Existing MCP `roots/list` handling is retained only as a compatibility
-adapter for hosts that provide it. No client-specific workspace environment
-variable is required. Missing, invalid, non-Git, or multi-repository context
-never blocks ordinary search or manual Memory creation.
+adapter for calls that omit explicit context. Missing context falls back to a
+settled compatible Root or the configured global workspace. Explicit invalid,
+non-local, or non-Git context fails before HTTP so it cannot silently read or
+write another workspace.
 
 The service never creates agent-local filesystem paths. When an agent asks for a
 source artifact in `file` mode, the local proxy downloads the bytes from the
@@ -65,7 +67,7 @@ sequenceDiagram
   Agent->>Proxy: MCP stdio tools/list
   Proxy-->>Agent: search, get_memory, get_resource schemas
   Agent->>Proxy: MCP stdio tools/call search + optional working directory
-  Proxy->>Proxy: Resolve Git origin; discard local path
+  Proxy->>Proxy: Resolve workspace target and Git origin; discard local path
   Proxy->>Service: POST /api/memories/search + normalized repository affinity
   Service-->>Proxy: ranked memory cards
   Proxy-->>Agent: MCP text result
@@ -81,13 +83,14 @@ sequenceDiagram
 
 | MCP tool | Proxy action | Service endpoint | Local state |
 | --- | --- | --- | --- |
+| `list_sources` | Resolve optional repository context and list workspace sources | `GET /api/sources/searchable` | None |
 | `search` | Resolve optional repository context and forward query | `POST /api/memories/search` | None |
-| `create_memory` | Resolve optional repository attribution and forward confirmed content | `POST /api/memories/create` | None |
-| `get_memory` | Fetch memory detail | `GET /api/memories/{memory_id}` | None |
+| `create_memory` | Resolve optional repository context and forward confirmed content | `POST /api/memories/create` | None |
+| `get_memory` | Resolve optional repository context and fetch memory detail | `GET /api/memories/{memory_id}` | None |
 | `submit_agent_session_document` | Submit generated summary | `POST /api/agent-sessions/documents` | None |
-| `get_resource(mode="text")` | Fetch artifact text | Service `content_url` | None |
-| `get_resource(mode="base64")` | Fetch artifact bytes | Service artifact URL | None |
-| `get_resource(mode="file")` | Fetch artifact bytes and cache locally | Service artifact URL | Writes `~/.memforge-agent/artifacts` |
+| `get_resource(mode="text")` | Resolve optional repository context and fetch artifact text | Service `content_url` | None |
+| `get_resource(mode="base64")` | Resolve optional repository context and fetch artifact bytes | Service artifact URL | None |
+| `get_resource(mode="file")` | Resolve optional repository context, fetch, and cache artifact bytes | Service artifact URL | Writes `~/.memforge-agent/artifacts` |
 
 Hook traffic is separate from MCP tool calls. Hooks use the Admin API directly
 for compact prompt context, receipts, and agent-session windows:
