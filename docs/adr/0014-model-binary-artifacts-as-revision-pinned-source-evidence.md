@@ -46,6 +46,15 @@ Provider-specific attachment URLs, pagination, authentication, and revision
 formats remain inside Genes. Lifecycle, storage protocols, extraction, routes,
 and MCP do not branch on Confluence, Jira, or any future provider.
 
+For Jira Data Center secure-attachment locators, the attachment id is the
+provider identity and the final path segment is only a display filename. The
+Jira Gene therefore retains the same-origin secure route and replaces that
+display segment with the deterministic safe name `attachment-{id}` before
+streaming. This avoids container-level rejection of historical filenames while
+preserving the exact attachment id, bytes, media type, declared size, and
+revision. REST content-by-id locators and non-secure attachment routes remain
+unchanged; thumbnails are never substituted for originals.
+
 ### Current body reachability defines Artifact membership
 
 A provider-owned attachment inventory is not itself current Source Evidence.
