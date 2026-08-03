@@ -203,6 +203,12 @@ the Artifact Anchor and store a content-free Evidence excerpt. Required
 text/image observations may accompany the Primary Artifact using the existing
 Evidence roles.
 
+If changed Required Evidence revalidates a claim whose Primary Artifact
+revision is unchanged, the rebound Support retains that Primary's
+`SOURCE_ARTIFACT` provenance and whole-observation Anchor. It must not demand a
+text quote from binary content or silently downgrade the Artifact to generic
+`NO_EXCERPT` Evidence.
+
 Enumeration, persistence, and inference have separate provider-neutral
 budgets. Provider inventory is paginated until the provider proves completion;
 cursor cycles, non-advancing pages, malformed pages, and incomplete coverage
