@@ -10,6 +10,14 @@ An exact current-revision quote is required only when the Primary itself must
 be re-anchored; the engine must not add a model dependency merely to replace
 already valid whole-Observation authority with a range.
 
+Rebinding an equivalent claim from old Support to current-revision Support is
+one atomic no-op lifecycle action. While the Configured Source lifecycle gate
+is enabled, the planner removes the old Support and attaches the validated new
+Support in the same Plan. While the gate is closed, the planner stages those
+exact mutations in the existing Lifecycle Review and leaves the incumbent and
+its old Support active; it must not fail the complete Source Unit or bypass the
+gate merely because the Memory content is unchanged.
+
 When a revised Primary Observation requires semantic revalidation but the
 structured provider cannot return a valid decision, or reports support without
 an exact quote from the current revision, the engine must not invent or
@@ -76,7 +84,10 @@ cross-adapter schema migration; its removal is tracked separately.
 Legacy cutover follows the same storage rule. An exact legacy excerpt may be
 preserved, while lineage that lacks one uses empty `LEGACY_LIMITED` Evidence.
 Cutover must never copy a complete Source Observation Revision into each
-backfilled Evidence Unit.
+backfilled Evidence Unit. During cutover a Memory may temporarily retain more
+than one active Primary Support; the audit treats it as mapped when any active
+Primary exactly pins its Observation's current revision, rather than depending
+on storage return order.
 
 ## Revision-range localization
 
