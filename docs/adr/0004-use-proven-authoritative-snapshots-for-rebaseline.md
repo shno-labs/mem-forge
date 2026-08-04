@@ -39,6 +39,21 @@ pending Memory Review that names that Memory, including related challengers,
 as stale. Review history is preserved; a review may not remain actionable
 against a retired or superseded target.
 
+`stale` is a terminal audit result, not a user workflow state. It is excluded
+from the actionable Review queue and cannot be refreshed by merely re-pinning
+optimistic timestamps. If current source state still needs judgment, normal
+reconciliation creates a new Review with current projections and stale guards.
+
+The user-facing Review contract spans workbench and projected-lifecycle Review
+records but exposes exactly two decisions: **Use latest state** applies the
+already-staged authoritative proposal, while **Keep current state** rejects it
+and requires an audit note. A provider-neutral presentation module explains the
+current state, proposed state, consequence of each decision, and source
+Evidence without granting lifecycle authority. Raw planner reasons, identifiers,
+and diffs remain optional technical detail; they are not the primary decision
+interface. The two storage records retain their distinct transaction mechanics,
+but neither introduces a third active-state outcome such as keeping both sides.
+
 A pending cross-source Review is written with its RelationRun only after both
 active Memories, both current revision-pinned Support lineages, and compatible
 access contexts validate in one transaction. Retrying its deterministic Review
