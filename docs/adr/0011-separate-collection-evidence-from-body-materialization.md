@@ -38,6 +38,12 @@ Collection Coverage has exactly three semantics:
 - `partial` reports useful observations without deletion authority. It cannot
   advance a checkpoint or finalize a no-op.
 
+Snapshot authority belongs to the current run's validated immutable manifest,
+not to a source type or replay adapter capability. A direct provider pull with
+no bound input snapshot remains incremental even when that source type also has
+an authoritative local-daemon collector; its prior successful watermark must
+remain available to the connector.
+
 The Candidate Checkpoint becomes current only with the successful Source
 Projection and lifecycle transaction. Configuration/activity epoch, lease
 attempt, authorization scope, pagination completeness, item identity, and body
