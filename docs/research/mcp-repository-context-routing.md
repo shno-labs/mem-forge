@@ -1,6 +1,6 @@
 # MCP repository-context workspace routing
 
-Research date: 2026-08-03. This note is a design input for repository-local
+Research date: 2026-08-03; amended 2026-08-04. This note is a design input for repository-local
 MemForge workspace routing. It is not an ADR. Source-code observations are
 pinned to OpenAI Codex `d6407d735942c7cfc996aa2bc7d0f97fc8f0e4bf`, the
 official MCP Python SDK `a4f4ccd091138771535e17191123f20b30fda68e`, and the
@@ -14,9 +14,10 @@ does not opt in to that capability, and MCP 2026-07-28 deprecates Roots in
 favor of tool parameters, resource URIs, or server configuration. When a
 MemForge tool call already carries an exact
 `repository_context.working_directory`, that request-local value should be
-the primary input to the existing repository workspace resolver. Roots should
-remain a compatibility fallback for calls that do not carry repository
-context, not an authority that can override an explicit call context.
+the primary input to the existing repository workspace resolver. A negotiated
+request-scoped host cwd is the next reliable input because it does not depend on
+model-generated arguments. Roots should remain a compatibility fallback for
+calls that carry neither, not an authority that can override call context.
 
 The resolver should produce one immutable workspace target per tool call and
 use it for both repository attribution and every workspace-bound Cloud request.
@@ -80,6 +81,29 @@ Sources:
 - [Codex derives the local MCP fallback cwd, pinned](https://github.com/openai/codex/blob/d6407d735942c7cfc996aa2bc7d0f97fc8f0e4bf/codex-rs/core/src/session/mcp_runtime.rs#L23-L30)
 - [Codex applies configured cwd or the session fallback, pinned](https://github.com/openai/codex/blob/d6407d735942c7cfc996aa2bc7d0f97fc8f0e4bf/codex-rs/codex-mcp/src/rmcp_client.rs#L1014-L1056)
 
+### Codex supports a negotiated request-scoped cwd
+
+Codex `0.146.0` lets an MCP server advertise the experimental
+`codex/sandbox-state-meta` server capability. For an opted-in server, Codex
+augments each model-initiated `tools/call` request with the current
+`SandboxState`. The `sandboxCwd` field is selected from the MCP server's owning
+turn environment, with the default local server falling back to the current
+turn cwd. The server capability is connection-scoped, while the cwd payload is
+built at the individual tool-call boundary.
+
+This is materially different from using the MCP process cwd or a workspace
+environment variable: the proxy can remain long-lived while each request
+carries its own repository candidate. The field is a Codex extension rather
+than portable MCP, so MemForge should adapt it into the same internal
+Repository Context used by the portable tool argument and retain other client
+paths unchanged.
+
+Sources:
+
+- [OpenAI Codex PR #17763: Send sandbox state through MCP tool metadata](https://github.com/openai/codex/pull/17763)
+- [OpenAI Codex PR #28914: Scope MCP sandbox metadata to server environment](https://github.com/openai/codex/pull/28914)
+- [OpenAI Codex 0.146.0 request metadata routing](https://github.com/openai/codex/blob/be449751a978f02e5bbba886999662956c7f38f5/codex-rs/core/src/mcp_tool_call.rs#L723-L789)
+
 ### First-party SDKs favor explicit request-local context
 
 The official MCP Python SDK v2 removed its ambient
@@ -110,11 +134,13 @@ Use one request-local target-resolution path for every workspace-bound tool:
    resolver from that directory. A valid repository-local
    `.memforge/config.toml` wins according to the existing configuration
    precedence.
-2. If repository context is absent, use a settled, unambiguous MCP root as the
+2. If explicit context is absent and negotiated request metadata contains an
+   exact host cwd, normalize it through the same resolver.
+3. If request context is absent, use a settled, unambiguous MCP root as the
    compatibility path for older callers that advertise Roots.
-3. If neither per-call context nor a usable root exists, use the configured
+4. If neither per-call context nor a usable root exists, use the configured
    process/user default workspace.
-4. Resolve once at the start of the tool call and pass the resulting target
+5. Resolve once at the start of the tool call and pass the resulting target
    to repository attribution, source operations, memory operations, and the
    HTTP client. Do not resolve attribution and the HTTP workspace separately.
 
@@ -142,6 +168,8 @@ The implementation should prove the boundary with request-level tests:
 | Exact repo cwd with local override | Unsupported/absent | Repo override |
 | Exact repo cwd with local override | Different global/root workspace | Repo override |
 | Exact repo cwd, no local override | Unsupported/absent | Normal configured fallback |
+| Codex sandbox cwd with local override | Unsupported/absent | Repo override |
+| Explicit repo cwd plus different sandbox cwd | Any | Explicit repo override |
 | No repository context | One settled repo root with override | Root-derived repo override |
 | No repository context | Unsupported/absent | Global default |
 | Invalid explicit repository context | Any | Routing error; never silent cross-workspace data |

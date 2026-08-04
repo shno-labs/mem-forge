@@ -1,6 +1,6 @@
 # Keep manual Memory creation independent of repository roots
 
-Status: Accepted (2026-07-26)
+Status: Accepted, amended (2026-08-04)
 
 ## Context
 
@@ -24,13 +24,19 @@ they reached those contracts. It also made repository metadata behave like
 authorization even though the authenticated principal and private visibility
 own that boundary.
 
+Some coding hosts now expose the owning task environment's cwd through
+negotiated, request-scoped MCP metadata. Unlike an environment variable or the
+proxy process cwd, this value is attached to the individual tool call and does
+not become stale when concurrent tasks use different repositories.
+
 ## Decision
 
 The packaged MCP proxy owns one host-neutral Repository Context module. Its
-interface resolves an optional per-call working directory and compatible
-client-provided roots into one of three results: exact, absent, or ambiguous.
-It derives repository identity locally with the Git `origin` remote and the
-shared repository-identifier normalization contract.
+interface resolves an optional per-call working directory, a negotiated host
+cwd adapter, and compatible client-provided roots into one of three results:
+exact, absent, or ambiguous. It derives repository identity locally with the
+Git `origin` remote and the shared repository-identifier normalization
+contract.
 
 `search` and `create_memory` expose the same optional
 `repository_context.working_directory` tool argument. Coding clients pass the
@@ -40,7 +46,9 @@ never sent to OSS or Cloud.
 
 Existing MCP `roots/list` support remains a compatibility adapter during the
 protocol deprecation period. Explicit per-call context takes precedence because
-it identifies the repository active for that operation. The proxy does not read
+it identifies the repository active for that operation. A successfully
+negotiated request-metadata cwd is second because it is supplied by the host for
+that exact call without model participation. The proxy does not read
 `CODEX_WORKSPACE_ROOT`, another client-specific workspace variable, or its own
 process working directory as a fallback.
 
@@ -77,11 +85,13 @@ classification cannot drift from the provenance edge that owns it.
 
 ## Consequences
 
-Codex, Claude Code, Cursor, and future MCP clients share one tool contract.
-Repository Context resolution has no MemForge client-name branches. Clients
-that expose MCP roots receive automatic compatibility behavior; other clients
-can supply the per-call working directory through the standard tool interface.
-No user-managed workspace environment variable is required.
+Codex, Claude Code, Cursor, and future MCP clients share one portable tool
+contract. Optional negotiated host adapters normalize into that contract inside
+the local proxy and do not change OSS or Cloud APIs. Codex can provide its
+request-local cwd through `codex/sandbox-state-meta`; clients that expose MCP
+roots receive compatibility behavior; every client can still supply the
+per-call working directory through the standard tool interface. No user-managed
+workspace environment variable is required.
 
 The Repository Context module is the only place that understands local path
 validation, Git remote lookup, exact/absent/ambiguous resolution, and transport
@@ -107,3 +117,4 @@ source-lifecycle decisions.
 - [Agent Knowledge Bundle](../design/agent-knowledge-bundle.md)
 - [Agent Hook Integration](../design/agent-hook-integration.md)
 - [MCP SEP-2577: Deprecate Roots, Sampling, and Logging](https://modelcontextprotocol.io/seps/2577-deprecate-roots-sampling-and-logging)
+- [ADR 0018: Resolve request-scoped repository context before workspace-routed tool calls](0018-settle-mcp-roots-before-workspace-routed-tool-calls.md)
