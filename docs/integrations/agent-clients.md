@@ -46,12 +46,18 @@ the repository root to select the effective workspace and resolves Git
 HTTP and sends the normalized identifier only on operations that use repository
 attribution.
 
-The same tool contract applies to Codex, Claude Code, Cursor, and other MCP
+Codex can supply the same working directory automatically. The proxy advertises
+the negotiated `codex/sandbox-state-meta` capability, and Codex attaches the
+current tool call's `sandboxCwd` in request `_meta`. The proxy consumes that cwd
+only when explicit `repository_context` is absent. It does not cache the value,
+read the MCP process cwd, or forward sandbox policy to MemForge.
+
+The portable tool contract still applies to Claude Code, Cursor, and other MCP
 clients. Existing MCP `roots/list` handling is retained only as a compatibility
-adapter for calls that omit explicit context. Missing context falls back to a
-settled compatible Root or the configured global workspace. Explicit invalid,
-non-local, or non-Git context fails before HTTP so it cannot silently read or
-write another workspace.
+adapter for calls that omit both explicit and negotiated context. Missing
+context falls back to a settled compatible Root or the configured global
+workspace. Invalid explicit or negotiated non-local/non-Git context fails
+before HTTP so it cannot silently read or write another workspace.
 
 The service never creates agent-local filesystem paths. When an agent asks for a
 source artifact in `file` mode, the local proxy downloads the bytes from the
@@ -66,7 +72,7 @@ sequenceDiagram
 
   Agent->>Proxy: MCP stdio tools/list
   Proxy-->>Agent: search, get_memory, get_resource schemas
-  Agent->>Proxy: MCP stdio tools/call search + optional working directory
+  Agent->>Proxy: MCP tools/call + explicit or negotiated working directory
   Proxy->>Proxy: Resolve workspace target and Git origin; discard local path
   Proxy->>Service: POST /api/memories/search + normalized repository affinity
   Service-->>Proxy: ranked memory cards

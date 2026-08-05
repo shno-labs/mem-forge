@@ -1264,8 +1264,10 @@ source IDs or clients instead of guessing, normalizing, or returning an
 accidentally empty result set. The optional
 `repository_context.working_directory` is consumed by the local proxy and
 never forwarded as a filesystem path. When it resolves exactly one Git remote,
-the normalized identifier becomes a soft ranking affinity. Compatible MCP
-roots can supply the same hint during their deprecation period. The schema does
+the normalized identifier becomes a soft ranking affinity. A negotiated
+request-scoped host cwd, such as Codex `sandboxCwd`, supplies the same local
+context automatically when the explicit argument is absent. Compatible MCP
+roots remain the next fallback during their deprecation period. The schema does
 not expose `current_repo_only`; if a stale caller still sends it, the proxy
 rejects the request and tells the agent to omit the filter for a broader search.
 
