@@ -64,6 +64,24 @@ validation. Repository identity remains optional attribution:
 - the server remains responsible for principal, visibility, lifecycle,
   idempotency, provenance, and storage validation.
 
+The manual-memory interface preserves content and provenance as two distinct
+values throughout the tool chain. Before calling `create_memory`, the agent
+distills one self-contained durable claim or bounded procedure for `content`
+and obtains user confirmation without moving source context, confirmation
+details, or operational logs into that value. The separately confirmed
+`provenance` is the claim-local Evidence excerpt for the virtual
+`user_memory` Support. The deprecated `Memory.extraction_context`
+compatibility field temporarily mirrors that same excerpt; it is not a second
+authority.
+
+Search remains claim-focused and returns the durable content or its compact
+summary. `get_memory` returns the complete canonical content together with the
+claim-local provenance in `sources[].excerpt`; callers use `get_resource` only
+when a configured source exposes a larger document or Artifact. Manual
+provenance therefore survives a `create_memory` -> `search` -> `get_memory`
+round trip without adding a direct-user-only response field or inlining the
+virtual provenance Document.
+
 Search follows the same rule. Exact context becomes
 `active_repo_identifier`, which is a ranking affinity rather than an access
 predicate. Absent or ambiguous context leaves search broad. Exact repository
@@ -108,6 +126,11 @@ and virtual-provenance visibility contract for manual `user_memory` creation.
 Cloud receives the normalized identifier only and never receives a client-local
 path.
 
+Direct user corrections follow the same Evidence rule: replacement content is
+the new canonical Memory, while the separately confirmed correction
+provenance is the `user_correction` Support excerpt. Historical direct-user
+Support is not reinterpreted or backfilled.
+
 This decision does not add a Cursor distribution package or expand the bounded
 agent-session producer/client taxonomy. Those are separate integration and
 source-lifecycle decisions.
@@ -116,5 +139,6 @@ source-lifecycle decisions.
 
 - [Agent Knowledge Bundle](../design/agent-knowledge-bundle.md)
 - [Agent Hook Integration](../design/agent-hook-integration.md)
+- [Canonical claim Evidence](0007-bind-extracted-evidence-to-the-current-projection.md)
 - [MCP SEP-2577: Deprecate Roots, Sampling, and Logging](https://modelcontextprotocol.io/seps/2577-deprecate-roots-sampling-and-logging)
 - [ADR 0018: Resolve request-scoped repository context before workspace-routed tool calls](0018-settle-mcp-roots-before-workspace-routed-tool-calls.md)
