@@ -61,6 +61,13 @@ select the standard JSON Schema `response_format` envelope or the direct
 Anthropic `output_config.format` envelope; the shared client contains no
 gateway aliases, SAP configuration, or provider-routing policy.
 
+Amended: 2026-08-06 to make structured-client construction part of the
+`RuntimeProvider` interface. Search, source sync, and request-scoped
+agent-session packaging obtain their client through that runtime adapter, so a
+deployment selects its transport once. The default OSS adapter remains
+provider-neutral and uses `auto`; provider or gateway aliases remain outside
+the shared client and its business callers.
+
 ## Context
 
 The source-processing path performs a document-wide enrichment call before

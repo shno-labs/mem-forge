@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import gc
+import inspect
 from io import BytesIO
 import json
 import logging
@@ -838,6 +839,85 @@ async def test_litellm_structured_client_uses_explicit_json_schema_response_form
             "schema": CandidateLedgerResponse.model_json_schema(),
         },
     }
+
+
+@pytest.mark.asyncio
+async def test_explicit_schema_transport_covers_every_public_structured_operation(
+    monkeypatch,
+):
+    calls: list[dict[str, object]] = []
+    payloads = {
+        "SourceSupportResponse": '{"decisions":[]}',
+        "MemoryExtractionResponse": '{"memories":[]}',
+        "ProjectionMemoryExtractionResponse": '{"memories":[]}',
+        "CandidateLedgerResponse": '{"decisions":[]}',
+        "CandidateRelationResponse": '{"decisions":[]}',
+        "IncumbentSupportAuditResponse": '{"decisions":[]}',
+        "MemoryRelationResponse": '{"decisions":[]}',
+        "MemorySupportValidationResponse": '{"supported":true}',
+        "EntityValidationResponse": '{}',
+        "EntityBatchValidationResponse": '{"decisions":[]}',
+        "QueryEntityDetectionResponse": '{"entity_ids":[]}',
+        "RerankResponse": '{"ranking":[]}',
+        "AgentKnowledgePatchProposal": '{"action":"no_output"}',
+        "AgentSessionAuthorityResponse": '{"decisions":[]}',
+    }
+
+    async def fake_acompletion(**kwargs):
+        calls.append(kwargs)
+        response_format = kwargs["response_format"]
+        schema_name = response_format["json_schema"]["name"]
+        return CompletionResponse(payloads[schema_name])
+
+    monkeypatch.setattr("memforge.llm.structured.litellm.acompletion", fake_acompletion)
+    client = LiteLlmStructuredClient(
+        StructuredLlmConfig(
+            model="gateway/structured-model",
+            base_url=None,
+            api_key=None,
+            timeout_s=120.0,
+            native_schema_transport="json_schema_response_format",
+        )
+    )
+    operations = {
+        "verify_source_support": lambda: client.verify_source_support("prompt"),
+        "extract_memories": lambda: client.extract_memories("prompt", max_tokens=512),
+        "extract_projection_memories": lambda: client.extract_projection_memories(
+            "prompt",
+            max_tokens=512,
+        ),
+        "select_memory_candidates": lambda: client.select_memory_candidates("prompt"),
+        "reconcile_candidate_relations": lambda: client.reconcile_candidate_relations("prompt"),
+        "audit_incumbent_support": lambda: client.audit_incumbent_support("prompt"),
+        "classify_memory_relations": lambda: client.classify_memory_relations("prompt"),
+        "validate_memory_support": lambda: client.validate_memory_support("prompt"),
+        "validate_entity_match": lambda: client.validate_entity_match("prompt"),
+        "validate_entity_batch": lambda: client.validate_entity_batch("prompt"),
+        "detect_query_entities": lambda: client.detect_query_entities("prompt"),
+        "rerank_memories": lambda: client.rerank_memories("prompt"),
+        "generate_agent_knowledge_patch": lambda: client.generate_agent_knowledge_patch("prompt"),
+        "classify_agent_session_evidence_authority": (
+            lambda: client.classify_agent_session_evidence_authority("prompt")
+        ),
+    }
+    public_async_operations = {
+        name
+        for name, member in inspect.getmembers(
+            LiteLlmStructuredClient,
+            inspect.iscoroutinefunction,
+        )
+        if not name.startswith("_")
+    }
+
+    assert public_async_operations == set(operations)
+    for invoke in operations.values():
+        await invoke()
+
+    assert [
+        call["response_format"]["json_schema"]["name"]
+        for call in calls
+    ] == list(payloads)
+    assert all("output_config" not in call for call in calls)
 
 
 @pytest.mark.asyncio

@@ -185,6 +185,13 @@ class SyncRuntime:
 class RuntimeProvider(Protocol):
     """Runtime construction seam for admin apps with non-SQLite stores."""
 
+    def build_structured_llm_client(
+        self,
+        llm: EffectiveLlmConfig,
+        *,
+        max_concurrent: int,
+    ) -> LiteLlmStructuredClient | None: ...
+
     def build_adapters(
         self,
         db: "Database",
@@ -232,6 +239,17 @@ class RuntimeProvider(Protocol):
 
 class DefaultRuntimeProvider:
     """Default SQLite-backed runtime provider."""
+
+    def build_structured_llm_client(
+        self,
+        llm: EffectiveLlmConfig,
+        *,
+        max_concurrent: int,
+    ) -> LiteLlmStructuredClient | None:
+        return _structured_llm_client(
+            llm,
+            max_concurrent=max_concurrent,
+        )
 
     def build_adapters(
         self,
@@ -486,6 +504,26 @@ def _has_structured_llm_credentials(llm: EffectiveLlmConfig) -> bool:
     return bool(llm.enrichment_api_key) or is_litellm_provider_model(llm.enrichment_model)
 
 
+def _structured_llm_client(
+    llm: EffectiveLlmConfig,
+    *,
+    max_concurrent: int,
+) -> LiteLlmStructuredClient | None:
+    """Build the default provider-neutral structured client in one place."""
+
+    if not _has_structured_llm_credentials(llm):
+        return None
+    return LiteLlmStructuredClient(
+        StructuredLlmConfig(
+            model=llm.enrichment_model,
+            base_url=llm.enrichment_base_url or None,
+            api_key=llm.enrichment_api_key or None,
+            timeout_s=llm.request_timeout_s,
+            max_concurrent=max_concurrent,
+        )
+    )
+
+
 def _retrieval_config_for_llm(config: AppConfig, llm: EffectiveLlmConfig):
     """Use the effective enrichment model for optional LLM retrieval assists."""
     return replace(
@@ -519,17 +557,10 @@ async def build_search_engine(
         "api_key": llm.embedding_api_key,
         "model": llm.embedding_model,
     }
-    structured_llm_client = None
-    if _has_structured_llm_credentials(llm):
-        structured_llm_client = LiteLlmStructuredClient(
-            StructuredLlmConfig(
-                model=llm.enrichment_model,
-                base_url=llm.enrichment_base_url or None,
-                api_key=llm.enrichment_api_key or None,
-                timeout_s=llm.request_timeout_s,
-                max_concurrent=config.llm.enrichment_max_concurrent,
-            )
-        )
+    structured_llm_client = _structured_llm_client(
+        llm,
+        max_concurrent=config.llm.enrichment_max_concurrent,
+    )
     adapters = build_sqlite_adapters(db, memory_collection, audit_logger=audit_logger)
     return SearchEngine(
         relational=adapters.relational,
@@ -549,17 +580,10 @@ async def build_sync_runtime(
     document_lifecycle_admission: DocumentLifecycleAdmission | None = None,
 ) -> SyncRuntime:
     llm = await get_effective_llm_config(db, config)
-    structured_llm_client = None
-    if _has_structured_llm_credentials(llm):
-        structured_llm_client = LiteLlmStructuredClient(
-            StructuredLlmConfig(
-                model=llm.enrichment_model,
-                base_url=llm.enrichment_base_url or None,
-                api_key=llm.enrichment_api_key or None,
-                timeout_s=llm.request_timeout_s,
-                max_concurrent=config.llm.enrichment_max_concurrent,
-            )
-        )
+    structured_llm_client = _structured_llm_client(
+        llm,
+        max_concurrent=config.llm.enrichment_max_concurrent,
+    )
     doc_store = LocalDocumentStore(config.storage.docs_path)
 
     memory_extractor = MemoryExtractor(
