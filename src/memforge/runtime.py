@@ -246,9 +246,16 @@ class DefaultRuntimeProvider:
         *,
         max_concurrent: int,
     ) -> LiteLlmStructuredClient | None:
-        return _structured_llm_client(
-            llm,
-            max_concurrent=max_concurrent,
+        if not _has_structured_llm_credentials(llm):
+            return None
+        return LiteLlmStructuredClient(
+            StructuredLlmConfig(
+                model=llm.enrichment_model,
+                base_url=llm.enrichment_base_url or None,
+                api_key=llm.enrichment_api_key or None,
+                timeout_s=llm.request_timeout_s,
+                max_concurrent=max_concurrent,
+            )
         )
 
     def build_adapters(
@@ -267,9 +274,16 @@ class DefaultRuntimeProvider:
         *,
         audit_logger: MemoryAuditLogger | None = None,
     ) -> Any:
-        return await build_search_engine(
+        llm = await get_effective_llm_config(db, config)
+        structured_llm_client = self.build_structured_llm_client(
+            llm,
+            max_concurrent=config.llm.enrichment_max_concurrent,
+        )
+        return _build_default_search_engine(
             db=db,
             config=config,
+            llm=llm,
+            structured_llm_client=structured_llm_client,
             audit_logger=audit_logger,
         )
 
@@ -281,9 +295,16 @@ class DefaultRuntimeProvider:
         extraction_pool: ExtractionWorkPool | None = None,
         document_lifecycle_admission: DocumentLifecycleAdmission | None = None,
     ) -> SyncRuntime:
-        return await build_sync_runtime(
+        llm = await get_effective_llm_config(db, config)
+        structured_llm_client = self.build_structured_llm_client(
+            llm,
+            max_concurrent=config.llm.enrichment_max_concurrent,
+        )
+        return _build_default_sync_runtime(
             db=db,
             config=config,
+            llm=llm,
+            structured_llm_client=structured_llm_client,
             extraction_pool=extraction_pool,
             document_lifecycle_admission=document_lifecycle_admission,
         )
@@ -504,26 +525,6 @@ def _has_structured_llm_credentials(llm: EffectiveLlmConfig) -> bool:
     return bool(llm.enrichment_api_key) or is_litellm_provider_model(llm.enrichment_model)
 
 
-def _structured_llm_client(
-    llm: EffectiveLlmConfig,
-    *,
-    max_concurrent: int,
-) -> LiteLlmStructuredClient | None:
-    """Build the default provider-neutral structured client in one place."""
-
-    if not _has_structured_llm_credentials(llm):
-        return None
-    return LiteLlmStructuredClient(
-        StructuredLlmConfig(
-            model=llm.enrichment_model,
-            base_url=llm.enrichment_base_url or None,
-            api_key=llm.enrichment_api_key or None,
-            timeout_s=llm.request_timeout_s,
-            max_concurrent=max_concurrent,
-        )
-    )
-
-
 def _retrieval_config_for_llm(config: AppConfig, llm: EffectiveLlmConfig):
     """Use the effective enrichment model for optional LLM retrieval assists."""
     return replace(
@@ -545,22 +546,32 @@ async def build_search_engine(
     promote-to-workspace path reachable through the engine records its attempts
     on the same audit channel as the rest of the runtime.
     """
+    return await DefaultRuntimeProvider().build_search_engine(
+        db,
+        config,
+        audit_logger=audit_logger,
+    )
+
+
+def _build_default_search_engine(
+    *,
+    db: "Database",
+    config: AppConfig,
+    llm: EffectiveLlmConfig,
+    structured_llm_client: LiteLlmStructuredClient | None,
+    audit_logger: MemoryAuditLogger | None,
+) -> Any:
     from memforge.retrieval.search import SearchEngine
 
     memory_collection = get_chroma_collection(
         chroma_path=config.storage.chroma_path,
         name="memories",
     )
-    llm = await get_effective_llm_config(db, config)
     embed_cfg = {
         "base_url": llm.embedding_base_url,
         "api_key": llm.embedding_api_key,
         "model": llm.embedding_model,
     }
-    structured_llm_client = _structured_llm_client(
-        llm,
-        max_concurrent=config.llm.enrichment_max_concurrent,
-    )
     adapters = build_sqlite_adapters(db, memory_collection, audit_logger=audit_logger)
     return SearchEngine(
         relational=adapters.relational,
@@ -579,11 +590,23 @@ async def build_sync_runtime(
     extraction_pool: ExtractionWorkPool | None = None,
     document_lifecycle_admission: DocumentLifecycleAdmission | None = None,
 ) -> SyncRuntime:
-    llm = await get_effective_llm_config(db, config)
-    structured_llm_client = _structured_llm_client(
-        llm,
-        max_concurrent=config.llm.enrichment_max_concurrent,
+    return await DefaultRuntimeProvider().build_sync_runtime(
+        db,
+        config,
+        extraction_pool=extraction_pool,
+        document_lifecycle_admission=document_lifecycle_admission,
     )
+
+
+def _build_default_sync_runtime(
+    *,
+    db: "Database",
+    config: AppConfig,
+    llm: EffectiveLlmConfig,
+    structured_llm_client: LiteLlmStructuredClient | None,
+    extraction_pool: ExtractionWorkPool | None,
+    document_lifecycle_admission: DocumentLifecycleAdmission | None,
+) -> SyncRuntime:
     doc_store = LocalDocumentStore(config.storage.docs_path)
 
     memory_extractor = MemoryExtractor(

@@ -151,18 +151,18 @@ names or routing policy:
 
 - `auto` delegates capability discovery and schema conversion to LiteLLM;
 - `json_schema_response_format` sends the standard JSON Schema
-  `response_format` envelope built from the original Pydantic schema;
-- `anthropic_output_config` sends the direct Anthropic API envelope and uses
-  `anthropic.transform_schema()` for that provider contract.
+  `response_format` envelope built from the original Pydantic schema.
 
-Anthropic documents `output_config.format` as its direct API shape and explains
-that its SDK transformer removes unsupported wire constraints and adds
-`additionalProperties: false`. See [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
 OpenAI-compatible gateways commonly accept the separate `response_format`
 envelope; an integration must verify its own adapter rather than infer a wire
 contract from the underlying model family.
 
 The adopted seam is one explicit transport choice at deployment construction.
+For a gateway that treats message content as a prompt template, the deployment
+adapter may also name one generic prompt-template variable; the shared client
+then carries the complete prompt as its placeholder value so template-like
+source text remains data. This configuration contains no provider or gateway
+alias.
 Provider- and gateway-specific model aliases remain outside the OSS client.
 This does not add a lifecycle state or a second domain schema. The original
 Pydantic model and application-level coverage checks remain authoritative after

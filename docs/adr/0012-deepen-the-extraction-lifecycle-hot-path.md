@@ -43,10 +43,10 @@ lifecycle coverage; application code validates exact response count and binds
 each array position to request-owned candidate or incumbent identity. One
 validation retry remains, followed by fail-closed reconciliation.
 
-Amended: 2026-08-03 to let a deployment explicitly select Anthropic's current
-`output_config.format` native-schema transport when a gateway capability
-registry lags the deployed model. The provider SDK simplifies only the wire
-schema; the original Pydantic model remains response authority.
+Amended: 2026-08-03 to let a deployment explicitly select a native-schema
+transport when a gateway capability registry lags the deployed model. This
+initially included a direct provider-SDK envelope; the 2026-08-06 refinement
+below supersedes that provider-specific transport in the shared OSS client.
 
 Amended: 2026-08-03 to give Memory-pair relation classification one bounded
 coverage retry. Duplicate caller-owned `pair_index` entries are reduced
@@ -57,16 +57,20 @@ durable Relation Discovery work retryable.
 
 Amended: 2026-08-06 to make explicit structured-output transport selection a
 wire-contract decision rather than a model-name inference. Integrations may
-select the standard JSON Schema `response_format` envelope or the direct
-Anthropic `output_config.format` envelope; the shared client contains no
-gateway aliases, SAP configuration, or provider-routing policy.
+select the standard JSON Schema `response_format` envelope. A deployment may
+also opt into generic prompt-template wrapping by naming its placeholder
+variable. The shared client contains no gateway aliases, SAP configuration,
+provider SDK schema transformer, or model-name routing policy.
 
 Amended: 2026-08-06 to make structured-client construction part of the
 `RuntimeProvider` interface. Search, source sync, and request-scoped
 agent-session packaging obtain their client through that runtime adapter, so a
-deployment selects its transport once. The default OSS adapter remains
-provider-neutral and uses `auto`; provider or gateway aliases remain outside
-the shared client and its business callers.
+deployment selects its transport once. The default provider's public module
+helpers also delegate to that adapter, preserving one construction authority.
+The default OSS adapter remains provider-neutral and uses `auto`; provider or
+gateway aliases remain outside the shared client and its business callers.
+`MemoryExtractor(api_key=...)` remains a provider-neutral standalone-library
+compatibility path; application runtimes inject the shared client instead.
 
 ## Context
 
@@ -404,12 +408,13 @@ by default. A deployment integration may explicitly select a standard wire
 contract when a bounded live provider probe proves that the gateway supports it
 even though its generic registry entry still reports false. The
 `json_schema_response_format` contract emits the OpenAI-compatible JSON Schema
-envelope from the original Pydantic schema. The
-`anthropic_output_config` contract emits Anthropic's direct API envelope and
-uses its public schema transformer. The shared client knows only the selected
-wire contract, not the gateway, model alias, or source type. MemForge validates
-every response against the original Pydantic model and retains its exact-count,
-identity, and business invariants.
+envelope from the original Pydantic schema. A deployment adapter may configure
+a prompt-template variable for gateways that interpret message content as a
+template; the shared client then carries the complete prompt as one placeholder
+value. The shared client knows only the selected standard wire contract and
+optional template variable, not the gateway, model alias, provider, or source
+type. MemForge validates every response against the original Pydantic model and
+retains its exact-count, identity, and business invariants.
 
 Without an explicit transport, a model that does not advertise native response
 schema support uses the existing JSON-text path from its first attempt. An
