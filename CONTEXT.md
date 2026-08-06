@@ -1,5 +1,14 @@
 # Domain Context
 
+## Workspace selection
+
+- **Workspace Directory** — The principal-scoped list of workspaces the caller may know about, including current active/selectable state and the optional Default Workspace. Listing it is discovery, not a prerequisite for data-plane requests.
+- **Requested Workspace** — An explicit `workspace_id` supplied on one HTTP or MCP operation. It is validated without revealing inaccessible workspaces.
+- **Default Workspace** — An optional user preference used only while the user still has access and the workspace remains selectable. It is not identity or authorization.
+- **Authorized Workspace Context** — The single workspace selected, authorized, and bound to one data-plane request. Handlers and durable work consume this context rather than resolving workspace again.
+- **Workspace Selection Source** — The reason the Authorized Workspace Context was chosen: Requested Workspace, valid Default Workspace, or the caller's singleton accessible workspace.
+- **Repository Context** — Repository attribution used for provenance and retrieval relevance. It never selects or authorizes a workspace.
+
 ## Source synchronization
 
 - **Source Lifecycle** — Whether a configured source is active or paused. Lifecycle is independent of where collection executes and whether the current device can perform that collection.
