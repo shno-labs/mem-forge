@@ -214,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
             payload = _read_hook_payload()
         except OSError:
             payload = {}
-        configured_target(_target_repository_paths(payload))
+        configured_target()
     except ValueError as exc:
         print(
             json.dumps(
@@ -830,7 +830,7 @@ def _post_json(path: str, payload: dict[str, Any], *, timeout: float) -> dict[st
 
 
 def _resource_url(path: str, *, repository_paths: tuple[str, ...] = ()) -> str:
-    return configured_target(repository_paths).resource_url(path)
+    return configured_target().resource_url(path)
 
 
 def _target_repository_paths(payload: dict[str, Any]) -> tuple[str, ...]:

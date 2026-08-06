@@ -1,6 +1,9 @@
 # Resolve request-scoped repository context before workspace-routed tool calls
 
-Status: Accepted, amended (2026-08-04)
+Status: Superseded by ADR 0021 (2026-08-06)
+
+ADR 0021 removes repository-derived workspace routing entirely. This record is
+retained only as history for the request-scoped repository attribution barrier.
 
 ## Context
 
