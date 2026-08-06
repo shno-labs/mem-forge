@@ -20,9 +20,10 @@ discovery, but cannot be a prerequisite for every session or tool call.
 
 OSS and Cloud expose one breaking v1 data plane at `/api/v1/...`. Every
 workspace-scoped HTTP operation accepts an optional `workspace_id` query
-parameter. The MCP server exposes `list_workspaces`; every other MCP tool has
-the same optional `workspace_id` input. Repository Context is provenance and
-retrieval attribution only. It never selects a workspace.
+parameter. The MCP server exposes `list_workspaces` and
+`set_default_workspace`; every data-plane MCP tool has the same optional
+`workspace_id` input. Repository Context is provenance and retrieval
+attribution only. It never selects a workspace.
 
 The server resolves exactly one Authorized Workspace Context for each data-
 plane request in this order:
@@ -43,6 +44,14 @@ user preference only after current access validation. Revoking membership or
 retiring routing makes that preference ineffective; membership revocation
 also clears a matching preference.
 
+The MCP `set_default_workspace` tool is an explicit control-plane operation.
+Its description requires user confirmation, and its only input is the selected
+workspace ID. Calling another tool with `workspace_id` is a one-request
+override and never changes the default. A workspace-selection conflict in an
+automatic hook reports an actionable instruction to discover and confirm a
+default; hooks do not open an interactive MCP flow or maintain hidden session
+selection state.
+
 Self-hosted OSS implements the same contract as a singleton directory. Its
 stable readable workspace ID is `local`, its role is `owner`, and it is always
 the default. Explicit values other than `local` fail with the same workspace
@@ -58,6 +67,11 @@ Cloud and self-hosted clients share one URL and tool schema. Single-workspace
 users can omit `workspace_id`; multi-workspace users may set a default or pass
 an explicit selector without changing agent environment or repository files.
 Calling `list_workspaces` first remains optional.
+
+Automatic hooks and omitted data-plane selectors converge on the same
+server-side Default Workspace. Existing bounded hook retries may succeed after
+the preference is set; the hook transport does not invent a separate queue,
+workspace cache, or agent-environment override.
 
 The old path-shaped Cloud surface, unversioned OSS data plane,
 `MEMFORGE_WORKSPACE_ID`, repository `.memforge/config.toml` workspace
