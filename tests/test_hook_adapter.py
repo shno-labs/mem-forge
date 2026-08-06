@@ -900,11 +900,14 @@ def test_codex_and_claude_plugins_include_hooks_and_adapter_wrappers():
     assert "SubagentStop" in claude_hooks["hooks"]
 
 
-def test_mcp_tools_all_accept_repository_context():
+def test_mcp_data_tools_accept_repository_context_but_workspace_directory_does_not():
     from memforge import plugin_mcp_proxy
 
     assert plugin_mcp_proxy.TOOLS
     for tool in plugin_mcp_proxy.TOOLS:
+        if tool["name"] == "list_workspaces":
+            assert tool["inputSchema"]["properties"] == {}
+            continue
         assert "repository_context" in tool["inputSchema"]["properties"], tool["name"]
 
 
