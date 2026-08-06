@@ -55,6 +55,12 @@ unexpected index regenerates the complete batch with explicit expected
 indices; a second incomplete or foreign ledger fails closed and leaves the
 durable Relation Discovery work retryable.
 
+Amended: 2026-08-06 to make explicit structured-output transport selection a
+wire-contract decision rather than a model-name inference. Integrations may
+select the standard JSON Schema `response_format` envelope or the direct
+Anthropic `output_config.format` envelope; the shared client contains no
+gateway aliases, SAP configuration, or provider-routing policy.
+
 ## Context
 
 The source-processing path performs a document-wide enrichment call before
@@ -387,14 +393,16 @@ expiry do not trigger a second strategy that cannot repair them. Deadline
 expiry remains fail-closed.
 
 Native strict-schema admission follows the provider/model capability registry
-by default. A deployment integration may explicitly select Anthropic's current
-`output_config.format` transport when a bounded live provider probe proves that
-the gateway supports it even though its generic registry entry still reports
-false. The shared client knows only the selected transport, not the gateway or
-source type. For that transport, Anthropic's public schema transformer removes
-unsupported wire constraints and adds `additionalProperties: false`; MemForge
-still validates every response against the original Pydantic model and retains
-its exact-count, identity, and business invariants.
+by default. A deployment integration may explicitly select a standard wire
+contract when a bounded live provider probe proves that the gateway supports it
+even though its generic registry entry still reports false. The
+`json_schema_response_format` contract emits the OpenAI-compatible JSON Schema
+envelope from the original Pydantic schema. The
+`anthropic_output_config` contract emits Anthropic's direct API envelope and
+uses its public schema transformer. The shared client knows only the selected
+wire contract, not the gateway, model alias, or source type. MemForge validates
+every response against the original Pydantic model and retains its exact-count,
+identity, and business invariants.
 
 Without an explicit transport, a model that does not advertise native response
 schema support uses the existing JSON-text path from its first attempt. An
