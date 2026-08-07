@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "memforge"
-version = "0.1.0"
+version = "0.1.45"
 description = "Evidence-based agent memory layer for Codex, Claude Code, and development teams"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -66,6 +66,9 @@ Issues = "https://github.com/shno-labs/mem-forge/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/memforge"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"docs/adr/0022-resolve-ranked-search-intent-from-validated-client-hints.md" = "memforge/docs/adr/0022-resolve-ranked-search-intent-from-validated-client-hints.md"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
