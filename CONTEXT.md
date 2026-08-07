@@ -38,6 +38,15 @@
 - **Managed Capture** — Knowledge produced from a system-created capture Source, such as an Agent Session Source, without requiring the user to configure an ingestion connection.
 - **Configured Source** — Knowledge produced from a user-configured ingestion connection such as Confluence, Jira, Teams, GitHub Repository, or Local Repository.
 
+## Memory retrieval
+
+- **Requested Retrieval Intent** — An optional query-scoped hint selected by an Agent Client from the user's conversational goal. It may request General Hybrid Retrieval, Known Item Lookup, or Relationship Exploration, but cannot weaken visibility, provenance, or facet constraints.
+- **Resolved Retrieval Intent** — The validated query-scoped purpose that selects ranked retrieval behavior from the user's goal rather than from the query language or an individual retrieval mechanism. The service resolves General Hybrid Retrieval, Known Item Lookup, or Relationship Exploration from a valid Requested Retrieval Intent or a deterministic fallback.
+- **General Hybrid Retrieval** — Ranked retrieval for an open-ended natural-language query, including when the query and relevant Memory use different languages. Semantic, content lexical, metadata lexical, and relationship evidence remain independent contributors rather than mutually exclusive modes. Avoid: _Semantic lookup, lexical lookup_.
+- **Known Item Lookup** — Ranked retrieval for a specifically named or identified item, such as an external identifier, title, or code symbol. It expresses the user's expected target, not a lexical-only implementation.
+- **Relationship Exploration** — Ranked retrieval whose primary goal is to discover Memories connected through entities or relationships. It does not bypass normal visibility or provenance constraints.
+- **Deterministic Listing** — A separate current-state enumeration constrained by an explicit time window and optional Source facets, without relevance ranking or an invented query. It is not a Resolved Retrieval Intent. Avoid: _Empty search, queryless semantic search_.
+
 ## Memory lifecycle migration
 
 - **Lifecycle Migration Inventory** — A backend scan of every active Configured Source in the datastore, without applying a caller's source-discoverability filter. Agent Session sources are candidates when the Lifecycle Gate is not Enabled or the bidirectional Active Same-Source Support Invariant is violated in either direction. Inventory output contains identifiers and counts, never private source content or owner identity.
