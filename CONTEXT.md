@@ -55,6 +55,14 @@
 - **Lifecycle Migration Attempt** — One idempotent durable recovery job identified by an explicit attempt label. Unprovable lineage remains a durable open finding and keeps destructive lifecycle gated; semantic similarity cannot close it.
 - **Non-Migrating SQLite Open** — An existing SQLite workspace opened through `Database.connect(run_migrations=False)`. It uses SQLite read-only/query-only mode, does not create the database or parent directories, and does not create schema or run migrations. It is for operator evaluation, never normal serving or repair.
 
+## Memory review
+
+- **Review** — An auditable request for a human-authorized decision when MemForge cannot safely complete or classify a Memory change on its own. Review status records whether that request is pending or terminal; it is not a Memory lifecycle state.
+- **Review Decision** — One action allowed by a Review's kind and presentation, together with its exact lifecycle postcondition. The same approve or reject storage result can represent different user-facing decisions only when the presentation states those consequences explicitly.
+- **Decision Fingerprint** — A deterministic digest of the Review identity, pinned participants, and proposed decision input. A caller must present the current fingerprint when applying a decision so analysis of an older Review cannot mutate newer state.
+- **Decision Manifest** — A bounded, caller-supplied set of Review Decisions and Decision Fingerprints proposed for validation or confirmed application. It is request data, not a durable workflow, lifecycle state, or all-or-nothing transaction.
+- **Cross-Source Conflict Review** — A Review of a proposed contradiction between two independently supported active Memories. Confirming or dismissing the finding closes the Review but does not select source authority or retire either Memory.
+
 ## Connector authentication
 
 - **Teams Access Token** — A short-lived bearer credential that authorizes one local Teams collection session against a specific Teams service audience.

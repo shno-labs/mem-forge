@@ -44,15 +44,14 @@ from the actionable Review queue and cannot be refreshed by merely re-pinning
 optimistic timestamps. If current source state still needs judgment, normal
 reconciliation creates a new Review with current projections and stale guards.
 
-The user-facing Review contract spans workbench and projected-lifecycle Review
-records but exposes exactly two decisions: **Use latest state** applies the
-already-staged authoritative proposal, while **Keep current state** rejects it
-and requires an audit note. A provider-neutral presentation module explains the
-current state, proposed state, consequence of each decision, and source
-Evidence without granting lifecycle authority. Raw planner reasons, identifiers,
-and diffs remain optional technical detail; they are not the primary decision
-interface. The two storage records retain their distinct transaction mechanics,
-but neither introduces a third active-state outcome such as keeping both sides.
+The unified user-facing Review contract is defined by ADR 0023. Workbench
+supersede and projected-lifecycle Reviews continue to expose **Use latest
+state** and **Keep current state** over their existing atomic transition paths.
+A cross-source conflict is a finding rather than a staged authoritative
+replacement: confirming or dismissing it closes the Review while preserving
+both independently supported Memories. Selecting a winning source remains a
+separate Source Authority decision. These kind-specific actions do not add a
+Memory or Review state.
 
 A pending cross-source Review is written with its RelationRun only after both
 active Memories, both current revision-pinned Support lineages, and compatible
