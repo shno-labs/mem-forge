@@ -998,8 +998,10 @@ involved:
 - Source/document removal deletes source-support links and retires memories only
   when no usable source support remains. Usable support includes extracted and
   corroborated provenance rows whose documents still exist.
-- Memory retirement removes the memory from FTS5 in the lifecycle transaction and
+- Memory retirement removes the memory from FTS5 in the owning transaction and
   publishes a durable outbox operation that removes the ChromaDB vector after commit.
+  Lifecycle Plans and Review decisions retain separate outbox ownership even though
+  they share the same post-commit projection machinery.
 - Privacy/compliance purge deletes memory rows, FTS5 rows, ChromaDB vectors,
   provenance links, and local document artifacts.
 
@@ -1541,9 +1543,12 @@ The system has two data stores that must stay in sync. Strategy:
 
 1. **SQLite is the source of truth.** FTS5 and ChromaDB are derived indexes.
 2. **Write ownership**: MemoryStore owns the atomic SQLite lifecycle, FTS5, and
-   Memory-vector outbox write. Memory FTS rows are rebuilt from canonical
-   `memory_entities`. A post-commit worker embeds and materializes Chroma from that
-   same canonical entity set and only then acknowledges the outbox operation.
+   Memory-vector outbox write. Lifecycle Plans and Review decisions publish their
+   own durable projection work in the same relational transaction as their state
+   transition; those outboxes are infrastructure delivery state, not new business
+   lifecycle states. Memory FTS rows are rebuilt from canonical `memory_entities`.
+   A post-commit worker embeds and materializes Chroma from that same canonical
+   entity set and only then acknowledges the owning outbox operation.
 3. **Repair command**: `memforge maintenance repair-indexes` rebuilds FTS5,
    removes non-search-visible memory vectors, and repairs Memory Chroma
    freshness metadata from SQLite. It also prunes FTS orphans and repairs missing
@@ -1753,10 +1758,12 @@ truth for the session.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/memory-reviews` | List open or resolved review decisions |
-| GET | `/api/memory-reviews/{id}` | Get incumbent and challenger details for one review |
-| POST | `/api/memory-reviews/{id}/approve` | Promote the challenger through lifecycle-safe store paths |
-| POST | `/api/memory-reviews/{id}/reject` | Retire the challenger through lifecycle-safe store paths |
+| GET | `/api/memory-reviews` | List exact caller-visible Review pages with kind, origin, Source, and status filters |
+| GET | `/api/memory-reviews/{id}` | Get decision presentation, Evidence, and the current decision fingerprint |
+| POST | `/api/memory-reviews/{id}/approve` | Apply the Review kind's presented approve action through its existing lifecycle path |
+| POST | `/api/memory-reviews/{id}/reject` | Apply the Review kind's presented reject action with a required audit note |
+| POST | `/api/memory-reviews/decisions/validate` | Validate a bounded Decision Manifest without lifecycle mutation |
+| POST | `/api/memory-reviews/decisions/apply` | Apply a confirmed manifest as independent stale-guarded Review decisions |
 
 ### Entity Endpoints
 
