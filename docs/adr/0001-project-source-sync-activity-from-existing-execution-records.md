@@ -1,7 +1,8 @@
 # Project source sync activity from existing execution records
 
-Amended: 2026-07-29 to preserve run-level progress across lease recovery and to
-fence recovery after the configured execution-attempt budget is exhausted.
+Amended: 2026-07-29 to preserve run progress across lease recovery and fence
+exhausted attempts; 2026-08-08 to make the lease-fenced terminal transaction
+the authority for Source freshness and history.
 
 Local collection jobs, server processing runs, and lifecycle-maintenance jobs keep their independent durable lifecycles because they have different owners, leases, retries, and storage transactions. The Sources UI consumes one Source Sync Activity read model projected from those records, rather than introducing a cross-store master operation or extending one execution record to own the others.
 
@@ -67,3 +68,15 @@ A local sync cannot report success without that identity, and an idempotent
 terminal retry must repeat the same identity. This correlates the two existing
 state machines without a master execution record, replay ledger, or
 cross-store transaction.
+
+For an ordinary durable server run, one lease-fenced terminal transaction owns
+the run status, `SyncState`, the Source's successful freshness watermark, and
+exactly one history row correlated by the durable `SourceSyncRun` ID. A no-op
+success is still a successful terminal result. Failed and partial results are
+recorded for diagnosis but never advance the successful freshness watermark;
+retryable attempts are not terminal history. The pipeline returns a
+provider-neutral `SyncState` and delegates persistence to the durable worker.
+Non-durable CLI or maintenance callers use the same atomic result interface
+rather than issuing separate state and history writes. SQLite owns this shared
+contract; Cloud implements the same transaction in its HANA adapter without a
+source-type or route-level branch.

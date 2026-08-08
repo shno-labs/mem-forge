@@ -119,15 +119,18 @@ Acceptance requires deterministic add, change, remove, no-op, truncated or
 partial listing, concurrent mutation, lost checkpoint, revision mismatch,
 lease fencing, SQLite/HANA contract, and real per-source canaries.
 
-The first implementation phase persists the immutable manifest and eliminates
+The accepted implementation persists the immutable manifest and eliminates
 unchanged body uploads across all current daemon-backed source types. It does
 not introduce a generic Candidate Checkpoint store: GitHub still enumerates a
 changed or unaccepted tree, Jira still performs its lightweight inventory,
 Local Markdown still hashes the configured scope, and Teams uses its existing
-window ledger. Root-tree no-op probing, daemon-local digest caching, bounded
-Teams checkpoint polling, and periodic Teams complete reconciliation remain
-acceptance work under issue #164; they must reuse this contract rather than add
-another execution state machine.
+window ledger. The no-op, edit, add, removal, fencing, and SQLite/HANA parity
+acceptance for issue #164 is complete through selective materialization and
+bounded exact projection reuse. Root-tree probing, daemon-local digest caching,
+and additional Teams checkpoint or reconciliation accelerators are optional
+provider-adapter optimizations, not missing correctness or completion states.
+They require a new measured latency or provider-cost trigger and must reuse
+this contract rather than add another execution state machine.
 
 Reusable inputs are selected by a bounded, indexed exact match on normalized
 manifest membership `(workspace, source, doc_id, revision, change_kind)` and
