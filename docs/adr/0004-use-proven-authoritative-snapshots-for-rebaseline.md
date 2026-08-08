@@ -85,6 +85,18 @@ Plans whose own Source Unit still points to that Plan's target revision. This
 preserves the contested edge without making the later Plan its owner and never
 exempts another Memory, another Evidence Reference, or malformed lineage.
 
+Rejecting that lifecycle Review is an explicit decision to keep the incumbent
+Support edge for the reviewed source revision. Lifecycle integrity evaluation
+therefore reports the exact staged `REMOVE_SUPPORT` edge as reviewed retention,
+rather than as an unreviewed lineage violation, only while the Review is
+`rejected`, its Plan is `applied`, and that Plan's target revision remains the
+Source Unit's current revision. The exception is pinned to the incumbent
+Memory, Source, Source Unit, and Evidence Reference from the staged mutation;
+it cannot cover another edge or malformed lineage. A later source revision
+automatically expires the exception and requires normal reconciliation. This
+interpretation changes no Memory, Support, Plan, or Review state and does not
+rewrite Evidence lineage.
+
 Rebaseline acceptance includes the source-scoped lifecycle vector outbox.
 After authoritative replay, the maintenance flow drains successive bounded
 outbox batches while they make progress, before running the gate-opening
