@@ -809,17 +809,19 @@ queryable in explicit admin/history views.
 
 ### Contradiction Handling
 
-When multiple sources produce conflicting memories, the system does not blindly
-hide the incumbent. A better-supported active memory remains active, while an
-ambiguous challenger or risky replacement is quarantined for review:
+When multiple sources produce conflicting memories, the system does not infer
+which Source is authoritative. The Review kind determines the postcondition:
 
 - Clear same-source replacement: old memory becomes `superseded`, new memory becomes `active`.
-- Cross-document contradiction: challenger is stored as `pending_review` and hidden from default search, the incumbent stays active, and a Review workbench decision points to both rows.
+- Ordinary workbench supersede: the challenger remains staged until a stale-guarded Review chooses the current Memory state.
+- Cross-source conflict: both independently supported Memories remain active. Confirming records the pair as a reviewed conflict; dismissing records that the pair is not an effective conflict. Search and Memory detail derive the visible disposition from the Review and expose it only when both participants are visible.
+- Projected lifecycle change: a `LifecycleReview` gates its complete Source Evidence Plan; approval or rejection runs only through that Plan's atomic path.
 - High-corroboration same-document replacement or delete: flagged for human review instead of automatic demotion.
 
 > **Cut from earlier design:** Synthetic "meta-memories" that recorded conflicts were removed.
-> The two original memories + `contradiction_count` + warning in search results is sufficient.
-> Creating a third memory cluttered results and was hard to maintain when originals changed.
+> The two original Memories, their auditable Review/Relation, and the derived
+> `conflict_contexts` read model are sufficient. Creating a third Memory would
+> clutter results and make lifecycle cleanup ambiguous.
 
 ---
 
@@ -1748,7 +1750,7 @@ truth for the session.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/memories` | List memories with pagination, filters (type, status, source, project, entity) |
-| GET | `/api/memories/{id}` | Get memory detail with provenance |
+| GET | `/api/memories/{id}` | Get memory detail with provenance and visibility-safe cross-source Review dispositions |
 | PUT | `/api/memories/{id}` | Update memory (admin edit content, confidence, status) |
 | DELETE | `/api/memories/{id}` | Hide a memory (set status=retired) |
 | GET | `/api/memories/stats` | Memory counts by type, source, status |
