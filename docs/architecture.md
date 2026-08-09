@@ -816,7 +816,7 @@ which Source is authoritative. The Review kind determines the postcondition:
 - Ordinary workbench supersede: the challenger remains staged until a stale-guarded Review chooses the current Memory state.
 - Cross-source conflict: both independently supported Memories remain active. Confirming records the pair as a reviewed conflict; dismissing records that the pair is not an effective conflict. Search and Memory detail derive the visible disposition from the Review and expose it only when both participants are visible.
 - Projected lifecycle change: a `LifecycleReview` gates its complete Source Evidence Plan; approval or rejection runs only through that Plan's atomic path.
-- A durably stale, nonterminal `LifecycleReview` may be explicitly rechecked against the current complete Support and Memory snapshot. The stale Review remains immutable, and the resulting new pending Review still requires an ordinary decision. Terminal retirement or supersession proposals require source replanning instead of mechanical refresh.
+- A durably stale, nonterminal `LifecycleReview` may be explicitly rechecked through the Review UI or authenticated admin route against the current complete Support and Memory snapshot. The stale Review remains immutable, and the resulting new pending Review still requires an ordinary decision. This exceptional recovery operation is not exposed as a general-purpose MCP tool. Terminal retirement or supersession proposals require source replanning instead of mechanical refresh.
 - High-corroboration same-document replacement or delete: flagged for human review instead of automatic demotion.
 
 > **Cut from earlier design:** Synthetic "meta-memories" that recorded conflicts were removed.
