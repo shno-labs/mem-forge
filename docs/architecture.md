@@ -816,6 +816,7 @@ which Source is authoritative. The Review kind determines the postcondition:
 - Ordinary workbench supersede: the challenger remains staged until a stale-guarded Review chooses the current Memory state.
 - Cross-source conflict: both independently supported Memories remain active. Confirming records the pair as a reviewed conflict; dismissing records that the pair is not an effective conflict. Search and Memory detail derive the visible disposition from the Review and expose it only when both participants are visible.
 - Projected lifecycle change: a `LifecycleReview` gates its complete Source Evidence Plan; approval or rejection runs only through that Plan's atomic path.
+- A durably stale, nonterminal `LifecycleReview` may be explicitly rechecked against the current complete Support and Memory snapshot. The stale Review remains immutable, and the resulting new pending Review still requires an ordinary decision. Terminal retirement or supersession proposals require source replanning instead of mechanical refresh.
 - High-corroboration same-document replacement or delete: flagged for human review instead of automatic demotion.
 
 > **Cut from earlier design:** Synthetic "meta-memories" that recorded conflicts were removed.
@@ -1762,6 +1763,7 @@ truth for the session.
 |--------|------|-------------|
 | GET | `/api/memory-reviews` | List exact caller-visible Review pages with kind, origin, Source, and status filters |
 | GET | `/api/memory-reviews/{id}` | Get decision presentation, Evidence, and the current decision fingerprint |
+| POST | `/api/memory-reviews/{id}/refresh` | Reissue one stale nonterminal Lifecycle Review against current stale guards without applying its proposal |
 | POST | `/api/memory-reviews/{id}/approve` | Apply the Review kind's presented approve action through its existing lifecycle path |
 | POST | `/api/memory-reviews/{id}/reject` | Apply the Review kind's presented reject action with a required audit note |
 | POST | `/api/memory-reviews/decisions/validate` | Validate a bounded Decision Manifest without lifecycle mutation |
