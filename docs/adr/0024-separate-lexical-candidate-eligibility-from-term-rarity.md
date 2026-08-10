@@ -1,6 +1,6 @@
 # Separate lexical candidate eligibility from term rarity
 
-Status: Proposed (2026-08-10)
+Status: Accepted (2026-08-10)
 
 ## Context
 
@@ -118,6 +118,21 @@ one bounded multi-term database request or use a visibility-safe cache whose
 invalidation and privacy semantics are explicit. A long-text substring scan is
 not an acceptable production fallback for token DF.
 
+## Implementation
+
+The SearchEngine builds a provider-neutral lexical Query Plan with exact
+anchors, normalized ordinary metadata terms, and the shared coverage gate.
+SQLite evaluates term membership and caller-visible DF in FTS5-backed CTEs,
+groups coverage by one source-support record, and returns matched-term evidence
+to retrieval diagnostics. Exact anchors are independently eligible and rank
+above ordinary coverage.
+
+GoldenEval case `metadata_three_of_five_source_cluster_recall` preserves the
+SFPAY-181363 failure shape: six Memories whose content uses different wording
+must all enter the top ten through one Jira title that covers three of five
+ordinary query terms. The content candidate threshold remains separately owned
+and was not changed by this decision.
+
 ## References
 
 - [Elasticsearch minimum_should_match](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-minimum-should-match)
@@ -125,4 +140,3 @@ not an acceptable production fallback for token DF.
 - [SQLite FTS5](https://sqlite.org/fts5.html)
 - [SAP HANA Cloud fuzzy text search](https://help.sap.com/docs/hana-cloud-database/sap-hana-cloud-sap-hana-database-search-developer-guide/fuzzy-text-search)
 - [SAP HANA Cloud soft AND](https://help.sap.com/docs/hana-cloud-database/sap-hana-cloud-sap-hana-database-search-developer-guide/soft-and)
-
