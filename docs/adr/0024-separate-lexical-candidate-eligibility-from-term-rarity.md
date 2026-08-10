@@ -133,6 +133,11 @@ must all enter the top ten through one Jira title that covers three of five
 ordinary query terms. The content candidate threshold remains separately owned
 and was not changed by this decision.
 
+That fixed-fixture rank gate proves the candidates survive fusion in the
+controlled corpus; it is not a universal promise that every member of a
+metadata-matched source cluster appears on every `top_k=10` page. The durable
+contract is complete channel-local candidate generation before fusion.
+
 ## References
 
 - [Elasticsearch minimum_should_match](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-minimum-should-match)
