@@ -118,6 +118,11 @@ one bounded multi-term database request or use a visibility-safe cache whose
 invalidation and privacy semantics are explicit. A long-text substring scan is
 not an acceptable production fallback for token DF.
 
+The default response page is 20 results while the default ranked candidate
+window remains 50. This increases ordinary recall after fusion without making
+ranked retrieval exhaustive or coupling response pagination to channel-local
+candidate generation. Callers may still request a smaller page explicitly.
+
 ## Implementation
 
 The SearchEngine builds a provider-neutral lexical Query Plan with exact
