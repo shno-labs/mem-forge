@@ -2,11 +2,12 @@
 
 ## Workspace selection
 
-- **Workspace Directory** — The principal-scoped list of workspaces the caller may know about, including current active/selectable state and the optional Default Workspace. Listing it is discovery, not a prerequisite for data-plane requests.
+- **Workspace Directory** — The principal-scoped list of workspaces the caller may know about, including current active/selectable state. Listing it is discovery, not a prerequisite for data-plane requests.
 - **Requested Workspace** — An explicit `workspace_id` supplied on one HTTP or MCP operation. It is validated without revealing inaccessible workspaces.
-- **Default Workspace** — An optional user preference used by automatic hooks and requests that omit `workspace_id`, only while the user still has access and the workspace remains selectable. It is changed only by an explicit control-plane operation after user confirmation; a per-request selector never mutates it. It is not identity or authorization.
+- **Local Workspace Binding** — A user-confirmed client-side mapping from a Git repository or ordinary directory to a workspace. It supplies a request selector without sending the local path or granting authority.
+- **Hook Workspace Fallback** — An optional client-local workspace used only by automatic hooks when no project binding or pinned session selection exists. It never scopes an interactive operation.
 - **Authorized Workspace Context** — The single workspace selected, authorized, and bound to one data-plane request. Handlers and durable work consume this context rather than resolving workspace again.
-- **Workspace Selection Source** — The reason the Authorized Workspace Context was chosen: Requested Workspace, valid Default Workspace, or the caller's singleton accessible workspace.
+- **Workspace Selection Source** — The reason the Authorized Workspace Context was chosen: Requested Workspace or the caller's singleton accessible workspace.
 - **Repository Context** — Repository attribution used for provenance and retrieval relevance. It never selects or authorizes a workspace.
 
 ## Source synchronization

@@ -31,9 +31,12 @@ Context in this order:
 1. a requested `workspace_id`, after access and active-routing validation;
 2. the caller's only accessible active workspace.
 
-Automatic hook and agent-session capture routes may additionally use the
-caller's valid persisted Default Workspace preference between those two steps.
-That preference is a capture fallback, not an implicit retrieval scope.
+The server stores no default workspace preference. Automatic hook and
+agent-session clients resolve a project binding, pinned session selection, or
+client-local hook fallback and send that workspace as an explicit request
+selector. When the client cannot resolve one, the same server selection rules
+apply and the hook remains fail-open rather than risking capture in another
+workspace.
 
 If none is available, the server returns the same non-enumerating 404 used for
 an inaccessible explicit selector. If multiple candidates remain, it returns
@@ -42,10 +45,8 @@ The response identifies the effective workspace through
 `MemForge-Workspace`.
 
 `GET /api/v1/workspaces` is principal-scoped discovery and does not itself
-require a workspace. `PUT /api/v1/me/default-workspace` remains the compatible
-server-side hook fallback after current access validation. Revoking membership
-or retiring routing makes that preference ineffective; membership revocation
-also clears a matching preference.
+require a workspace. It reports accessible and selectable workspaces without a
+server-side default. There is no default-workspace mutation route or MCP tool.
 
 Installable agent clients read optional user intent from
 `~/.memforge/workspace-bindings.json`. Bindings are scoped by canonical
@@ -69,8 +70,8 @@ retain bounded retry state when no selection is available.
 
 Self-hosted OSS implements the same contract as a singleton directory. Its
 stable readable workspace ID is `local`, its role is `owner`, and it is always
-the default. Explicit values other than `local` fail with the same workspace
-404 contract.
+selected when the request omits `workspace_id`. Explicit values other than
+`local` fail with the same workspace 404 contract.
 
 After resolution, the selected workspace is immutable for that request. Any
 durable job or run admitted by the request persists the effective workspace
@@ -85,17 +86,17 @@ user-confirmed local binding. Calling `list_workspaces` first remains optional
 after configuration.
 
 Automatic hooks may use a repository binding, directory binding, pinned
-session selection, local hook fallback, or compatible server-side hook
-fallback. None of those fallbacks silently scopes an interactive search.
+session selection, or local hook fallback. None of those selections silently
+scopes an interactive search.
 
 The old path-shaped Cloud surface, unversioned OSS data plane,
 `MEMFORGE_WORKSPACE_ID`, and repository `.memforge/config.toml` workspace
 overrides remain removed rather than retained as compatibility branches.
 
 Workspace authorization, selection, store binding, and selection diagnostics
-belong to one server module. Adapters implement the same directory/default
-persistence contract, while route handlers consume only the already authorized
-request context.
+belong to one server module. Route handlers consume only the already authorized
+request context; workspace preferences do not belong to a storage adapter
+contract.
 
 ## References
 
