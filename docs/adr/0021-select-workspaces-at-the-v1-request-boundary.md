@@ -1,6 +1,6 @@
 # Select workspaces at the v1 request boundary
 
-Status: Accepted (2026-08-06)
+Status: Accepted (2026-08-06; amended 2026-08-10)
 
 ## Context
 
@@ -20,17 +20,20 @@ discovery, but cannot be a prerequisite for every session or tool call.
 
 OSS and Cloud expose one breaking v1 data plane at `/api/v1/...`. Every
 workspace-scoped HTTP operation accepts an optional `workspace_id` query
-parameter. The MCP server exposes `list_workspaces` and
-`set_default_workspace`; every data-plane MCP tool has the same optional
-`workspace_id` input. Repository Context is provenance and retrieval
-attribution only. It never selects a workspace.
+parameter. The MCP server exposes `list_workspaces`; every data-plane MCP tool
+has the same optional `workspace_id` input. A user-confirmed local binding may
+turn exact host context into that explicit request selector. The local path is
+never sent to the service and does not grant authority.
 
-The server resolves exactly one Authorized Workspace Context for each data-
-plane request in this order:
+Interactive data-plane requests resolve exactly one Authorized Workspace
+Context in this order:
 
 1. a requested `workspace_id`, after access and active-routing validation;
-2. the caller's valid Default Workspace preference;
-3. the caller's only accessible active workspace.
+2. the caller's only accessible active workspace.
+
+Automatic hook and agent-session capture routes may additionally use the
+caller's valid persisted Default Workspace preference between those two steps.
+That preference is a capture fallback, not an implicit retrieval scope.
 
 If none is available, the server returns the same non-enumerating 404 used for
 an inaccessible explicit selector. If multiple candidates remain, it returns
@@ -39,18 +42,30 @@ The response identifies the effective workspace through
 `MemForge-Workspace`.
 
 `GET /api/v1/workspaces` is principal-scoped discovery and does not itself
-require a workspace. `PUT /api/v1/me/default-workspace` stores an optional
-user preference only after current access validation. Revoking membership or
-retiring routing makes that preference ineffective; membership revocation
+require a workspace. `PUT /api/v1/me/default-workspace` remains the compatible
+server-side hook fallback after current access validation. Revoking membership
+or retiring routing makes that preference ineffective; membership revocation
 also clears a matching preference.
 
-The MCP `set_default_workspace` tool is an explicit control-plane operation.
-Its description requires user confirmation, and its only input is the selected
-workspace ID. Calling another tool with `workspace_id` is a one-request
-override and never changes the default. A workspace-selection conflict in an
-automatic hook reports an actionable instruction to discover and confirm a
-default; hooks do not open an interactive MCP flow or maintain hidden session
-selection state.
+Installable agent clients read optional user intent from
+`~/.memforge/workspace-bindings.json`. Bindings are scoped by canonical
+MemForge origin. A normalized Git `origin` may map through
+`repository_bindings`; an absolute ordinary directory may map through
+`directory_bindings`, whose most-specific ancestor wins. A directory binding
+is more specific than a repository binding. `hook_workspace_id` is considered
+only by hooks. Missing configuration means no local selection; malformed,
+ambiguous, or conflicting configuration fails closed.
+
+The `memforge-setup` skill owns guided inspection and mutation of that file.
+It discovers currently accessible workspaces, previews the exact mutation,
+requires confirmation, writes atomically without credentials, and reuses the
+same local resolver as MCP and hooks. An explicit MCP `workspace_id` overrides
+a local binding for only that call and never mutates configuration.
+
+Hook capture pins the resolved workspace with the local session cursor before
+asynchronous upload. Later configuration changes cannot split one admitted
+session across workspaces. Hooks remain fail-open for the coding client and
+retain bounded retry state when no selection is available.
 
 Self-hosted OSS implements the same contract as a singleton directory. Its
 stable readable workspace ID is `local`, its role is `owner`, and it is always
@@ -64,19 +79,18 @@ ID; workers use the persisted value rather than resolving defaults again.
 ## Consequences
 
 Cloud and self-hosted clients share one URL and tool schema. Single-workspace
-users can omit `workspace_id`; multi-workspace users may set a default or pass
-an explicit selector without changing agent environment or repository files.
-Calling `list_workspaces` first remains optional.
+users can omit `workspace_id`; multi-workspace interactive calls require an
+explicit selector, either supplied by the tool call or resolved from a
+user-confirmed local binding. Calling `list_workspaces` first remains optional
+after configuration.
 
-Automatic hooks and omitted data-plane selectors converge on the same
-server-side Default Workspace. Existing bounded hook retries may succeed after
-the preference is set; the hook transport does not invent a separate queue,
-workspace cache, or agent-environment override.
+Automatic hooks may use a repository binding, directory binding, pinned
+session selection, local hook fallback, or compatible server-side hook
+fallback. None of those fallbacks silently scopes an interactive search.
 
 The old path-shaped Cloud surface, unversioned OSS data plane,
-`MEMFORGE_WORKSPACE_ID`, repository `.memforge/config.toml` workspace
-overrides, and the workspace setup skill are removed rather than retained as
-compatibility branches.
+`MEMFORGE_WORKSPACE_ID`, and repository `.memforge/config.toml` workspace
+overrides remain removed rather than retained as compatibility branches.
 
 Workspace authorization, selection, store binding, and selection diagnostics
 belong to one server module. Adapters implement the same directory/default
