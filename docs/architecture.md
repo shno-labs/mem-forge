@@ -1258,7 +1258,7 @@ It does not return host-local, container-local, or SaaS-local file paths.
       "start_date": "YYYY-MM-DD (optional)",
       "end_date": "YYYY-MM-DD (optional)"
     },
-    "top_k": "integer, default 10"
+    "top_k": "integer, default 20"
   }
 }
 ```
@@ -1677,7 +1677,7 @@ dedup_cosine_threshold = 0.08         # Below this cosine distance = duplicate
 # Lifecycle expiry is maintained by the Admin API scheduler.
 
 [retrieval]
-default_top_k = 10
+default_top_k = 20
 rrf_k = 60                           # RRF constant
 recency_half_life_days = 90
 embedding_cache_size = 256
