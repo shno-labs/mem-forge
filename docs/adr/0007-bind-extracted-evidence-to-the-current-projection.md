@@ -98,6 +98,17 @@ exception. A whole-Observation Anchor may still be necessary when the resolved
 excerpt repeats in one revision, but its inline excerpt remains non-empty; Anchor
 scope and public excerpt presence are separate concerns.
 
+Whole-Block fallback is an admitted, observable quality outcome rather than an
+extraction error. The shared derivation path records a content-free bounded
+sample containing the Source Observation and revision identities, exact range,
+candidate/Block/quote hashes and lengths, extraction contract, derivation,
+Source Unit, and target revision identities. This signal survives derivation
+replay and is emitted through the existing Memory audit seam. It never persists
+the Block ID, source text, quote text, prompt, or Memory content. A cross-Block
+quote check is deliberately deferred until production telemetry demonstrates
+that models select one Block while quoting another; the fallback path does not
+reject such candidates speculatively.
+
 The Evidence Catalog enforces its inline byte envelope while constructing
 Blocks from Source text, rather than truncating provider output after the fact.
 Changed-range work accepts only Blocks constructed from authoritative changed
