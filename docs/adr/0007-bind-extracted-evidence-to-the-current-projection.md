@@ -109,6 +109,15 @@ quote check is deliberately deferred until production telemetry demonstrates
 that models select one Block while quoting another; the fallback path does not
 reject such candidates speculatively.
 
+An explicitly scoped re-extraction of an unchanged current Source Unit may
+select all of that unit's current inference-eligible Observations as Primary
+work. This is a derivation instruction, not new Source truth: it must not invent
+a semantic Revision Delta, replace the current Observation or Source Unit
+revision, or bypass the ordinary Source activity and lifecycle stale guards.
+The replay instruction is part of the derivation identity so its batches cannot
+reuse an ordinary no-op derivation. Normal incremental Sync and full discovery
+retain their existing change-driven extraction behavior.
+
 The Evidence Catalog enforces its inline byte envelope while constructing
 Blocks from Source text, rather than truncating provider output after the fact.
 Changed-range work accepts only Blocks constructed from authoritative changed
