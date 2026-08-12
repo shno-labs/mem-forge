@@ -2,7 +2,8 @@
 
 Amended: 2026-07-29 to preserve run progress across lease recovery and fence
 exhausted attempts; 2026-08-08 to make the lease-fenced terminal transaction
-the authority for Source freshness and history.
+the authority for Source freshness and history; 2026-08-12 to preserve
+provider-neutral retryability across the pipeline and durable worker seam.
 
 Local collection jobs, server processing runs, and lifecycle-maintenance jobs keep their independent durable lifecycles because they have different owners, leases, retries, and storage transactions. The Sources UI consumes one Source Sync Activity read model projected from those records, rather than introducing a cross-store master operation or extending one execution record to own the others.
 
@@ -80,3 +81,13 @@ Non-durable CLI or maintenance callers use the same atomic result interface
 rather than issuing separate state and history writes. SQLite owns this shared
 contract; Cloud implements the same transaction in its HANA adapter without a
 source-type or route-level branch.
+
+A Gene may report a typed Source Configuration Error when the same configured
+scope cannot succeed on another execution attempt. The pipeline preserves that
+provider-neutral retryability disposition on its returned `SyncState`; it does
+not reduce the exception to an unclassified error string. The durable worker
+still owns retry scheduling and the terminal transaction: retryable failures
+enter bounded backoff, while a non-retryable failure becomes terminal on its
+first completed attempt with its actionable error message and no
+`next_attempt_at`. Storage adapters receive only the resulting retry decision
+and remain independent of Gene types and provider error text.
