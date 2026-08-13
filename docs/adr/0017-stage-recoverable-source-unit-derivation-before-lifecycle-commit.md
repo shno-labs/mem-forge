@@ -237,6 +237,14 @@ reuses that immutable row verbatim. Provider enumeration order and retry order
 cannot create a second payload for the same revision ID; a different member set
 still fails the immutable identity check.
 
+Observation revision identity includes the bounded inference contract that
+changes how its content may support a claim. In particular,
+`claim_evidence_scope` participates in the semantic hash: adding atomic-claim
+scope to an unchanged Teams message or Jira comment creates a new immutable
+revision instead of attempting to enrich an old row in place. Operational
+metadata such as author, timestamps, and provider display fields remains
+outside semantic identity so harmless enrichment does not cause re-extraction.
+
 When Derivation Coverage closes, the pipeline assembles one complete candidate
 ledger and one complete Lifecycle Plan. There is no single-Observation or
 single-batch bypass around this boundary. One local datastore transaction then:
@@ -537,6 +545,9 @@ schema-valid output can be semantically invalid.
   state changes.
 - Reordering an unchanged provider Artifact inventory reuses the exact prior
   Source Unit revision and cannot create an immutable-identity retry conflict.
+- Upgrading the inference scope of an unchanged Teams message or Jira comment
+  creates a new immutable Observation revision, while operational metadata
+  enrichment continues to reuse the prior revision.
 - Closed coverage with an inference-ineligible Artifact preserves its exact
   bytes and protects affected incumbent Support.
 - Complete coverage that removes a supporting Observation stages an exact
