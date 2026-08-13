@@ -2,6 +2,12 @@
 
 Status: Accepted (2026-07-27)
 
+Amended: 2026-08-13 to require structural-unit selectable text to map into the
+single current Source Observation authority. When a provider's rendered
+Document view adds text outside that Observation, planning uses projection
+batches over the Observation revision instead. The extraction contract advances
+so staged output from the prior authority boundary is not reused.
+
 Amended: 2026-07-31 to require canonical claim Evidence localization before a
 successful batch output becomes durable. Provider-returned quotes from an older
 extractor contract cannot be reused as if they satisfied the canonical excerpt
@@ -145,7 +151,9 @@ The deriver selects one of three provider-neutral work shapes before staging:
   work item and validates every returned exact quote against the current
   changed ranges;
 - one textual Observation that requires full-document extraction is partitioned
-  into deterministic structural Markdown units;
+  into deterministic structural Markdown units only when the rendered Document
+  text maps into that Observation authority; otherwise it uses an Observation
+  projection batch;
 - multiple Observations, or any Artifact-bearing projection, retains
   Observation/Artifact projection batches.
 
