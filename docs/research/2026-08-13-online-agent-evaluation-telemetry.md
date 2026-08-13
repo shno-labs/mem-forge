@@ -9,7 +9,12 @@ Status: Research recommendation. This note is based only on current official spe
 MemForge should not make an observability vendor, sampled trace, or LLM evaluator the system of record for extraction quality. The clean design has three related but distinct planes:
 
 1. **Durable runtime facts** — a small, append-only, provider-neutral OSS module records what the extraction path actually did: structured-output validation, evidence localization, admission, fallback, rejection, and batch completion. These records carry stable MemForge lineage IDs and contain no source text, prompt text, quote text, or model response.
-2. **OpenTelemetry observability** — the same work emits duration-bearing spans, point-in-time events, diagnostic logs, and low-cardinality metrics. OTLP is the interoperability boundary. Trace and span IDs correlate operational telemetry, but are never the only identity of an audit fact.
+2. **Optional observability** — the same work may emit duration-bearing spans,
+   point-in-time events, diagnostic logs, and low-cardinality metrics. The
+   current first adapter is the Langfuse Python SDK; explicit OTel/OTLP is the
+   future interoperability boundary when multiple backends or cross-service
+   tracing justify it. Trace and span IDs correlate operational telemetry, but
+   are never the only identity of an audit fact.
 3. **Evaluation and feedback** — asynchronous code, LLM, and human evaluators append versioned assessments to a durable runtime fact or offline case. A signal is not ground truth. Human-adjudicated reference data is the preferred ground truth; LLM-judge and deterministic-check results remain named, versioned assessments.
 
 This division preserves exact product auditability even when telemetry is sampled, permits any OTLP-compatible backend, and supports a deliberate live-to-offline evaluation loop without putting raw customer content into ordinary observability infrastructure.
@@ -125,9 +130,9 @@ flowchart LR
     A["Source revision"] --> B["Extraction / derivation batch span"]
     B --> C["Model-call and tool spans"]
     B --> D["Deterministic contract checks"]
-    D --> E["Durable AgentRuntimeEvent transaction/outbox"]
-    E --> F["Async OTLP projection"]
-    F --> G["Any OTel backend"]
+    D --> E["Durable AgentRuntimeEvent transaction"]
+    E --> F["Best-effort trace sink"]
+    F --> G["Langfuse SDK now; OTel/OTLP later"]
     E --> H["Promotion policy"]
     H --> I["AgentEvaluationCase"]
     I --> J["Async code / LLM evaluator"]
@@ -229,8 +234,10 @@ Cloud should implement exactly the OSS storage and query protocol, adding only C
 - fixed indexed columns for common filters and bounded JSON only for optional versioned fields;
 - unique/idempotency constraint on `event_id`;
 - indexes led by `(workspace_id, occurred_at)`, `(workspace_id, event_name, outcome, occurred_at)`, and `(workspace_id, source_id, occurred_at)`, refined from measured query plans rather than speculative indexing;
-- transaction/outbox linkage between extraction batch state and audit-event publication;
-- asynchronous OTLP export after commit;
+- transaction linkage between extraction batch state and the durable runtime
+  fact; add an export outbox only for a measured external at-least-once SLA;
+- best-effort metadata-only trace projection after commit, using the Langfuse
+  SDK initially and an explicit OTel/OTLP adapter only when needed;
 - no HANA-only event vocabulary, Teams/Confluence/Jira branch, content fallback, or provider-specific compatibility path.
 
 HANA should not store copied quote/source/prompt/model-response content in this audit table. The record contains the stable source-unit revision, block/range/hash evidence coordinates, and a protected artifact reference where a separately authorized investigation requires content.
@@ -242,17 +249,22 @@ The Cloud adapter must honor the same filters, pagination, stable ordering, idem
 Avoid building a generalized evaluation platform before proving the loop. A useful first increment is:
 
 1. Persist the four runtime event classes above for structured-output, evidence localization, memory admission, and batch result.
-2. Emit their OTel projections plus batch/model spans and low-cardinality counters.
+2. Project their metadata through the isolated Langfuse trace sink; add shared
+   OTel spans and low-cardinality counters only when the interoperability need
+   is concrete.
 3. Add a self-contained audit query by event ID, source/source-unit revision, derivation/batch, outcome/reason, deployment revision, and trace ID.
 4. Promote every rejected/failed event and a small deterministic success sample into evaluation cases.
 5. Run one deterministic offline evaluator and one human-review queue; add an LLM judge only after the human labels define what “correct” means.
-6. Export optional OTLP and validate with one backend, while keeping all tests/backend interfaces vendor-neutral.
+6. Validate the optional Langfuse adapter with one backend while keeping the
+   trace-sink interface vendor-neutral; validate an OTLP adapter when one is
+   introduced.
 
 This increment directly addresses the operational need: when quote/block localization or structured output fails, an investigator can identify the exact source revision, extraction contract, memory/candidate lineage, model/prompt/build, outcome, and protected evidence coordinates without needing an unsampled trace or raw customer content in a log.
 
 ## Decision summary
 
-- **Standardize on OTel/OTLP for observability, not as the sole persistence mechanism.**
+- **Use a provider-neutral trace-sink seam; Langfuse SDK is the first adapter,
+  and OTel/OTLP is the future multi-backend interoperability option.**
 - **Use stable MemForge event IDs and lineage IDs as canonical identity; trace/span IDs are secondary correlation.**
 - **Separate runtime facts, assessments, and accepted ground truth.**
 - **Keep raw content out of telemetry by default.**
@@ -260,4 +272,3 @@ This increment directly addresses the operational need: when quote/block localiz
 - **Promote selected live cases into an immutable offline cohort with versioned human/code/LLM assessments.**
 - **Make MLflow, Langfuse, Phoenix, OpenInference, and OpenLLMetry optional integrations behind the OSS contract.**
 - **Implement one shared OSS protocol and require SQLite/HANA adapter parity; do not create source-type-specific telemetry mechanisms.**
-
