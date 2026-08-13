@@ -55,9 +55,12 @@ stable execution lineage and signal sequence; trace/span IDs are optional
 correlation and never participate in identity.
 
 The batch outcome and its runtime events commit in one SQLite/HANA transaction.
-This required product audit is distinct from optional OTLP shipping. An OTLP
-exporter, metric sink, or asynchronous evaluator may fail without changing the
-committed extraction result; the outbox retries projection after commit.
+This required product audit is distinct from optional OTLP shipping. After
+commit, the runtime facts are projected onto the current OTel span when one is
+recording. An OTLP exporter, metric sink, or asynchronous evaluator may fail
+without changing the committed extraction result. A dedicated transactional
+export outbox is introduced only if a configured external sink requires
+at-least-once delivery; the durable runtime ledger remains replayable meanwhile.
 
 ### Use a bounded runtime taxonomy
 
