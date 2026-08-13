@@ -1,121 +1,162 @@
-# Correlate online quality events with Source Unit derivation
+# Correlate agent runtime facts, telemetry, and evaluation
 
 Status: Accepted (2026-08-13)
 
 ## Context
 
-MemForge already records structured-model call metrics, durable Source
-Projection and Derivation identity, and Memory lifecycle audit events. Those
-records do not answer one important production question: why did a particular
-source batch produce no Memory, especially when a candidate was rejected before
-it received a Memory ID?
+MemForge records structured-model metrics, Source Projection/Derivation
+lineage, and Memory lifecycle audit. Those records do not explain why a
+source batch produced no Memory when a candidate was rejected before it
+received a Memory ID. A log such as `quote mismatch` is not self-contained if
+it cannot identify the exact source revision, derivation batch, Evidence
+decision, prompt contract, and deployed build.
 
-A raw log such as `quote mismatch` is insufficient. It may identify neither the
-source revision nor the current Evidence authority, and copying the prompt,
-quote, or source body into ordinary logs would violate private-source and
-retention boundaries.
-
-Online anomalies also are not ground-truth accuracy labels. A whole-Block
-fallback can be valid but less precise; a zero-candidate batch can be expected.
-Production observations need an explicit, authorized promotion step before
-they become offline golden cases.
+This information cannot live only in traces. Production traces may be sampled
+or unavailable, and OpenTelemetry trace/span IDs describe one telemetry
+execution rather than stable product identity. Nor is a runtime anomaly an
+evaluation result: a whole-Block fallback can be valid, and an LLM judge is
+not ground truth merely because it returned a score.
 
 ## Decision
 
-### Producers emit content-free signals; derivation binds lineage
+### Keep three distinct planes
 
-The canonical OSS module defines a small `QualitySignal` value and one
-versioned `AgentEvaluationEvent` envelope. Structured-output, extraction, and
-Evidence code emits signals through a request-local collector. A producer does
-not know the database, workspace, provider route, or Source type.
+1. `AgentRuntimeEvent` is an immutable fact about what the product did. It is
+   recorded without sampling and carries stable MemForge lineage.
+2. OpenTelemetry is an optional observability projection. Spans represent
+   duration-bearing work; bounded runtime facts become span events or
+   EventRecords; metrics use low-cardinality aggregates; free-form diagnostics
+   remain logs. OTLP is the interoperability boundary.
+3. `AgentAssessment` is a versioned code, LLM, or human judgment targeting a
+   runtime event or evaluation case. An explicitly accepted human or
+   deterministic reference may become ground truth; an LLM score alone does
+   not.
 
-The `SourceUnitDeriver` is the single binding seam. After a batch result has
-been durably staged, it attaches current Source identity, document and Source
-Unit identity, target Source Unit revision, Projection run, Derivation and
-batch ID, extraction contract, and the matching Observation revision. This
-makes rejected candidates traceable even when no Memory exists. Deterministic
-event IDs make retry persistence idempotent.
+`AgentEvaluationCase` is the explicit bridge from live traffic into an
+immutable offline cohort. It pins protected artifact handles and versioned
+expected output instead of reading mutable current source state during replay.
 
-SQLite and Cloud/HANA implement the same append and bounded-query protocol.
-Cloud may fill deployment revision and workspace-scoped storage context, but it
-must not define a different taxonomy or source-specific producer.
+The canonical vocabulary is provider-neutral OSS. MLflow, Langfuse, Phoenix,
+OpenInference, OpenLLMetry, and other backends are optional exporters or
+evaluation workers; none owns MemForge identity or storage semantics.
 
-### Taxonomy separates occurrence from judgment
+### Bind runtime facts at the Source Derivation seam
 
-Each event has one outcome:
+Extraction, structured-output, and Evidence code emits small content-free
+`QualitySignal` values into one bounded request-local collector. Producers do
+not know a database, workspace, connector, or telemetry provider.
 
-- `expected`: successful schema response, exact/canonical localization,
-  candidates extracted, or an explicit zero-candidate result;
-- `degraded`: work completed through a bounded fallback, such as whole-Block
-  Evidence localization or structured-schema fallback recovery;
-- `rejected`: model output could not enter the domain, such as an unknown
-  Evidence Block or terminal invalid structured response;
-- `failed`: provider, deadline, persistence, materialization, or lifecycle work
-  failed.
+`SourceUnitDeriver` binds each signal to source, document, Source Unit, current
+Source Unit revision, Projection run, Derivation, batch, batch attempt,
+extraction contract, Observation revision when known, prompt hash, provider,
+model, and deployment revision. The resulting `AgentRuntimeEvent` remains
+actionable when no Memory exists. Its deterministic product ID is based on
+stable execution lineage and signal sequence; trace/span IDs are optional
+correlation and never participate in identity.
 
-Stable reason codes describe what happened. `degraded` and `rejected` do not
-mean that the underlying semantic claim is incorrect. A deterministic invariant
-or an adjudicated label is required for that conclusion.
+The batch outcome and its runtime events commit in one SQLite/HANA transaction.
+This required product audit is distinct from optional OTLP shipping. An OTLP
+exporter, metric sink, or asynchronous evaluator may fail without changing the
+committed extraction result; the outbox retries projection after commit.
 
-The initial producers cover structured-output outcomes, Evidence Block
-admission, quote/Block localization, and batch candidates/zero-candidates. The
-same envelope is extended at projection materialization and lifecycle seams;
-those modules must not create parallel event stores.
+### Use a bounded runtime taxonomy
 
-### Default records are content-free and bounded
+Stable event names identify occurrence classes, initially:
 
-Default events contain fixed identifiers, enums, counts, offsets, and SHA-256
-digests. They never contain raw prompts, source bodies, quote text, Memory
-content, provider response/error bodies, credentials, or raw provider URLs.
-Model names and machine-readable error codes are bounded labels.
+- `structured_output_outcome`;
+- `evidence_admission_outcome`;
+- `evidence_localization_outcome`;
+- `extraction_batch_outcome`.
 
-A request-local collector has a fixed maximum. Overflow becomes one aggregate
-event instead of unbounded cardinality. Named invariant failures are persisted
-exactly. Query APIs require a half-open time window and bounded page size.
-Retention and source deletion follow the source-owned event ledger; optional
-external metrics/log shipping may retain only the same safe envelope.
+Outcomes are `expected`, `degraded`, `rejected`, or `failed`; stable
+low-cardinality reason codes explain the result. These values describe runtime
+behavior, not semantic correctness labels.
 
-Event persistence is best-effort with respect to extraction correctness: a
-telemetry-store failure is logged and cannot turn a valid extraction into a
-failed derivation. Existing Memory lifecycle audit writes remain their own
-required transactional contract and are not weakened by this decision.
+The collector is capped. If it overflows, it preserves exact denominator
+counts by coalescing excess occurrences by `(event_name, outcome, reason_code)`
+instead of replacing them with an unrelated overflow event. Event and query
+payloads are bounded and versioned.
 
-### Online reports and offline cases remain separate
+### Map to OpenTelemetry without making it the ledger
 
-Online reports aggregate one bounded cohort with explicit denominators per
-event type and breakdowns by source type, model, contract, deployment, outcome,
-and reason. Authorized drill-down uses stored lineage to reach existing Source
-Projection, Derivation, Evidence, Memory Review, and audit records; the event
-does not embed their protected payloads.
+Use stable span names for source sync, derivation batch, model call, Evidence
+localization, lifecycle application, and asynchronous evaluator execution.
+Sampling-relevant attributes such as operation, source type, provider/model,
+contract version, and deployment revision are set when the span starts.
 
-Offline case materialization is a separate authorized operation. It pins an
-immutable or protected source artifact reference, contract/model configuration,
-observed disposition, originating event, label, label provenance, and
-adjudication state. The exporter enforces the same workspace/private-source
-access predicate as retrieval. A case is not created automatically from an
-online event, and replay never reads mutable current-source state.
+Each durable runtime event projects to the active span using its stable event
+name and content-free attributes. A post-hoc evaluator creates a linked
+`EVALUATOR` span and emits `gen_ai.evaluation.result`; that standard event is
+used only for a real `AgentAssessment`, never for the underlying runtime fact.
+OpenInference mappings may add evaluator/annotation compatibility without
+changing the OSS domain object.
 
-Confirmed cases may be promoted into the maintained regression suite. Online
-rate thresholds detect distribution shifts; offline labels measure accuracy.
-Neither substitutes for the other.
+Metrics include counts, rates, latency, queue delay, and score distributions.
+Workspace, source, document, unit, Memory, event, trace, span, request, and user
+IDs are forbidden metric labels. Detailed dashboards link to an authorized
+runtime-event query instead.
+
+### Keep content and authorization out of ordinary telemetry
+
+Default runtime events, traces, metrics, and logs never contain source text,
+prompt text, quote text, Memory content, model responses, tool arguments,
+provider exception bodies, credentials, or raw provider URLs. They carry
+stable IDs, hashes, ranges, counts, modes, versions, and an optional protected
+artifact handle.
+
+Artifact lookup, event/case query, and case materialization enforce the same
+workspace, owner, visibility, and source-retention boundaries as retrieval.
+Content capture requires a separately authorized workflow with its own access,
+encryption, retention, and audit policy.
+
+### Separate three sampling policies
+
+- Product audit records every bounded high-value runtime fact; it is not trace
+  sampling.
+- Telemetry tail-samples rejected, failed, degraded, or high-latency traces and
+  probabilistically samples ordinary success traces.
+- Evaluation selection retains all deterministic failures plus risk-triggered
+  cases and a small unbiased success/control cohort. Expensive LLM judges run
+  asynchronously and record evaluator version and execution failure explicitly.
+
+Exact rates are computed from the durable event ledger, never from sampled
+traces. A missing assessment is unknown, not success.
+
+### Promote live facts into offline cases explicitly
+
+Promotion records source/revision lineage, event IDs, artifact handles,
+contract/prompt/schema/model/deployment versions, selection rule, observed
+output/disposition, expected output, label provenance, and adjudication
+revision. Cases are immutable and deduplicated.
+
+Offline evaluation replays a fixed cohort against a candidate change and
+compares deterministic, LLM, and human assessments on that same cohort.
+Human-reviewed cases are reported separately from sampled controls. A model or
+prompt change cannot silently replace the dataset.
 
 ## Consequences
 
-All supported Source types—including Confluence, Jira, GitHub, Local Markdown,
-Teams, Agent Session, and extension sources—share one instrumentation path.
-Adding a connector does not require a new Block or telemetry mechanism.
+All Source types—including Teams, Confluence, Jira, GitHub, Local Markdown,
+Agent Session, and extensions—share one instrumentation seam. Connectors do not
+need their own Block, trace, or evaluation mechanism.
 
-Operators can measure invalid Block IDs, Evidence localization modes, schema
-fallback/failure, and empty extraction without exposing source content. A
-dropped candidate remains attributable to the exact current projection and
-batch.
+SQLite and HANA implement the same append/query semantics, stable ordering,
+idempotency, and filters. Cloud adds workspace partition, visibility checks,
+deployment metadata, and a transactional outbox, but no Cloud-only taxonomy or
+source-specific path.
 
-This ledger does not replace infrastructure observability or Memory audit. It
-provides the correlation contract that allows both to feed a controlled online
-to offline evaluation loop.
+The first increment persists structured-output, Evidence admission/localization,
+and batch facts; provides a bounded content-free report and OTel projection;
+and proves adapter parity. Case persistence, assessor scheduling, human review,
+and regression gating build on the separate contracts rather than widening the
+runtime-event object.
 
 ## References
 
-- [OpenTelemetry event semantic conventions](https://opentelemetry.io/docs/specs/semconv/general/events/)
-- [OpenTelemetry log data model](https://opentelemetry.io/docs/specs/otel/logs/)
-- [MLflow production trace evaluation](https://www.mlflow.org/docs/latest/genai/eval-monitor/running-evaluation/traces/)
+- [OpenTelemetry GenAI agent spans](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-agent-spans.md)
+- [OpenTelemetry GenAI evaluation event](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-events.md#event-gen_aievaluationresult)
+- [OpenTelemetry sampling](https://opentelemetry.io/docs/concepts/sampling/)
+- [OpenInference annotations](https://arize-ai.github.io/openinference/spec/annotations.html)
+- [MLflow automatic evaluations](https://mlflow.org/docs/latest/genai/eval-monitor/automatic-evaluations/)
+- [Langfuse LLM-as-a-judge](https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge)
+- [Phoenix annotations](https://arize.com/docs/phoenix/tracing/concepts-tracing/annotations-concepts)
