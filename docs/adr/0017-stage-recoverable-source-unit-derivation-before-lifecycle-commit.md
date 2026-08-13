@@ -329,6 +329,14 @@ authority. A response that reaches application validation but violates the
 exact-coverage or canonical-target contract remains a deterministic contract
 failure rather than being silently accepted.
 
+The structured client may spend one configured transport-retry token on a
+second JSON-text attempt when both the native-schema response and first
+JSON-text fallback reached the provider successfully but failed Pydantic schema
+validation. The retry remains inside the same logical deadline and telemetry
+budget. It does not retry ambiguous multi-object framing, deterministic
+application-contract failures, provider outages beyond their existing retry
+policy, or any response after the budget is exhausted.
+
 The same bounded admission judgment may reject a candidate as low value only
 when the candidate is merely instance output or source-recoverable detail and
 does not preserve a reusable decision, rule, invariant, conclusion, or
