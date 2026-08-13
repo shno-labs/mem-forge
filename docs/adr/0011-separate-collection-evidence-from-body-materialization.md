@@ -98,8 +98,12 @@ capability:
   Microsoft Graph. Ordinary runs use bounded polling with overlap and stable
   window revisions; unchanged windows are not materialized into packages or
   uploaded. ChatSvc message polling itself remains collection evidence because
-  the provider exposes no cheaper authoritative window revision feed. A periodic or explicit
-  complete reconciliation over the configured scope detects older changes.
+  the provider exposes no cheaper authoritative window revision feed. Historical
+  pages use an exclusive `endTime` derived from the final raw row of the prior
+  newest-first page; opaque `backwardLink` values remain audit evidence but are
+  not pagination authority because ChatSvc can repeat them. A non-advancing time
+  cursor fails the poll closed. A periodic or explicit complete reconciliation
+  over the configured scope detects older changes.
   Bounded-poll absence never creates a tombstone, and incomplete conversation
   polling preserves prior state.
 
