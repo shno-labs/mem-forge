@@ -1,8 +1,22 @@
 # Bind extracted evidence to the current Source Projection
 
-Extractor-provided Source Observation identities are localization hints, not evidence authority. The current Source Projection and its revision-pinned content are authoritative. A hint outside the changed evidence scope may be rebound only when the extracted quote has exactly one exact match in the current candidate Observations; missing or ambiguous matches fail closed.
+Amended 2026-08-12 to make batch-local Evidence Block identity the textual
+admission authority and make provider-returned quote text an optional precision
+hint rather than an exact-copy gate.
 
-This rule lives in the shared evidence-localization module and does not branch on provider type. Valid in-scope hints must still contain the quote, and revalidated no-op evidence retains its explicit current-revision validation. The same contract therefore applies to document-based and conversational sources without weakening changed-scope ownership.
+Extractor-provided Source Observation identities are localization hints, not
+Evidence authority. The current Source Projection and its revision-pinned
+content are authoritative. New textual extraction binds through a valid
+batch-local Evidence Block whose application-owned mapping selects the Source
+Observation. Legacy quote-only output may be rebound only when that quote maps
+to exactly one selectable Block; missing or ambiguous matches fail closed.
+
+This rule lives in the shared Evidence Catalog and localization Modules and does
+not branch on provider type. A valid Block remains authoritative when its
+optional quote cannot be refined, while revalidated no-op Evidence retains its
+explicit current-revision validation. The same contract therefore applies to
+document-based and conversational sources without weakening changed-scope
+ownership.
 
 When only Required Evidence changes, revalidated no-op Support may retain an
 unchanged, revision-pinned Primary `WHOLE_OBSERVATION` with `NO_EXCERPT`.
@@ -20,11 +34,11 @@ gate merely because the Memory content is unchanged.
 
 When a revised Primary Observation requires semantic revalidation but the
 structured provider cannot return a valid decision, or reports support without
-an exact quote from the current revision, the engine must not invent or
+a valid current-revision Block selection, the engine must not invent or
 approximately bind Evidence. It stages the exact incumbent Support change
 through the existing lifecycle Review gate, keeps the old Support active while
 that Review is pending, and continues the otherwise complete Source Unit plan.
-Provider unavailability or a model's inability to copy one exact quote is
+Provider unavailability or a model's inability to select valid Evidence is
 therefore an item-level unresolved Evidence decision, not an exception that
 invalidates every independently proven decision in the Source Unit. Internal
 identity, coverage, and lifecycle-plan contract violations still fail the
@@ -33,7 +47,7 @@ derivation.
 Agent-session patch intent is likewise a transient authority hint, not a second durable Evidence identity. After the claim is localized, its intent metadata and client identity are bound to the revision-pinned projected Evidence Unit. Relation Runs, current Evidence Relations, Evidence References, and Support Assertions for that claim must all use this one canonical Evidence Unit; a parallel intent-only unit may not become lifecycle authority.
 
 Each claim retains its own canonical Evidence Unit, but that unit stores only the
-claim-local exact quote or extraction context. The complete source text remains
+claim-local exact excerpt or bounded Block fallback. The complete source text remains
 stored once in the authoritative Source Observation Revision, and the Evidence
 Reference pins the claim to that revision. A claim without localized text stores
 empty Evidence Unit content and uses `NO_EXCERPT`; it must not claim
@@ -50,27 +64,67 @@ support without multiplying or transferring the full document for every Memory.
 
 ## Canonical claim Evidence excerpt
 
-Provider-returned `evidence_quote` is an untrusted localization proposal. Before
-durable derivation output is staged, the shared Evidence localization module
-validates that proposal against the immutable work scope and produces one
-canonical claim Evidence excerpt or no inline excerpt. Accepted text is
-preserved verbatim; the pipeline must not silently truncate it into a different
-quote. A generous operational byte envelope may prevent an unbounded inline
-payload, but exceeding that envelope omits or rejects the excerpt according to
-the work contract instead of changing its text.
+Every textual extraction work item builds a provider-neutral Evidence Catalog
+after work planning has established its owned authority. The Catalog divides
+only selectable current Source text into bounded Blocks and gives those Blocks
+deterministic IDs inside the immutable batch. The model selects one Block ID;
+application code validates that address against the exact Catalog that was sent
+and immediately resolves it to current Source text. Block IDs are transient
+prompt addresses: completed derivation output stores only the resolved exact
+excerpt and revision-pinned Source Anchor, so later segmentation changes cannot
+reinterpret durable Evidence.
 
-Changed-range work requires an exact current-revision quote that intersects the
-authoritative changed ranges. An unavailable inline excerpt therefore rejects
-that candidate and may activate the existing structural fallback. Structural
-work retains its deterministic unit-ownership gate; projection-batch work
-retains its Primary Observation gate. In those whole-scope cases an otherwise
-valid claim may remain revision-pinned with `WHOLE_OBSERVATION` and
-`NO_EXCERPT`, but the complete unit or Observation is not copied into claim
-Evidence. Short atomic Observations may still be preserved verbatim when the
-whole Observation is the actual claim Evidence. The Source Projection adapter,
-not downstream source-type branching, declares that atomic Evidence scope in
-Observation revision metadata. Artifact Evidence remains empty-text
-`SOURCE_ARTIFACT`.
+Changed-range work catalogs only inserted or replaced current ranges. The rest
+of the updated document may remain read-only context but has no selectable Block
+ID. Projection work catalogs only Primary Observations, while structural and
+full-document work catalog only their owned bounded text. The same Catalog
+Module serves every source Adapter after Source Projection and work planning;
+provider-specific Block identity is neither required nor allowed.
+
+For textual Evidence the selected Block is the admission authority. An optional
+`evidence_quote` may narrow the excerpt inside that Block through exact or
+conservative representation-only canonical matching, including Markdown escape,
+link, Unicode punctuation, and whitespace differences. A successful refinement
+is mapped back to the exact Source characters. A missing or unlocalizable quote
+does not reject a valid Block selection: the exact bounded Block becomes the
+non-empty canonical excerpt. An invalid Block ID still fails closed. During the
+contract transition, a quote-only response may be admitted only when it maps to
+exactly one selectable Block; this compatibility path does not create authority
+outside the Catalog.
+
+Textual extraction therefore does not use `NO_EXCERPT` as a recovery for model
+copy differences. Binary Artifact Evidence remains the explicit non-textual
+exception. A whole-Observation Anchor may still be necessary when the resolved
+excerpt repeats in one revision, but its inline excerpt remains non-empty; Anchor
+scope and public excerpt presence are separate concerns.
+
+Whole-Block fallback is an admitted, observable quality outcome rather than an
+extraction error. The shared derivation path records a content-free bounded
+sample containing the Source Observation and revision identities, exact range,
+candidate/Block/quote hashes and lengths, extraction contract, derivation,
+Source Unit, and target revision identities. This signal survives derivation
+replay and is emitted through the existing Memory audit seam. It never persists
+the Block ID, source text, quote text, prompt, or Memory content. A cross-Block
+quote check is deliberately deferred until production telemetry demonstrates
+that models select one Block while quoting another; the fallback path does not
+reject such candidates speculatively.
+
+An explicitly scoped re-extraction of an unchanged current Source Unit may
+select all of that unit's current inference-eligible Observations as Primary
+work. This is a derivation instruction, not new Source truth: it must not invent
+a semantic Revision Delta, replace the current Observation or Source Unit
+revision, or bypass the ordinary Source activity and lifecycle stale guards.
+The replay instruction is part of the derivation identity so its batches cannot
+reuse an ordinary no-op derivation. Normal incremental Sync and full discovery
+retain their existing change-driven extraction behavior.
+
+The Evidence Catalog enforces its inline byte envelope while constructing
+Blocks from Source text, rather than truncating provider output after the fact.
+Changed-range work accepts only Blocks constructed from authoritative changed
+ranges. Structural work retains deterministic unit ownership;
+projection-batch work retains Primary Observation ownership. A textual claim
+with a valid Block therefore always has a bounded non-empty excerpt. Artifact
+Evidence remains empty-text `SOURCE_ARTIFACT`.
 
 The canonical excerpt is the sole durable text authority for the claim.
 `EvidenceUnit.content`, `EvidenceUnit.excerpt`, `MemorySource.excerpt`, and the
@@ -91,10 +145,12 @@ on storage return order.
 
 ## Revision-range localization
 
-A Primary exact quote that occurs exactly once in the authoritative current
-Observation Revision is materialized as a half-open `REVISION_RANGE` Anchor.
-An empty, missing, or repeated quote remains a conservative
-`WHOLE_OBSERVATION` Anchor. Required and contextual references also remain
+A Block-resolved excerpt is materialized from its application-owned half-open
+range in the authoritative current Observation Revision, including when the
+same text appears more than once. A legacy exact quote without Block coordinates
+uses `REVISION_RANGE` only when it occurs exactly once; an empty, missing, or
+repeated legacy quote remains a conservative `WHOLE_OBSERVATION` Anchor.
+Required and contextual references also remain
 whole-Observation authority because they do not claim that one quote alone
 contains their complete support.
 

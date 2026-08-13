@@ -2,6 +2,12 @@
 
 Status: Accepted (2026-07-27)
 
+Amended: 2026-08-13 to require structural-unit selectable text to map into the
+single current Source Observation authority. When a provider's rendered
+Document view adds text outside that Observation, planning uses projection
+batches over the Observation revision instead. The extraction contract advances
+so staged output from the prior authority boundary is not reused.
+
 Amended: 2026-07-31 to require canonical claim Evidence localization before a
 successful batch output becomes durable. Provider-returned quotes from an older
 extractor contract cannot be reused as if they satisfied the canonical excerpt
@@ -145,7 +151,9 @@ The deriver selects one of three provider-neutral work shapes before staging:
   work item and validates every returned exact quote against the current
   changed ranges;
 - one textual Observation that requires full-document extraction is partitioned
-  into deterministic structural Markdown units;
+  into deterministic structural Markdown units only when the rendered Document
+  text maps into that Observation authority; otherwise it uses an Observation
+  projection batch;
 - multiple Observations, or any Artifact-bearing projection, retains
   Observation/Artifact projection batches.
 
@@ -228,6 +236,14 @@ already exists with the same exact member set in a different order, projection
 reuses that immutable row verbatim. Provider enumeration order and retry order
 cannot create a second payload for the same revision ID; a different member set
 still fails the immutable identity check.
+
+Observation revision identity includes the bounded inference contract that
+changes how its content may support a claim. In particular,
+`claim_evidence_scope` participates in the semantic hash: adding atomic-claim
+scope to an unchanged Teams message or Jira comment creates a new immutable
+revision instead of attempting to enrich an old row in place. Operational
+metadata such as author, timestamps, and provider display fields remains
+outside semantic identity so harmless enrichment does not cause re-extraction.
 
 When Derivation Coverage closes, the pipeline assembles one complete candidate
 ledger and one complete Lifecycle Plan. There is no single-Observation or
@@ -312,6 +328,14 @@ persist provider text or treat the failed quality optimization as lifecycle
 authority. A response that reaches application validation but violates the
 exact-coverage or canonical-target contract remains a deterministic contract
 failure rather than being silently accepted.
+
+The structured client may spend one configured transport-retry token on a
+second JSON-text attempt when both the native-schema response and first
+JSON-text fallback reached the provider successfully but failed Pydantic schema
+validation. The retry remains inside the same logical deadline and telemetry
+budget. It does not retry ambiguous multi-object framing, deterministic
+application-contract failures, provider outages beyond their existing retry
+policy, or any response after the budget is exhausted.
 
 The same bounded admission judgment may reject a candidate as low value only
 when the candidate is merely instance output or source-recoverable detail and
@@ -529,6 +553,9 @@ schema-valid output can be semantically invalid.
   state changes.
 - Reordering an unchanged provider Artifact inventory reuses the exact prior
   Source Unit revision and cannot create an immutable-identity retry conflict.
+- Upgrading the inference scope of an unchanged Teams message or Jira comment
+  creates a new immutable Observation revision, while operational metadata
+  enrichment continues to reuse the prior revision.
 - Closed coverage with an inference-ineligible Artifact preserves its exact
   bytes and protects affected incumbent Support.
 - Complete coverage that removes a supporting Observation stages an exact
