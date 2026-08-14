@@ -375,6 +375,14 @@ for Review. The pending Review retains the incumbent's exact active Support,
 while non-conflicting decisions in the same complete Lifecycle Plan may commit
 and the Source Projection may advance.
 
+The same Review rule applies when complete candidate-relation cells disagree
+between KEEP and exactly one replacement for an incumbent. The reducer stages
+that unique replacement for Review and leaves the competing KEEP candidate
+unbound; the independent support audit is recorded in the Review reason but
+does not turn the semantic disagreement into failed derivation coverage. This
+rule is evaluated across all bounded relation cells, so transport partitioning
+cannot change the lifecycle result.
+
 Missing slots, invalid identities, multiple destructive candidate targets, and
 incomplete incumbent coverage do not become Reviews. They remain failed
 reconciliation because no single complete proposal exists for a reviewer to
@@ -549,6 +557,9 @@ schema-valid output can be semantically invalid.
   one model response is completely partitioned across bounded relation cells,
   receives one independent incumbent-support audit, and produces one merged
   operation per candidate without truncation.
+- A candidate-relation disagreement test proves that KEEP plus one exact
+  replacement creates one pending Review and preserves incumbent Support,
+  while replacement targets split across bounded cells remain fail-closed.
 - A stale target and a changed source-activity epoch both fail before current
   state changes.
 - Reordering an unchanged provider Artifact inventory reuses the exact prior

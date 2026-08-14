@@ -55,6 +55,14 @@ class ReconciliationResult:
     metrics: ReconciliationMetrics = ReconciliationMetrics()
 
 
+@dataclass(frozen=True)
+class _IncumbentReviewConflict:
+    """One complete incumbent disagreement with an exact Review proposal."""
+
+    reviewed_candidate_index: int | None
+    reason: str
+
+
 RECONCILIATION_PROMPT = """You are reconciling team knowledge. A document was updated and new facts
 were extracted. Compare them against existing memories from the same document
 and the updated document content.
@@ -703,14 +711,20 @@ def _validate_complete_reconciliation_batch(
         dispositions = {_incumbent_disposition(item) for item in group}
         if None in dispositions:
             raise ValueError(f"invalid incumbent decision for {memory_id}")
-        if len(dispositions) > 1:
-            raise ValueError(f"conflicting incumbent decisions for {memory_id}")
         replacements = [
             item
             for item in group
             if isinstance(item.get("index"), int)
             and str(item.get("action", "")).upper() in {"UPDATE", "SUPERSEDE"}
         ]
+        reviewable_candidate_conflict = (
+            not incumbent_audit
+            and not allow_unindexed_incumbents
+            and dispositions == {"keep", "replace"}
+            and len(replacements) == 1
+        )
+        if len(dispositions) > 1 and not reviewable_candidate_conflict:
+            raise ValueError(f"conflicting incumbent decisions for {memory_id}")
         if "replace" in dispositions and not replacements:
             raise ValueError(
                 f"replacement decision for incumbent {memory_id} requires a new extraction index"
@@ -793,18 +807,13 @@ def _merge_complete_batch_decisions(
         chosen_memory_id = chosen.get("memory_id")
         review_conflict = review_conflicts.get(str(chosen_memory_id))
         if review_conflict is not None:
-            relation_disposition, audit_disposition = review_conflict
-            if relation_disposition == "replace":
+            if review_conflict.reviewed_candidate_index == index:
                 chosen["flag_for_review"] = True
-                chosen["reason"] = _conflicting_judgment_review_reason(
-                    relation_disposition,
-                    audit_disposition,
-                )
+                chosen["reason"] = review_conflict.reason
             else:
-                # The candidate is an explicit semantic duplicate, while the
-                # independent audit proposes removing the incumbent's support.
-                # The incumbent-only DELETE below owns the Review; this
-                # candidate must not create a second lifecycle operation.
+                # Either one exact replacement candidate owns the Review or
+                # the independent support-removal audit owns it. Other
+                # candidate relations must not consume the incumbent first.
                 chosen["memory_id"] = None
         if chosen_memory_id in consumed_incumbents:
             if str(chosen.get("action", "")).upper() != "NOOP":
@@ -834,12 +843,8 @@ def _merge_complete_batch_decisions(
         decision = dict(unindexed[0] if unindexed else group[0])
         review_conflict = review_conflicts.get(memory.id)
         if review_conflict is not None:
-            relation_disposition, audit_disposition = review_conflict
             decision["flag_for_review"] = True
-            decision["reason"] = _conflicting_judgment_review_reason(
-                relation_disposition,
-                audit_disposition,
-            )
+            decision["reason"] = review_conflict.reason
         # Indexed NOOP rows are also explicit incumbent KEEP decisions. If the
         # candidate chose another compatible match, normalize this row to the
         # one incumbent-only operation required by the Lifecycle Planner.
@@ -862,10 +867,10 @@ def _classify_composed_incumbent_conflicts(
     decisions: list[dict],
     *,
     existing_ids: set[str],
-) -> dict[str, tuple[str, str]]:
+) -> dict[str, _IncumbentReviewConflict]:
     """Return complete semantic disagreements that require Lifecycle Review."""
 
-    conflicts: dict[str, tuple[str, str]] = {}
+    conflicts: dict[str, _IncumbentReviewConflict] = {}
     for memory_id in sorted(existing_ids):
         related = [
             decision
@@ -882,19 +887,45 @@ def _classify_composed_incumbent_conflicts(
         relation_dispositions = {
             _incumbent_disposition(decision) for decision in related if _incumbent_disposition(decision) is not None
         }
+        audit_disposition = _incumbent_disposition(audits[0])
+        if audit_disposition is None:
+            raise ValueError(f"invalid incumbent support audit for {memory_id}")
+        replacements = [
+            decision
+            for decision in related
+            if _incumbent_disposition(decision) == "replace"
+        ]
+        if "replace" in relation_dispositions and len(replacements) != 1:
+            raise ValueError(f"multiple replacement candidates for incumbent {memory_id}")
+        if relation_dispositions == {"keep", "replace"}:
+            conflicts[memory_id] = _IncumbentReviewConflict(
+                reviewed_candidate_index=int(replacements[0]["index"]),
+                reason=_conflicting_candidate_relation_review_reason(
+                    audit_disposition,
+                ),
+            )
+            continue
         if len(relation_dispositions) > 1:
             raise ValueError(f"conflicting candidate relations for incumbent {memory_id}")
         if not relation_dispositions:
             continue
         relation_disposition = next(iter(relation_dispositions))
-        audit_disposition = _incumbent_disposition(audits[0])
-        if audit_disposition is None:
-            raise ValueError(f"invalid incumbent support audit for {memory_id}")
         compatible = (relation_disposition == "keep" and audit_disposition == "keep") or (
             relation_disposition == "replace" and audit_disposition == "remove"
         )
         if not compatible:
-            conflicts[memory_id] = (relation_disposition, audit_disposition)
+            reviewed_candidate_index = (
+                int(replacements[0]["index"])
+                if relation_disposition == "replace" and len(replacements) == 1
+                else None
+            )
+            conflicts[memory_id] = _IncumbentReviewConflict(
+                reviewed_candidate_index=reviewed_candidate_index,
+                reason=_conflicting_judgment_review_reason(
+                    relation_disposition,
+                    audit_disposition,
+                ),
+            )
     return conflicts
 
 
@@ -905,6 +936,15 @@ def _conflicting_judgment_review_reason(
     return (
         "candidate relation and incumbent support audit disagree "
         f"(relation={relation_disposition}, audit={audit_disposition})"
+    )
+
+
+def _conflicting_candidate_relation_review_reason(
+    audit_disposition: str,
+) -> str:
+    return (
+        "candidate relations disagree for one incumbent "
+        f"(relations=keep,replace; audit={audit_disposition})"
     )
 
 

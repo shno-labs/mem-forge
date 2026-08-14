@@ -493,6 +493,157 @@ async def test_conflicting_incumbent_judgments_route_replacement_to_review() -> 
 
 
 @pytest.mark.asyncio
+async def test_conflicting_candidate_relations_route_unique_replacement_to_review() -> None:
+    incumbent = _memory("mem-existing", "Service uses PostgreSQL 15.")
+
+    class ConflictingCandidateClient:
+        async def reconcile_candidate_relations(self, prompt: str, **kwargs):
+            del prompt, kwargs
+            return _candidate_response(
+                CandidateRelationDecision(
+                    action="NOOP",
+                    incumbent_slot=0,
+                    reason="The first candidate repeats the incumbent.",
+                ),
+                CandidateRelationDecision(
+                    action="SUPERSEDE",
+                    incumbent_slot=0,
+                    reason="The second candidate changes the version.",
+                ),
+            )
+
+        async def audit_incumbent_support(self, prompt: str, **kwargs):
+            del prompt, kwargs
+            return _audit_response(
+                IncumbentSupportAuditDecision(
+                    action="NOOP",
+                    reason="The incumbent remains independently supported.",
+                )
+            )
+
+    result = await reconcile_memories(
+        new_extractions=[
+            RawMemory(content="Service uses PostgreSQL 15.", memory_type="fact"),
+            RawMemory(content="Service uses PostgreSQL 16.", memory_type="fact"),
+        ],
+        existing_memories=[incumbent],
+        doc_type="ticket",
+        structured_llm_client=ConflictingCandidateClient(),
+        include_metadata=True,
+    )
+
+    assert result.failure is None
+    reviewed_replacements = [
+        operation
+        for operation in result.operations
+        if operation.action is ReconcileAction.SUPERSEDE
+        and operation.memory_id == incumbent.id
+    ]
+    assert len(result.operations) == 2
+    assert result.operations[0].action is ReconcileAction.NOOP
+    assert result.operations[0].memory_id is None
+    assert len(reviewed_replacements) == 1
+    assert reviewed_replacements[0].flag_for_review is True
+
+
+@pytest.mark.asyncio
+async def test_multiple_replacement_candidates_for_one_incumbent_fail_closed() -> None:
+    incumbent = _memory("mem-existing", "Service uses PostgreSQL 15.")
+
+    class AmbiguousReplacementClient:
+        async def reconcile_candidate_relations(self, prompt: str, **kwargs):
+            del prompt, kwargs
+            return _candidate_response(
+                CandidateRelationDecision(
+                    action="SUPERSEDE",
+                    incumbent_slot=0,
+                    reason="The first candidate changes the version.",
+                ),
+                CandidateRelationDecision(
+                    action="UPDATE",
+                    incumbent_slot=0,
+                    updated_content="Service uses PostgreSQL 17.",
+                    reason="The second candidate changes the version differently.",
+                ),
+            )
+
+        async def audit_incumbent_support(self, prompt: str, **kwargs):
+            del prompt, kwargs
+            return _audit_response(
+                IncumbentSupportAuditDecision(
+                    action="DELETE",
+                    reason="The incumbent is no longer supported.",
+                )
+            )
+
+    result = await reconcile_memories(
+        new_extractions=[
+            RawMemory(content="Service uses PostgreSQL 16.", memory_type="fact"),
+            RawMemory(content="Service uses PostgreSQL 17.", memory_type="fact"),
+        ],
+        existing_memories=[incumbent],
+        doc_type="ticket",
+        structured_llm_client=AmbiguousReplacementClient(),
+        include_metadata=True,
+    )
+
+    assert result.operations == []
+    assert result.failure is not None
+    assert "multiple replacement candidates for incumbent mem-existing" in result.failure.error
+
+
+@pytest.mark.asyncio
+async def test_replacement_candidates_across_batches_fail_closed() -> None:
+    incumbent = _memory("mem-existing", "Service uses PostgreSQL 15.")
+    candidates = [
+        RawMemory(content=f"Candidate claim {index}", memory_type="fact")
+        for index in range(25)
+    ]
+
+    class CrossBatchReplacementClient:
+        async def reconcile_candidate_relations(self, prompt: str, **kwargs):
+            del kwargs
+            candidate_payload = json.loads(
+                re.search(
+                    r"<new_extractions>\n(.*?)\n</new_extractions>",
+                    prompt,
+                    re.DOTALL,
+                ).group(1)
+            )
+            return _candidate_response(
+                *(
+                    CandidateRelationDecision(
+                        action="SUPERSEDE" if offset == 0 else "ADD",
+                        incumbent_slot=0 if offset == 0 else None,
+                        reason="first candidate in each transport batch replaces the incumbent",
+                    )
+                    for offset, _candidate in enumerate(candidate_payload)
+                )
+            )
+
+        async def audit_incumbent_support(self, prompt: str, **kwargs):
+            del prompt, kwargs
+            return _audit_response(
+                IncumbentSupportAuditDecision(
+                    action="DELETE",
+                    reason="The incumbent is no longer supported.",
+                )
+            )
+
+    result = await reconcile_memories(
+        new_extractions=candidates,
+        existing_memories=[incumbent],
+        doc_type="ticket",
+        structured_llm_client=CrossBatchReplacementClient(),
+        include_metadata=True,
+    )
+
+    assert result.operations == []
+    assert result.failure is not None
+    assert "multiple replacement candidates for incumbent mem-existing" in result.failure.error
+
+
+@pytest.mark.asyncio
 async def test_conflicting_incumbent_judgments_route_support_removal_to_review() -> None:
     incumbent = _memory("mem-existing", "Service uses PostgreSQL 15.")
 
