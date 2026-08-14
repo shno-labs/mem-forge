@@ -2,6 +2,10 @@
 
 Status: Accepted (2026-08-13)
 
+Amended: 2026-08-14 to retain one content-free diagnostic runtime fact for
+each provider attempt that fails transport or schema validation. Ordinary
+schema-conformant attempts remain represented only by the logical-call outcome.
+
 ## Context
 
 MemForge records structured-model metrics, Source Projection/Derivation
@@ -84,6 +88,7 @@ authorized MemForge lookup. The shared bounded cohort query supports exact
 Stable event names identify occurrence classes, initially:
 
 - `structured_output_outcome`;
+- `structured_llm_attempt_outcome` for non-conformant provider attempts;
 - `evidence_admission_outcome`;
 - `evidence_localization_outcome`;
 - `extraction_batch_outcome`.
@@ -96,6 +101,22 @@ The collector is capped. If it overflows, it preserves exact denominator
 counts by coalescing excess occurrences by `(event_name, outcome, reason_code)`
 instead of replacing them with an unrelated overflow event. Event and query
 payloads are bounded and versioned.
+
+The logical structured-output event remains the denominator authority for
+call, retry, fallback, and terminal rates. A non-conformant provider attempt
+additionally records its one-based attempt index, native-schema or JSON-text
+mode, selected schema transport, requested output-token cap, optional
+finish/stop reason, provider response/request identifier, reported token usage,
+response character count and SHA-256, bounded validation rule/path and JSON
+line/column when available. Provider errors without a response record the same
+attempt identity and stable error category with response fields absent.
+
+The implementation may transiently inspect a provider response to calculate
+these allowlisted fields, but it never persists the response, prompt, provider
+headers, validation message, or exception body. Only an allowlisted request ID
+header or bounded response ID may cross the seam. This preserves enough
+evidence to distinguish output truncation, refusal, schema-transport drift, and
+malformed complete output without creating a content-bearing debug path.
 
 ### Keep the trace adapter isolated
 
