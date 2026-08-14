@@ -17,7 +17,7 @@
 > **Status:** alpha. APIs, storage formats, and integration packaging may change
 > while the project settles.
 
-MemForge (`mem-forge`) is a self-evolving memory layer for AI coding agents. It
+MemForge is a self-evolving memory layer for AI coding agents. It
 turns scattered team context into structured, source-traced memories that agents
 can search, verify, and reuse.
 
@@ -152,11 +152,11 @@ Install the host-side CLI in an isolated environment when you want to query a
 running MemForge service or run local-source adapters from this machine:
 
 ```bash
-pipx install mem-forge
+pipx install memforge-ai
 memforge --help
 ```
 
-`mem-forge` is the Python distribution name; the installed command and import
+`memforge-ai` is the Python distribution name; the installed command and import
 package remain `memforge`.
 
 You can also exercise the same read path from the CLI:

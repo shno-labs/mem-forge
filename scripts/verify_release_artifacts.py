@@ -11,9 +11,10 @@ import tomllib
 import zipfile
 
 
-EXPECTED_DISTRIBUTION_NAME = "mem-forge"
+EXPECTED_DISTRIBUTION_NAME = "memforge-ai"
+EXPECTED_ARTIFACT_STEM = "memforge_ai"
 EXPECTED_CONSOLE_SCRIPT = "memforge = memforge.main:cli"
-RELEASE_TAG_PREFIX = "mem-forge-v"
+RELEASE_TAG_PREFIX = "memforge-ai-v"
 
 
 def _project_metadata(project_root: Path) -> tuple[str, str]:
@@ -35,7 +36,7 @@ def _metadata_fields(raw: bytes) -> tuple[str, str]:
 
 
 def _verify_wheel(wheel: Path, *, version: str) -> None:
-    expected_prefix = f"mem_forge-{version}-"
+    expected_prefix = f"{EXPECTED_ARTIFACT_STEM}-{version}-"
     if not wheel.name.startswith(expected_prefix):
         raise SystemExit(f"unexpected wheel filename: {wheel.name}; expected prefix {expected_prefix}")
 
@@ -62,7 +63,7 @@ def _verify_wheel(wheel: Path, *, version: str) -> None:
 
 
 def _verify_sdist(sdist: Path, *, version: str) -> None:
-    expected_name = f"mem_forge-{version}.tar.gz"
+    expected_name = f"{EXPECTED_ARTIFACT_STEM}-{version}.tar.gz"
     if sdist.name != expected_name:
         raise SystemExit(f"unexpected sdist filename: {sdist.name}; expected {expected_name}")
 

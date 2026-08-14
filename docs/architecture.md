@@ -80,7 +80,7 @@ MemForge is a **memory layer** that:
 
 ```toml
 [project]
-name = "mem-forge"
+name = "memforge-ai"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

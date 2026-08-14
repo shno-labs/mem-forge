@@ -1,11 +1,11 @@
 # Releasing the Python distribution
 
-The public Python distribution is named `mem-forge`. It intentionally keeps the
+The public Python distribution is named `memforge-ai`. It intentionally keeps the
 Python import package and installed command named `memforge`:
 
 | Surface | Name |
 | --- | --- |
-| PyPI distribution | `mem-forge` |
+| PyPI distribution | `memforge-ai` |
 | Python import | `memforge` |
 | Console command | `memforge` |
 
@@ -16,7 +16,7 @@ in the repository. Configure one PyPI pending publisher with these exact values:
 
 | Field | Value |
 | --- | --- |
-| PyPI project | `mem-forge` |
+| PyPI project | `memforge-ai` |
 | GitHub owner | `shno-labs` |
 | GitHub repository | `mem-forge` |
 | Workflow | `publish-pypi.yml` |
@@ -29,17 +29,17 @@ release immediately after configuring it.
 
 1. Update `project.version` in `pyproject.toml` and refresh `uv.lock`.
 2. Merge the version change after CI passes.
-3. Create a GitHub release whose tag is exactly `mem-forge-v<version>`, for
-   example `mem-forge-v0.1.55`.
+3. Create a GitHub release whose tag is exactly `memforge-ai-v<version>`, for
+   example `memforge-ai-v0.1.55`.
 4. The release workflow builds one wheel and one source distribution, verifies
    their metadata and `memforge` console entry point, and publishes them through
    the `pypi` environment.
 5. Verify the public installation from a clean tool environment:
 
    ```bash
-   pipx install mem-forge
+   pipx install memforge-ai
    memforge --help
-   python -c 'from importlib.metadata import version; print(version("mem-forge"))'
+   python -c 'from importlib.metadata import version; print(version("memforge-ai"))'
    ```
 
 Plugin tags such as `memforge-memory-v0.1.55` do not match the Python release

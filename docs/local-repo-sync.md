@@ -7,7 +7,7 @@ lifecycle reconciliation.
 
 ## Setup
 
-1. Install the host-side CLI with `pipx install mem-forge`.
+1. Install the host-side CLI with `pipx install memforge-ai`.
 2. Start the local daemon with `memforge adapter daemon run`.
 3. In the Sources UI, add a Local Markdown or GitHub Repository source.
 4. Choose the local folder or repository through the source-specific browser.

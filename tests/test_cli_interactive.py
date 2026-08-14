@@ -100,7 +100,7 @@ def test_interactive_cache_key_uses_public_distribution_name(monkeypatch, tmp_pa
 
     cache_key = main._interactive_cache_key(resource_dir)
 
-    assert requested == ["mem-forge"]
+    assert requested == ["memforge-ai"]
     assert cache_key.startswith("1.2.3-")
 
 

@@ -43,11 +43,11 @@ Install the host-side CLI separately when you want to run local-source adapters
 or query the service from a terminal:
 
 ```bash
-pipx install mem-forge
+pipx install memforge-ai
 memforge --help
 ```
 
-The distribution is named `mem-forge`; it installs the `memforge` command and
+The distribution is named `memforge-ai`; it installs the `memforge` command and
 Python import package.
 
 This OSS public-beta profile is single-user and authentication-free. Compose
