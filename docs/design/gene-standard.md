@@ -821,7 +821,7 @@ A 3rd-party gene is a standard pip package:
 [project]
 name = "memforge-gene-slack"
 version = "0.3.0"
-dependencies = ["memforge>=0.1.0"]
+dependencies = ["memforge-ai>=0.1.0"]
 
 [project.entry-points."memforge.genes"]
 slack = "memforge_slack:SlackGene"
