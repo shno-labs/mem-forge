@@ -43,7 +43,8 @@ normalize updated document
   -> choose update mode
   -> extract RawMemory candidates from changed content
   -> value-sensitive dedup against active and pending memories
-  -> same-document reconciliation for current-doc extracted memories
+  -> exact relation classification plus incumbent support audit
+  -> deterministic lifecycle-action reduction
   -> supporter verification for corroborated and related memories
   -> contradiction classification for new or changed active claims
   -> MemoryStore applies lifecycle/index changes
@@ -68,9 +69,12 @@ environment, owner, status, or other material value is not equivalent.
 
 ### UPDATE
 
-Update an existing memory in place only for canonical wording changes where all
-valid support edges remain compatible with the new content. If any support edge
-still validates the old wording but not the new wording, create a review case.
+Create a new revision Memory and supersede the old materialization only when a
+unique challenger-to-incumbent `REFINES` relation also passes the transient
+revision-composition proof. The admitted candidate must preserve the incumbent
+truth, represent the same Memory identity, and be the complete canonical current
+claim with current localized Evidence. Equivalent wording is NOOP; a sibling or
+narrower refinement is KEEP + ADD.
 
 ### SUPERSEDE
 
@@ -113,7 +117,7 @@ Create review when:
 
 - a mutation would conflict with another valid support edge
 - a memory has only corroborated support and needs content mutation
-- a model proposes lifecycle action outside current-document authority
+- the deterministic reducer proposes a lifecycle action outside current-document authority
 - a high-risk support removal would retire an important memory; the current
   policy treats 3 or more support edges as high-risk
 - cross-document classification finds a contradiction or ambiguous temporal claim
@@ -141,8 +145,10 @@ directly affected incumbent.
 | 1 | Doc A extracts a new claim and no equivalent memory exists. | Insert active memory M and add Doc A extracted support. |
 | 2 | Doc B extracts the same claim as active M from Doc A. | Do not insert a duplicate. Add Doc B extracted support to M. Canonical wording may refresh only if every support validates it. |
 | 3 | Doc B extracts a near duplicate with a critical value change, such as PostgreSQL 15 to PostgreSQL 16. | Do not attach as equivalent support. Stage challenger N, classify against M, and create review if contradictory. |
-| 4 | Doc A is the only support and changes wording without changing meaning. | Direct UPDATE M and reindex. |
-| 5 | Doc A is the only support and materially changes the claim. | Direct SUPERSEDE: old M becomes superseded, replacement N becomes active. |
+| 4 | Doc A changes wording without changing meaning. | EQUIVALENT: keep M and rebind current-revision Support; do not create a new Memory. |
+| 5 | Doc A adds a material detail to the same complete claim, and the candidate alone preserves M with complete current Evidence. | UPDATE: create revision N and supersede M with `replacement_kind=revision`. |
+| 5a | Doc A adds a sibling scenario or a narrower independent claim. | Keep M and ADD N independently. |
+| 5b | Doc A states a materially incompatible current claim and no longer supports M. | SUPERSEDE: M becomes superseded and replacement N becomes active. |
 | 6 | Doc A changes the claim, but Doc B still corroborates the old claim. | No direct supersede. Stage challenger/review because Doc B remains valid old evidence. |
 | 7 | Doc A changes the claim and Doc B is revalidated as supporting the new claim. | Direct mutation is allowed because Doc A has extracted authority and Doc B no longer conflicts. Doc B's corroborated support proves compatibility; it does not authorize the rewrite. |
 | 8 | Doc A removes its extracted claim and Doc B also extracted the same claim. | Remove Doc A extracted support only. M stays active due to Doc B extracted support. |
@@ -190,9 +196,12 @@ the operation was allowed or routed to review.
 
 ```text
 All lifecycle/index writes go through MemoryStore.
-Same-document reconciliation only mutates current-doc extracted memories.
+Same-document reconciliation classifies exact relations and support; only the
+deterministic reducer and Lifecycle Planner select actions.
 Corroborated support never grants content-mutation authority.
 Support removal can retire a memory only when no valid support remains.
-Direct UPDATE/SUPERSEDE requires every remaining support edge to validate the new claim.
+Direct UPDATE requires a complete transient revision-composition proof and
+candidate-local current Evidence. UPDATE/SUPERSEDE still require every remaining
+support edge to pass the existing authority gate.
 Cross-document contradictions create review; they do not automatically mutate incumbents.
 ```

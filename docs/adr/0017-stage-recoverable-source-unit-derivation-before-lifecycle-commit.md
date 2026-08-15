@@ -352,49 +352,40 @@ a partial disposition ledger is not an accepted recovery path.
 ### Compose reconciliation completeness from bounded ledgers
 
 Lifecycle reconciliation completeness is a proof over all candidates and all
-active incumbents; it is not a requirement that one model response contain the
-entire Cartesian comparison. Every input size uses the same two protocols and
-is partitioned without dropping candidates into:
+active incumbents. The application builds the exact candidate-by-incumbent pair
+set and reuses the bounded relation classifier from ADR 0012. Every pair returns
+one `EQUIVALENT`, directional `REFINES`, `CONTRADICTS`, or `UNRELATED` decision.
+An independent ordered audit returns only whether the current Source Unit still
+supports each incumbent. Neither model response contains lifecycle actions.
 
-1. bounded candidate-by-incumbent relation cells, each of which returns exactly
-   one decision in every active candidate slot in that cell; and
-2. one independent bounded support audit for every incumbent.
+The deterministic reducer owns the action matrix:
 
-The deterministic reducer authorizes ADD only after a candidate has crossed
-every incumbent cell. It rejects ambiguous destructive matches, merges
-compatible duplicate NOOP relations, and requires each candidate relation to
-agree with the independent incumbent-support audit. Every cell and audit must
-validate before the existing atomic Lifecycle Plan may be built.
+- supported + `EQUIVALENT` keeps and rebinds the incumbent;
+- supported + `UNRELATED` keeps the incumbent and adds the candidate;
+- supported + unique challenger-to-incumbent `REFINES` becomes UPDATE only
+  after a transient revision-composition proof succeeds;
+- supported + other `REFINES` keeps and adds;
+- supported + `CONTRADICTS` stages the unique replacement for Review;
+- unsupported + unique `CONTRADICTS` supersedes, subject to the existing
+  authority and external-Support gates;
+- unsupported + `UNRELATED` or `REFINES` removes Source Unit Support and adds
+  the independent candidate;
+- unsupported + `EQUIVALENT` is a support/semantic disagreement and routes the
+  incumbent removal to Review.
 
-When every required relation cell and support audit is complete and valid but
-their dispositions disagree for one incumbent, the disagreement is a complete
-Lifecycle Review decision rather than failed derivation coverage. A candidate
-replacement paired with an audit KEEP stages that exact replacement for Review;
-a candidate KEEP paired with an audit support removal stages that exact removal
-for Review. The pending Review retains the incumbent's exact active Support,
-while non-conflicting decisions in the same complete Lifecycle Plan may commit
-and the Source Projection may advance.
+The revision-composition proof is transient. It proves same Memory identity,
+preservation of every incumbent truth, and that the extracted candidate itself
+is the complete canonical current claim. The reducer stores that exact
+candidate; it does not ask the model to synthesize merged text or union stale
+incumbent Evidence. Candidate-local, current-revision Evidence therefore proves
+the whole revision through ADR 0007. A missing or failed proof falls back to
+KEEP + ADD.
 
-Missing slots, invalid identities, multiple destructive candidate targets, and
-incomplete incumbent coverage do not become Reviews. They remain failed
-reconciliation because no single complete proposal exists for a reviewer to
-approve or reject.
-
-The two phases use different fixed-slot structured response schemas. Candidate
-slots and incumbent-audit slots are schema-required named fields. The request
-maps active slots to datastore-owned identities and unused slots to null; code
-binds judgments back to those identities. A candidate relation cannot emit its
-candidate index or a Memory ID. It may choose only a bounded incumbent slot as
-its semantic target and cannot express DELETE. An incumbent audit cannot emit
-a Memory ID or candidate identity and can express only NOOP or DELETE. Missing,
-duplicated, out-of-range, or model-invented row identities are therefore not
-representable by a schema-valid response. Prompt instructions are not the
-identity or phase boundary; the schema and request-owned slot maps are.
-
-The previous combined-list protocol and its candidate-indexed decision arrays
-are removed from the lifecycle path. Keeping a smaller-input list protocol
-would preserve the same identity ambiguity that fixed slots eliminate for
-larger inputs.
+Ambiguous multi-incumbent targets, multiple incompatible refiners, incomplete
+pair coverage, and incomplete incumbent audits fail reconciliation closed. They
+do not become Reviews because no single complete proposal exists for a reviewer.
+The existing Lifecycle Planner remains the only mutation authority and retains
+all Source Authority, external-Support, stale-guard, and atomic-plan gates.
 
 This separates semantic completeness from provider response size. Increasing a
 token limit, retrying one oversized response, truncating candidates, or treating
@@ -545,10 +536,12 @@ schema-valid output can be semantically invalid.
 - A Candidate Ledger test proves that a structured-client failure keeps every
   candidate in only that bounded admission batch, records safe fallback counts,
   and continues later batches without exposing response content.
-- A reconciliation-matrix test proves that a candidate population larger than
-  one model response is completely partitioned across bounded relation cells,
-  receives one independent incumbent-support audit, and produces one merged
-  operation per candidate without truncation.
+- A reconciliation-matrix test proves exact pair coverage across bounded
+  relation batches, independent incumbent-support audit coverage, the
+  relation/support action table, and fail-closed incomplete ledgers.
+- Representative tests prove that a sibling scenario becomes KEEP + ADD, while
+  a same-identity additive refinement reaches UPDATE only with a complete
+  revision-composition and current-Evidence proof.
 - A stale target and a changed source-activity epoch both fail before current
   state changes.
 - Reordering an unchanged provider Artifact inventory reuses the exact prior

@@ -36,12 +36,12 @@ Request-specific exact coverage is validated in application code. Candidate
 Ledger retains one validation retry and all-KEEP fallback; entity adjudication
 retains one validation retry and fails before Entity or alias writes.
 
-Amended: 2026-08-03 to apply the same ordered-decision contract to both
-authoritative lifecycle reconciliation phases. Candidate relation and incumbent
-support audit keep their existing 24- and 30-item business batches and complete
-lifecycle coverage; application code validates exact response count and binds
-each array position to request-owned candidate or incumbent identity. One
-validation retry remains, followed by fail-closed reconciliation.
+Amended: 2026-08-15 to replace action-first lifecycle reconciliation with the
+existing exact Memory-pair relation vocabulary. The model now returns only
+`EQUIVALENT`, directional `REFINES`, `CONTRADICTS`, or `UNRELATED`, plus a
+separate factual incumbent-support audit. Application code owns the action
+matrix. A short transient revision proof is requested only for a unique
+challenger-to-incumbent `REFINES` pair that could become an automatic revision.
 
 Amended: 2026-08-03 to let a deployment explicitly select a native-schema
 transport when a gateway capability registry lags the deployed model. This
@@ -132,15 +132,12 @@ Lifecycle Plan may commit. Cross-document and cross-source discovery run after
 that commit through the bounded, non-destructive Relation Discovery contract in
 [ADR 0009](0009-bound-cross-document-relation-discovery.md).
 
-Both lifecycle classification phases return ordered decision arrays. Candidate
-relation requires exactly one decision per ordered candidate in a cell and may
-refer only to an incumbent position supplied in that request. Incumbent support
-audit requires exactly one decision per ordered incumbent. Application code
-rejects a short or long response, binds every accepted position to datastore-owned
-identity, retries that bounded phase once with validation feedback, and then
-fails the complete reconciliation closed. The provider schema therefore remains
-constant while the request-specific exact-count invariant stays in application
-code; batch size is not encoded as nullable schema fields.
+Exact pair classification reuses the bounded relation classifier and requires
+one decision per requested `pair_index`. Incumbent support audit returns one
+ordered boolean judgment per incumbent. Application code rejects incomplete or
+foreign coverage, binds results to datastore-owned identities, retries once,
+and fails the complete reconciliation closed. Lifecycle verbs and datastore
+Memory IDs are absent from both model schemas.
 
 ### Remove unused enrichment and document indexing
 
