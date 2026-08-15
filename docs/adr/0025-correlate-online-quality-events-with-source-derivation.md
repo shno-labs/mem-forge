@@ -71,10 +71,11 @@ dedicated transactional export outbox is introduced only if a configured
 external sink requires at-least-once delivery; the durable runtime ledger
 remains replayable meanwhile.
 
-Langfuse enablement is explicit and fail-safe: the feature flag and both SDK
-credentials must be present before the adapter is constructed. Missing or
-invalid configuration selects the no-op sink and records an operational
-warning; it never weakens the durable database event.
+Langfuse enablement is explicit and fail-safe: the feature flag, exact base
+URL, and both SDK credentials must be present before the adapter is
+constructed. Requiring the base URL avoids silently exporting to the SDK's
+default region. Missing or invalid configuration selects the no-op sink and
+records an operational warning; it never weakens the durable database event.
 
 The product stores a stable trace correlation ID when a trace sink supplies or
 derives one, but the trace ID is not part of `AgentRuntimeEvent` identity. The
@@ -82,6 +83,11 @@ Langfuse adapter uses the same trace ID and puts `event_id` on each child
 observation so an investigator can move in either direction through an
 authorized MemForge lookup. The shared bounded cohort query supports exact
 `event_id` and `trace_id` filters with normal source-visibility enforcement.
+The adapter constructs one process-level Langfuse client with an isolated OTel
+`TracerProvider` and exports only Langfuse-owned spans. Environment changes
+therefore require a process restart. SDK batching remains asynchronous and one
+graceful process-exit shutdown drains its queue; a source batch never performs
+a synchronous flush.
 
 ### Use a bounded runtime taxonomy
 
@@ -125,12 +131,21 @@ learns. Langfuse configuration, SDK construction, buffering, flushing,
 attribute mapping, and backend failure stay inside its adapter. The core and
 every storage adapter compile and run when the optional dependency is absent.
 
-The first Langfuse projection creates one metadata-only trace per derivation
-batch attempt and child observations for its runtime facts. It does not export
+The first Langfuse projection creates one metadata-only root span per
+derivation batch attempt and discrete child events for its runtime facts.
+Every event carries the durable `event_id` and is explicitly parented to the
+root with the durable trace correlation ID. It does not export
 source/workspace/document/user identifiers, protected handles, raw hashes that
 could disclose content, or arbitrary errors. Langfuse annotations, scores, and
 datasets remain separate future evaluation adapters rather than methods on the
 runtime trace sink.
+
+Deployment target, environment label, sampling policy, and the disabled-first
+feature flag are non-secret deployment configuration. Public and secret SDK
+keys remain outside Git and rendered deployment files. A deploy first starts
+with the adapter disabled, runs the SDK's blocking authentication check as an
+operator smoke, and only then enables the flag and restarts the process. The
+authentication call never runs in an application request or extraction path.
 
 ### Preserve OpenTelemetry interoperability without requiring OTLP
 
