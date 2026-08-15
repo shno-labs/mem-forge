@@ -135,6 +135,21 @@ from that same value. The provider may not independently populate
 field remains temporarily to avoid coupling this correctness change to a
 cross-adapter schema migration; its removal is tracked separately.
 
+## Revision composition
+
+An automatic same-source UPDATE does not merge incumbent and candidate Evidence.
+It is permitted only when relation-first reconciliation proves that one
+challenger `REFINES` the incumbent, preserves every incumbent truth, represents
+the same Memory identity, and is itself the complete canonical current claim.
+The replacement content is the exact admitted candidate, so its normal
+current-revision Primary and Required Evidence supports the whole revision.
+
+This proof is transient and creates no `MemoryRevision` aggregate or additional
+Evidence identity. If the candidate would require synthesized merged text, lacks
+current localized Evidence, or is merely a sibling/narrower claim, UPDATE is not
+authorized. The lifecycle-safe fallback retains the incumbent and admits the
+original claim-sized candidate independently.
+
 Legacy cutover follows the same storage rule. An exact legacy excerpt may be
 preserved, while lineage that lacks one uses empty `LEGACY_LIMITED` Evidence.
 Cutover must never copy a complete Source Observation Revision into each

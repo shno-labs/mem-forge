@@ -55,7 +55,7 @@ MemForge is a **memory layer** that:
 | Retrieval latency (no reranking) | < 150ms |
 | Retrieval latency (with reranking) | < 500ms |
 | Memory extraction per document | All durable atomic memories justified by the source; no fixed count |
-| LLM calls per changed Source Unit | One structured extraction call, plus CandidateLedger only when multiple semantic candidates remain |
+| LLM calls per changed Source Unit | Structured extraction, optional CandidateLedger, bounded exact relation/support classification, and a short revision proof only for a unique REFINES proposal |
 | Relation-discovery work | Post-commit, bounded candidate retrieval and classification; no unbounded Memory history in extraction |
 
 ---
@@ -122,7 +122,7 @@ All distance thresholds are calibrated for **text-embedding-3-small** with cosin
 |-----------|---------------|
 | **One extraction path** | The gene normalizes source data into comprehensive markdown. One structured Source Unit extraction emits Memory candidates, revision-pinned Evidence localization, and entity mentions. |
 | **Team-first, not user-first** | All memories are team-shared. No per-user scoping. Scope hierarchy: team > project/space > source. |
-| **Steal patterns, not code** | Inspired by mem0's ADD/UPDATE/DELETE/NOOP operations, semantic deduplication, and confidence scoring. No mem0 dependency. |
+| **Deterministic lifecycle actions** | Models classify relations and support; application code owns ADD/UPDATE/SUPERSEDE/DELETE/NOOP reduction. No mem0 dependency. |
 | **SQLite + ChromaDB, no Neo4j** | Sufficient at team scale (up to 50K memories). Revisit graph DB only with data proving otherwise. |
 | **Bounded lifecycle context** | Extraction never loads unbounded workspace Memory history. Complete same-source incumbent coverage is handled by lifecycle planning; cross-document and cross-source discovery is bounded and post-commit. |
 | **Source-agnostic update extraction** | Every gene normalizes raw source data into stable markdown. Updates extract from changed hunks with the normalized full source item as context, then reconcile only current-document extracted memories. No persisted `KnowledgeBlock` layer or source-specific extraction strategy is required for the current lean design. |
@@ -681,14 +681,10 @@ async def update_memories_for_document(self, doc_id, new_content):
             await self.deduplicate_and_insert(mem)
         return
 
-    # LLM-based reconciliation
-    operations = await self.reconcile(
-        existing_active,
-        new_candidates,
-        updated_document=new_content,
-        changed_hunks=update_plan.changed_hunks,
-        update_mode=update_plan.mode,
-    )
+    relations = await self.classify_exact_pairs(new_candidates, existing_active)
+    support = await self.audit_current_source_support(existing_active, new_content)
+    revision_proofs = await self.prove_unique_refinements(relations)
+    operations = reduce_relation_ledger(relations, support, revision_proofs)
     for op in operations:
         match op.action:
             case "ADD":      await self.add_memory(op.memory)
@@ -698,7 +694,10 @@ async def update_memories_for_document(self, doc_id, new_content):
             case "NOOP":     pass
 ```
 
-ADD, UPDATE, and SUPERSEDE candidates go through the same pre-persistence quality
+The models return semantic relations, factual support, and conditional revision
+proofs; they do not return lifecycle verbs. The deterministic reducer chooses
+ADD, UPDATE, SUPERSEDE, DELETE, or NOOP, and the Lifecycle Planner remains the
+mutation authority. ADD, UPDATE, and SUPERSEDE candidates go through the same pre-persistence quality
 gate used by initial extraction. If a proposed replacement is metadata-only,
 reference-only, or an unresolved question, it is skipped and the old memory is
 left unchanged.
@@ -709,8 +708,8 @@ support remains. This lets one document stop supporting a fact without hiding a
 memory that is still supported by other documents.
 
 Same-document reconciliation can mutate only memories where the current document
-has `support_kind='extracted'`. If the model proposes UPDATE, SUPERSEDE, or
-DELETE for a memory outside that authority, the decision is rejected and audited.
+has `support_kind='extracted'`. A reducer proposal outside that authority is
+rejected and audited.
 If a direct content mutation would affect another valid support edge, the system
 stages a challenger for review instead of silently rewriting shared provenance.
 
@@ -720,13 +719,13 @@ lives in `docs/design/document-memory-lifecycle.md`.
 The source normalization boundary and reusable extraction contract are captured
 in `docs/design/source-agnostic-memory-extraction.md`.
 
-### Reconciliation Operations (Inspired by Mem0)
+### Deterministic Reconciliation Operations
 
 | Operation | When | Example |
 |-----------|------|---------|
 | **ADD** | New fact not in existing memories | New service dependency documented |
-| **UPDATE** | Same fact, minor detail changed | Port changed from 8080 to 8443 |
-| **SUPERSEDE** | Fundamentally replaced by a new fact | Migrated from REST to gRPC entirely |
+| **UPDATE** | Unique additive REFINES pair passes same-identity, truth-preservation, canonical-candidate, and current-Evidence proof | Existing timeout claim gains its configuration key without losing the timeout value |
+| **SUPERSEDE** | Current candidate contradicts an incumbent that this Source Unit no longer supports | Current database version replaces the old incompatible version |
 | **DELETE** | Fact no longer supported by this source document | Section deleted; remove this document's support, retire only if support count becomes zero |
 | **NOOP** | No change | Fact still accurately represented |
 
