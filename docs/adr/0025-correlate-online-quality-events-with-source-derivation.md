@@ -10,6 +10,8 @@ Amended:
   outcome.
 - 2026-08-16 to define the stable Session, Trace, and observation hierarchy
   used by the Langfuse projection.
+- 2026-08-16 to add the first DB-authoritative deterministic
+  `AgentAssessment` contract and optional Langfuse Score projection.
 
 ## Context
 
@@ -82,6 +84,30 @@ constructed. Requiring the base URL avoids silently exporting to the SDK's
 default region. Missing or invalid configuration selects the no-op sink and
 records an operational warning; it never weakens the durable database event.
 
+The first deterministic evaluator is a pure, provider-neutral function over
+the just-bound runtime events. Its completed `AgentAssessment` rows commit in
+the same transaction, after their target events, so a successful extraction
+cannot leave an eligible deterministic check missing because a process exited
+between commits. This narrow exception to asynchronous evaluation is limited
+to local constant-time rules with no network, model, or content access.
+Semantic, LLM, and human evaluators remain post-commit asynchronous workers.
+
+The initial rules judge only contracts that the runtime fact proves:
+
+- final structured-output conformance is pass/fail;
+- rejected Evidence references are fail;
+- exact or canonical Evidence localization is pass, while whole-Block fallback
+  is `needs_review`, not fail;
+- completed extraction with candidates and terminal batch failure are
+  pass/fail respectively.
+
+`zero_candidates` is not judged because the runtime event cannot prove that a
+Memory should have existed. Failed provider attempts are not scored separately
+because the logical structured-output event is the denominator authority.
+An assessment inherits the immutable target event's `occurrence_count`, so a
+collector overflow that coalesces equivalent facts does not undercount the
+evaluation denominator. Absence of an assessment remains unknown.
+
 The product stores a stable trace correlation ID when a trace sink supplies or
 derives one, but the trace ID is not part of `AgentRuntimeEvent` identity. The
 Langfuse adapter uses the same trace ID and puts `event_id` on each child
@@ -141,9 +167,14 @@ derivation batch attempt and discrete child events for its runtime facts.
 Every event carries the durable `event_id` and is explicitly parented to the
 root with the durable trace correlation ID. It does not export
 source/workspace/document/user identifiers, protected handles, raw hashes that
-could disclose content, or arbitrary errors. Langfuse annotations, scores, and
-datasets remain separate future evaluation adapters rather than methods on the
-runtime trace sink.
+could disclose content, or arbitrary errors. Langfuse annotations and datasets
+remain separate future evaluation adapters. The optional Score projection
+reuses the process-level client owned by the runtime trace adapter but
+implements a separately typed `AgentAssessmentSink`. It attaches one
+categorical Score to the deterministic batch Trace, uses the durable assessment
+ID as Score identity, and carries the target runtime-event ID in allowlisted
+metadata. Score export is post-commit and best-effort; the DB row remains
+authoritative.
 
 ### Group Langfuse telemetry by product execution boundaries
 
@@ -291,11 +322,12 @@ Cloud-only taxonomy or source-specific path. Cloud does not add an export
 outbox until an external delivery SLA actually requires at-least-once delivery.
 
 The first increment persists structured-output, Evidence admission/localization,
-and batch facts; provides bounded reporting and retention; optionally projects
-metadata-only traces through the isolated Langfuse adapter; and proves adapter
-parity. Case persistence, assessor scheduling, human review, and regression
-gating build on separate contracts rather than widening the runtime-event
-object.
+and batch facts plus the narrow deterministic assessments above; provides a
+bounded authorized Source view and retention through the target-event cascade;
+optionally projects metadata-only traces and categorical Scores through the
+isolated Langfuse adapters; and proves SQLite/HANA parity. Case persistence,
+semantic assessor scheduling, human review, and regression gating build on
+separate contracts rather than widening the runtime-event object.
 
 ## References
 
@@ -313,4 +345,5 @@ object.
 - [OpenInference annotations](https://arize-ai.github.io/openinference/spec/annotations.html)
 - [MLflow automatic evaluations](https://mlflow.org/docs/latest/genai/eval-monitor/automatic-evaluations/)
 - [Langfuse LLM-as-a-judge](https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge)
+- [Langfuse Scores via SDK](https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk)
 - [Phoenix annotations](https://arize.com/docs/phoenix/tracing/concepts-tracing/annotations-concepts)
