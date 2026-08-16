@@ -391,10 +391,14 @@ UPDATE decision while the Lifecycle Planner materializes the deterministic
 replacement Memory once and points every eligible incumbent to it.
 
 Ambiguity remains fail-closed only inside an incumbent decision: incompatible
-refiners, a non-unique contradiction proposal, incomplete pair coverage, or an
-incomplete incumbent audit. Those cases do not become Reviews because no single
-complete proposal exists for a reviewer. The existing Lifecycle Planner remains
-the only mutation authority and retains all Source Authority,
+refiners, incomplete pair coverage, or an incomplete incumbent audit. A unique
+contradiction proposal can become the incumbent's successor; multiple
+contradiction challengers cannot. In that case the reducer does not guess a
+successor: it persists each challenger once, while the independent support audit
+alone determines whether the incumbent keeps or loses this Source Unit's
+Support. This is the same non-destructive fallback used when revision composition
+cannot be proven and does not create an implicit supersession edge. The existing
+Lifecycle Planner remains the only mutation authority and retains all Source Authority,
 external-Support, stale-guard, and atomic-plan gates.
 
 This separates semantic completeness from provider response size. Increasing a
