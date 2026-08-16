@@ -381,11 +381,21 @@ incumbent Evidence. Candidate-local, current-revision Evidence therefore proves
 the whole revision through ADR 0007. A missing or failed proof falls back to
 KEEP + ADD.
 
-Ambiguous multi-incumbent targets, multiple incompatible refiners, incomplete
-pair coverage, and incomplete incumbent audits fail reconciliation closed. They
-do not become Reviews because no single complete proposal exists for a reviewer.
-The existing Lifecycle Planner remains the only mutation authority and retains
-all Source Authority, external-Support, stale-guard, and atomic-plan gates.
+A challenger relating materially to several incumbents is not ambiguous by
+itself. The reducer evaluates the complete relation, support, and optional
+revision proof independently for every incumbent. Without a complete revision
+proof it preserves that incumbent; the challenger is still persisted once when
+it is an independent current claim. When the same challenger is a proven
+lossless revision of several incumbents, every incumbent receives its own
+UPDATE decision while the Lifecycle Planner materializes the deterministic
+replacement Memory once and points every eligible incumbent to it.
+
+Ambiguity remains fail-closed only inside an incumbent decision: incompatible
+refiners, a non-unique contradiction proposal, incomplete pair coverage, or an
+incomplete incumbent audit. Those cases do not become Reviews because no single
+complete proposal exists for a reviewer. The existing Lifecycle Planner remains
+the only mutation authority and retains all Source Authority,
+external-Support, stale-guard, and atomic-plan gates.
 
 This separates semantic completeness from provider response size. Increasing a
 token limit, retrying one oversized response, truncating candidates, or treating
@@ -542,6 +552,10 @@ schema-valid output can be semantically invalid.
 - Representative tests prove that a sibling scenario becomes KEEP + ADD, while
   a same-identity additive refinement reaches UPDATE only with a complete
   revision-composition and current-Evidence proof.
+- A multi-incumbent test proves that one challenger can preserve several
+  supported incumbents and commit once when revision proof is absent, or create
+  one deterministic replacement and update every eligible incumbent when the
+  proof is complete.
 - A stale target and a changed source-activity epoch both fail before current
   state changes.
 - Reordering an unchanged provider Artifact inventory reuses the exact prior
