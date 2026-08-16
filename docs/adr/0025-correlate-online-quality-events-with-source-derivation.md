@@ -2,9 +2,14 @@
 
 Status: Accepted (2026-08-13)
 
-Amended: 2026-08-14 to retain one content-free diagnostic runtime fact for
-each provider attempt that fails transport or schema validation. Ordinary
-schema-conformant attempts remain represented only by the logical-call outcome.
+Amended:
+
+- 2026-08-14 to retain one content-free diagnostic runtime fact for each
+  provider attempt that fails transport or schema validation. Ordinary
+  schema-conformant attempts remain represented only by the logical-call
+  outcome.
+- 2026-08-16 to define the stable Session, Trace, and observation hierarchy
+  used by the Langfuse projection.
 
 ## Context
 
@@ -140,6 +145,57 @@ could disclose content, or arbitrary errors. Langfuse annotations, scores, and
 datasets remain separate future evaluation adapters rather than methods on the
 runtime trace sink.
 
+### Group Langfuse telemetry by product execution boundaries
+
+Langfuse identity follows the existing MemForge execution hierarchy rather
+than introducing another durable lifecycle:
+
+| Langfuse level | MemForge boundary | Stable correlation |
+| --- | --- | --- |
+| Session | one Source Projection execution | opaque hash of `projection_run_id` |
+| Trace | one executed Source Derivation batch attempt | `derivation_id`, `batch_id`, and `batch_attempt` |
+| Root observation | that batch attempt's metadata-only projection | stable name `memforge.agent.extraction_batch` |
+| Child observation | one durable `AgentRuntimeEvent` occurrence | `event_id` in metadata |
+
+The Session is deliberately narrower than a whole source sync and broader than
+one Derivation. Diff-guided extraction and its structural fallback may create
+different Derivations, but they remain one Projection workflow and therefore
+one Session. `derivation_id` would split that workflow; `source_id` or the
+source-sync run would create large, mixed-purpose Sessions.
+
+The Langfuse adapter derives, but does not persist, the Session ID as
+`mfs1-<sha256("memforge-agent-runtime-session-v1:" + projection_run_id)[:32]>`.
+The prefix versions the export mapping, the digest keeps raw lineage out of the
+external backend, and the result satisfies Langfuse's ASCII/200-character
+limit. `projection_run_id` remains the authoritative DB key; no Session column,
+table, migration, or source-specific mechanism is added.
+
+The Trace ID remains a deterministic 32-lowercase-hex digest of the versioned
+`(derivation_id, batch_id, batch_attempt)` seed, with a guard against W3C's
+invalid all-zero value. The attempt ordinal separates real retries. This ID is
+correlation, not export idempotency; an at-least-once exporter would still need
+its own outbox and observation-deduplication contract.
+
+Langfuse requires an arbitrary valid parent span ID when a predetermined Trace
+ID is injected. It only makes the root inherit that Trace ID; it is not a
+missing MemForge operation and does not justify a global OTel ID generator.
+
+The adapter sets first-class Langfuse attributes early enough that the root and
+all child observations agree on:
+
+- `session_id`: the derived Source Projection Session ID;
+- `trace_name`: `memforge.agent.extraction_batch`;
+- `version`: the extraction contract version;
+- `release`: the deployment revision already configured on the client;
+- `environment`: the deployment environment already configured on the client;
+- `tags`: only the low-cardinality values `memforge-agent-eval`,
+  `memory-extraction`, and `source-type:<source_type>`.
+
+`user_id` remains unset. Dynamic IDs never enter names, tags, metric labels,
+input, or output. Ordinary logs do not repeat runtime events; only an export
+failure warning adds the opaque Session ID, Trace ID, event count, and bounded
+error type needed to correlate with the durable ledger.
+
 Deployment target, environment label, sampling policy, and the disabled-first
 feature flag are non-secret deployment configuration. Public and secret SDK
 keys remain outside Git and rendered deployment files. A deploy first starts
@@ -248,6 +304,12 @@ object.
 - [OpenTelemetry sampling](https://opentelemetry.io/docs/concepts/sampling/)
 - [Langfuse Python SDK overview](https://langfuse.com/docs/observability/sdk/overview)
 - [Langfuse SDK instrumentation](https://langfuse.com/docs/observability/sdk/instrumentation)
+- [Langfuse trace IDs and distributed tracing](https://langfuse.com/docs/observability/features/trace-ids-and-distributed-tracing)
+- [Langfuse Sessions](https://langfuse.com/docs/observability/features/sessions)
+- [Langfuse tracing best practices](https://langfuse.com/docs/observability/best-practices)
+- [Langfuse releases and versioning](https://langfuse.com/docs/observability/features/releases-and-versioning)
+- [W3C Trace Context](https://www.w3.org/TR/trace-context/)
+- [OpenTelemetry Tracing API](https://opentelemetry.io/docs/specs/otel/trace/api/)
 - [OpenInference annotations](https://arize-ai.github.io/openinference/spec/annotations.html)
 - [MLflow automatic evaluations](https://mlflow.org/docs/latest/genai/eval-monitor/automatic-evaluations/)
 - [Langfuse LLM-as-a-judge](https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge)
