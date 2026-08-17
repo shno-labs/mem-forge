@@ -4,7 +4,7 @@ Status: Accepted (2026-08-13)
 
 Issue #258 terminal-outcome amendment: Accepted (2026-08-17)
 
-Issue #258 offline-evaluation amendment: Proposed (2026-08-17)
+Issue #258 offline-evaluation amendment: Accepted (2026-08-17)
 
 Amended:
 
