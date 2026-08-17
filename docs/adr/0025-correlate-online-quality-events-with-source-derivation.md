@@ -2,7 +2,7 @@
 
 Status: Accepted (2026-08-13)
 
-Issue #258 terminal-outcome amendment: Proposed (2026-08-17)
+Issue #258 terminal-outcome amendment: Accepted (2026-08-17)
 
 Amended:
 
@@ -14,7 +14,7 @@ Amended:
   used by the Langfuse projection.
 - 2026-08-16 to add the first DB-authoritative deterministic
   `AgentAssessment` contract and optional Langfuse Score projection.
-- Proposed 2026-08-17 to separate logical Agent Operation, durable Agent
+- 2026-08-17 to separate logical Agent Operation, durable Agent
   Execution, and terminal Event identity and to add the first Source lifecycle
   reconciliation producer without turning internal retries into failed
   evaluations.
@@ -205,9 +205,9 @@ The initial lifecycle event is:
 - `outcome = expected` with `reason_code = lifecycle_plan_applied` after a
   successful atomic application;
 - `outcome = failed` with a typed low-cardinality reason such as
-  `non_unique_contradiction_proposal`, `relation_ledger_incomplete`,
-  `stale_guard_rejected`, or `lifecycle_commit_failed` after the execution
-  owner accepts the failure;
+  `non_unique_refinement_conflict`, `relation_ledger_incomplete`,
+  `support_ledger_incomplete`, or `lifecycle_commit_failed` after the
+  execution owner accepts the failure;
 - criterion `source_unit_lifecycle_completion`, assessed pass for the applied
   outcome and fail for the failed outcome.
 
@@ -507,9 +507,13 @@ regression thresholds, and evaluator version are explicitly approved.
 
 ## Consequences
 
-All Source types—including Teams, Confluence, Jira, GitHub, Local Markdown,
-Agent Session, and extensions—share one instrumentation seam. Connectors do not
-need their own Block, trace, or evaluation mechanism.
+All ordinary configured Source sync types—including Teams, Confluence, Jira,
+GitHub Repository, GitHub Pages, and Local Markdown—share one instrumentation
+seam. Connectors do not need their own Block, trace, or evaluation mechanism.
+Agent Session does not execute ordinary configured Source sync, so it does not
+manufacture a lifecycle outcome merely to enter this denominator; it must use
+the same producer if and when its projection path executes this lifecycle
+contract.
 
 SQLite and HANA implement the same append/query/purge semantics, stable
 ordering, idempotency, filters, cutoff, and bounded cleanup. Cloud adds
