@@ -540,7 +540,7 @@ The first case kinds match the two existing nondeterministic task seams:
 | Case kind | Pinned input | Candidate output |
 | --- | --- | --- |
 | `source_unit_derivation_v1` | normalized Source Unit revision, Block catalog, and extraction contract | candidate Memories, Evidence references, and drop dispositions |
-| `source_unit_reconciliation_v1` | candidate output, incumbent versions, Support fingerprints, gate state, and reconciliation contract | Relations, Reviews, and Lifecycle Plan |
+| `source_unit_reconciliation_v1` | candidate output, incumbent versions, document update context, and reconciliation contract | complete relation-first `ReconcileOperation` ledger, bounded failure, and reducer metrics |
 
 A case is neither one provider request nor a whole Source Sync. Separating the
 two task boundaries lets a prompt/extraction change rerun derivation without
@@ -548,6 +548,15 @@ paying for unrelated provider collection and lets a reducer change replay the
 exact original candidate set without adding fresh extraction variance. A
 release cohort may contain both case kinds; it does not combine them into one
 opaque pass/fail case.
+
+The first reconciliation replay deliberately ends at the shared
+`reconcile_memories` boundary. It checks the nondeterministic relation/reducer
+contract and complete incumbent coverage without applying product writes. It
+does not duplicate `MemoryEngine` orchestration or claim to recreate Reviews or
+a `LifecyclePlan`. A later deterministic plan evaluator may consume a separately
+pinned planning context (Support fingerprints, gate state, identity decisions,
+and projected Evidence) and call the existing pure lifecycle planner. That is a
+new case schema/version, not an optional branch in this replay contract.
 
 The protected replay manifest pins:
 
@@ -792,13 +801,16 @@ Scores to Langfuse. It does not yet implement retrieval events, managed judges,
 annotation import, case materialization, alert thresholds, or an export outbox.
 
 The first offline increment adds authoritative cases, ground-truth revisions,
-frozen cohorts, side-effect-free derivation/reconciliation replay, deterministic
-scorers, and result inspection. OSS storage and service protocols own the
-contract; SQLite and HANA must pass the same behavior suite. Semantic judge
-shadowing, human-annotation import, release gating, and content-bearing
-Langfuse datasets follow only after the first rubric and visibility policy are
-approved. This ordering validates replay and authority before adding model cost
-or external content flow.
+frozen cohorts, side-effect-free derivation replay, side-effect-free
+relation-first reconciliation replay through `reconcile_memories`, deterministic
+scorers, and result inspection. It does not yet replay the downstream entity,
+identity, Review, or Lifecycle Plan orchestration. OSS storage and service
+protocols own the contract; SQLite and HANA must pass the same behavior suite.
+Semantic judge shadowing, human-annotation import, release gating, a separately
+versioned lifecycle-plan case, and content-bearing Langfuse datasets follow only
+after the first rubric and visibility policy are approved. This ordering
+validates replay and authority before adding model cost or external content
+flow.
 
 Acceptance includes these falsifiable cases:
 
