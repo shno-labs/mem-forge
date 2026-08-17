@@ -32,6 +32,17 @@
 - **Determinate Progress** — Progress with a trustworthy total, presented as completed out of total.
 - **Indeterminate Progress** — Progress whose total is not yet knowable, presented without a percentage while still reporting useful counts when available.
 
+## Agent evaluation
+
+- **Agent Operation** — One logical, versioned product work item whose input is stable across internal retries and recovery executions. For Source lifecycle reconciliation it is one exact Source Unit projection plus its pinned candidate, incumbent, Support, gate, and contract inputs; it is not one model call, relation pair, or lifecycle mutation.
+- **Agent Execution** — One durable execution of an Agent Operation. Internal provider or document retries remain inside the same execution until its owner commits a terminal result. A later scheduler or lease recovery is a new Agent Execution of the same Agent Operation.
+- **Agent Attempt** — One internal try within an Agent Execution. Attempts may contribute bounded diagnostics and counts, but a handled failed attempt is not itself a failed Agent Operation.
+- **Agent Terminal Outcome** — The single final runtime fact for one Agent Execution after its internal retry policy finishes. A terminal outcome records what the product did; it is not an evaluation score or accepted ground truth.
+- **Agent Runtime Event** — An immutable, content-free product record of an Agent Terminal Outcome or another explicitly admitted high-value runtime occurrence. Its product identity and source lineage remain authoritative when traces are absent or sampled.
+- **Agent Assessment** — A versioned code, model, or human judgment targeting an Agent Runtime Event or Agent Evaluation Case. A missing assessment is unknown, never pass.
+- **Agent Evaluation Case** — An immutable, authorized offline case promoted from a durable Agent Runtime Event. It pins the exact replay manifest, selection policy, artifact handles, and contract versions rather than depending on mutable current source state or retained telemetry.
+- **Accepted Ground Truth** — A human-approved or deterministic reference revision attached to an Agent Evaluation Case. A runtime anomaly, Langfuse Score, or LLM judgment does not become ground truth automatically.
+
 ## Memory provenance
 
 - **Memory Origin Kind** — The derived category describing how one provenance source introduced knowledge into MemForge: **Direct User** for an explicit user lifecycle action, **Managed Capture** for a system-managed coding-agent capture, or **Configured Source** for a user-configured ingestion connection. It does not replace Source Type, Client, Repository Context, ownership, or visibility.

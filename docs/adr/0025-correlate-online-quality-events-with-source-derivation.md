@@ -2,6 +2,8 @@
 
 Status: Accepted (2026-08-13)
 
+Issue #258 terminal-outcome amendment: Accepted (2026-08-17)
+
 Amended:
 
 - 2026-08-14 to retain one content-free diagnostic runtime fact for each
@@ -12,6 +14,10 @@ Amended:
   used by the Langfuse projection.
 - 2026-08-16 to add the first DB-authoritative deterministic
   `AgentAssessment` contract and optional Langfuse Score projection.
+- 2026-08-17 to separate logical Agent Operation, durable Agent
+  Execution, and terminal Event identity and to add the first Source lifecycle
+  reconciliation producer without turning internal retries into failed
+  evaluations.
 
 ## Context
 
@@ -92,6 +98,149 @@ between commits. This narrow exception to asynchronous evaluation is limited
 to local constant-time rules with no network, model, or content access.
 Semantic, LLM, and human evaluators remain post-commit asynchronous workers.
 
+### Separate logical work, durable executions, and terminal facts
+
+The Source Derivation identity used by the first increment is not sufficient
+for lifecycle reconciliation. A reconciliation may fail after extraction has
+already committed, may retry several times inside one document execution, and
+may later run again under durable worker recovery. Treating every caught
+exception as an event would overcount failures; treating the eventual success
+as an update of an earlier failure would erase real production evidence.
+
+The shared runtime domain therefore uses three product identities:
+
+| Identity | Meaning | Reuse rule |
+| --- | --- | --- |
+| `operation_id` | one exact logical work item and its versioned input manifest | shared by recovery executions only while the complete logical input remains identical |
+| `execution_id` | one durable execution owned by a run/lease boundary | shared by internal retries, changed by a later durable recovery execution |
+| `event_id` | one named immutable terminal fact for that execution | deterministic from schema, execution, and event name; a conflicting payload is an invariant violation |
+
+Trace, observation, and Session IDs remain optional projection identities.
+They never replace these product IDs.
+
+`operation_id` and `execution_id` are identity fields on the runtime event, not
+new Agent Operation/Execution tables, statuses, queues, or schedulers. Durable
+work ownership remains in Source Sync, Source Derivation, Source Projection,
+and Lifecycle Plan records that already own those transitions.
+
+For `source_unit_lifecycle_outcome`, the operation manifest pins:
+
+- operation kind and reconciliation contract version;
+- Source, Source Unit, base and target Source Unit revisions;
+- the Source Derivation identity and candidate-output hash when extraction ran;
+- the complete incumbent version and active-Support-set fingerprints;
+- Lifecycle Gate state and other inputs that can change the reducer result.
+
+The `operation_id` is a versioned digest of that content-free manifest. The
+manifest must be complete enough that a changed incumbent, Support set, gate,
+candidate output, or contract creates a different operation instead of being
+mis-grouped as a retry.
+
+The `execution_id` is a versioned digest of `operation_id` plus the explicit
+durable execution owner and attempt: normally the durable Source Sync run ID,
+its lease-attempt ordinal, and the Source Unit. Direct execution supplies its
+own explicit run identity. Code must not parse these values from a composite
+Projection run ID or synthesize them inside a telemetry adapter. The sync
+coordinator passes the durable execution identity and current bounded document
+attempt ordinal explicitly into the Source Unit lifecycle call.
+
+One execution can contain provider retries and the existing bounded document
+retry loop. Those attempts increment `attempt_count`; if a later attempt
+succeeds, the execution records one expected terminal outcome with
+`recovered=true` and no failed assessment. If the owner durably ends that
+execution as failed or partial, it records one failed terminal outcome. A
+later scheduler recovery is a new execution and therefore a second immutable
+outcome under the same operation:
+
+```text
+operation O (same pinned reconciliation input)
+  execution E1: internal attempts 1..3 -> durable failed -> event F -> fail
+  execution E2: internal attempts 1..2 -> committed success -> event S -> pass
+```
+
+Database delivery retry for F or S uses the same `event_id` and is an
+idempotent no-op only when the full canonical payload hash matches. The store
+must not use an unconditional insert-ignore that could silently accept two
+different terminal claims for the same event identity.
+
+### Add one Source lifecycle terminal producer at the durable owners
+
+The first Phase 2 producer observes the complete Source Unit lifecycle
+operation: relation classification, deterministic relation reduction,
+Lifecycle Plan construction, stale validation, and atomic application. It does
+not emit one event per candidate/incumbent relation or lifecycle mutation.
+
+The implementation has one typed, provider-neutral `AgentRuntimeBundle`
+containing the bound terminal event and its deterministic assessments. A
+central binder validates safe labels, constructs the three identities, hashes
+the canonical payload, and applies the deterministic evaluator. It has no
+database or Langfuse dependency.
+
+Domain layers have narrow responsibilities:
+
+- the relation classifier and static reducer return typed failure codes and
+  metrics but never persist telemetry;
+- the projected lifecycle boundary wraps an unhandled failure in one
+  content-free terminal descriptor; it never persists the raw exception;
+- a successful `apply_source_projection_lifecycle` stores the expected event
+  and assessment in the same transaction as the Projection and Lifecycle Plan;
+- the sync coordinator retains only the last bounded failure descriptor while
+  its internal document retries continue;
+- after retries are exhausted, the durable worker transition to pending,
+  partial, or failed stores the failed bundle in the same transaction. The
+  direct-sync terminal result does the equivalent through its existing
+  terminal-history transaction;
+- post-commit sinks receive complete bundles. A heterogeneous batch is grouped
+  by `execution_id`; the first event in a tuple never determines another
+  execution's trace identity.
+
+This split is necessary because the success and failure facts have different
+transaction owners. It is not a second lifecycle: all durable mutation remains
+owned by the Source Projection and Lifecycle Plan, while the runtime ledger
+only observes the terminal outcome.
+
+The initial lifecycle event is:
+
+- `event_name = source_unit_lifecycle_outcome`;
+- `outcome = expected` with `reason_code = lifecycle_plan_applied` after a
+  successful atomic application;
+- `outcome = failed` with a typed low-cardinality reason such as
+  `non_unique_refinement_conflict`, `relation_ledger_incomplete`,
+  `support_ledger_incomplete`, or `lifecycle_commit_failed` after the
+  execution owner accepts the failure;
+- criterion `source_unit_lifecycle_completion`, assessed pass for the applied
+  outcome and fail for the failed outcome.
+
+A safely created Review is not a failed lifecycle execution and pending vector
+delivery does not undo an applied relational plan. The event may report bounded
+aggregate counts such as candidates, incumbents, relation pairs, mutations,
+Reviews, model calls, attempts, and elapsed milliseconds, but never individual
+relation text, prompt/source/Memory/model content, exception text, or an
+unrestricted metadata object.
+
+An unchanged Projection, Source Derivation cache reuse, framework/HTTP success,
+and a handled internal retry do not create this event. A deterministic
+lifecycle operation that actually builds and applies a semantic plan may emit
+the same terminal event with `model_call_count=0`; the denominator is the
+product operation, not LLM usage.
+
+### Evolve the source-bound envelope without anticipating retrieval
+
+Schema v3 adds `operation_id`, `execution_id`, generic `contract_version`,
+canonical `payload_hash`, `duration_ms`, and `recovered` to the source-bound
+runtime envelope. Source, document, Source Unit, target revision, and
+Projection lineage remain required for this producer. Extraction-only
+Derivation, batch, and extraction-contract fields become optional extensions;
+new extraction events also populate the common operation/execution/contract
+fields. Existing schema-v2 rows remain readable and are not rewritten merely
+to manufacture identities they did not originally store.
+
+This amendment does not make source identity nullable or add a generic JSON
+subject in anticipation of retrieval evaluation. A future retrieval producer
+must first define its workspace-scoped authorization, logical operation, and
+replay manifest, then extend the shared envelope deliberately. It must not use
+fake Source, document, Derivation, or batch identifiers to fit this slice.
+
 The initial rules judge only contracts that the runtime fact proves:
 
 - final structured-output conformance is pass/fail;
@@ -99,7 +248,9 @@ The initial rules judge only contracts that the runtime fact proves:
 - exact or canonical Evidence localization is pass, while whole-Block fallback
   is `needs_review`, not fail;
 - completed extraction with candidates and terminal batch failure are
-  pass/fail respectively.
+  pass/fail respectively;
+- applied Source Unit lifecycle and a terminal Source Unit lifecycle failure
+  are pass/fail respectively.
 
 `zero_candidates` is not judged because the runtime event cannot prove that a
 Memory should have existed. Failed provider attempts are not scored separately
@@ -128,7 +279,8 @@ Stable event names identify occurrence classes, initially:
 - `structured_llm_attempt_outcome` for non-conformant provider attempts;
 - `evidence_admission_outcome`;
 - `evidence_localization_outcome`;
-- `extraction_batch_outcome`.
+- `extraction_batch_outcome`;
+- `source_unit_lifecycle_outcome`.
 
 Outcomes are `expected`, `degraded`, `rejected`, or `failed`; stable
 low-cardinality reason codes explain the result. These values describe runtime
@@ -227,6 +379,30 @@ input, or output. Ordinary logs do not repeat runtime events; only an export
 failure warning adds the opaque Session ID, Trace ID, event count, and bounded
 error type needed to correlate with the durable ledger.
 
+Lifecycle projection follows the same hierarchy without pretending that a
+recovery rewrites an earlier trace:
+
+| Langfuse level | Source lifecycle boundary | Stable correlation |
+| --- | --- | --- |
+| Session | one logical reconciliation operation/recovery family | opaque versioned hash of `operation_id` |
+| Trace | one durable reconciliation execution | deterministic hash of `execution_id` |
+| Root observation | that complete execution | `memforge.agent.reconcile_source_unit` |
+| Child event | its durable terminal runtime fact | `event_id` in metadata |
+| Score | deterministic lifecycle-completion assessment | durable `assessment_id`; Trace score with target `event_id` metadata |
+
+The failure trace remains failed. A later recovery success creates another
+Trace in the same Session. Langfuse trace and observation records are immutable
+and are not an upsert or exactly-once mechanism, so exporter retry never decides
+the canonical denominator. The MemForge DB deduplicates by `event_id` and
+payload hash; Langfuse remains a best-effort view unless a measured delivery
+SLO later justifies an outbox.
+
+The corresponding OpenTelemetry root span, when an OTel projection is later
+enabled, represents the complete execution rather than each handled retry. A
+failed terminal execution sets bounded `error.type` and Error status; an
+execution that recovers internally remains successful and does not repeat the
+same handled exception at multiple layers.
+
 Deployment target, environment label, sampling policy, and the disabled-first
 feature flag are non-secret deployment configuration. Public and secret SDK
 keys remain outside Git and rendered deployment files. A deploy first starts
@@ -309,11 +485,35 @@ compares deterministic, LLM, and human assessments on that same cohort.
 Human-reviewed cases are reported separately from sampled controls. A model or
 prompt change cannot silently replace the dataset.
 
+For Source lifecycle reconciliation, the protected case manifest additionally
+pins the exact operation manifest used to derive `operation_id`: Source Unit
+revisions, candidate derivation/output hashes, incumbent versions and Support
+fingerprints, gate state, reconciliation contract, and the terminal event. An
+offline replay must resolve those protected handles under current authorization
+and retention policy; it must not reconstruct the incumbent set from mutable
+current Memories or from Langfuse metadata.
+
+Promotion initially selects all stable lifecycle failures and recovered
+executions, plus a bounded deterministic success/control sample. Promotion is
+idempotent for `(event_id, promotion_policy_version)`. Human, code, and LLM
+assessments remain separate versioned rows. A Langfuse annotation or dataset
+item is imported as a proposed assessment/case revision and becomes Accepted
+Ground Truth only through an explicit authorized MemForge acceptance step.
+
+Offline runs execute an immutable case cohort against one candidate contract
+and store a separate run result; they never mutate the case or its accepted
+reference. CI or release gating begins only after the cohort, rubric, allowed
+regression thresholds, and evaluator version are explicitly approved.
+
 ## Consequences
 
-All Source types—including Teams, Confluence, Jira, GitHub, Local Markdown,
-Agent Session, and extensions—share one instrumentation seam. Connectors do not
-need their own Block, trace, or evaluation mechanism.
+All ordinary configured Source sync types—including Teams, Confluence, Jira,
+GitHub Repository, GitHub Pages, and Local Markdown—share one instrumentation
+seam. Connectors do not need their own Block, trace, or evaluation mechanism.
+Agent Session does not execute ordinary configured Source sync, so it does not
+manufacture a lifecycle outcome merely to enter this denominator; it must use
+the same producer if and when its projection path executes this lifecycle
+contract.
 
 SQLite and HANA implement the same append/query/purge semantics, stable
 ordering, idempotency, filters, cutoff, and bounded cleanup. Cloud adds
@@ -328,6 +528,31 @@ optionally projects metadata-only traces and categorical Scores through the
 isolated Langfuse adapters; and proves SQLite/HANA parity. Case persistence,
 semantic assessor scheduling, human review, and regression gating build on
 separate contracts rather than widening the runtime-event object.
+
+The first Phase 2 increment adds the source-bound schema-v3 identity envelope
+and `source_unit_lifecycle_outcome`, proves atomic success and failed-run
+persistence in SQLite and HANA, and projects immutable recovery traces and
+Scores to Langfuse. It does not yet implement retrieval events, managed judges,
+annotation import, case materialization, alert thresholds, or an export outbox.
+
+Acceptance includes these falsifiable cases:
+
+1. Three handled document attempts followed by success produce one expected
+   terminal event and one pass assessment with `attempt_count=3`.
+2. One durable failed execution followed by a later recovery success produces
+   two events with one `operation_id`, two `execution_id` values, and immutable
+   fail/pass traces.
+3. A lifecycle transaction rollback produces no success event or orphan pass;
+   the accepted failed-run transition records exactly one failure bundle.
+4. Replaying the same event payload is a no-op, while reusing its `event_id`
+   with a different payload hash fails closed in SQLite and HANA.
+5. Unchanged projections and extraction cache reuse do not mint lifecycle or
+   extraction events for work that did not execute.
+6. Online DB event/assessment counts reconcile with durable execution outcomes
+   while Langfuse is disabled or unavailable.
+7. All supported configured Source types reach the same Source Unit lifecycle
+   producer through shared Projection and Memory Engine seams; connectors add
+   no telemetry branch.
 
 ## References
 
@@ -347,3 +572,9 @@ separate contracts rather than widening the runtime-event object.
 - [Langfuse LLM-as-a-judge](https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge)
 - [Langfuse Scores via SDK](https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk)
 - [Phoenix annotations](https://arize.com/docs/phoenix/tracing/concepts-tracing/annotations-concepts)
+- [OpenTelemetry semantic-convention authoring guidance](https://opentelemetry.io/docs/specs/semconv/how-to-write-conventions/)
+- [OpenTelemetry recording errors](https://opentelemetry.io/docs/specs/semconv/general/recording-errors/)
+- [Langfuse tracing-data immutability](https://langfuse.com/faq/all/tracing-data-updates)
+- [Langfuse data model](https://langfuse.com/docs/observability/data-model)
+- [Langfuse dataset versioning](https://langfuse.com/docs/evaluation/experiments/datasets#versioning)
+- [Issue #258 terminal-outcome research](../research/2026-08-17-terminal-agent-outcome-evaluation.md)
