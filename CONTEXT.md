@@ -39,9 +39,12 @@
 - **Agent Attempt** — One internal try within an Agent Execution. Attempts may contribute bounded diagnostics and counts, but a handled failed attempt is not itself a failed Agent Operation.
 - **Agent Terminal Outcome** — The single final runtime fact for one Agent Execution after its internal retry policy finishes. A terminal outcome records what the product did; it is not an evaluation score or accepted ground truth.
 - **Agent Runtime Event** — An immutable, content-free product record of an Agent Terminal Outcome or another explicitly admitted high-value runtime occurrence. Its product identity and source lineage remain authoritative when traces are absent or sampled.
-- **Agent Assessment** — A versioned code, model, or human judgment targeting an Agent Runtime Event or Agent Evaluation Case. A missing assessment is unknown, never pass.
-- **Agent Evaluation Case** — An immutable, authorized offline case promoted from a durable Agent Runtime Event. It pins the exact replay manifest, selection policy, artifact handles, and contract versions rather than depending on mutable current source state or retained telemetry.
-- **Accepted Ground Truth** — A human-approved or deterministic reference revision attached to an Agent Evaluation Case. A runtime anomaly, Langfuse Score, or LLM judgment does not become ground truth automatically.
+- **Agent Assessment** — A versioned code, model, or human judgment targeting an Agent Runtime Event or Agent Evaluation Result. A missing assessment is unknown, never pass.
+- **Agent Evaluation Case** — One immutable, authorized offline replay input promoted from a durable Agent Runtime Event or curated evidence. It pins exact lineage and protected artifacts rather than mutable current product state or retained telemetry.
+- **Accepted Ground Truth Revision** — One append-only human-approved or deterministic reference for an Agent Evaluation Case. A runtime anomaly, external Score, or LLM judgment does not become ground truth automatically. _Avoid_: Accepted Ground Truth, golden answer
+- **Agent Evaluation Cohort** — One immutable, explicitly enumerated set of Agent Evaluation Case and Accepted Ground Truth Revision pairs used for comparable evaluation runs. It is not a live query or mutable dataset view. _Avoid_: Current dataset
+- **Agent Evaluation Run** — One pinned candidate and optional baseline execution over one Agent Evaluation Cohort. It is evaluation work, not a Source Sync or Agent Execution.
+- **Agent Evaluation Result** — One immutable candidate output or execution failure for a case and replicate in an Agent Evaluation Run. Semantic judgments about it remain separate Agent Assessments. _Avoid_: Assessment, ground truth
 
 ## Memory provenance
 

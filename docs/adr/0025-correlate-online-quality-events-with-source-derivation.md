@@ -4,6 +4,8 @@ Status: Accepted (2026-08-13)
 
 Issue #258 terminal-outcome amendment: Accepted (2026-08-17)
 
+Issue #258 offline-evaluation amendment: Proposed (2026-08-17)
+
 Amended:
 
 - 2026-08-14 to retain one content-free diagnostic runtime fact for each
@@ -18,6 +20,10 @@ Amended:
   Execution, and terminal Event identity and to add the first Source lifecycle
   reconciliation producer without turning internal retries into failed
   evaluations.
+- 2026-08-17 to define the first bounded offline case, cohort, replay,
+  scoring, and release-gate contracts. This amendment supersedes automatic
+  promotion of every lifecycle failure with bounded, deduplicated case
+  selection while leaving the unsampled runtime ledger authoritative.
 
 ## Context
 
@@ -48,13 +54,15 @@ not ground truth merely because it returned a score.
    Explicit OTel/OTLP remains the future interoperability adapter when a
    deployment needs multiple telemetry backends or cross-service tracing.
 3. `AgentAssessment` is a versioned code, LLM, or human judgment targeting a
-   runtime event or evaluation case. An explicitly accepted human or
+   runtime event or offline evaluation result. An explicitly accepted human or
    deterministic reference may become ground truth; an LLM score alone does
    not.
 
 `AgentEvaluationCase` is the explicit bridge from live traffic into an
-immutable offline cohort. It pins protected artifact handles and versioned
-expected output instead of reading mutable current source state during replay.
+immutable offline cohort. It pins protected artifact handles instead of reading
+mutable current source state during replay. An append-only
+`AcceptedGroundTruthRevision` owns the versioned expected propositions and
+rubric; a cohort pins the exact case/reference pair.
 
 The canonical vocabulary is provider-neutral OSS. MLflow, Langfuse, Phoenix,
 OpenInference, OpenLLMetry, and other backends are optional exporters or
@@ -475,35 +483,283 @@ Purging a runtime event never extends or shortens protected source retention.
 
 ### Promote live facts into offline cases explicitly
 
-Promotion records source/revision lineage, event IDs, artifact handles,
-contract/prompt/schema/model/deployment versions, selection rule, observed
-output/disposition, expected output, label provenance, and adjudication
-revision. Cases are immutable and deduplicated.
+Offline evaluation is a product-owned replay and comparison loop, not a query
+over old Langfuse traces. It has five durable concepts:
 
-Offline evaluation replays a fixed cohort against a candidate change and
-compares deterministic, LLM, and human assessments on that same cohort.
-Human-reviewed cases are reported separately from sampled controls. A model or
-prompt change cannot silently replace the dataset.
+| Concept | Owns | Does not own |
+| --- | --- | --- |
+| `AgentEvaluationCase` | one immutable authorized replay input and lineage | a mutable label or current Source/Memory state |
+| `AcceptedGroundTruthRevision` | one append-only accepted rubric/reference for a case | candidate output or an LLM judge opinion |
+| `AgentEvaluationCohort` | one immutable, explicitly enumerated set of case/reference pairs | a live query whose membership changes between runs |
+| `AgentEvaluationRun` | one candidate and optional baseline execution contract over one cohort | product Source Sync or Memory lifecycle state |
+| `AgentEvaluationResult` | one case/replicate output artifact and execution status | Accepted Ground Truth |
 
-For Source lifecycle reconciliation, the protected case manifest additionally
-pins the exact operation manifest used to derive `operation_id`: Source Unit
-revisions, candidate derivation/output hashes, incumbent versions and Support
-fingerprints, gate state, reconciliation contract, and the terminal event. An
-offline replay must resolve those protected handles under current authorization
-and retention policy; it must not reconstruct the incumbent set from mutable
-current Memories or from Langfuse metadata.
+The existing versioned `AgentAssessment` contract is extended to target an
+offline result as well as an online runtime fact; it is not a sixth offline
+workflow object. The separation is intentional. A candidate output can be
+generated once and regraded with a corrected evaluator without paying for
+another model replay; an evaluator failure is stored as unknown instead of
+changing the execution result to pass or fail.
 
-Promotion initially selects all stable lifecycle failures and recovered
-executions, plus a bounded deterministic success/control sample. Promotion is
-idempotent for `(event_id, promotion_policy_version)`. Human, code, and LLM
-assessments remain separate versioned rows. A Langfuse annotation or dataset
-item is imported as a proposed assessment/case revision and becomes Accepted
-Ground Truth only through an explicit authorized MemForge acceptance step.
+This extension does not use an unconstrained polymorphic `target_type` plus
+string ID. Assessment schema v2 retains the current event foreign key, adds an
+evaluation-result reference, and enforces that exactly one target is present;
+adapters enforce the same referential behavior even when their physical DDL
+uses different constraint capabilities.
 
-Offline runs execute an immutable case cohort against one candidate contract
-and store a separate run result; they never mutate the case or its accepted
-reference. CI or release gating begins only after the cohort, rubric, allowed
-regression thresholds, and evaluator version are explicitly approved.
+The service exposes one typed event assessment or result assessment; callers do
+not assemble target combinations.
+
+#### Put orchestration behind one deep module interface
+
+CLI, admin routes, scheduled jobs, and a future CI entry point call one
+provider-neutral offline-evaluation module. Its interface has five operations:
+
+1. promote or curate an authorized immutable case;
+2. accept a ground-truth revision;
+3. freeze an explicit cohort;
+4. execute a run specification; and
+5. read a run report.
+
+The module owns manifest validation, identity, deduplication, authorization,
+artifact resolution, case-kind dispatch, side-effect isolation, exact caching,
+evaluator ordering, persistence, and optional projection. Callers never select
+tables, concatenate evaluator outputs, or decide cache reuse themselves.
+
+SQLite and HANA are adapters to one OSS store interface and must pass the same
+behavior tests. The evaluation model is an injected external port with a fake
+adapter for tests. Case-kind runners and deterministic scorers are internal
+seams: adding the second case kind does not widen the caller interface. The
+optional Langfuse adapter consumes committed runs and assessments after the
+module returns; it cannot participate in the verdict transaction.
+
+#### Start with two task-level configured-Source case kinds
+
+The first case kinds match the two existing nondeterministic task seams:
+
+| Case kind | Pinned input | Candidate output |
+| --- | --- | --- |
+| `source_unit_derivation_v1` | normalized Source Unit revision, Block catalog, and extraction contract | candidate Memories, Evidence references, and drop dispositions |
+| `source_unit_reconciliation_v1` | candidate output, incumbent versions, Support fingerprints, gate state, and reconciliation contract | Relations, Reviews, and Lifecycle Plan |
+
+A case is neither one provider request nor a whole Source Sync. Separating the
+two task boundaries lets a prompt/extraction change rerun derivation without
+paying for unrelated provider collection and lets a reducer change replay the
+exact original candidate set without adding fresh extraction variance. A
+release cohort may contain both case kinds; it does not combine them into one
+opaque pass/fail case.
+
+The protected replay manifest pins:
+
+- Source, document, Source Unit, base and target Source Unit revisions;
+- the exact normalized source content or a content-addressed protected handle;
+- the active incumbent Memory versions, Support fingerprints, lifecycle gate,
+  and visibility context seen by the original operation;
+- extraction, Evidence, reconciliation, prompt, schema, and model contracts;
+- the observed output and terminal runtime event when promotion came from live
+  traffic.
+
+Replay resolves that manifest under current workspace authorization and the
+case retention policy. It never fetches mutable current Jira, Confluence,
+Teams, GitHub, or local-file content and never reconstructs incumbents from
+current Memories or Langfuse metadata. It runs against an isolated evaluation
+store and cannot write Source Projections, Memories, Support, Reviews, vector
+outbox rows, or Source Sync state.
+
+Configured sources share these case kinds because they converge at the Source
+Unit projection seam. Retrieval, Agent Session extraction, and general tool-use
+agents are excluded until each defines its own replay manifest, authority
+boundary, and rubric; they must not manufacture Source identifiers to reuse
+this schema.
+
+#### Keep the accepted reference semantic and compact
+
+Memory wording is not an exact-match contract. The accepted reference contains
+only the claims and constraints needed to recognize a correct result:
+
+- required durable claims, each with importance and supporting source range;
+- forbidden or explicitly low-value claims when the case targets precision;
+- Evidence requirements such as claim support and non-empty localized excerpt;
+- lifecycle constraints such as required incumbent coverage, permissible
+  relation outcomes, and forbidden destructive mutations; and
+- an adjudication note and reference-version provenance.
+
+For example, the Teams tracing case requires the durable diagnostic workflow
+from `traceId` through the relevant log systems; it does not prescribe one
+sentence. A multi-incumbent reconciliation case requires complete coverage of
+the three relevant incumbents and a safe terminal lifecycle result; it does not
+require the model to emit one particular ordering of equivalent relations.
+
+An accepted case is immutable. Correcting replay input creates a successor case
+that names the case it supersedes. Correcting labels or expected propositions
+creates a new `AcceptedGroundTruthRevision` for the same case. Existing cohorts
+pin the old `(case_id, ground_truth_revision_id)` pair, so neither a prompt nor
+label edit can silently rewrite historical results. Privacy deletion may make
+an artifact unavailable; the run records `artifact_unavailable` and never
+silently drops the item.
+
+The deterministic case ID includes the case schema, case kind,
+replay-manifest hash, protected artifact digests, and promotion-policy version.
+The ground-truth revision has its own content hash and acceptance provenance.
+Promotion from the same event and policy is idempotent, and equivalent replay
+content deduplicates even when two online events exposed the same failure.
+
+#### Freeze both the sampled population and evaluation role
+
+One cohort explicitly pins sorted `(case_id, ground_truth_revision_id)` pairs,
+a selection-policy version, and a manifest digest. Membership never comes from
+a live SQL filter at run time. Each item has two independent labels rather than
+one overloaded dataset category:
+
+- population is `failure_regression` for known incidents and accepted
+  historical failures, or `representative_control` for a deterministic,
+  stratified sample of ordinary traffic; and
+- role is `development`, `calibration`, `release_holdout`, or `sentinel`.
+
+Related revisions and recovery attempts are assigned together by a stable
+Source Unit/operation-family hash so near-duplicates cannot leak from
+development into holdout. Calibration cases are independently human-labeled
+to tune a judge. Release-holdout labels are not exposed to candidate or judge
+tuning. Sentinels are a very small set of high-impact invariants included in
+every automated lane.
+
+The unsampled runtime ledger retains every bounded online fact. The earlier
+proposal to promote every stable lifecycle failure or recovery is superseded:
+case promotion selects every user-confirmed quality defect, then bounded
+representatives of unique failure fingerprints and a bounded control sample.
+This avoids turning repeated provider or lifecycle incidents into a large,
+redundant, content-bearing dataset. The selection seed, strata, limits, and
+deduplication fingerprint are versioned and auditable.
+
+Initial controls stratify only on already available bounded facts: case kind,
+source type, outcome/reason, contract version, input-size bucket, language when
+known, and lifecycle action class. Embedding clustering, LLM novelty scoring,
+and adaptive sampling are deferred until duplicate cost or coverage gaps are
+measured.
+
+The initial accepted cohorts should be small and high-signal rather than
+statistically impressive: enough manually reviewed cases to cover each known
+failure mode and normal source shape. It grows only when production produces a
+new behavior, an evaluator disagreement exposes a missing boundary, or a new
+source/execution variant lacks coverage. Synthetic cases may supplement but do
+not replace real production-shaped and human-authored cases.
+
+#### Pin candidate, baseline, and evaluator identity independently
+
+An `AgentEvaluationRun` pins:
+
+- cohort manifest digest;
+- candidate code revision, prompt hash, schema and contract versions;
+- provider, exact model, model parameters, reasoning mode, and output limits;
+- replay-harness version and replicate policy;
+- evaluator-suite name and version; and
+- optional baseline run using the same cohort.
+
+Results are paired by case. A candidate is not compared with an old aggregate
+computed on different membership or evaluator versions. One default replicate
+keeps routine evaluation cheap; cases marked unstable or high-impact may use a
+small explicit repeat count. A retry of infrastructure failure retains the same
+run-item identity, while a requested new stochastic replicate gets a distinct
+replicate ordinal.
+
+Replay output caching is exact, not semantic: reuse requires the same case,
+candidate execution manifest, and replicate ordinal. Scoring is cached
+separately by result artifact hash, criterion, and evaluator version. Changing
+only a judge therefore reuses candidate outputs; changing a prompt, model,
+source snapshot, incumbent manifest, or replay harness does not.
+
+#### Evaluate through a cheap-to-expensive cascade
+
+Every completed result first runs code-based checks over the full cohort:
+
+- schema and typed-output validity;
+- claim-local Evidence resolution against the pinned authority;
+- complete incumbent and Support coverage;
+- lifecycle invariants and forbidden destructive actions; and
+- content/visibility boundary violations.
+
+A fatal structural or authority failure does not spend an LLM call merely to
+restate the failure. Semantic evaluators then assess only criteria that require
+meaning: required-claim coverage, unsupported or low-value claims, and whether
+the lifecycle choice preserves the accepted semantic intent. Each criterion
+returns a categorical result plus a bounded rationale and confidence; a judge
+timeout, parse error, or missing input is `unknown`, never pass.
+
+Absolute reference-based scoring is the release authority. Pairwise
+baseline-versus-candidate judging is optional evidence for improvement, not the
+only gate. When pairwise judging is used, candidate order is randomized; a
+near-threshold result or disagreement with deterministic/reference checks is
+repeated with swapped order or sent to human review. This limits position and
+style bias without running every case through multiple judges.
+
+Human review is reserved for proposed references, judge calibration,
+code/judge disagreement, important regressions, and ambiguous boundary cases.
+The calibration overlap is labeled independently by two qualified reviewers;
+their original labels remain immutable and adjudication creates a new accepted
+ground-truth revision. An LLM judge becomes gate-eligible only after its exact
+rubric/model/version has been measured against the approved calibration cohort.
+Raw agreement, per-label confusion, disagreements, and critical false-pass
+counts are reported; an agreement coefficient is added only when sample size
+and label prevalence make it interpretable. A new judge prompt, model, mapping,
+or rubric version returns to advisory status until recalibrated.
+
+#### Gate on interpretable criteria, not one quality number
+
+Reports keep failure-regression and representative-control populations
+separate, segment their evaluation roles, and show at least:
+
+- required-claim coverage and forbidden-claim rate;
+- Evidence groundedness/localization;
+- lifecycle completion and safety invariants;
+- evaluator unknown/error counts;
+- paired candidate-versus-baseline changes; and
+- replay and judge latency, token use, and cost.
+
+No weighted omnibus score hides a severe failure. The first release gate is
+deliberately conservative: deterministic safety/authority invariants and
+human-accepted regression cases may block; aggregate semantic metrics remain
+advisory until the cohort and judge calibration are approved. With small
+cohorts the report shows exact numerator/denominator and paired case changes,
+not misleading precision. Once aggregate semantic gating is approved, the
+first interval is a paired bootstrap over case-level candidate-minus-baseline
+deltas; tolerated regression, confidence level, minimum cohort size, and
+maximum unknown rate remain explicit release-policy inputs.
+
+Three execution profiles are sufficient initially:
+
+- `quick`: sentinels plus the bounded development/failure-regression cohort,
+  with deterministic scorers first and an approved small semantic slice, used
+  for prompt/extraction/reconciliation pull requests;
+- `scheduled`: the full development and calibration cohorts plus broader
+  representative controls, used for regression and judge-health discovery; and
+- `release`: a frozen holdout, pinned candidate/provider/evaluator versions,
+  paired baseline, and explicitly approved gates.
+
+A local dry run limits `quick` to a few cases without creating another durable
+lane. There is no dynamic change-impact router in the first implementation.
+The caller selects a stable profile; all profiles include sentinels so an
+incorrect future impact classifier cannot suppress every signal.
+
+#### Keep Langfuse an optional experiment projection
+
+MemForge SQLite/HANA remains authoritative for case manifests, cohort
+membership, runs, results, assessments, and accepted references. A missing
+Langfuse dataset or Score cannot change an offline verdict.
+
+The metadata-only adapter may project an offline run, its case traces, and
+scores for comparison. Content-bearing dataset items, corrected outputs, and
+Annotation Queues require a separately approved workspace content policy. When
+enabled, only approved/redacted case fields are exported. The SDK experiment
+pins and records the exact Langfuse dataset version timestamp and cohort digest;
+release evidence does not use a UI experiment that implicitly selects the
+latest dataset. Langfuse annotations import as proposed assessments or ground-
+truth revisions; an authorized MemForge acceptance step is still required.
+
+This preserves the useful Langfuse UI while avoiding two current product
+constraints becoming domain semantics: external trace/dataset retention is
+independent from MemForge retention, and Langfuse UI experiments currently run
+against the latest dataset version rather than an arbitrary pinned historical
+version.
 
 ## Consequences
 
@@ -535,6 +791,15 @@ persistence in SQLite and HANA, and projects immutable recovery traces and
 Scores to Langfuse. It does not yet implement retrieval events, managed judges,
 annotation import, case materialization, alert thresholds, or an export outbox.
 
+The first offline increment adds authoritative cases, ground-truth revisions,
+frozen cohorts, side-effect-free derivation/reconciliation replay, deterministic
+scorers, and result inspection. OSS storage and service protocols own the
+contract; SQLite and HANA must pass the same behavior suite. Semantic judge
+shadowing, human-annotation import, release gating, and content-bearing
+Langfuse datasets follow only after the first rubric and visibility policy are
+approved. This ordering validates replay and authority before adding model cost
+or external content flow.
+
 Acceptance includes these falsifiable cases:
 
 1. Three handled document attempts followed by success produce one expected
@@ -554,8 +819,46 @@ Acceptance includes these falsifiable cases:
    producer through shared Projection and Memory Engine seams; connectors add
    no telemetry branch.
 
+Offline acceptance additionally includes these falsifiable cases:
+
+1. Promoting the same event with the same policy is idempotent; corrected replay
+   input creates a successor case and corrected labels create a new ground-truth
+   revision without changing an existing cohort.
+2. A case replays after its runtime event and Langfuse trace expire by resolving
+   only authorized, digest-verified protected artifacts.
+3. Derivation and reconciliation replay perform no provider collection and
+   cannot mutate live Sources, Memories, Support, lifecycle, Reviews, or vector
+   state.
+4. The same case/candidate/runner/replicate fingerprint reuses candidate output;
+   changing only an evaluator regrades that output under a new assessment ID.
+5. Failure-regression and representative-control populations remain separate in
+   every report, including exact unknown/error denominators.
+6. A deterministic or semantic evaluator error is unknown, not pass; a missing
+   case artifact invalidates the run item instead of removing it from the
+   denominator.
+7. Calibration preserves two independent human annotations and records an
+   adjudicated ground-truth revision without overwriting either annotation.
+8. An LLM judge version cannot gate until its exact prompt/model/mapping/rubric
+   has an approved calibration result; any material version change returns it
+   to advisory status.
+9. A release result identifies the exact cohort, ground truth, baseline,
+   candidate, evaluator suite, prompt/model/contract, runner, code, and
+   environment versions.
+10. Langfuse disabled or unavailable does not prevent replay, canonical result
+    persistence, comparison, or gate calculation.
+
 ## References
 
+- [OpenAI evaluation best practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices)
+- [OpenAI agent evaluation guidance](https://developers.openai.com/api/docs/guides/agent-evals)
+- [OpenAI trace grading](https://developers.openai.com/api/docs/guides/trace-grading)
+- [OpenAI graders](https://developers.openai.com/api/docs/guides/graders)
+- [Langfuse datasets](https://langfuse.com/docs/evaluation/experiments/datasets)
+- [Langfuse experiments via SDK](https://langfuse.com/docs/evaluation/experiments/experiments-via-sdk)
+- [Langfuse experiments in CI/CD](https://langfuse.com/docs/evaluation/experiments/experiments-ci-cd)
+- [Langfuse Annotation Queues](https://langfuse.com/docs/evaluation/evaluation-methods/annotation-queues)
+- [OpenTelemetry handling sensitive data](https://opentelemetry.io/docs/security/handling-sensitive-data/)
+- [Zheng et al., *Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena*](https://arxiv.org/abs/2306.05685)
 - [OpenTelemetry GenAI agent spans](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-agent-spans.md)
 - [OpenTelemetry GenAI evaluation event](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-events.md#event-gen_aievaluationresult)
 - [OpenTelemetry sampling](https://opentelemetry.io/docs/concepts/sampling/)
@@ -578,3 +881,4 @@ Acceptance includes these falsifiable cases:
 - [Langfuse data model](https://langfuse.com/docs/observability/data-model)
 - [Langfuse dataset versioning](https://langfuse.com/docs/evaluation/experiments/datasets#versioning)
 - [Issue #258 terminal-outcome research](../research/2026-08-17-terminal-agent-outcome-evaluation.md)
+- [Issue #258 efficient offline-evaluation research](../research/2026-08-17-efficient-offline-agent-evaluation-scope.md)
