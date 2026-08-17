@@ -6,6 +6,8 @@ Issue #258 terminal-outcome amendment: Accepted (2026-08-17)
 
 Issue #258 offline-evaluation amendment: Accepted (2026-08-17)
 
+Issue #258 human-calibration amendment: Accepted (2026-08-17)
+
 Amended:
 
 - 2026-08-14 to retain one content-free diagnostic runtime fact for each
@@ -24,6 +26,9 @@ Amended:
   scoring, and release-gate contracts. This amendment supersedes automatic
   promotion of every lifecycle failure with bounded, deduplicated case
   selection while leaving the unsampled runtime ledger authoritative.
+- 2026-08-17 to require an explicit Source-scoped disclosure policy for
+  protected human-calibration content and to preserve independent human
+  assessments as provenance of adjudicated ground truth.
 
 ## Context
 
@@ -712,6 +717,29 @@ counts are reported; an agreement coefficient is added only when sample size
 and label prevalence make it interpretable. A new judge prompt, model, mapping,
 or rubric version returns to advisory status until recalibrated.
 
+#### Gate protected content and preserve independent human judgments
+
+Metadata-only evaluation inspection requires no content approval. Presenting a
+case manifest or candidate output requires both current Source authorization
+and an immutable `AgentEvaluationContentPolicy` for the fixed
+`human_calibration_v1` disclosure profile. The policy is an approval receipt,
+not an authority grant: every preparation and submission rechecks current
+Source visibility, and only a result assigned to the frozen calibration role
+is eligible. The returned annotation task contains the pinned case input and
+candidate output but excludes accepted ground truth and peer annotations.
+
+Human labels remain ordinary immutable `AgentAssessment` records. Assessment
+schema v3 records the reviewer and exact content-policy receipt; code and LLM
+assessments do not manufacture a reviewer identity. A repeated identical
+submission is idempotent, while an ID collision with different content fails
+closed. The accepted reference does not absorb or overwrite annotations.
+Adjudication requires exactly two completed assessments from different
+reviewers over the same result, criterion, and rubric version, then creates a
+new `AcceptedGroundTruthRevision` carrying both assessment IDs, a bounded
+adjudication note, and the acceptance-policy version. Direct expert-authored
+references remain available for initial case curation; they are not presented
+as two-reviewer calibration evidence.
+
 #### Gate on interpretable criteria, not one quality number
 
 Reports keep failure-regression and representative-control populations
@@ -806,11 +834,18 @@ relation-first reconciliation replay through `reconcile_memories`, deterministic
 scorers, and result inspection. It does not yet replay the downstream entity,
 identity, Review, or Lifecycle Plan orchestration. OSS storage and service
 protocols own the contract; SQLite and HANA must pass the same behavior suite.
-Semantic judge shadowing, human-annotation import, release gating, a separately
-versioned lifecycle-plan case, and content-bearing Langfuse datasets follow only
-after the first rubric and visibility policy are approved. This ordering
-validates replay and authority before adding model cost or external content
-flow.
+Semantic judge shadowing, Langfuse annotation import, release gating, a
+separately versioned lifecycle-plan case, and content-bearing Langfuse datasets
+follow only after the first rubric and visibility policy are approved. This
+ordering validates replay and authority before adding model cost or external
+content flow.
+
+The human-calibration increment adds the Source-scoped protected-content
+approval, blinded calibration task, immutable reviewer provenance, and
+two-reviewer adjudication described above. It does not call an LLM judge,
+export protected content to Langfuse, or calculate a release gate. Those steps
+consume the accepted calibration records in later, separately approved
+increments.
 
 Acceptance includes these falsifiable cases:
 
@@ -848,15 +883,18 @@ Offline acceptance additionally includes these falsifiable cases:
 6. A deterministic or semantic evaluator error is unknown, not pass; a missing
    case artifact invalidates the run item instead of removing it from the
    denominator.
-7. Calibration preserves two independent human annotations and records an
+7. Protected calibration content is unavailable without both current Source
+   authorization and the exact approved content-policy receipt;
+   non-calibration cohort roles are rejected.
+8. Calibration preserves two independent human annotations and records an
    adjudicated ground-truth revision without overwriting either annotation.
-8. An LLM judge version cannot gate until its exact prompt/model/mapping/rubric
+9. An LLM judge version cannot gate until its exact prompt/model/mapping/rubric
    has an approved calibration result; any material version change returns it
    to advisory status.
-9. A release result identifies the exact cohort, ground truth, baseline,
+10. A release result identifies the exact cohort, ground truth, baseline,
    candidate, evaluator suite, prompt/model/contract, runner, code, and
    environment versions.
-10. Langfuse disabled or unavailable does not prevent replay, canonical result
+11. Langfuse disabled or unavailable does not prevent replay, canonical result
     persistence, comparison, or gate calculation.
 
 ## References
