@@ -49,6 +49,12 @@ execution rather than stable product identity. Nor is a runtime anomaly an
 evaluation result: a whole-Block fallback can be valid, and an LLM judge is
 not ground truth merely because it returned a score.
 
+[ADR 0026](./0026-separate-online-assessment-from-offline-evaluation-execution.md)
+owns the invocation and execution boundary: automatic online assessment,
+explicit offline runs, thin CLI/API/UI/CI callers, durable worker ownership,
+and release-gate execution. This ADR continues to own the event, assessment,
+case, cohort, ground-truth, run/result, and projection model.
+
 ## Decision
 
 ### Keep three distinct planes
@@ -935,6 +941,7 @@ Offline acceptance additionally includes these falsifiable cases:
 
 ## References
 
+- [ADR 0026: Separate online assessment from offline evaluation execution](./0026-separate-online-assessment-from-offline-evaluation-execution.md)
 - [OpenAI evaluation best practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices)
 - [OpenAI agent evaluation guidance](https://developers.openai.com/api/docs/guides/agent-evals)
 - [OpenAI trace grading](https://developers.openai.com/api/docs/guides/trace-grading)
