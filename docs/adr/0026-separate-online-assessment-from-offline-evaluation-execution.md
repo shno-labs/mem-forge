@@ -97,9 +97,13 @@ The normal human annotation experience is an authorized UI such as a MemForge
 annotation view or an approved Langfuse Annotation Queue, not a CLI prompt.
 Queue export and Score import are control-plane integrations. An imported
 annotation remains a proposed immutable `AgentAssessment` until MemForge
-rechecks current Source access, the content-policy receipt, reviewer mapping,
-subject identity, and idempotency. SQLite/HANA remains authoritative for
-accepted ground truth and release verdicts.
+rechecks current Source access, the external-export content-policy receipt,
+reviewer mapping, subject identity, categorical config fingerprint, and
+idempotency. A content-free DB bridge owns each external task and its lease;
+Langfuse Queue Item creation is not treated as an idempotent write. Each
+reviewer gets a distinct protected observation because a shared subject would
+expose peer annotation Scores. SQLite/HANA remains authoritative for accepted
+ground truth and release verdicts.
 
 Langfuse may display online projections, offline experiment comparisons, and
 human annotations. Its availability, retention, sampling, dataset version, or
@@ -125,14 +129,16 @@ in the Cloud repository rather than becoming OSS domain semantics.
 
 ## Current implementation boundary
 
-At acceptance of this ADR, MemForge automatically records online runtime facts
-and deterministic assessments, persists offline cases/cohorts/runs/results,
-executes deterministic replay and a calibration-only semantic shadow judge,
-and reads metadata-safe reports through the shared application service.
+MemForge now records online runtime facts and deterministic assessments,
+persists offline cases/cohorts/runs/results, executes deterministic replay and a
+calibration-only semantic shadow judge, and exposes durable run admission and
+metadata-safe reports through the shared service. The optional Langfuse bridge
+uses the same service for explicit Source-to-queue policy approval, blinded
+task export, content-free task status, and completed Score import. Langfuse
+queues and reviewer assignments remain preconfigured external administration;
+MemForge does not create or change queue membership.
 
-The deployed offline smoke calls that service in-process. Durable service
-admission and lease recovery, public self-hosted/Cloud run endpoints, scheduled
-profiles, Langfuse annotation import, and the release-gate policy/endpoint are
+Scheduled evaluation profiles and the release-gate policy/endpoint remain
 future Issue #258 implementation. This ADR is their contract, not evidence that
 those entry points are already deployed.
 
