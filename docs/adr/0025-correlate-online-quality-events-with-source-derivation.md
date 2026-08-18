@@ -8,6 +8,8 @@ Issue #258 offline-evaluation amendment: Accepted (2026-08-17)
 
 Issue #258 human-calibration amendment: Accepted (2026-08-17)
 
+Issue #258 semantic-shadow amendment: Accepted (2026-08-18)
+
 Amended:
 
 - 2026-08-14 to retain one content-free diagnostic runtime fact for each
@@ -29,6 +31,8 @@ Amended:
 - 2026-08-17 to require an explicit Source-scoped disclosure policy for
   protected human-calibration content and to preserve independent human
   assessments as provenance of adjudicated ground truth.
+- 2026-08-18 to add one version-pinned semantic judge in calibration-only
+  shadow mode, with exact decision reuse and aggregate human comparison.
 
 ## Context
 
@@ -740,6 +744,38 @@ adjudication note, and the acceptance-policy version. Direct expert-authored
 references remain available for initial case curation; they are not presented
 as two-reviewer calibration evidence.
 
+#### Shadow one version-pinned semantic judge before gating
+
+The first semantic evaluator is deliberately narrow: one categorical criterion
+per run over calibration-role items only. Its immutable manifest pins the
+criterion, evaluator and rubric version, prompt hash, provider, exact model,
+model parameters, input mapping, output schema, and content-policy receipt. The
+Source-scoped `semantic_judge_shadow_v1` receipt also names the provider and
+model that may receive protected input, and current Source authorization is
+rechecked before every run.
+
+Code checks remain the cheap first stage. A failed deterministic prerequisite
+does not spend a model call. Otherwise the judge returns only
+`pass`/`fail`/`needs_review`, a bounded reason code, and a confidence bucket.
+Timeout, transport, or schema failure creates a failed assessment and is
+reported as unknown; it never fails the candidate run or becomes pass. Source
+content, candidate output, prompts, and model responses remain outside ordinary
+telemetry and Langfuse projection.
+
+Semantic decision reuse is exact. The cache key covers the case kind and
+manifest hash, candidate output hash, accepted-rubric hash, criterion, and
+complete judge manifest. Only a completed prior decision may be copied to a new
+result, with the original assessment ID retained as reuse provenance; failed
+and unavailable judgments are never cache hits. Assessment schema v4 adds only
+that input fingerprint, the confidence bucket, and reuse provenance.
+
+Calibration reporting compares the pinned judge decision with the immutable
+human assessments referenced by the accepted ground-truth revision, and only
+when criterion, evaluator version, and candidate output hash match. It exposes
+aggregate comparison, agreement, disagreement, unknown, and confusion counts,
+not peer labels or protected content. This evidence is advisory: Slice C does
+not create a release gate.
+
 #### Gate on interpretable criteria, not one quality number
 
 Reports keep failure-regression and representative-control populations
@@ -842,10 +878,10 @@ content flow.
 
 The human-calibration increment adds the Source-scoped protected-content
 approval, blinded calibration task, immutable reviewer provenance, and
-two-reviewer adjudication described above. It does not call an LLM judge,
-export protected content to Langfuse, or calculate a release gate. Those steps
-consume the accepted calibration records in later, separately approved
-increments.
+two-reviewer adjudication described above. The following shadow-judge increment
+adds one version-pinned categorical semantic evaluator, exact decision reuse,
+and aggregate calibration evidence. It does not export protected content to
+Langfuse or calculate a release gate.
 
 Acceptance includes these falsifiable cases:
 
