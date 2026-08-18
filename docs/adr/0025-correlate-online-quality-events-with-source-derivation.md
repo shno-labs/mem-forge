@@ -840,6 +840,34 @@ independent from MemForge retention, and Langfuse UI experiments currently run
 against the latest dataset version rather than an arbitrary pinned historical
 version.
 
+#### Bridge human annotation without making Langfuse authoritative
+
+Content-bearing annotation export requires a new immutable Source-scoped
+`langfuse_human_calibration_v1` policy pinned to the intended queue. It does not
+reuse or silently broaden the internal `human_calibration_v1` receipt. Each
+`(result, rubric, reviewer)` task uses a distinct protected Langfuse observation
+so a normal queue view does not expose a peer reviewer's Score.
+
+Because Langfuse Queue Item creation has no client idempotency key, MemForge
+persists one content-free `ExternalAnnotationTask` with a single-writer lease,
+external delivery phases, exact reviewer/queue/config bindings, and imported
+Score provenance. The bridge contains hashes and identifiers only; the case
+manifest and candidate output remain in their existing authorities. Ambiguous
+Queue Item writes are reconciled by the exact observation identity, and
+multiple matches fail closed.
+
+Reviewer queues and their Langfuse assignments are provisioned separately by
+the Langfuse administrator. MemForge validates the approved queue and score
+config but does not silently change queue membership while exporting a task.
+
+Import requires a completed Queue Item and exactly one Scores-v3
+`ANNOTATION` Score matching the pinned subject, queue, reviewer, categorical
+config fingerprint, and allowed label. The import atomically records one
+immutable proposed human `AgentAssessment` and marks the bridge imported.
+Comments and corrected outputs are not imported. Two distinct reviewer
+identities
+and explicit adjudication remain required before accepted ground truth changes.
+
 ## Consequences
 
 All ordinary configured Source sync types—including Teams, Confluence, Jira,
