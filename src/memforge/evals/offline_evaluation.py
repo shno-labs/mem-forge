@@ -380,6 +380,58 @@ class ExternalAnnotationTask:
                 raise ValueError("conflicted annotation task requires an error and no lease")
 
 
+def external_annotation_task_identity(
+    task: ExternalAnnotationTask,
+) -> tuple[object, ...]:
+    """Return the immutable identity shared by every storage adapter."""
+
+    return (
+        task.task_id,
+        task.result_id,
+        task.content_policy_id,
+        task.criterion,
+        task.rubric_version,
+        task.reviewer_id,
+        task.provider,
+        task.provider_project_ref,
+        task.provider_reviewer_id,
+        task.queue_id,
+        task.score_config_id,
+        task.score_config_fingerprint,
+        task.trace_id,
+        task.protected_payload_hash,
+    )
+
+
+def validate_external_annotation_task_transition(
+    current: ExternalAnnotationTaskState,
+    target: ExternalAnnotationTaskState,
+) -> None:
+    """Enforce the provider-neutral delivery state machine."""
+
+    allowed = {
+        ExternalAnnotationTaskState.PREPARED: {
+            ExternalAnnotationTaskState.SUBJECT_PREPARED,
+        },
+        ExternalAnnotationTaskState.SUBJECT_PREPARED: {
+            ExternalAnnotationTaskState.SUBJECT_READY,
+        },
+        ExternalAnnotationTaskState.SUBJECT_READY: {
+            ExternalAnnotationTaskState.QUEUED,
+            ExternalAnnotationTaskState.CONFLICT,
+        },
+        ExternalAnnotationTaskState.QUEUED: {
+            ExternalAnnotationTaskState.IMPORTED,
+        },
+        ExternalAnnotationTaskState.IMPORTED: set(),
+        ExternalAnnotationTaskState.CONFLICT: set(),
+    }
+    if target is not current and target not in allowed[current]:
+        raise ValueError(
+            f"invalid external annotation transition: {current.value} -> {target.value}"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class AcceptedGroundTruthRevision:
     ground_truth_revision_id: str

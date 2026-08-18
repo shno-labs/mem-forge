@@ -174,7 +174,9 @@ from memforge.evals.offline_evaluation import (
     agent_evaluation_run_from_payload,
     agent_evaluation_run_to_payload,
     external_annotation_task_from_payload,
+    external_annotation_task_identity,
     external_annotation_task_to_payload,
+    validate_external_annotation_task_transition,
 )
 from memforge.memory.lifecycle import allowed_search_statuses, normalize_memory_status
 from memforge.memory.review_decision import ReviewVectorTask
@@ -18547,8 +18549,8 @@ class Database:
                 existing = await self._get_external_annotation_task_unlocked(task.task_id)
                 if existing is None:
                     raise RuntimeError("external annotation task admission failed")
-                if self._external_annotation_task_identity(existing) != (
-                    self._external_annotation_task_identity(task)
+                if external_annotation_task_identity(existing) != (
+                    external_annotation_task_identity(task)
                 ):
                     raise ValueError("conflicting external annotation task identity")
                 await self.db.commit()
@@ -18678,11 +18680,11 @@ class Database:
         current = await self._get_external_annotation_task_unlocked(task.task_id)
         if current is None:
             return False
-        if self._external_annotation_task_identity(current) != (
-            self._external_annotation_task_identity(task)
+        if external_annotation_task_identity(current) != (
+            external_annotation_task_identity(task)
         ):
             raise ValueError("external annotation task identity is immutable")
-        self._validate_external_annotation_task_transition(current.state, task.state)
+        validate_external_annotation_task_transition(current.state, task.state)
         if current.lease_token != expected_lease_token:
             return False
         if (
@@ -18734,52 +18736,6 @@ class Database:
             task.updated_at,
             payload,
         )
-
-    @staticmethod
-    def _external_annotation_task_identity(task: ExternalAnnotationTask) -> tuple[object, ...]:
-        return (
-            task.task_id,
-            task.result_id,
-            task.content_policy_id,
-            task.criterion,
-            task.rubric_version,
-            task.reviewer_id,
-            task.provider,
-            task.provider_project_ref,
-            task.provider_reviewer_id,
-            task.queue_id,
-            task.score_config_id,
-            task.score_config_fingerprint,
-            task.trace_id,
-            task.protected_payload_hash,
-        )
-
-    @staticmethod
-    def _validate_external_annotation_task_transition(
-        current: ExternalAnnotationTaskState,
-        target: ExternalAnnotationTaskState,
-    ) -> None:
-        allowed = {
-            ExternalAnnotationTaskState.PREPARED: {
-                ExternalAnnotationTaskState.SUBJECT_PREPARED,
-            },
-            ExternalAnnotationTaskState.SUBJECT_PREPARED: {
-                ExternalAnnotationTaskState.SUBJECT_READY,
-            },
-            ExternalAnnotationTaskState.SUBJECT_READY: {
-                ExternalAnnotationTaskState.QUEUED,
-                ExternalAnnotationTaskState.CONFLICT,
-            },
-            ExternalAnnotationTaskState.QUEUED: {
-                ExternalAnnotationTaskState.IMPORTED,
-            },
-            ExternalAnnotationTaskState.IMPORTED: set(),
-            ExternalAnnotationTaskState.CONFLICT: set(),
-        }
-        if target is not current and target not in allowed[current]:
-            raise ValueError(
-                f"invalid external annotation transition: {current.value} -> {target.value}"
-            )
 
     async def record_accepted_ground_truth_revision(
         self,
