@@ -12,8 +12,10 @@ from memforge.evals.offline_evaluation import (
     AgentEvaluationExecutionState,
     AgentEvaluationPopulation,
     AgentEvaluationRole,
+    AgentEvaluationResultStatus,
     AgentEvaluationRunStatus,
     OfflineAgentEvaluation,
+    OfflineArtifactUnavailable,
 )
 from memforge.evals.offline_worker import OfflineEvaluationWorker
 from memforge.server.admin_api import create_admin_app
@@ -40,6 +42,12 @@ class _Executor:
             ],
             "failure": None,
         }
+
+
+class _UnavailableExecutor:
+    async def execute(self, case, candidate_manifest):
+        del case, candidate_manifest
+        raise OfflineArtifactUnavailable("pinned artifact is unavailable")
 
 
 @pytest.fixture
@@ -193,6 +201,27 @@ async def test_worker_executes_admitted_run_and_closes_its_lease(db) -> None:
     assert execution.worker_id is None
     assert execution.lease_token is None
     assert executor.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_records_unavailable_pinned_artifact_as_distinct_unknown(db) -> None:
+    evaluation, run, _ = await _admit_run(db, _UnavailableExecutor())
+
+    async def factory(_run):
+        return evaluation
+
+    await OfflineEvaluationWorker(
+        db,
+        evaluation_factory=factory,
+        worker_id="worker-1",
+    ).run_once()
+
+    stored = await db.get_agent_evaluation_run(run.run_id)
+    [result] = await db.list_agent_evaluation_results(run.run_id)
+    assert stored is not None
+    assert stored.status is AgentEvaluationRunStatus.FAILED
+    assert result.status is AgentEvaluationResultStatus.ARTIFACT_UNAVAILABLE
+    assert result.error_code == "OfflineArtifactUnavailable"
 
 
 @pytest.mark.asyncio

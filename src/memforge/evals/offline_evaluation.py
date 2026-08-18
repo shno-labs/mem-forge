@@ -95,6 +95,10 @@ class AgentEvaluationResultStatus(str, Enum):
     ARTIFACT_UNAVAILABLE = "artifact_unavailable"
 
 
+class OfflineArtifactUnavailable(RuntimeError):
+    """A revision-pinned input required by replay cannot be resolved."""
+
+
 class AgentEvaluationContentProfile(str, Enum):
     """Fixed disclosure profiles; profiles expand only through a new version."""
 
@@ -607,7 +611,7 @@ class ProductionSourceUnitDerivationReplayExecutor:
                 )
             if isinstance(batch, ProjectionExtractionBatch):
                 if batch.primary_image_bytes:
-                    raise RuntimeError(
+                    raise OfflineArtifactUnavailable(
                         "offline derivation requires pinned binary artifacts"
                     )
                 return await extractor.extract_projection_batch_memories(
@@ -1168,6 +1172,29 @@ class OfflineAgentEvaluation:
                         created_at=_now(),
                         reused_from_result_id=(
                             reusable.result_id if reusable is not None else None
+                        ),
+                    )
+                except OfflineArtifactUnavailable as exc:
+                    any_error = True
+                    result = AgentEvaluationResult(
+                        result_id=result_id,
+                        run_id=run_id,
+                        case_id=case.case_id,
+                        ground_truth_revision_id=ground_truth.ground_truth_revision_id,
+                        replicate_ordinal=replicate_ordinal,
+                        candidate_output_key=candidate_output_key,
+                        status=AgentEvaluationResultStatus.ARTIFACT_UNAVAILABLE,
+                        output=None,
+                        output_hash=None,
+                        duration_ms=max(0, round((perf_counter() - started) * 1000)),
+                        created_at=_now(),
+                        error_code=type(exc).__name__,
+                    )
+                    checks = (
+                        DeterministicCheck(
+                            criterion="candidate_execution",
+                            label=DeterministicCheckLabel.UNKNOWN,
+                            reason_code="candidate_artifact_unavailable",
                         ),
                     )
                 except Exception as exc:  # evaluator boundary records unknown/error
