@@ -45,6 +45,10 @@
 - **Agent Evaluation Cohort** — One immutable, explicitly enumerated set of Agent Evaluation Case and Accepted Ground Truth Revision pairs used for comparable evaluation runs. It is not a live query or mutable dataset view. _Avoid_: Current dataset
 - **Agent Evaluation Run** — One pinned candidate and optional baseline execution over one Agent Evaluation Cohort. It is evaluation work, not a Source Sync or Agent Execution.
 - **Agent Evaluation Result** — One immutable candidate output or execution failure for a case and replicate in an Agent Evaluation Run. Semantic judgments about it remain separate Agent Assessments. _Avoid_: Assessment, ground truth
+- **Online Agent Evaluation** — Automatic, non-blocking assessment of admitted facts from real product executions. Its normal path is content-free and deterministic; sampled semantic or human follow-up is asynchronous and does not rewrite the product outcome. _Avoid_: Production approval, live release gate
+- **Offline Agent Evaluation** — Explicit execution of a pinned candidate and evaluator contract over an immutable Agent Evaluation Cohort. It may compare a baseline or inform a release decision, but it cannot mutate Source, Memory, or lifecycle state. _Avoid_: Source Sync, production retry
+- **Agent Evaluation Execution** — Service-owned execution of one Agent Evaluation Run, durably admitted before a long-running worker claims it. CLI, HTTP, UI, schedulers, and CI are control-plane callers rather than execution owners. _Avoid_: CLI evaluation process, Langfuse experiment authority
+- **Agent Evaluation Release Gate** — A versioned policy decision over one complete, pinned offline run and optional paired baseline. Unknown or incomplete evidence cannot become pass, and Langfuse availability cannot determine the verdict. _Avoid_: Online assessment, aggregate quality score
 
 ## Memory provenance
 
