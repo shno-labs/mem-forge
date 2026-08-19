@@ -872,6 +872,41 @@ Comments and corrected outputs are not imported. Two distinct reviewer
 identities
 and explicit adjudication remain required before accepted ground truth changes.
 
+### Present online evaluation as actionable issue groups
+
+The first Source view assumed that a flat newest-first assessment list plus an
+exact assessment-ID coverage count was sufficient. That assumption is
+superseded. Assessment identity includes the assessment schema version for
+immutable persistence and export idempotency, but schema evolution alone does
+not invalidate a deterministic judgment. User-facing semantic coverage matches
+the target event, criterion, evaluator name, and evaluator version. If a future
+evaluator-version policy requires a rerun, the product reports explicit stale
+or current-version debt rather than calling the prior durable assessment
+missing.
+
+Every applicable deterministic runtime fact, including terminal Source Unit
+lifecycle outcomes, belongs to the same coverage denominator. Online
+evaluation presents that denominator separately from live-traffic quality:
+
+- confirmed `fail` assessments form actionable issue groups;
+- `needs_review` assessments form a bounded review queue;
+- pending or failed evaluator executions form evaluation coverage health;
+- pass-heavy individual assessments remain secondary audit evidence.
+
+An issue group is keyed by label, criterion, bounded reason code, evaluator,
+and evaluator version. It carries occurrence and distinct-event counts plus a
+small newest-first set of representative, content-free cases. Each case joins
+the assessment to the authorized runtime event and exposes only the existing
+lineage and correlation handles needed to investigate the affected document,
+Source Unit, Observation, execution, and trace.
+
+The Source view defaults to the last 24 hours and may widen to 7 or 30 days.
+Its agent handoff copies one bounded, read-only diagnosis prompt containing
+those handles and exact evaluator/runtime versions. The handoff does not run a
+Source sync, mutate a Memory, rewrite lifecycle history, or silently promote a
+regression case. Durable case promotion and replay continue through the
+existing offline-evaluation authority and require their own explicit action.
+
 ## Consequences
 
 All ordinary configured Source sync types—including Teams, Confluence, Jira,
