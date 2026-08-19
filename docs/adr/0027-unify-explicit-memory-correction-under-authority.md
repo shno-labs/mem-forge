@@ -23,6 +23,13 @@ Cloud request adapters map their deployment-specific identity models into the
 same `CorrectionAuthority` interface; the Memory module does not inspect Cloud
 roles.
 
+For configured-source correction, the authority decision uses Source ids and
+the Support Set hash produced from one adapter snapshot. The authorized write
+rechecks that hash inside the same transaction that creates the correction
+Document and challenger, supersedes the incumbent, records the approved
+Review, and publishes Review-owned vector work. A stale snapshot rolls back
+the entire proposal and leaves no pending challenger or Review.
+
 Every ordinary proposal is represented by a hidden `user_correction`
 challenger and one supersede Review. An authorized submission resolves the
 Review immediately, so it has no pending human step while retaining the same
