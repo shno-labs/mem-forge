@@ -499,26 +499,28 @@ Purging a runtime event never extends or shortens protected source retention.
 ### Promote live facts into offline cases explicitly
 
 Offline evaluation is a product-owned replay and comparison loop, not a query
-over old Langfuse traces. It has five durable concepts:
+over old Langfuse traces. It has six durable concepts:
 
 | Concept | Owns | Does not own |
 | --- | --- | --- |
 | `AgentEvaluationCase` | one immutable authorized replay input and lineage | a mutable label or current Source/Memory state |
+| `AgentEvaluationCandidate` | one immutable real output awaiting human calibration, with artifact provenance | Accepted Ground Truth or a run verdict |
 | `AcceptedGroundTruthRevision` | one append-only accepted rubric/reference for a case | candidate output or an LLM judge opinion |
 | `AgentEvaluationCohort` | one immutable, explicitly enumerated set of case/reference pairs | a live query whose membership changes between runs |
 | `AgentEvaluationRun` | one candidate and optional baseline execution contract over one cohort | product Source Sync or Memory lifecycle state |
 | `AgentEvaluationResult` | one case/replicate output artifact and execution status | Accepted Ground Truth |
 
-The existing versioned `AgentAssessment` contract is extended to target an
-offline result as well as an online runtime fact; it is not a sixth offline
-workflow object. The separation is intentional. A candidate output can be
+The existing versioned `AgentAssessment` contract can target an offline result,
+a pre-ground-truth calibration candidate, or an online runtime fact; it is not
+another offline workflow object. The separation is intentional. A candidate output can be
 generated once and regraded with a corrected evaluator without paying for
 another model replay; an evaluator failure is stored as unknown instead of
 changing the execution result to pass or fail.
 
 This extension does not use an unconstrained polymorphic `target_type` plus
-string ID. Assessment schema v2 retains the current event foreign key, adds an
-evaluation-result reference, and enforces that exactly one target is present;
+string ID. Assessment schema v5 retains typed event and evaluation-result
+references, adds a typed calibration-candidate reference, and enforces that
+exactly one target is present;
 adapters enforce the same referential behavior even when their physical DDL
 uses different constraint capabilities.
 
@@ -734,9 +736,11 @@ case manifest or candidate output requires both current Source authorization
 and an immutable `AgentEvaluationContentPolicy` for the fixed
 `human_calibration_v1` disclosure profile. The policy is an approval receipt,
 not an authority grant: every preparation and submission rechecks current
-Source visibility, and only a result assigned to the frozen calibration role
-is eligible. The returned annotation task contains the pinned case input and
-candidate output but excludes accepted ground truth and peer annotations.
+Source visibility. A result assigned to the frozen calibration role is eligible;
+before Ground Truth exists, an immutable `AgentEvaluationCandidate` with exact
+artifact provenance is also eligible. The returned annotation task contains the
+pinned case input and candidate output but excludes accepted ground truth and
+peer annotations.
 
 Human labels remain ordinary immutable `AgentAssessment` records. Assessment
 schema v3 records the reviewer and exact content-policy receipt; code and LLM
@@ -744,7 +748,7 @@ assessments do not manufacture a reviewer identity. A repeated identical
 submission is idempotent, while an ID collision with different content fails
 closed. The accepted reference does not absorb or overwrite annotations.
 Adjudication requires exactly two completed assessments from different
-reviewers over the same result, criterion, and rubric version, then creates a
+reviewers over the same result or candidate, criterion, and rubric version, then creates a
 new `AcceptedGroundTruthRevision` carrying both assessment IDs, a bounded
 adjudication note, and the acceptance-policy version. Direct expert-authored
 references remain available for initial case curation; they are not presented
@@ -845,7 +849,7 @@ version.
 Content-bearing annotation export requires a new immutable Source-scoped
 `langfuse_human_calibration_v1` policy pinned to the intended queue. It does not
 reuse or silently broaden the internal `human_calibration_v1` receipt. Each
-`(result, rubric, reviewer)` task uses a distinct protected Langfuse observation
+`(result-or-candidate, rubric, reviewer)` task uses a distinct protected Langfuse observation
 so a normal queue view does not expose a peer reviewer's Score.
 
 Because Langfuse Queue Item creation has no client idempotency key, MemForge
