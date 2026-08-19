@@ -3,7 +3,8 @@
 Amended: 2026-07-29 to preserve run progress across lease recovery and fence
 exhausted attempts; 2026-08-08 to make the lease-fenced terminal transaction
 the authority for Source freshness and history; 2026-08-12 to preserve
-provider-neutral retryability across the pipeline and durable worker seam.
+provider-neutral retryability across the pipeline and durable worker seam;
+2026-08-18 to defer retryable local collection jobs at the broker boundary.
 
 Local collection jobs, server processing runs, and lifecycle-maintenance jobs keep their independent durable lifecycles because they have different owners, leases, retries, and storage transactions. The Sources UI consumes one Source Sync Activity read model projected from those records, rather than introducing a cross-store master operation or extending one execution record to own the others.
 
@@ -17,6 +18,19 @@ checkpoint and never submits a terminal completion; the durable job may then be
 leased as a new attempt. Local progress distinguishes provider discovery,
 content fetching, and Cloud upload so a refresh-safe UI does not present a slow
 collection phase as a frozen previous phase.
+
+Provider clients classify transport reachability separately from command or
+configuration failures before completing a local collection job. In particular,
+a GitHub CLI connection failure is a retryable provider connection error rather
+than a generic CLI usage error; authentication, authorization, repository, and
+invalid-response failures remain non-retryable unless their own typed contract
+says otherwise. The broker, not the daemon process, owns the durable wait: the
+same job becomes eligible one hour after its first retryable failure and twelve
+hours after each later retryable failure, up to the existing five-attempt limit.
+Queued jobs persist their not-before timestamp, and SQLite and Cloud adapters
+must exclude them from leasing until that timestamp. Terminal completion clears
+the timestamp and remains visible as Action needed after the attempt budget is
+exhausted.
 
 Server-processing progress belongs to the durable run, not to one worker lease.
 After validating the Source and before constructing its runtime or calling its
