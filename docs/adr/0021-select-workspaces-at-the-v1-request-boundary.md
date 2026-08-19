@@ -73,6 +73,12 @@ stable readable workspace ID is `local`, its role is `owner`, and it is always
 selected when the request omits `workspace_id`. Explicit values other than
 `local` fail with the same workspace 404 contract.
 
+The self-hosted request principal and source-management resolver use that same
+`owner` role. They do not translate it to the Cloud-only `workspace_admin`
+membership role. Shared modules consume resolved management capabilities;
+Cloud remains responsible for mapping Workspace Membership Roles into those
+capabilities when it constructs the OSS application.
+
 After resolution, the selected workspace is immutable for that request. Any
 durable job or run admitted by the request persists the effective workspace
 ID; workers use the persisted value rather than resolving defaults again.

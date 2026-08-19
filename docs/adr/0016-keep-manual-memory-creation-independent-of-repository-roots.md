@@ -131,6 +131,12 @@ the new canonical Memory, while the separately confirmed correction
 provenance is the `user_correction` Support excerpt. Historical direct-user
 Support is not reinterpreted or backfilled.
 
+The public correction command is `propose_memory_correction`; the earlier
+`replace_memory` tool and route are removed. The same command also accepts
+source-backed Memories, but only complete Correction Authority can resolve the
+staged correction immediately. Otherwise the correction remains a Review and
+the incumbent stays active.
+
 This decision does not add a Cursor distribution package or expand the bounded
 agent-session producer/client taxonomy. Those are separate integration and
 source-lifecycle decisions.
