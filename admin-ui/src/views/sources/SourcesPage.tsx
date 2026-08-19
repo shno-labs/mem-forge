@@ -1182,7 +1182,7 @@ function SourceAgentEvaluationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Online evaluation</DialogTitle>
           <DialogDescription>
@@ -1199,7 +1199,7 @@ function SourceAgentEvaluationDialog({
             Failed to load online evaluation results.
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="flex min-h-0 flex-col gap-4">
             <div className="grid gap-3 sm:grid-cols-4">
               <DetailMetric label="Checks" value={formatCount(summary?.total_assessments)} />
               <DetailMetric label="Pass" value={formatCount(labels.pass)} tone="primary" />
@@ -1218,9 +1218,9 @@ function SourceAgentEvaluationDialog({
               </p>
             ) : null}
 
-            <div>
+            <div className="flex min-h-0 flex-1 flex-col">
               <h3 className="text-sm font-medium">Recent checks</h3>
-              <div className="mt-2 overflow-hidden rounded-lg border">
+              <div className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-lg border">
                 {evaluationQuery.data?.assessments.length ? (
                   <div className="divide-y">
                     {evaluationQuery.data.assessments.map((assessment) => (
