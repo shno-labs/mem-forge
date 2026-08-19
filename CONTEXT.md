@@ -9,6 +9,7 @@
 - **Authorized Workspace Context** — The single workspace selected, authorized, and bound to one data-plane request. Handlers and durable work consume this context rather than resolving workspace again.
 - **Workspace Selection Source** — The reason the Authorized Workspace Context was chosen: Requested Workspace or the caller's singleton accessible workspace.
 - **Repository Context** — Repository attribution used for provenance and retrieval relevance. It never selects or authorizes a workspace.
+- **Self-Hosted Owner** — The single authenticated owner of the OSS `local` workspace. It has local management capabilities without borrowing a Cloud Workspace Membership Role. _Avoid_: Local Workspace Admin
 
 ## Source synchronization
 
@@ -81,6 +82,8 @@
 - **Decision Fingerprint** — A deterministic digest of the Review identity, pinned participants, and proposed decision input. A caller must present the current fingerprint when applying a decision so analysis of an older Review cannot mutate newer state.
 - **Decision Manifest** — A bounded, caller-supplied set of Review Decisions and Decision Fingerprints proposed for validation or confirmed application. It is request data, not a durable workflow, lifecycle state, or all-or-nothing transaction.
 - **Cross-Source Conflict Review** — A Review of a proposed contradiction between two independently supported active Memories. Confirming or dismissing the finding closes the Review but does not select source authority or retire either Memory.
+- **Memory Correction Proposal** — A user-confirmed proposed canonical replacement for one current Memory. An authorized actor may apply it immediately; otherwise it remains a hidden challenger in a Review. The proposal never changes visibility or Source provenance by pretending to originate from the incumbent Source.
+- **Correction Authority** — The capability to apply a Memory Correction Proposal directly. A private Memory Owner has it for their own Memory; a Source Owner, Cloud Workspace Admin, or Self-Hosted Owner has it only when they can manage the complete active supporting Source set. _Avoid_: Admin flag, Source ownership
 
 ## Connector authentication
 
