@@ -1,30 +1,45 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const sourcesPageSource = readFileSync("src/views/sources/SourcesPage.tsx", "utf8");
-
-assert.match(
-  sourcesPageSource,
-  /<DialogContent className="[^"]*max-h-\[calc\(100dvh-2rem\)\][^"]*overflow-hidden[^"]*sm:max-w-3xl[^"]*">/,
-  "the online evaluation dialog should stay within the dynamic viewport instead of growing beyond both edges",
+const dialogSource = readFileSync(
+  "src/views/sources/SourceOnlineEvaluationDialog.tsx",
+  "utf8",
 );
 
 assert.match(
-  sourcesPageSource,
-  /<div className="flex min-h-0 flex-col gap-4">[\s\S]*?<h3 className="text-sm font-medium">Recent checks<\/h3>/,
-  "the loaded evaluation body should be allowed to shrink within the bounded dialog",
+  dialogSource,
+  /<DialogContent className="[^"]*max-h-\[calc\(100dvh-2rem\)\][^"]*overflow-hidden[^"]*sm:max-w-4xl[^"]*">/,
+  "the online evaluation dialog should remain bounded to the dynamic viewport",
 );
 
 assert.match(
-  sourcesPageSource,
-  /<div className="flex min-h-0 flex-1 flex-col">\s*<h3 className="text-sm font-medium">Recent checks<\/h3>/,
-  "the recent-checks section should own the dialog's remaining height",
+  dialogSource,
+  /<div className="flex min-h-0 flex-col gap-4">[\s\S]*?<div className="min-h-0 flex-1 overflow-y-auto rounded-lg border">/,
+  "only the selected evaluation view should own the dialog's remaining scroll area",
 );
 
 assert.match(
-  sourcesPageSource,
-  /<div className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-lg border">/,
-  "long evaluation cohorts should scroll inside the recent-checks list while the summary remains visible",
+  dialogSource,
+  /Needs attention \([\s\S]*Review queue \([\s\S]*Coverage[\s\S]*All checks/,
+  "actionable issue groups and coverage should precede the pass-heavy audit list",
+);
+
+assert.match(
+  dialogSource,
+  /const \[days, setDays\] = useState\(1\)/,
+  "live traffic should default to a 24-hour window",
+);
+
+assert.match(
+  dialogSource,
+  /Investigate with agent/,
+  "representative cases should provide a bounded agent-investigation handoff",
+);
+
+assert.doesNotMatch(
+  dialogSource,
+  /eligible runtime events do not have a durable assessment yet/,
+  "coverage health must not be presented as an unexplained user action queue",
 );
 
 console.log("online-evaluation-dialog-layout.test.ts: all assertions passed");
