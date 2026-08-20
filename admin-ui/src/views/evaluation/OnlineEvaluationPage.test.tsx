@@ -196,7 +196,7 @@ describe("OnlineEvaluationPage", () => {
 
     expect(await screen.findByText("2 / 3")).toBeTruthy();
     await user.click(screen.getByRole("combobox", { name: "Filter by Source Type" }));
-    await user.click(screen.getByRole("option", { name: "Jira" }));
+    await user.click(await screen.findByRole("option", { name: "Jira" }));
 
     await waitFor(() => {
       const location = screen.getByTestId("location").textContent ?? "";
@@ -209,6 +209,6 @@ describe("OnlineEvaluationPage", () => {
       { params: { days: 1, source_id: undefined, source_type: "jira" } },
     ));
     await user.click(screen.getByRole("combobox", { name: "Filter by Source Type" }));
-    expect(screen.getByRole("option", { name: "Teams" })).toBeTruthy();
+    expect(await screen.findByRole("option", { name: "Teams" })).toBeTruthy();
   });
 });
