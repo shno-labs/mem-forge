@@ -515,8 +515,28 @@ endpoint contract and query rules.
 
 **Content unit:** conversational window. Threaded Teams conversations use one
 root message plus replies as a window. Unthreaded group/direct chat messages
-are projected into stable 60-minute time blocks using a local ledger, so a
-late message can revise a window without changing its window id.
+are projected with the versioned internal `teams-window-v1` policy into stable
+time blocks using a local ledger, so a late message can revise a window without
+changing its window id. Grouping and context-budget limits are internal policy,
+not public configuration or durable business state.
+
+Teams collection returns content separately from run-scoped Projection Scope
+Attestations. The existing immutable Collection Manifest binds attestations to
+the exact local-agent attempt and durable retry. Provider validation remains in
+`SourceProjectionAdapter`; attestations never become Source Units, Documents,
+Observations, Evidence, Memories, Plans, Reviews, or lifecycle statuses. If a
+previous inventory is `{W1,W2,W3}` and the current content is `{W1,W2}`, missing
+or invalid coverage preserves W3 because auth or pagination may have missed it.
+Valid same-attempt coverage upgrades W3's omission to authoritative absence and
+allows the ordinary Lifecycle Plan to remove only its exact Support.
+
+Public scope contains selected conversations, Initial History, and optional
+Rolling Retention. Initial History defaults to 14 days and controls only first
+collection or backfill expansion; time passage never ages out established
+Support. Rolling Retention defaults to Forever and must be explicitly set to a
+finite policy before age-based Support removal. Legacy `max_age_days` migrates
+to Initial History, never to destructive retention. See
+`docs/adr/0028-separate-conversation-coverage-from-content-and-retention.md`.
 
 Teams sync uses the Teams chatsvc REST API, not Microsoft Graph. A live probe on
 2026-07-08 against `/conversations` and `/conversations/{id}/messages` confirmed
