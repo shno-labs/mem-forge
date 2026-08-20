@@ -23,6 +23,9 @@
 - **Collection** — Reading source items and, when required, transferring them from the execution device to MemForge.
 - **Collection Manifest** — An attempt-scoped declaration of stable Source Item identities and opaque revisions. It describes discovered membership without carrying every item body.
 - **Collection Coverage** — The proof attached to one collection result: a Complete Snapshot covers the whole configured scope, a Bounded Delta covers only explicit changes since a checkpoint, and Partial coverage proves neither absence nor a safe checkpoint advance.
+- **Projection Scope Attestation** — Attempt-scoped control evidence that a connector completely and successfully checked the target projection scope required for a destructive absence decision. It is not content, a Source Unit, a lifecycle state, or an authority independent of the configured policy.
+- **Initial History** — The requested backfill horizon used to establish or expand a conversational Source. Time passing beyond this horizon never removes established Support.
+- **Rolling Retention** — An explicit configured policy that makes conversational Source Support older than a stated creation-time horizon eligible for removal after complete Projection Scope Attestation. Forever means no age-based removal.
 - **Candidate Checkpoint** — A provider position proposed by collection but not made current until the corresponding Source Projection and lifecycle transaction succeeds.
 - **Processing** — Turning collected source items into stored documents and memories.
 - **Attachment Inventory** — The current provider entities owned by a source item, whether or not the item's current body references or displays them. Inventory membership alone does not make an attachment current Source Evidence.
