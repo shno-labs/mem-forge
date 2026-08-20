@@ -1115,6 +1115,7 @@ def test_workspace_agent_evaluation_route_filters_source_type_without_new_evalua
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["scope"]["source_type"] == "teams"
+    assert payload["available_source_types"] == ["github_repo", "teams"]
     assert [source["source_id"] for source in payload["sources"]] == ["src-teams"]
     assert payload["coverage"]["eligible_occurrences"] == 1
 

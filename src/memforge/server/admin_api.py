@@ -4677,6 +4677,12 @@ def create_admin_app(
             for source in await db.list_sources()
             if source_is_discoverable(source, viewer_id=principal)
         ]
+        available_source_types = sorted(
+            {
+                str(source.get("type") or "unknown")
+                for source in discoverable_sources
+            }
+        )
         if source_id is not None:
             selected = [
                 source
@@ -4721,6 +4727,7 @@ def create_admin_app(
             "summary": summary,
             "coverage": view["coverage"],
             "issue_groups": view["issue_groups"],
+            "available_source_types": available_source_types,
             "sources": view["sources"],
             "runtime_events": view["runtime_events"],
             "assessments": view["assessments"],

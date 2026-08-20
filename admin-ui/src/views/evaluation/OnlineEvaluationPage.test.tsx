@@ -83,6 +83,7 @@ function responseFixture(): WorkspaceAgentEvaluationResponse {
         representative_cases: [],
       },
     ],
+    available_source_types: ["github_repo", "jira", "teams"],
     sources: [
       {
         source_id: "src-teams",
@@ -182,10 +183,32 @@ describe("OnlineEvaluationPage", () => {
   it("preserves an explicit workspace hint and Source deep link", async () => {
     renderPage("/evaluation?workspace=mount_tai&source_id=src-teams");
 
-    expect(await screen.findByText("Evaluation")).toBeTruthy();
+    expect(await screen.findByText("2 / 3")).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toContain("workspace=mount_tai");
     expect(getMock).toHaveBeenCalledWith("/agent-evaluations/online-overview", {
       params: { days: 1, source_id: "src-teams", source_type: undefined },
     });
+  });
+
+  it("keeps the workspace Source Type choices stable while applying a filter", async () => {
+    const user = userEvent.setup();
+    renderPage("/evaluation?workspace=mount_tai&source_id=src-teams");
+
+    expect(await screen.findByText("2 / 3")).toBeTruthy();
+    await user.click(screen.getByRole("combobox", { name: "Filter by Source Type" }));
+    await user.click(screen.getByRole("option", { name: "Jira" }));
+
+    await waitFor(() => {
+      const location = screen.getByTestId("location").textContent ?? "";
+      expect(location).toContain("workspace=mount_tai");
+      expect(location).toContain("source_type=jira");
+      expect(location).not.toContain("source_id=");
+    });
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith(
+      "/agent-evaluations/online-overview",
+      { params: { days: 1, source_id: undefined, source_type: "jira" } },
+    ));
+    await user.click(screen.getByRole("combobox", { name: "Filter by Source Type" }));
+    expect(screen.getByRole("option", { name: "Teams" })).toBeTruthy();
   });
 });

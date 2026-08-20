@@ -41,6 +41,7 @@ export function OnlineEvaluationPage() {
           },
         })
         .then((response) => response.data),
+    placeholderData: (previousData) => previousData,
   });
 
   const data = evaluationQuery.data;
@@ -52,7 +53,7 @@ export function OnlineEvaluationPage() {
     [data],
   );
   const sourceTypes = useMemo(
-    () => Array.from(new Set(data?.sources.map((source) => source.type) ?? [])).sort(),
+    () => data?.available_source_types ?? [],
     [data],
   );
   const presentation = useMemo(() => {
@@ -116,7 +117,10 @@ export function OnlineEvaluationPage() {
           <Select
             value={sourceType ?? "all"}
             onValueChange={(value) => updateParams(
-              { source_type: value === "all" ? null : value },
+              {
+                source_id: null,
+                source_type: value === "all" ? null : value,
+              },
               { clearAssessmentFilters: true },
             )}
           >

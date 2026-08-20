@@ -409,6 +409,7 @@ export interface WorkspaceAgentEvaluationResponse {
   summary: AgentAssessmentSummary;
   coverage: AgentEvaluationCoverage;
   issue_groups: AgentEvaluationIssueGroup[];
+  available_source_types: string[];
   sources: AgentEvaluationSourceHealth[];
   runtime_events: AgentRuntimeEventView[];
   assessments: AgentAssessmentView[];
