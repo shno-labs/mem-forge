@@ -15,7 +15,7 @@ Teams content remains a stable thread or time-block Source Unit. The internal wi
 Teams configuration separates:
 
 - `initial_history_days`, default 14, which controls initial or expanded backfill and never authorizes removal;
-- `rolling_retention_days`, default Forever (`None`), with explicit one-year and three-year choices;
+- `rolling_retention_days`, default Forever (`None`), with explicit one-year, two-year, and three-year choices;
 - selected conversation identities, which remain the user-visible projection scope.
 
 An existing `max_age_days` value normalizes to `initial_history_days`. It never becomes rolling retention. Legacy `conversation_gap_minutes` and `max_block_messages` are removed from public configuration and replaced by the versioned internal policy.
@@ -49,7 +49,7 @@ For example, let the previous windows be `{W1, W2, W3}` and the current returned
 
 SQLite and HANA store the same serialized attestation tuple on the existing manifest and return the same typed values to the durable worker. Provider validation remains inside `SourceProjectionAdapter`; Cloud adds only adapter parity and no Cloud-specific lifecycle branch or ADR. Public UI and config show selected conversations, Initial History, and explicit Rolling Retention consequences.
 
-MemForge Rolling Retention is a Source Support policy, not a claim that Microsoft 365 compliance copies were deleted. Microsoft documents Teams retention as an explicit policy based on message creation time, with one- and three-year examples, and warns that client visibility differs from compliance retention state. See [Learn about retention for Teams](https://learn.microsoft.com/en-us/purview/retention-policies-teams) and [Manage retention policies for Microsoft Teams](https://learn.microsoft.com/en-us/microsoftteams/retention-policies).
+MemForge Rolling Retention is a Source Support policy, not a claim that Microsoft 365 compliance copies were deleted. Product presets are one, two, and three years; each uses the same complete-attestation safety contract. Microsoft documents Teams retention as an explicit policy based on message creation time and warns that client visibility differs from compliance retention state. See [Learn about retention for Teams](https://learn.microsoft.com/en-us/purview/retention-policies-teams) and [Manage retention policies for Microsoft Teams](https://learn.microsoft.com/en-us/microsoftteams/retention-policies).
 
 ## Non-goals
 
