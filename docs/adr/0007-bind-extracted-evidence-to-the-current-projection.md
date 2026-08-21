@@ -4,12 +4,19 @@ Amended 2026-08-12 to make batch-local Evidence Block identity the textual
 admission authority and make provider-returned quote text an optional precision
 hint rather than an exact-copy gate.
 
+Amended 2026-08-20 to complete that transition: every new textual structured
+response must carry one valid transient Evidence Block ID. Projection responses
+use mutually exclusive textual and binary-Artifact variants; an Artifact claim
+selects its supplied Source Observation and cannot carry textual quote or Block
+authority.
+
 Extractor-provided Source Observation identities are localization hints, not
 Evidence authority. The current Source Projection and its revision-pinned
 content are authoritative. New textual extraction binds through a valid
 batch-local Evidence Block whose application-owned mapping selects the Source
-Observation. Legacy quote-only output may be rebound only when that quote maps
-to exactly one selectable Block; missing or ambiguous matches fail closed.
+Observation. New model output cannot use quote-only admission. Completed durable
+derivation payloads remain Block-ID-free because the transient address has
+already been resolved to exact current-revision Evidence before persistence.
 
 This rule lives in the shared Evidence Catalog and localization Modules and does
 not branch on provider type. A valid Block remains authoritative when its
@@ -81,16 +88,29 @@ full-document work catalog only their owned bounded text. The same Catalog
 Module serves every source Adapter after Source Projection and work planning;
 provider-specific Block identity is neither required nor allowed.
 
-For textual Evidence the selected Block is the admission authority. An optional
+For textual Evidence the selected Block is required admission authority. The
+structured response schema, not prompt wording alone, enforces that every new
+textual candidate selects exactly one Block. Projection Artifact candidates are
+a separate schema variant: they select one supplied binary Artifact Observation
+and cannot provide a textual quote or Block ID. An optional
 `evidence_quote` may narrow the excerpt inside that Block through exact or
 conservative representation-only canonical matching, including Markdown escape,
 link, Unicode punctuation, and whitespace differences. A successful refinement
 is mapped back to the exact Source characters. A missing or unlocalizable quote
 does not reject a valid Block selection: the exact bounded Block becomes the
-non-empty canonical excerpt. An invalid Block ID still fails closed. During the
-contract transition, a quote-only response may be admitted only when it maps to
-exactly one selectable Block; this compatibility path does not create authority
-outside the Catalog.
+non-empty canonical excerpt. A missing or invalid Block ID fails structured
+response validation or admission; it cannot fall back to quote-only ownership.
+
+Invalid structured-response recovery must preserve that authority rule. One
+logical extraction call may use the shared bounded schema-transport fallback
+and validation retry under the same deadline, but every recovered textual
+candidate must still satisfy the Block-ID schema. Exhaustion records only
+content-free validation diagnostics and leaves the durable derivation batch in
+`retryable_failure`; a later recovery may resume that exact immutable batch
+under its existing revision and stale guards. It must not admit the quote,
+invent a Block, apply a partial lifecycle mutation, or reinterpret a schema
+failure as whole-Block fallback. Whole-Block fallback is available only after a
+valid Block has already established Evidence authority.
 
 Textual extraction therefore does not use `NO_EXCERPT` as a recovery for model
 copy differences. Binary Artifact Evidence remains the explicit non-textual
