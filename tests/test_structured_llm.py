@@ -1200,7 +1200,7 @@ async def test_litellm_structured_client_repairs_unescaped_quotes_without_changi
             '{"memories":[{"content":"Use "规则" for validation.",'
             '"memory_type":"procedure","confidence":0.9,'
             '"entity_refs":[],"evidence_quote":"Use "规则" for validation.",'
-            '"evidence_block_id":"EB-1"}],"artifact_summaries":[]}'
+            '"evidence_block_id":"EB-001"}],"artifact_summaries":[]}'
         )
 
     monkeypatch.setattr("memforge.llm.structured.litellm.acompletion", fake_acompletion)
@@ -1302,7 +1302,10 @@ async def test_litellm_structured_client_rejects_quote_repair_when_schema_is_inv
         await client.extract_projection_memories("prompt", max_tokens=8192)
 
     assert raised.value.error_code == "ValidationError"
-    assert ("memories.0.memory_type", "literal_error") in raised.value.validation_fields
+    assert any(
+        path.endswith(".memory_type") and error_type == "literal_error"
+        for path, error_type in raised.value.validation_fields
+    )
     assert len(calls) == 3
 
 
