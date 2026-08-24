@@ -61,9 +61,8 @@ _LOCAL_AGENT_JOB_CONFIG_FIELDS_BY_SOURCE_TYPE = {
             "channels",
             "group_chats",
             "individual_chats",
-            "conversation_gap_minutes",
-            "max_age_days",
-            "max_block_messages",
+            "initial_history_days",
+            "rolling_retention_days",
             "incremental_overlap_hours",
             "page_size",
         }
@@ -76,12 +75,13 @@ LOCAL_AGENT_SYNC_PAYLOAD_CONTROL_FIELDS = frozenset(
 )
 LOCAL_AGENT_JOB_MAX_ATTEMPTS = 5
 LOCAL_AGENT_SEMANTIC_INPUT_VERSION = "canonical-v1"
+TEAMS_ROLLING_RETENTION_PRESETS = (365, 730, 1095)
 TEAMS_TOMBSTONE_REASONS = frozenset(
     {
         "not_returned_by_complete_conversation_poll",
         "not_returned_by_bounded_conversation_poll",
         "conversation_removed_from_projection_scope",
-        "outside_configured_time_scope",
+        "outside_rolling_retention",
     }
 )
 TEAMS_CONVERSATION_SELECTOR_FIELDS = (
@@ -366,11 +366,17 @@ def local_agent_job_config(
     config: Mapping[str, Any] | str | None,
 ) -> dict[str, Any]:
     """Return connector config safe and useful for the owner's daemon."""
+    normalized_type = str(source_type or "").strip().lower()
     allowed = _LOCAL_AGENT_JOB_CONFIG_FIELDS_BY_SOURCE_TYPE.get(
-        str(source_type or "").strip().lower(),
+        normalized_type,
         frozenset(),
     )
-    return {key: value for key, value in _source_config(config).items() if key in allowed}
+    source_config = dict(_source_config(config))
+    if normalized_type == "teams":
+        if "initial_history_days" not in source_config:
+            source_config["initial_history_days"] = source_config.get("max_age_days", 14)
+        source_config.setdefault("rolling_retention_days", None)
+    return {key: value for key, value in source_config.items() if key in allowed}
 
 
 def local_agent_sync_job_payload(

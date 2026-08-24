@@ -13,7 +13,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field as dataclass_field
 from threading import Lock
 from time import perf_counter
-from typing import Any, Callable, Iterator, Literal, Mapping, Protocol, get_args, get_origin
+from typing import Annotated, Any, Callable, Iterator, Literal, Mapping, Protocol, get_args, get_origin
 from weakref import WeakKeyDictionary
 
 import litellm
@@ -37,6 +37,10 @@ type StructuredLlmTerminalCategory = Literal[
 type NativeSchemaTransport = Literal[
     "auto",
     "json_schema_response_format",
+]
+type TransientEvidenceBlockId = Annotated[
+    str,
+    Field(min_length=1, pattern=r"^EB-\d{3,}$"),
 ]
 
 
@@ -219,10 +223,25 @@ class MemoryCandidate(StructuredResponseModel):
     valid_until: str | None = None
     extraction_context: str | None = None
     evidence_quote: str | None = None
-    evidence_block_id: str | None = None
+    evidence_block_id: TransientEvidenceBlockId
     evidence_anchor: Literal["unit", "glossary", "preamble", "outline", "document", "unknown"] = "unknown"
-    source_observation_id: str | None = None
     required_source_observation_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_model_owned_observation_authority(cls, value: object):
+        if isinstance(value, Mapping) and "source_observation_id" in value:
+            raise ValueError(
+                "textual candidates must select evidence_block_id; "
+                "source_observation_id is application-owned"
+            )
+        return value
+
+    @property
+    def source_observation_id(self) -> None:
+        """Text authority maps to an Observation only after Block resolution."""
+
+        return None
 
 
 class ArtifactSelectionSummary(StructuredResponseModel):
@@ -270,8 +289,8 @@ class MemoryExtractionResponse(StructuredResponseModel):
     artifact_summaries: list[ArtifactSelectionSummary] = Field(default_factory=list)
 
 
-class ProjectionMemoryCandidate(StructuredResponseModel):
-    """Model judgments for one projection candidate; anchors are derived locally."""
+class _ProjectionMemoryCandidateBase(StructuredResponseModel):
+    """Shared model judgments; evidence authority is selected by a concrete variant."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -281,9 +300,6 @@ class ProjectionMemoryCandidate(StructuredResponseModel):
     entity_refs: list[str] = Field(default_factory=list)
     valid_from: str | None = None
     valid_until: str | None = None
-    evidence_quote: str | None = None
-    evidence_block_id: str | None = None
-    source_observation_id: str | None = None
     required_source_observation_ids: list[str] = Field(default_factory=list)
 
     @property
@@ -293,6 +309,68 @@ class ProjectionMemoryCandidate(StructuredResponseModel):
     @property
     def evidence_anchor(self) -> Literal["unknown"]:
         return "unknown"
+
+
+class ProjectionTextMemoryCandidate(_ProjectionMemoryCandidateBase):
+    """One textual claim bound to an application-owned transient Evidence Block."""
+
+    evidence_quote: str | None = None
+    evidence_block_id: TransientEvidenceBlockId
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_model_owned_observation_authority(cls, value: object):
+        if isinstance(value, Mapping) and "source_observation_id" in value:
+            raise ValueError(
+                "textual candidates must select evidence_block_id; "
+                "source_observation_id is application-owned"
+            )
+        return value
+
+    @property
+    def source_observation_id(self) -> None:
+        """Text authority maps to an Observation only after Block resolution."""
+
+        return None
+
+
+class ProjectionArtifactMemoryCandidate(_ProjectionMemoryCandidateBase):
+    """One visual claim bound to the exact supplied binary Artifact Observation."""
+
+    source_observation_id: str = Field(min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_text_authority(cls, value: object):
+        if isinstance(value, Mapping):
+            forbidden = {
+                field
+                for field in ("evidence_block_id", "evidence_quote")
+                if field in value
+            }
+            if forbidden:
+                raise ValueError(
+                    "Artifact candidates cannot provide textual authority: "
+                    + ", ".join(sorted(forbidden))
+                )
+        return value
+
+    @property
+    def evidence_quote(self) -> None:
+        """Binary Artifact evidence has no textual quote."""
+
+        return None
+
+    @property
+    def evidence_block_id(self) -> None:
+        """Binary Artifact evidence is addressed by its supplied Observation."""
+
+        return None
+
+
+type ProjectionMemoryCandidate = (
+    ProjectionTextMemoryCandidate | ProjectionArtifactMemoryCandidate
+)
 
 
 class ProjectionMemoryExtractionResponse(StructuredResponseModel):
@@ -1279,6 +1357,8 @@ def _strip_json_fences(text: str) -> str:
 
 
 _INVALID_JSON_ESCAPE_RE = re.compile(r'\\(?!["\\/bfnrtu])')
+_MAX_UNESCAPED_JSON_QUOTE_PAIR_REPAIRS = 8
+_MAX_UNESCAPED_JSON_QUOTED_TOKEN_CHARS = 128
 
 
 def _escape_invalid_json_backslashes(text: str) -> str:
@@ -1286,17 +1366,122 @@ def _escape_invalid_json_backslashes(text: str) -> str:
     return _INVALID_JSON_ESCAPE_RE.sub(r"\\\\", text)
 
 
+def _is_unescaped_json_quote(text: str, index: int) -> bool:
+    if index < 0 or index >= len(text) or text[index] != '"':
+        return False
+    backslashes = 0
+    cursor = index - 1
+    while cursor >= 0 and text[cursor] == "\\":
+        backslashes += 1
+        cursor -= 1
+    return backslashes % 2 == 0
+
+
+def _next_non_whitespace_index(text: str, start: int) -> int | None:
+    for index in range(start, len(text)):
+        if not text[index].isspace():
+            return index
+    return None
+
+
+def _unambiguous_unescaped_json_quote_pair(
+    text: str,
+    error: json.JSONDecodeError,
+) -> tuple[int, int] | None:
+    """Locate one clearly internal quoted token after premature string closure.
+
+    The repair is deliberately narrower than a general "JSON repair" parser.
+    It accepts only the provider pattern observed in structured string values:
+    an unescaped quote immediately before the parser's unexpected token, a
+    short non-whitespace/non-structural token, and a second quote followed by
+    more string content. A quote before a valid delimiter remains ambiguous and
+    is never changed.
+    """
+
+    if error.msg != "Expecting ',' delimiter" or error.pos <= 0 or error.pos >= len(text):
+        return None
+    quote_start = error.pos - 1
+    if not _is_unescaped_json_quote(text, quote_start):
+        return None
+    quote_end = next(
+        (index for index in range(error.pos, len(text)) if _is_unescaped_json_quote(text, index)),
+        None,
+    )
+    if quote_end is None:
+        return None
+    token = text[error.pos : quote_end]
+    if (
+        not token
+        or len(token) > _MAX_UNESCAPED_JSON_QUOTED_TOKEN_CHARS
+        or any(character.isspace() or character in '{}[],:\\"' for character in token)
+        or any(ord(character) < 32 or ord(character) == 127 for character in token)
+    ):
+        return None
+    following = _next_non_whitespace_index(text, quote_end + 1)
+    if following is None or text[following] in ",}]":
+        return None
+    return quote_start, quote_end
+
+
+def _repair_unambiguous_unescaped_json_quotes(text: str) -> tuple[str, int] | None:
+    candidate = text
+    repaired_pairs = 0
+    while repaired_pairs < _MAX_UNESCAPED_JSON_QUOTE_PAIR_REPAIRS:
+        try:
+            json.loads(candidate)
+        except json.JSONDecodeError as error:
+            pair = _unambiguous_unescaped_json_quote_pair(candidate, error)
+            if pair is None:
+                return None
+            quote_start, quote_end = pair
+            candidate = (
+                candidate[:quote_start]
+                + "\\"
+                + candidate[quote_start:quote_end]
+                + "\\"
+                + candidate[quote_end:]
+            )
+            repaired_pairs += 1
+        else:
+            return (candidate, repaired_pairs) if repaired_pairs else None
+    return None
+
+
 def _validate_structured_json_text(text: str, response_format: type[BaseModel]):
     stripped = _strip_json_fences(text)
     try:
         return response_format.model_validate_json(stripped)
     except ValidationError as exc:
+        repaired_schema_error: ValidationError | None = None
         repaired = _escape_invalid_json_backslashes(stripped)
         if repaired != stripped and "Invalid JSON" in str(exc):
             try:
                 return response_format.model_validate_json(repaired)
             except ValidationError:
                 pass
+
+        quote_repair = _repair_unambiguous_unescaped_json_quotes(repaired)
+        if quote_repair is not None and "Invalid JSON" in str(exc):
+            quote_repaired, repaired_pairs = quote_repair
+            try:
+                recovered = response_format.model_validate_json(quote_repaired)
+            except ValidationError as repair_exc:
+                repaired_schema_error = repair_exc
+            else:
+                logger.warning(
+                    "structured_json_recovery %s",
+                    json.dumps(
+                        {
+                            "event": "structured_json_recovery",
+                            "recovery_kind": "unescaped_json_string_quotes",
+                            "repaired_pairs": repaired_pairs,
+                            "schema": response_format.__name__,
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                )
+                return recovered
 
         valid_objects = []
         decoder = json.JSONDecoder()
@@ -1323,6 +1508,8 @@ def _validate_structured_json_text(text: str, response_format: type[BaseModel]):
             return valid_objects[0]
         if len(valid_objects) > 1:
             raise ValueError("ambiguous structured JSON objects") from exc
+        if repaired_schema_error is not None:
+            raise repaired_schema_error
         raise
 
 
