@@ -337,6 +337,18 @@ budget. It does not retry ambiguous multi-object framing, deterministic
 application-contract failures, provider outages beyond their existing retry
 policy, or any response after the budget is exhausted.
 
+Before spending that fallback budget, the provider-neutral parser may apply a
+content-preserving syntax recovery for a bounded, unambiguous JSON defect. An
+unescaped quote pair is recoverable only when it surrounds one short
+non-whitespace, non-structural token inside a string value and a distinct later
+quote still closes that value. Recovery inserts JSON escape characters without
+changing the decoded text. The repaired document must parse completely and
+pass the original Pydantic response schema; ambiguous terminal quotes, missing
+delimiters, multiple possible repairs, or schema-invalid results remain failed.
+The parser logs only the schema name and repaired-pair count, never provider
+text. This recovery is a generic JSON boundary rule and contains no provider or
+model special case.
+
 The same bounded admission judgment may reject a candidate as low value only
 when the candidate is merely instance output or source-recoverable detail and
 does not preserve a reusable decision, rule, invariant, conclusion, or

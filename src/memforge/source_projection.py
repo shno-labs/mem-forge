@@ -47,6 +47,32 @@ class ProjectionScopeTransitionStatus(str, Enum):
     FAILED = "failed"
 
 
+@dataclass(frozen=True, slots=True)
+class ProjectionScopeAttestation:
+    """Attempt-scoped control evidence for one projection-scope subject."""
+
+    subject_type: str
+    subject_key: str
+    collection_attempt_id: str
+    target_scope_fingerprint: str
+    evidence: Mapping[str, object]
+    transition_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not all(
+            value.strip()
+            for value in (
+                self.subject_type,
+                self.subject_key,
+                self.collection_attempt_id,
+                self.target_scope_fingerprint,
+            )
+        ):
+            raise ValueError("Projection Scope Attestation identity is incomplete")
+        if self.transition_id is not None and not self.transition_id.strip():
+            raise ValueError("Projection Scope Attestation transition id is empty")
+
+
 class DeltaAxis(str, Enum):
     SEMANTIC = "semantic"
     LOCATION = "location"
@@ -122,6 +148,15 @@ class FragmentMapping:
 
 @dataclass(frozen=True, slots=True)
 class SourceObservation:
+    """Stable identity for one provider-defined content part of a Source Unit.
+
+    Storage treats ``(source_unit_id, provider_key)`` as the canonical unique
+    key and ``observation_type`` as immutable classification. Adapters must
+    therefore namespace provider keys when native identifiers can overlap
+    across Observation types. Built-in derived ids also include the type so
+    classification drift fails closed instead of rewriting stored identity.
+    """
+
     id: str
     source_id: str
     source_unit_id: str
@@ -132,6 +167,8 @@ class SourceObservation:
 
 @dataclass(frozen=True, slots=True)
 class SourceObservationRevision:
+    """Immutable content revision of one Source Observation."""
+
     id: str
     observation_id: str
     semantic_hash: str
@@ -142,6 +179,15 @@ class SourceObservationRevision:
 
 @dataclass(frozen=True, slots=True)
 class SourceUnit:
+    """Stable identity for one provider item within a configured Source.
+
+    Storage treats ``(source_id, provider_key)`` as the canonical unique key
+    and ``unit_type`` as immutable classification. Adapters must therefore
+    namespace provider keys when native identifiers can overlap across Unit
+    types. Built-in derived ids also include the type so classification drift
+    fails closed instead of rewriting stored identity.
+    """
+
     id: str
     source_id: str
     unit_type: str
@@ -168,6 +214,16 @@ class SourceUnitInventoryPage:
 
 @dataclass(frozen=True, slots=True)
 class SourceUnitRevision:
+    """Append-only aggregate revision representing one Source Unit snapshot.
+
+    This manifest contains no source body. It pins the effective set of
+    :class:`SourceObservationRevision` records for one projected Unit state
+    together with semantic, location, membership, and access fingerprints.
+    The enclosing :class:`SourceProjection` coverage determines whether an
+    omitted Observation proves provider-side removal or whether its prior
+    revision must be carried forward.
+    """
+
     id: str
     source_unit_id: str
     semantic_hash: str
@@ -224,6 +280,7 @@ class ProjectionRequest:
     previous_checkpoint: Mapping[str, object] | None = None
     scope_transition: Mapping[str, object] | None = None
     access_context: Mapping[str, object] = field(default_factory=dict)
+    scope_attestations: tuple[ProjectionScopeAttestation, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -414,8 +471,38 @@ class SourceProjectionAdapter(Protocol):
         source_type: str,
         transition: ProjectionScopeTransition,
         current_units: tuple[SourceUnit, ...],
-        run_attestations: tuple[Mapping[str, object], ...] = (),
+        run_attestations: tuple[ProjectionScopeAttestation, ...] = (),
     ) -> ProjectionCoverage | None: ...
+
+
+def projection_scope_attestation_to_payload(
+    attestation: ProjectionScopeAttestation,
+) -> dict[str, object]:
+    return {
+        "subject_type": attestation.subject_type,
+        "subject_key": attestation.subject_key,
+        "collection_attempt_id": attestation.collection_attempt_id,
+        "target_scope_fingerprint": attestation.target_scope_fingerprint,
+        "transition_id": attestation.transition_id,
+        "evidence": dict(attestation.evidence),
+    }
+
+
+def projection_scope_attestation_from_payload(
+    payload: Mapping[str, object],
+) -> ProjectionScopeAttestation:
+    evidence = payload.get("evidence")
+    if not isinstance(evidence, Mapping):
+        raise ValueError("Projection Scope Attestation evidence must be an object")
+    transition_id = payload.get("transition_id")
+    return ProjectionScopeAttestation(
+        subject_type=str(payload.get("subject_type") or ""),
+        subject_key=str(payload.get("subject_key") or ""),
+        collection_attempt_id=str(payload.get("collection_attempt_id") or ""),
+        target_scope_fingerprint=str(payload.get("target_scope_fingerprint") or ""),
+        transition_id=(str(transition_id) if transition_id is not None else None),
+        evidence=dict(evidence),
+    )
 
 
 @runtime_checkable
