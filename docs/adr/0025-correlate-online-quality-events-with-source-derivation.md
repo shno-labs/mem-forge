@@ -907,6 +907,41 @@ Source sync, mutate a Memory, rewrite lifecycle history, or silently promote a
 regression case. Durable case promotion and replay continue through the
 existing offline-evaluation authority and require their own explicit action.
 
+### Use one workspace overview with contextual Source deep links
+
+The first actionable presentation remained reachable only from each Source.
+That local entry is useful for investigation but is not the operational home
+for live-traffic evaluation once a workspace has many Sources. It cannot answer
+which failure patterns affect the workspace without making the operator inspect
+Sources one by one. The per-Source-modal-as-primary-entry assumption is
+superseded.
+
+Online evaluation has one workspace-scoped module and one interface. The
+workspace route aggregates authorized Source presentations into issue groups,
+review groups, semantic coverage, and a Source health matrix. The Source
+contextual action navigates to that same route with an explicit `source_id`
+filter; it does not own another aggregation or presentation implementation.
+
+The workspace overview follows the active workspace already selected and
+displayed by the product shell. Before querying runtime events or assessments,
+the server resolves the exact caller-discoverable Source cohort. Every total,
+group, filter option, and representative case is derived only from that cohort,
+so private Source identity or activity cannot leak through aggregate counts.
+Ordinary users receive no organization-wide or cross-workspace evaluation.
+
+Source type is a segmentation dimension, not an evaluator boundary. The page
+may filter and group by Source, Source Type, criterion, label, reason, and
+version, but it compares issue rates only within the applicable criterion
+denominator. It does not rank heterogeneous Sources by one raw pass rate.
+
+The workspace view defaults to 24 hours, may widen to 7 or 30 days, and
+separates Needs attention, Review queue, Sources, Coverage, and All checks.
+Source rows surface only non-default actionable evaluation state. A healthy
+Source adds no steady-state badge or status line; its contextual deep link
+remains available through the existing Source action affordance. Threshold
+alerts, automatic replay, Ground Truth, regression promotion, and release
+gating remain separate explicitly authorized work.
+
 ## Consequences
 
 All ordinary configured Source sync types—including Teams, Confluence, Jira,
