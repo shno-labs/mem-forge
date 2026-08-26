@@ -23,16 +23,22 @@ available.
 MemForge owns local-daemon user-service setup behind the `memforge daemon`
 interface.
 
-- `memforge setup` configures or reuses the active target, obtains the Cloud
-  token when required, verifies target health, installs the user service, starts
-  it, and checks the server-observed heartbeat.
-- `memforge daemon install`, `status`, `start`, `stop`, `restart`, `logs`, and
-  `uninstall` are the non-interactive lifecycle surface.
+- `memforge setup` configures or reuses the active target. When no explicit or
+  active target exists, it prompts for the API URL instead of silently choosing
+  an edition. It obtains the Cloud token when required, verifies target health,
+  installs the user service, starts it, and requires a server-observed heartbeat
+  newer than the pre-install baseline.
+- `memforge daemon install`, `status`, `check`, `start`, `stop`, `restart`,
+  `logs`, and `uninstall` are the non-interactive lifecycle surface. Status
+  combines native process state with the authenticated server-observed daemon
+  heartbeat; check exposes the same contract with a nonzero unhealthy exit.
 - macOS uses a per-user LaunchAgent in `~/Library/LaunchAgents`; Linux uses a
   systemd user unit in `~/.config/systemd/user`. Neither path requires root.
 - The native definition directly executes the installed `memforge` entrypoint
   with a hidden service-runtime command. It does not invoke a shell and contains
-  no bearer token.
+  no bearer token. One typed launch specification also carries the non-secret
+  runtime `PATH` needed by locally executed tools such as `gh`; both native
+  adapters translate that same process contract.
 - The exact target URL is stored in a mode-`0600` daemon config. A Cloud bearer
   token is stored only through the operating-system keyring and is loaded by the
   service runtime immediately before the daemon loop starts. Ordinary CLI calls
@@ -44,6 +50,12 @@ interface.
 - Installation refuses to compete with an already running foreground or
   otherwise unmanaged daemon. A loaded native service with the MemForge service
   identity can be replaced in place for upgrades and migration.
+- Replacement is one owner-controlled transaction across the native definition,
+  enabled/running state, daemon target, and Keychain credential. Setup retains
+  the replacement receipt until fresh-heartbeat verification and CLI-target
+  persistence both succeed. Apply and rollback command failures are checked and
+  reported; rollback restores credentials before restarting the previous
+  process so it cannot boot against the replacement target.
 - The server continues to own source schedules and durable jobs. Installing a
   user service adds no daemon-side scheduler or business state.
 
@@ -59,6 +71,10 @@ Unsupported operating systems fail before writing service state.
   through one MemForge interface on both supported platforms.
 - CLI upgrades keep working through the stable installed entrypoint path. A
   target or credential change is applied by rerunning setup or daemon install.
+- A failed health check, service replacement, fresh-heartbeat check, or CLI
+  target write preserves the prior CLI target and restores the prior native
+  service and credential. A rollback failure is terminal and explicit rather
+  than being hidden behind the original apply error.
 - Installation depends on a working OS keyring. MemForge fails closed instead
   of writing a Cloud token to a plaintext fallback file.
 - Windows service installation is not included in this decision and reports an
