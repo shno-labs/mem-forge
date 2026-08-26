@@ -66,6 +66,16 @@
 - **Managed Capture** — Knowledge produced from a system-created capture Source, such as an Agent Session Source, without requiring the user to configure an ingestion connection.
 - **Configured Source** — Knowledge produced from a user-configured ingestion connection such as Confluence, Jira, Teams, GitHub Repository, or Local Repository.
 
+## Memory evidence
+
+- **Evidence Fragment** — An application-owned structural region of one current Source Observation Revision that may be offered for extraction under an immutable catalog. Its extraction-time reference is transient and never becomes cross-revision identity. _Avoid_: Source Item, stable Atom, LLM quote
+- **Evidence Reference** — A revision-pinned link from one Evidence Unit to a Source Observation and optional Source Anchor. Its role is Primary, Required, or Context. _Avoid_: Source URL, unversioned citation, Evidence Fragment reference
+- **Evidence Unit** — One claim-sized, revision-pinned package containing exactly one Primary Evidence Reference and zero or more Required and Context Evidence References. Primary and Required references jointly determine whether the unit supports its claim; Context references do not. _Avoid_: Evidence expression, Support rule tree, extraction batch
+- **Primary Evidence Reference** — The Evidence Reference whose cited content directly states the Evidence Unit's claim and grants extraction authority. Every source-backed Evidence Unit has exactly one. _Avoid_: Most important reference, first reference, related context
+- **Required Evidence Reference** — An Evidence Reference without which the Evidence Unit's claim becomes unsupported, ambiguous, or changes meaning. A Required reference is support, not merely useful background. _Avoid_: Optional dependency, helpful context
+- **Context Evidence Reference** — An Evidence Reference retained to interpret or inspect the Evidence Unit without supporting its claim. A Context change does not independently invalidate the Evidence Unit. _Avoid_: Supporting evidence, Required reference
+- **Support Assertion** — The validity- and authority-bearing relationship from one complete Evidence Unit to one Memory. References inside an Evidence Unit are never independent Support Assertions. _Avoid_: Per-reference support, document link, Memory ownership
+
 ## Memory retrieval
 
 - **Requested Retrieval Intent** — An optional query-scoped hint selected by an Agent Client from the user's conversational goal. It may request General Hybrid Retrieval, Known Item Lookup, or Relationship Exploration, but cannot weaken visibility, provenance, or facet constraints.
