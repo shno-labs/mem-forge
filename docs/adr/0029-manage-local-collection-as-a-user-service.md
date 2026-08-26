@@ -26,8 +26,9 @@ interface.
 - `memforge setup` configures or reuses the active target. When no explicit or
   active target exists, it prompts for the API URL instead of silently choosing
   an edition. It obtains the Cloud token when required, verifies target health,
-  installs the user service, starts it, and requires a server-observed heartbeat
-  newer than the pre-install baseline.
+  installs the user service, starts it, then captures an acceptance baseline
+  after the previous process has been removed. Setup requires a later
+  server-observed heartbeat before committing.
 - `memforge daemon install`, `status`, `check`, `start`, `stop`, `restart`,
   `logs`, and `uninstall` are the non-interactive lifecycle surface. Status
   combines native process state with the authenticated server-observed daemon
