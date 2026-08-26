@@ -69,6 +69,7 @@
 ## Memory evidence
 
 - **Evidence Fragment** — An application-owned structural region of one current Source Observation Revision that may be offered for extraction under an immutable catalog. Its extraction-time reference is transient and never becomes cross-revision identity. _Avoid_: Source Item, stable Atom, LLM quote
+- **Evidence Representation Profile** — The typed, versioned description of how one Source Observation Revision exposes selectable Evidence, independent of its provider Source Type. _Avoid_: Source-specific compiler, inferred MIME switch
 - **Evidence Reference** — A revision-pinned link from one Evidence Unit to a Source Observation and optional Source Anchor. Its role is Primary, Required, or Context. _Avoid_: Source URL, unversioned citation, Evidence Fragment reference
 - **Evidence Unit** — One claim-sized, revision-pinned package containing exactly one Primary Evidence Reference and zero or more Required and Context Evidence References. Primary and Required references jointly determine whether the unit supports its claim; Context references do not. _Avoid_: Evidence expression, Support rule tree, extraction batch
 - **Primary Evidence Reference** — The Evidence Reference whose cited content directly states the Evidence Unit's claim and grants extraction authority. Every source-backed Evidence Unit has exactly one. _Avoid_: Most important reference, first reference, related context

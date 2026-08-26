@@ -1,6 +1,8 @@
-# Compile revision-pinned Evidence Fragments
+# ADR 0030: Compile revision-pinned Evidence Fragments
 
-Status: Accepted (2026-08-27)
+## Status
+
+Accepted (2026-08-27)
 
 MemForge will replace provider-returned evidence text, single coarse Block
 selection, quote matching, and whole-Block fallback with application-owned
@@ -25,18 +27,20 @@ Current Source Projection
   -> owned Source Observation Revisions and bounded Context
   -> representation-aware Evidence Fragment Compiler
   -> immutable extraction catalog with transient Fragment references
-  -> model returns Memory + primary_ref + required_refs
+  -> extraction model returns Memory + primary_ref + required_refs
   -> Evidence Resolver validates and materializes exact revision-pinned references
   -> one complete Evidence Unit
   -> one Support Assertion
   -> relation-first reconciliation and one atomic Lifecycle Plan
 ```
 
-The model never returns authoritative Evidence text, source offsets,
-Observation identities, durable fragment identities, or lifecycle actions.
-Structured-output validity proves only response shape. Application code owns
-Evidence authority and immediately rejects an unknown, stale, out-of-scope,
-cross-catalog, mixed-access, or unresolvable selection.
+The ordinary source-extraction response never returns authoritative Evidence
+text, source offsets, Observation identities, durable fragment identities, or
+lifecycle actions. Structured-output validity proves only response shape.
+Application code owns Evidence authority and immediately rejects an unknown,
+stale, out-of-scope, cross-catalog, mixed-access, or unresolvable selection.
+Managed Agent Session patch intent is a distinct upstream command proposal and
+is constrained separately below; it never becomes lifecycle authority.
 
 ## Evidence Fragment catalogs
 
@@ -46,14 +50,62 @@ revision coordinate and content hash. Its short model-facing reference is valid
 only inside the exact immutable catalog sent to that model call and is absent
 from completed derivation and durable lifecycle records.
 
-The compiler varies by representation, not by Configured Source type. Its
-private adapters initially cover Markdown structure, HTML structure, plain
-text, atomic conversational records, and whole binary Artifacts. Future PDF
-page text or other formats enter through the same private representation seam.
-GitHub, Jira, Confluence, Teams, Agent Session, future Slack, and other provider
-adapters continue to own provider identity, Source Unit and Observation
-topology, edit/delete semantics, relations, scope, and coverage. Evidence and
-Lifecycle code never branch on `source_type`.
+The compiler varies by representation, not by Configured Source type. Every
+inference-eligible Source Observation Revision declares one typed, versioned
+Evidence Representation Profile rather than asking extraction code to infer
+syntax from `source_type`, MIME, or content. Unknown or inconsistent profiles
+fail closed.
+
+The one external compiler interface is equivalent to:
+
+```python
+compile_fragments(
+    revision: SourceObservationRevision,
+    profile: EvidenceRepresentationProfile,
+    owned_ranges: tuple[SourceAnchor, ...],
+) -> EvidenceFragmentCatalog
+```
+
+`EvidenceRepresentationProfile` carries an exact profile name, version, and
+coordinate-space contract. The registry dispatches only on that typed profile;
+representation adapters and nested text parsing remain private implementation
+seams. The profile is technical revision/audit metadata, not Source identity,
+Evidence authority, or another lifecycle state.
+
+The initial private adapter set is deliberately small:
+
+- `markdown-structural-v1` compiles normalized Markdown, including embedded
+  HTML, headings, paragraphs, lists, tables, blockquotes, and code blocks;
+- `canonical-record-v1` compiles application-owned structured records into
+  field- or record-level Fragments and delegates nested text bodies to the
+  declared text representation;
+- `plain-text-v1` compiles paragraphs or one explicitly atomic text record;
+- `binary-artifact-v1` exposes one whole revision-pinned Artifact.
+
+These are private adapters behind one compiler interface, not four extraction
+paths and not one compiler class per Source type. Future HTML-only, PDF-page,
+email/MIME, or other formats enter through the same representation seam only
+when a real Source Observation contract can declare their coordinate space and
+revision identity.
+
+Provider adapters continue to own provider identity, Source Unit and
+Observation topology, edit/delete semantics, relations, scope, and coverage.
+Evidence and Lifecycle code never branch on `source_type`.
+
+### Current source matrix
+
+| Source path | Projected shape | Evidence Representation Profile | Design consequence |
+| --- | --- | --- | --- |
+| Confluence | One normalized page-body Observation plus revision-pinned Artifacts | `markdown-structural-v1`; `binary-artifact-v1` | Embedded storage HTML is compiled inside Markdown; attachment inventory alone is not Evidence. |
+| Jira | Canonical issue-core, comment, and changelog Observations plus Artifacts | `canonical-record-v1`; `binary-artifact-v1` | Field and comment identity remain provider-owned; the compiler does not parse raw Jira payloads. |
+| GitHub Repository | Normalized file-content Observation plus explicitly supported repository-file Artifacts | `markdown-structural-v1`; `binary-artifact-v1` | Markdown, code fences, and embedded HTML share one structural compiler. |
+| GitHub Pages | Normalized rendered-page Observation | `markdown-structural-v1` | No implicit linked-image crawl or provider-specific compiler. |
+| Local Markdown | Revision-pinned local-file Markdown Observation | `markdown-structural-v1` | Local collection topology does not change Evidence semantics. |
+| Teams | Canonical message Observations with reply/precedence relations and separately projected hosted-image Artifacts | `canonical-record-v1`; nested declared text; `binary-artifact-v1` | Message edit/delete and conversation coverage remain Source Projection concerns. |
+| Agent Session document intake | Session-summary Markdown Observation | `markdown-structural-v1` | Codex and Claude Code use the same compiler; client remains provenance, not Source or syntax. |
+| Managed Agent Knowledge patch | Structurally classified session events followed by a projected concept-Markdown Observation | upstream authority contract plus `markdown-structural-v1` | Transient patch intent and event IDs authorize the proposal; the projected Evidence Unit remains durable authority. |
+| Extension Gene fallback | Declared normalized Markdown, canonical record, plain text, or Artifact under Partial Projection unless it proves more | declared profile only | An extension without a supported profile may collect content but cannot invent selectable Evidence. |
+| Direct User create/correction | User-confirmed provenance in Virtual Documents; no Gene extraction | no model compiler | Explicit user authority is preserved and projected separately as described below. |
 
 Text Fragments use exact half-open ranges in the immutable Observation Revision.
 HTML list items, table rows, blockquotes, Markdown paragraphs, list items,
@@ -66,7 +118,40 @@ Binary Artifact selection remains a distinct schema variant. The offered
 reference resolves to the Artifact Observation's whole-observation Anchor and
 exact revision metadata and bytes. Filename, upload event, parent body, URL,
 OCR guess, or Artifact summary never substitutes for inspected Artifact
-content.
+content. `binary-artifact-v1` is offered only for an exact current Artifact that
+is inference-eligible and actually supplied to the configured model. A stored
+but ineligible or unsupported Artifact remains retrievable under its existing
+contract and cannot be selected as claim Evidence.
+
+## Managed Agent Sessions and Direct User provenance
+
+Codex and Claude Code are Clients of the same per-user `agent_session` Source
+contract; they do not create different Source types or compiler implementations.
+Two existing managed-capture paths remain distinct while converging on the same
+durable Evidence seam:
+
+1. Agent Session document intake projects an authorized session summary as a
+   normal Markdown Observation and uses ordinary Fragment extraction.
+2. Managed Agent Knowledge first classifies canonical session events using
+   structural roles and may return a typed create/update/supersede patch intent
+   plus cited primary event IDs. That output is transient command intent, not a
+   Lifecycle action. Application code validates the cited user authority,
+   projects the durable concept/claim Markdown, compiles its exact current
+   Evidence, runs relation-first reconciliation, and remains the sole owner of
+   lifecycle mutations.
+
+The Fragment compiler does not reclassify raw Codex/Claude events, promote tool
+logs or assistant narration to authority, or persist patch intent as a parallel
+Evidence identity. Current event citations and client/session receipts remain
+audit provenance for the one revision-pinned projected Evidence Unit.
+
+`user_memory` and `user_correction` Virtual Documents do not call an extraction
+model and therefore do not need transient Fragment references. Their explicit,
+confirmed provenance is application-owned Primary Evidence. Existing correction
+authority, Support-set stale hashes, hidden challenger Review, and atomic
+replacement semantics remain unchanged. They may use the same role-aware
+`get_memory` projection without being forced through Source Projection or a
+Configured-Source compiler path.
 
 ## Evidence roles
 
@@ -96,9 +181,11 @@ splits it into atomic Memories instead of widening the Evidence model.
 
 The existing Evidence Unit is deepened as the claim-level aggregate. Its
 identity includes the target Source Unit Revision, claim content hash, complete
-resolved Primary/Required part-set digest, access context, and compiler
-contract. Each contained Evidence Reference retains its role and exact
-revision-pinned Source Anchor.
+resolved Primary/Required part-set digest, and access context. Compiler profile,
+version, and catalog digest are audit and deterministic-reconstruction metadata,
+not business identity; changing the compiler alone cannot create a different
+Evidence Unit when the resolved current Evidence is identical. Each contained
+Evidence Reference retains its role and exact revision-pinned Source Anchor.
 
 A Memory Support Assertion points to the complete Evidence Unit. It never
 points independently to one contained Primary or Required reference. An
@@ -127,6 +214,16 @@ catalog. Durable Evidence keeps only resolved Observation Revision identities,
 Anchors, exact source-derived text or Artifact metadata, roles, and part-set
 hashes.
 
+When a Revision Delta is proven Disjoint from every Primary and Required
+Anchor, the current Evidence Unit remains valid. An Affected or Unknown result
+creates one revalidation work item for the complete unit. The work item compiles
+a fresh catalog from the target revisions, presents the incumbent claim and its
+old resolved Evidence as read-only comparison context, and resolves a complete
+new Primary/Required set or an explicit unsupported/unknown result. It never
+maps an old transient Fragment reference into a new catalog. A provider-backed
+`FragmentMapping` may narrow impact or provide a rebind hint, but derived
+Markdown/HTML/record Fragments are not promoted to stable identity.
+
 - **Equivalent NOOP** revalidates the complete current Evidence Unit and
   atomically replaces the old source-scoped Support with the new revision-pinned
   unit. It never carries forward only the still-valid members of an incomplete
@@ -143,6 +240,11 @@ hashes.
 - **RETIRE** occurs only when authoritative coverage proves removal and no
   complete Support remains.
 
+Reconciliation still requires complete Mandatory Incumbent Scope coverage.
+Fragment compilation and revalidation can prove Evidence selection, but cannot
+turn an omitted incumbent into KEEP or reduce the requirement that every
+affected incumbent receives exactly one terminal reconciliation decision.
+
 Partial Projection, missing scope attestation, stale catalog, provider failure,
 or unresolved semantic coverage preserves current Support and produces the
 existing bounded failure, Finding, or Review outcome. While a Lifecycle Gate is
@@ -155,6 +257,22 @@ rebind-complete, unsupported, stale, or needs semantic review. Relation-first
 reconciliation and the Lifecycle Planner remain the sole owners of KEEP,
 UPDATE, SUPERSEDE, REMOVE_SUPPORT, and RETIRE. No new Memory lifecycle status is
 introduced.
+
+### Retry and recovery
+
+The target Source Unit Revision, representation profile/version, owned
+authority surface, and catalog digest are deterministic inputs to one immutable
+derivation batch. Before a batch completes, retry may reconstruct that exact
+catalog and rerun extraction under the existing deadline and stale guards. The
+model-facing Fragment references remain local to that reconstruction.
+
+After a batch completes, the durable derivation output contains only resolved
+Evidence Units and References. Scheduler recovery reuses that output and may
+apply it only when the target revisions, access context, incumbent Memory
+versions, and complete Evidence-Unit Support topology still match the Plan's
+stale guards. A mismatch abandons the stale Plan and recalculates from current
+Projection state; it never recompiles under a newer profile while pretending to
+resume the old batch. No replay ledger or fragment lifecycle state is added.
 
 ## Retrieval projection
 
