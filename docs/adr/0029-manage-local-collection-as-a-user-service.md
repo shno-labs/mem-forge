@@ -25,7 +25,9 @@ interface.
 
 - `memforge setup` configures or reuses the active target. When no explicit or
   active target exists, it prompts for the API URL instead of silently choosing
-  an edition. It obtains the Cloud token when required, verifies target health,
+  an edition. It discovers `/.well-known/memforge`, strictly validates the
+  protocol-v1 capability document, and persists the declared edition. It then
+  obtains the Cloud token when required, verifies the declared health route,
   installs the user service, starts it, then captures an acceptance baseline
   after the previous process has been removed. Setup requires a later
   server-observed heartbeat before committing.
@@ -80,9 +82,14 @@ Unsupported operating systems fail before writing service state.
   of writing a Cloud token to a plaintext fallback file.
 - Windows service installation is not included in this decision and reports an
   explicit unsupported-platform error.
+- Edition, authentication, API base, and health routing are service-declared
+  capabilities scoped to the exact origin. Clients do not infer them from DNS
+  suffixes. Missing, redirected, malformed, oversized, or unsupported discovery
+  responses fail closed.
 
 ## References
 
 - [Apple: Creating Launch Daemons and Agents](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html)
 - [systemd: systemctl](https://www.freedesktop.org/software/systemd/man/latest/systemctl.html)
 - [Python Packaging User Guide: Installing stand-alone command-line tools](https://packaging.python.org/en/latest/guides/installing-stand-alone-command-line-tools/)
+- [RFC 8615: Well-Known Uniform Resource Identifiers](https://www.rfc-editor.org/rfc/rfc8615.html)
