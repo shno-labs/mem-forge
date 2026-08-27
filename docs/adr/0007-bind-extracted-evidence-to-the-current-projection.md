@@ -1,5 +1,10 @@
 # Bind extracted evidence to the current Source Projection
 
+Amended 2026-08-27 by [ADR 0030](0030-compile-revision-pinned-evidence-fragments.md).
+The revision-pinned authority and transient-selector decisions remain in force.
+ADR 0030 supersedes the single Block ID, provider-returned `evidence_quote`,
+quote matching, and whole-Block fallback contract described below.
+
 Amended 2026-08-12 to make batch-local Evidence Block identity the textual
 admission authority and make provider-returned quote text an optional precision
 hint rather than an exact-copy gate.

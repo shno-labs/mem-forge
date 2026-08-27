@@ -2,6 +2,13 @@
 
 Status: Accepted
 
+Amended 2026-08-27 by [ADR 0030](0030-compile-revision-pinned-evidence-fragments.md).
+A Support Assertion now means the relationship from a Memory to one complete
+claim-sized Evidence Unit. Primary and Required references inside that unit are
+joint evidence parts, not independently valid Support Assertions. The
+bidirectional provenance projection invariant in this ADR otherwise remains
+unchanged.
+
 ## Context
 
 `MemorySupportAssertion` is lifecycle authority, while `memory_sources` is the
@@ -31,7 +38,7 @@ active configured-source Support on an active Memory:
 
 - each `memory_sources(memory_id, source_id, doc_id)` row requires active,
   validated same-source Support; and
-- each active Support Assertion requires the exact
+- each active Evidence-Unit Support Assertion requires the exact
   `memory_sources(memory_id, source_id, evidence_unit.doc_id)` row.
 
 The physical projection identity is therefore exactly
@@ -65,8 +72,8 @@ deletion only when no row remains. Re-entering an already-applied Plan repeats
 the same postcondition read. The storage deletion guard remains the final
 fail-closed enforcement of this invariant.
 
-Removing one Support deletes only that exact Support Assertion, its mutable
-current Evidence Relation, and its provenance read-model row. Evidence Units,
+Removing one Support deletes only that exact Evidence-Unit Support Assertion,
+its mutable current Evidence Relation, and its provenance read-model row. Evidence Units,
 Relation Runs, Relation Candidates, and immutable per-run relation snapshots
 are historical audit and remain available; they are garbage-collected only by
 an explicit whole-source or purge boundary after no surviving Support or
@@ -78,7 +85,7 @@ retirement and a lifecycle vector-delete outbox task commit together. Vector
 delivery is a retryable post-commit side effect; failure must not compensate or
 reopen the committed Support, relation, provenance, or Memory state.
 
-`ATTACH_SUPPORT` commits the Support Assertion and this materialized provenance
+`ATTACH_SUPPORT` commits the Evidence-Unit Support Assertion and this materialized provenance
 row in the same lifecycle transaction. A non-authoritative cross-document
 Relation alone does not grant Support and does not create source membership.
 Source filters and source-card counts continue to read `memory_sources`; they
@@ -86,7 +93,7 @@ must not bypass the projection by scanning Support Assertions independently.
 
 Lifecycle gates, migration inventory, and operator evaluation check both
 directions. Historical divergence is repaired only by an explicit operator
-action that proves the active Memory, support-granting Evidence Reference,
+action that proves the active Memory, complete supporting Evidence Unit,
 current Observation revision, matching Source, exact Evidence document, and
 access compatibility before one transactional projection write. Runtime
 startup, search, and ordinary sync never infer or silently repair provenance,

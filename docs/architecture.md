@@ -120,14 +120,14 @@ All distance thresholds are calibrated for **text-embedding-3-small** with cosin
 
 | Principle | Implementation |
 |-----------|---------------|
-| **One extraction path** | The gene normalizes source data into comprehensive markdown. One structured Source Unit extraction emits Memory candidates, revision-pinned Evidence localization, and entity mentions. |
+| **One extraction path** | Source Projection exposes current Observations through typed Evidence Representation Profiles. One provider-neutral extraction path compiles those representations, emits Memory candidates with revision-pinned Evidence selections, and resolves entity mentions. |
 | **Team-first, not user-first** | All memories are team-shared. No per-user scoping. Scope hierarchy: team > project/space > source. |
 | **Deterministic lifecycle actions** | Models classify relations and support; application code owns ADD/UPDATE/SUPERSEDE/DELETE/NOOP reduction. No mem0 dependency. |
 | **SQLite + ChromaDB, no Neo4j** | Sufficient at team scale (up to 50K memories). Revisit graph DB only with data proving otherwise. |
 | **Bounded lifecycle context** | Extraction never loads unbounded workspace Memory history. Complete same-source incumbent coverage is handled by lifecycle planning; cross-document and cross-source discovery is bounded and post-commit. |
-| **Source-agnostic update extraction** | Every gene normalizes raw source data into stable markdown. Updates extract from changed hunks with the normalized full source item as context, then reconcile only current-document extracted memories. No persisted `KnowledgeBlock` layer or source-specific extraction strategy is required for the current lean design. |
+| **Source-agnostic update extraction** | Genes and Source Projection normalize provider payloads into stable Markdown, canonical records, or revision-pinned Artifacts with an explicit representation profile. Updates use one Evidence Fragment compiler Module with private representation adapters, never source-type-specific extraction or a persisted `KnowledgeBlock` layer. |
 | **Batched entity resolution** | Entity mentions are resolved after extraction by exact/alias lookup, bounded candidate retrieval, embeddings, and bounded structured ambiguity batches. Learned aliases are access-context fenced. |
-| **Normalizer carries the weight** | Memory quality is proportional to normalizer quality. Each gene's normalizer must surface ALL meaningful structured data as readable markdown. |
+| **Normalizer carries the weight** | Memory quality is proportional to normalization quality. Each Gene and Source Projection adapter must preserve all meaningful source semantics in one declared, versioned representation that the shared extraction path can compile deterministically. |
 | **Progressive disclosure** | Level 0 (memory cards, ~60 tokens each) > Level 1 (full detail + provenance) > Level 2 (backing source artifact via `get_resource`). Agents drill down only when needed. |
 | **Unified search** | One `search` MCP tool that returns memory cards only. Agents use `get_memory` for provenance and `get_resource` for source artifacts. |
 
@@ -682,13 +682,15 @@ or `full_document` when no reliable previous snapshot exists or the diff is too
 large. This strategy is source-agnostic: Confluence pages, Jira tickets, Teams
 blocks, agent-session summaries, future GitHub Pages, and local markdown repos
 all share the same memory update path after normalization. Diff-guided
-extraction uses the full updated source item as context, but asks the extractor
-to produce only memories caused by changed hunks. The pipeline then enforces
-that contract: each candidate's exact quote must overlap an inserted or replaced
-current-revision range; unchanged-context candidates are audited and discarded.
-Deletion-only diffs authorize no new candidate. Full-document fallback uses
-the same deterministic structural units described above, so large pages are
-processed by owned sections without adding source-specific extraction logic.
+extraction may present the full updated source item as read-only context, but
+marks each compiled authority range with application-owned role eligibility.
+Primary refs are selectable only from claim-authoritative inserted or replaced
+ranges; Required refs may also come from bounded dependency ranges. Context-only
+material has no selectable role. The resolver enforces those permissions and
+fails closed on an unchanged Context selection. Deletion-only diffs authorize
+no new candidate. Full-document work uses the same deterministic Fragment
+compiler over explicitly owned ranges, so large pages do not add
+source-specific extraction logic or a whole-Block localization fallback.
 
 ```python
 async def update_memories_for_document(self, doc_id, new_content):

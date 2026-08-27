@@ -66,6 +66,19 @@
 - **Managed Capture** — Knowledge produced from a system-created capture Source, such as an Agent Session Source, without requiring the user to configure an ingestion connection.
 - **Configured Source** — Knowledge produced from a user-configured ingestion connection such as Confluence, Jira, Teams, GitHub Repository, or Local Repository.
 
+## Memory evidence
+
+- **Evidence Fragment** — An application-owned structural region of one current Source Observation Revision that may be offered for extraction under an immutable catalog. Its extraction-time reference is transient and never becomes cross-revision identity. _Avoid_: Source Item, stable Atom, LLM quote
+- **Evidence Authority Range** — An application-owned Source Anchor plus the Evidence roles selectable from that range in one extraction catalog. Claim-authoritative ranges permit Primary and Required; bounded dependency ranges permit Required only; Context-only ranges are not selectable. _Avoid_: Model-chosen authority, generic context range
+- **Evidence Representation Profile** — The typed, versioned description of how one Source Observation Revision exposes selectable Evidence, independent of its provider Source Type. _Avoid_: Source-specific compiler, inferred MIME switch
+- **Evidence Reference** — A revision-pinned link to a Source Observation and optional Source Anchor. A Primary or Required reference belongs to one Evidence Unit; a Context reference belongs to the current Context projection. _Avoid_: Source URL, unversioned citation, Evidence Fragment reference
+- **Evidence Unit** — One immutable claim-sized, revision-pinned package containing exactly one Primary Evidence Reference and zero or more Required Evidence References. Primary and every Required reference jointly determine whether the unit supports its claim. _Avoid_: Evidence expression, Support rule tree, extraction batch, mutable context bundle
+- **Primary Evidence Reference** — The Evidence Reference whose cited content directly states the Evidence Unit's claim and grants extraction authority. Every source-backed Evidence Unit has exactly one. _Avoid_: Most important reference, first reference, related context
+- **Required Evidence Reference** — An Evidence Reference without which the Evidence Unit's claim becomes unsupported, ambiguous, or changes meaning. A Required reference is support, not merely useful background. _Avoid_: Optional dependency, helpful context
+- **Context Evidence Reference** — A revision-pinned Evidence Reference retained through an Evidence Context Association to interpret or inspect a supporting Evidence Unit without belonging to it or supporting its claim. _Avoid_: Supporting evidence, Required reference
+- **Evidence Context Association** — The replaceable current-projection link from one supporting Evidence Unit to one non-supporting Context Evidence Reference. Its change does not alter Support identity, stale guards, or lifecycle authority. _Avoid_: Evidence Unit member, Support Assertion, Context lifecycle state
+- **Support Assertion** — The validity- and authority-bearing relationship from one complete Evidence Unit to one Memory. References inside an Evidence Unit are never independent Support Assertions. _Avoid_: Per-reference support, document link, Memory ownership
+
 ## Memory retrieval
 
 - **Requested Retrieval Intent** — An optional query-scoped hint selected by an Agent Client from the user's conversational goal. It may request General Hybrid Retrieval, Known Item Lookup, or Relationship Exploration, but cannot weaken visibility, provenance, or facet constraints.
