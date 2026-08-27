@@ -21,6 +21,11 @@ BINARY_ARTIFACT_PROFILE = EvidenceRepresentationProfile(
     version=1,
     coordinate_space=EvidenceCoordinateSpace.WHOLE_ARTIFACT,
 )
+PLAIN_TEXT_PROFILE = EvidenceRepresentationProfile(
+    name="plain-text",
+    version=1,
+    coordinate_space=EvidenceCoordinateSpace.UNICODE_SCALAR,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +35,33 @@ class EvidenceProfileBackfillReport:
     scanned_revision_count: int
     backfilled_revision_count: int
     unresolved_revision_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalRecordField:
+    json_pointer: str
+    nested_profile: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.nested_profile not in {None, "markdown-structural", "plain-text"}:
+            raise ValueError("unsupported nested canonical-record text profile")
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalRecordSchema:
+    name: str
+    version: int
+    fields: tuple[CanonicalRecordField, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceRepresentationContract:
+    profile: EvidenceRepresentationProfile
+    canonical_schema: CanonicalRecordSchema | None = None
+
+    def __post_init__(self) -> None:
+        if (self.profile.name == "canonical-record") != (self.canonical_schema is not None):
+            raise ValueError("canonical schema ownership must match the representation profile")
 
 
 def _canonical_record_profile(schema_name: str) -> EvidenceRepresentationProfile:
@@ -52,7 +84,70 @@ _REPRESENTATION_CONTRACTS: Mapping[tuple[str, str], EvidenceRepresentationProfil
     ("local_markdown", "file_content"): MARKDOWN_STRUCTURAL_PROFILE,
     ("teams", "message"): _canonical_record_profile("teams-message"),
     ("agent_session", "session_summary"): MARKDOWN_STRUCTURAL_PROFILE,
+    ("agent_session", "agent_concept"): MARKDOWN_STRUCTURAL_PROFILE,
 }
+
+_CANONICAL_RECORD_SCHEMAS: Mapping[tuple[str, int], CanonicalRecordSchema] = {
+    ("jira-issue-core", 1): CanonicalRecordSchema(
+        name="jira-issue-core",
+        version=1,
+        fields=(
+            CanonicalRecordField("/summary"),
+            CanonicalRecordField("/description", nested_profile="markdown-structural"),
+            CanonicalRecordField("/status"),
+            CanonicalRecordField("/priority"),
+            CanonicalRecordField("/assignee"),
+            CanonicalRecordField("/labels"),
+            CanonicalRecordField("/resolution"),
+        ),
+    ),
+    ("jira-comment", 1): CanonicalRecordSchema(
+        name="jira-comment",
+        version=1,
+        fields=(CanonicalRecordField("/body", nested_profile="markdown-structural"),),
+    ),
+    ("jira-changelog", 1): CanonicalRecordSchema(
+        name="jira-changelog",
+        version=1,
+        fields=(CanonicalRecordField(""),),
+    ),
+    ("teams-message", 1): CanonicalRecordSchema(
+        name="teams-message",
+        version=1,
+        fields=(CanonicalRecordField("/content", nested_profile="markdown-structural"),),
+    ),
+}
+
+
+def _representation_contract(profile: EvidenceRepresentationProfile) -> EvidenceRepresentationContract:
+    schema = (
+        _CANONICAL_RECORD_SCHEMAS.get((profile.schema_name or "", profile.schema_version or 0))
+        if profile.name == "canonical-record"
+        else None
+    )
+    return EvidenceRepresentationContract(profile=profile, canonical_schema=schema)
+
+
+_SUPPORTED_REPRESENTATION_CONTRACTS: Mapping[
+    EvidenceRepresentationProfile,
+    EvidenceRepresentationContract,
+] = {
+    profile: _representation_contract(profile)
+    for profile in {
+        MARKDOWN_STRUCTURAL_PROFILE,
+        BINARY_ARTIFACT_PROFILE,
+        PLAIN_TEXT_PROFILE,
+        *_REPRESENTATION_CONTRACTS.values(),
+    }
+}
+
+
+def representation_contract_for_profile(
+    profile: EvidenceRepresentationProfile | None,
+) -> EvidenceRepresentationContract | None:
+    if profile is None:
+        return None
+    return _SUPPORTED_REPRESENTATION_CONTRACTS.get(profile)
 
 
 def representation_profile_for_observation_contract(

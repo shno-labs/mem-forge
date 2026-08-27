@@ -10,12 +10,14 @@ import hashlib
 import html
 import json
 import re
+from bisect import bisect_right
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from html.parser import HTMLParser
 from typing import Callable, Mapping, Sequence
 
 from markdown_it import MarkdownIt
+from markdown_it.rules_inline.html_inline import html_inline as _markdown_it_html_inline
 
 from memforge.memory.evidence import EvidenceRole
 from memforge.source_projection import (
@@ -25,12 +27,32 @@ from memforge.source_projection import (
     SourceAnchor,
     SourceObservationRevision,
 )
+from memforge.source_representation import (
+    CanonicalRecordSchema,
+    EvidenceRepresentationContract,
+    representation_contract_for_profile,
+)
 
 
 COMPILER_CONTRACT_VERSION = 1
 DEFAULT_MAX_FRAGMENTS = 2_048
 DEFAULT_MAX_PRESENTATION_CHARS = 120_000
 _SUPPORTING_ROLES = frozenset({EvidenceRole.PRIMARY, EvidenceRole.REQUIRED})
+
+
+def _record_html_inline_source_range(state, silent: bool) -> bool:
+    start = state.pos
+    previous_count = len(state.tokens)
+    matched = _markdown_it_html_inline(state, silent)
+    if matched and not silent and len(state.tokens) > previous_count:
+        state.tokens[-1].meta["source_range"] = (start, state.pos)
+    return matched
+
+
+def _markdown_parser() -> MarkdownIt:
+    parser = MarkdownIt("commonmark").enable("table")
+    parser.inline.ruler.at("html_inline", _record_html_inline_source_range)
+    return parser
 
 
 class EvidenceFragmentKind(str, Enum):
@@ -89,7 +111,7 @@ class EvidenceFragment:
 @dataclass(frozen=True, slots=True)
 class EvidenceFragmentCatalog:
     observation_revision_id: str
-    profile: EvidenceRepresentationProfile
+    profile: EvidenceRepresentationProfile | None
     fragments: tuple[EvidenceFragment, ...]
     errors: tuple[FragmentCompilationError, ...]
     digest: str
@@ -126,55 +148,6 @@ class EvidenceFragmentCatalog:
 
 
 @dataclass(frozen=True, slots=True)
-class CanonicalRecordField:
-    json_pointer: str
-    nested_profile: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.nested_profile not in {None, "markdown-structural", "plain-text"}:
-            raise ValueError("unsupported nested canonical-record text profile")
-
-
-@dataclass(frozen=True, slots=True)
-class CanonicalRecordSchema:
-    name: str
-    version: int
-    fields: tuple[CanonicalRecordField, ...]
-
-
-CANONICAL_RECORD_SCHEMAS: Mapping[tuple[str, int], CanonicalRecordSchema] = {
-    ("jira-issue-core", 1): CanonicalRecordSchema(
-        name="jira-issue-core",
-        version=1,
-        fields=(
-            CanonicalRecordField("/summary"),
-            CanonicalRecordField("/description", nested_profile="markdown-structural"),
-            CanonicalRecordField("/status"),
-            CanonicalRecordField("/priority"),
-            CanonicalRecordField("/assignee"),
-            CanonicalRecordField("/labels"),
-            CanonicalRecordField("/resolution"),
-        ),
-    ),
-    ("jira-comment", 1): CanonicalRecordSchema(
-        name="jira-comment",
-        version=1,
-        fields=(CanonicalRecordField("/body", nested_profile="markdown-structural"),),
-    ),
-    ("jira-changelog", 1): CanonicalRecordSchema(
-        name="jira-changelog",
-        version=1,
-        fields=(CanonicalRecordField(""),),
-    ),
-    ("teams-message", 1): CanonicalRecordSchema(
-        name="teams-message",
-        version=1,
-        fields=(CanonicalRecordField("/content", nested_profile="markdown-structural"),),
-    ),
-}
-
-
-@dataclass(frozen=True, slots=True)
 class _FragmentCandidate:
     kind: EvidenceFragmentKind
     fragment_type: str
@@ -185,9 +158,16 @@ class _FragmentCandidate:
     raw_content_sha256: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _InlineHTMLRegion:
+    start: int
+    end: int
+    markdown_source: str
+    html_tokens: tuple[tuple[int, int, str], ...]
+
+
 def compile_fragments(
     revision: SourceObservationRevision,
-    profile: EvidenceRepresentationProfile,
     authority_ranges: tuple[EvidenceAuthorityRange, ...],
     *,
     max_fragments: int = DEFAULT_MAX_FRAGMENTS,
@@ -195,13 +175,15 @@ def compile_fragments(
 ) -> EvidenceFragmentCatalog:
     """Compile one immutable Observation Revision under its declared profile."""
 
-    if revision.evidence_profile is not None and revision.evidence_profile != profile:
+    profile = revision.evidence_profile
+    contract = representation_contract_for_profile(profile)
+    if contract is None:
         return _fatal_catalog(
             revision,
             profile,
             authority_ranges,
             FragmentCompilationErrorCode.UNSUPPORTED_PROFILE,
-            "compiler profile does not match the immutable Observation Revision",
+            "Observation Revision lacks a supported Evidence Representation Profile",
             max_fragments=max_fragments,
             max_presentation_chars=max_presentation_chars,
         )
@@ -232,7 +214,7 @@ def compile_fragments(
             max_presentation_chars=max_presentation_chars,
         )
 
-    candidates, errors = compiler(revision, profile, authority_ranges)
+    candidates, errors = compiler(revision, contract, authority_ranges)
     return _catalog_from_candidates(
         revision,
         profile,
@@ -328,10 +310,10 @@ def _validate_authority_ranges(
 
 def _compile_markdown_profile(
     revision: SourceObservationRevision,
-    profile: EvidenceRepresentationProfile,
+    contract: EvidenceRepresentationContract,
     authority_ranges: tuple[EvidenceAuthorityRange, ...],
 ) -> tuple[tuple[_FragmentCandidate, ...], tuple[FragmentCompilationError, ...]]:
-    del profile
+    del contract
     candidates, errors = _markdown_candidates(
         revision,
         revision.content,
@@ -348,10 +330,10 @@ def _compile_markdown_profile(
 
 def _compile_plain_text_profile(
     revision: SourceObservationRevision,
-    profile: EvidenceRepresentationProfile,
+    contract: EvidenceRepresentationContract,
     authority_ranges: tuple[EvidenceAuthorityRange, ...],
 ) -> tuple[tuple[_FragmentCandidate, ...], tuple[FragmentCompilationError, ...]]:
-    del profile
+    del contract
     candidates: list[_FragmentCandidate] = []
     for start, end in _paragraph_ranges(revision.content):
         candidates.append(
@@ -369,10 +351,10 @@ def _compile_plain_text_profile(
 
 def _compile_binary_artifact_profile(
     revision: SourceObservationRevision,
-    profile: EvidenceRepresentationProfile,
+    contract: EvidenceRepresentationContract,
     authority_ranges: tuple[EvidenceAuthorityRange, ...],
 ) -> tuple[tuple[_FragmentCandidate, ...], tuple[FragmentCompilationError, ...]]:
-    del profile
+    del contract
     raw_artifact = revision.metadata.get("source_artifact")
     if not isinstance(raw_artifact, Mapping):
         return (), (
@@ -421,7 +403,7 @@ def _compile_binary_artifact_profile(
 
 def _compile_canonical_record_profile(
     revision: SourceObservationRevision,
-    profile: EvidenceRepresentationProfile,
+    contract: EvidenceRepresentationContract,
     authority_ranges: tuple[EvidenceAuthorityRange, ...],
 ) -> tuple[tuple[_FragmentCandidate, ...], tuple[FragmentCompilationError, ...]]:
     if any(item.anchor.kind is not AnchorKind.WHOLE_OBSERVATION for item in authority_ranges):
@@ -433,17 +415,8 @@ def _compile_canonical_record_profile(
                 fatal=True,
             ),
         )
-    assert profile.schema_name is not None and profile.schema_version is not None
-    schema = CANONICAL_RECORD_SCHEMAS.get((profile.schema_name, profile.schema_version))
-    if schema is None:
-        return (), (
-            _error(
-                revision,
-                FragmentCompilationErrorCode.SCHEMA_MISMATCH,
-                f"unknown canonical-record schema: {profile.schema_name}/{profile.schema_version}",
-                fatal=True,
-            ),
-        )
+    schema = contract.canonical_schema
+    assert isinstance(schema, CanonicalRecordSchema)
     try:
         document = _JsonDocument.parse(revision.content)
     except ValueError as exc:
@@ -543,7 +516,7 @@ def _compile_canonical_record_profile(
 
 
 _ProfileCompiler = Callable[
-    [SourceObservationRevision, EvidenceRepresentationProfile, tuple[EvidenceAuthorityRange, ...]],
+    [SourceObservationRevision, EvidenceRepresentationContract, tuple[EvidenceAuthorityRange, ...]],
     tuple[tuple[_FragmentCandidate, ...], tuple[FragmentCompilationError, ...]],
 ]
 
@@ -563,7 +536,7 @@ def _markdown_candidates(
     roles: frozenset[EvidenceRole],
 ) -> tuple[tuple[_FragmentCandidate, ...], tuple[FragmentCompilationError, ...]]:
     try:
-        tokens = MarkdownIt("commonmark").enable("table").parse(text)
+        tokens = _markdown_parser().parse(text)
     except Exception as exc:
         return (), (
             _error(
@@ -575,6 +548,35 @@ def _markdown_candidates(
             ),
         )
     line_starts = _line_starts(text)
+    inline_html_regions: list[_InlineHTMLRegion] = []
+    for token in tokens:
+        if token.type != "inline" or token.map is None or not token.children:
+            continue
+        html_tokens = tuple(
+            (
+                int(child.meta["source_range"][0]),
+                int(child.meta["source_range"][1]),
+                child.content,
+            )
+            for child in token.children
+            if child.type == "html_inline" and "source_range" in child.meta
+        )
+        if not html_tokens:
+            continue
+        inline_start, inline_end = _token_range(
+            text,
+            line_starts,
+            token.map[0],
+            token.map[1],
+        )
+        inline_html_regions.append(
+            _InlineHTMLRegion(
+                start=inline_start,
+                end=inline_end,
+                markdown_source=token.content,
+                html_tokens=html_tokens,
+            )
+        )
     structural: list[tuple[int, int, int, str, bool]] = []
     token_specs = {
         "html_block": (0, "html-block", True),
@@ -617,9 +619,24 @@ def _markdown_candidates(
             errors.extend(html_errors)
             continue
         presentation = raw
-        if fragment_type == "markdown-paragraph" and _HTML_TAG_RE.search(raw):
-            presentation = _html_presentation(raw)
-            fragment_type = "markdown-inline-html"
+        owned_inline_regions = tuple(
+            region for region in inline_html_regions if start <= region.start and region.end <= end
+        )
+        if owned_inline_regions:
+            inline_candidate, inline_error = _inline_html_structural_candidate(
+                revision,
+                raw,
+                base=base + start,
+                roles=roles,
+                fragment_type=("markdown-inline-html" if fragment_type == "markdown-paragraph" else fragment_type),
+                inline_regions=owned_inline_regions,
+            )
+            if inline_error is not None:
+                errors.append(inline_error)
+                continue
+            assert inline_candidate is not None
+            candidates.append(inline_candidate)
+            continue
         candidates.append(
             _text_candidate(
                 revision.content,
@@ -655,6 +672,7 @@ class _OffsetHTMLParser(HTMLParser):
         self.roots: list[_HtmlNode] = []
         self.stack: list[_HtmlNode] = []
         self.failure: str | None = None
+        self.internal_failure = False
 
     def _offset(self) -> int:
         line, column = self.getpos()
@@ -700,6 +718,7 @@ class _OffsetHTMLParser(HTMLParser):
             self.close()
         except Exception as exc:
             self.failure = f"HTML parser failure: {type(exc).__name__}"
+            self.internal_failure = True
         if self.stack and self.failure is None:
             self.failure = f"unclosed HTML element: {self.stack[-1].tag}"
 
@@ -743,7 +762,135 @@ class _HTMLTextCollector(HTMLParser):
 _HTML_SEMANTIC_TAGS = frozenset(
     {"p", "li", "tr", "blockquote", "pre", "figcaption", "dt", "dd", "h1", "h2", "h3", "h4", "h5", "h6"}
 )
-_HTML_TAG_RE = re.compile(r"</?[A-Za-z][^>]*>")
+_HTML_TOKEN_TAG_NAME_RE = re.compile(r"^<\s*/?\s*([A-Za-z][A-Za-z0-9-]*)\b")
+
+
+def _inline_html_structural_candidate(
+    revision: SourceObservationRevision,
+    source: str,
+    *,
+    base: int,
+    roles: frozenset[EvidenceRole],
+    fragment_type: str,
+    inline_regions: tuple[_InlineHTMLRegion, ...],
+) -> tuple[_FragmentCandidate | None, FragmentCompilationError | None]:
+    translated_tokens: list[tuple[str, tuple[int, ...]]] = []
+    inline_cursor = 0
+    for region in sorted(inline_regions, key=lambda item: (item.start, item.end)):
+        boundary_map = _inline_source_boundary_map(
+            source,
+            region.markdown_source,
+            start_cursor=inline_cursor,
+        )
+        if boundary_map is None:
+            return None, _error(
+                revision,
+                FragmentCompilationErrorCode.MALFORMED_HTML,
+                "CommonMark inline source cannot be mapped to the exact structural range",
+                start=base,
+                end=base + len(source),
+            )
+        translated_tokens.extend(
+            (
+                raw_tag,
+                tuple(boundary_map[index] for index in range(start, end)),
+            )
+            for start, end, raw_tag in region.html_tokens
+        )
+        inline_cursor = boundary_map[-1]
+
+    removed_positions: set[int] = set()
+    previous_position = -1
+    for raw_tag, positions in translated_tokens:
+        if (
+            len(positions) != len(raw_tag)
+            or not positions
+            or any(position <= previous for previous, position in zip(positions, positions[1:]))
+            or any(source[position] != char for position, char in zip(positions, raw_tag))
+            or positions[0] <= previous_position
+        ):
+            return None, _error(
+                revision,
+                FragmentCompilationErrorCode.MALFORMED_HTML,
+                "CommonMark inline HTML token cannot be mapped to exact source",
+                start=base,
+                end=base + len(source),
+            )
+        tag_match = _HTML_TOKEN_TAG_NAME_RE.match(raw_tag)
+        tag_name = tag_match.group(1).lower() if tag_match is not None else None
+        if tag_name in {"script", "style"}:
+            return None, _error(
+                revision,
+                FragmentCompilationErrorCode.UNSUPPORTED_HTML,
+                "unsafe inline HTML is unselectable",
+                start=base,
+                end=base + len(source),
+            )
+        removed_positions.update(position for position in positions if source[position] not in {"\r", "\n"})
+        previous_position = positions[-1]
+    return (
+        _text_candidate(
+            revision.content,
+            fragment_type,
+            base,
+            base + len(source),
+            roles,
+            "".join(char for index, char in enumerate(source) if index not in removed_positions),
+        ),
+        None,
+    )
+
+
+def _inline_source_boundary_map(
+    source: str,
+    inline_source: str,
+    *,
+    start_cursor: int,
+) -> tuple[int, ...] | None:
+    """Map CommonMark container-stripped inline coordinates back to raw source."""
+
+    source_line_starts = _line_starts(source)
+    source_line_index = max(0, bisect_right(source_line_starts, start_cursor) - 1)
+    target_cursor = 0
+    boundaries = [-1] * (len(inline_source) + 1)
+    for target_line in inline_source.splitlines(keepends=True) or [inline_source]:
+        target_body = target_line.rstrip("\r\n")
+        target_ending = target_line[len(target_body) :]
+        matched = False
+        while source_line_index < len(source_line_starts):
+            raw_start = source_line_starts[source_line_index]
+            raw_end = (
+                source_line_starts[source_line_index + 1]
+                if source_line_index + 1 < len(source_line_starts)
+                else len(source)
+            )
+            raw_line = source[raw_start:raw_end]
+            raw_body = raw_line.rstrip("\r\n")
+            minimum = max(0, start_cursor - raw_start) if target_cursor == 0 else 0
+            body_offset = raw_body.find(target_body, minimum)
+            if body_offset >= 0:
+                body_start = raw_start + body_offset
+                for index in range(len(target_body) + 1):
+                    boundaries[target_cursor + index] = body_start + index
+                target_cursor += len(target_body)
+                if target_ending:
+                    raw_ending = raw_line[len(raw_body) :]
+                    if not raw_ending:
+                        return None
+                    if target_ending == "\n" and raw_ending == "\r\n":
+                        boundaries[target_cursor] = raw_end - 1
+                    for index in range(len(target_ending)):
+                        boundaries[target_cursor + index + 1] = raw_end
+                    target_cursor += len(target_ending)
+                    source_line_index += 1
+                matched = True
+                break
+            source_line_index += 1
+        if not matched:
+            return None
+    if target_cursor != len(inline_source) or any(value < 0 for value in boundaries):
+        return None
+    return tuple(boundaries)
 
 
 def _html_candidates(
@@ -756,11 +903,46 @@ def _html_candidates(
     parser = _OffsetHTMLParser(source)
     parser.close_checked()
     if parser.failure is not None:
+        if parser.internal_failure:
+            return (), (
+                _error(
+                    revision,
+                    FragmentCompilationErrorCode.MALFORMED_HTML,
+                    parser.failure,
+                    start=base,
+                    end=base + len(source),
+                ),
+            )
+        if any(node.unsafe for node in _walk_html_nodes(parser.roots)):
+            return (), (
+                _error(
+                    revision,
+                    FragmentCompilationErrorCode.UNSUPPORTED_HTML,
+                    "unsafe HTML block is unselectable",
+                    start=base,
+                    end=base + len(source),
+                ),
+            )
+        presentation = _html_presentation(source)
+        if presentation:
+            return (
+                (
+                    _text_candidate(
+                        revision.content,
+                        "html-block-atomic",
+                        base,
+                        base + len(source),
+                        roles,
+                        presentation,
+                    ),
+                ),
+                (),
+            )
         return (), (
             _error(
                 revision,
-                FragmentCompilationErrorCode.MALFORMED_HTML,
-                parser.failure,
+                FragmentCompilationErrorCode.NO_SELECTABLE_CONTENT,
+                "CommonMark HTML block contains no selectable claim text",
                 start=base,
                 end=base + len(source),
             ),
@@ -1015,7 +1197,7 @@ def _parse_json_string(source: str, start: int) -> tuple[str, int, tuple[int, ..
 
 def _catalog_from_candidates(
     revision: SourceObservationRevision,
-    profile: EvidenceRepresentationProfile,
+    profile: EvidenceRepresentationProfile | None,
     authority_ranges: tuple[EvidenceAuthorityRange, ...],
     candidates: tuple[_FragmentCandidate, ...],
     errors: tuple[FragmentCompilationError, ...],
@@ -1078,7 +1260,7 @@ def _catalog_from_candidates(
 
 def _fatal_catalog(
     revision: SourceObservationRevision,
-    profile: EvidenceRepresentationProfile,
+    profile: EvidenceRepresentationProfile | None,
     authority_ranges: tuple[EvidenceAuthorityRange, ...],
     code: FragmentCompilationErrorCode,
     message: str,
@@ -1133,7 +1315,7 @@ def _materialize_fragment(
 
 def _catalog_digest(
     revision: SourceObservationRevision,
-    profile: EvidenceRepresentationProfile,
+    profile: EvidenceRepresentationProfile | None,
     authority_ranges: tuple[EvidenceAuthorityRange, ...],
     candidates: tuple[_FragmentCandidate, ...],
     errors: tuple[FragmentCompilationError, ...],
@@ -1145,13 +1327,17 @@ def _catalog_digest(
         "compiler_contract_version": COMPILER_CONTRACT_VERSION,
         "observation_id": revision.observation_id,
         "observation_revision_id": revision.id,
-        "profile": {
-            "name": profile.name,
-            "version": profile.version,
-            "coordinate_space": profile.coordinate_space.value,
-            "schema_name": profile.schema_name,
-            "schema_version": profile.schema_version,
-        },
+        "profile": (
+            {
+                "name": profile.name,
+                "version": profile.version,
+                "coordinate_space": profile.coordinate_space.value,
+                "schema_name": profile.schema_name,
+                "schema_version": profile.schema_version,
+            }
+            if profile is not None
+            else "absent"
+        ),
         "authority_ranges": [
             {
                 "kind": item.anchor.kind.value,

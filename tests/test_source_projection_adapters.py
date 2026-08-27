@@ -27,7 +27,10 @@ from memforge.source_projection import (
     SourceUnit,
 )
 from memforge.source_projection_config import projection_scope_fingerprint
-from memforge.source_representation import representation_profile_for_observation_contract
+from memforge.source_representation import (
+    representation_contract_for_profile,
+    representation_profile_for_observation_contract,
+)
 from memforge.source_artifacts import StoredSourceArtifact
 from memforge.storage.database import Database
 
@@ -1812,6 +1815,7 @@ def test_every_builtin_gene_has_an_explicit_projection_contract() -> None:
         ("local_markdown", "file_content", "markdown-structural", None, EvidenceCoordinateSpace.UNICODE_SCALAR),
         ("teams", "message", "canonical-record", "teams-message", EvidenceCoordinateSpace.UNICODE_SCALAR),
         ("agent_session", "session_summary", "markdown-structural", None, EvidenceCoordinateSpace.UNICODE_SCALAR),
+        ("agent_session", "agent_concept", "markdown-structural", None, EvidenceCoordinateSpace.UNICODE_SCALAR),
         ("future_extension", "document_content", "markdown-structural", None, EvidenceCoordinateSpace.UNICODE_SCALAR),
         ("jira", "binary_artifact", "binary-artifact", None, EvidenceCoordinateSpace.WHOLE_ARTIFACT),
     ],
@@ -1833,6 +1837,11 @@ def test_projection_contract_declares_representation_without_content_inference(
     assert profile.version == 1
     assert profile.schema_name == schema_name
     assert profile.coordinate_space is coordinate_space
+    contract = representation_contract_for_profile(profile)
+    assert contract is not None
+    if schema_name is not None:
+        assert contract.canonical_schema is not None
+        assert contract.canonical_schema.name == schema_name
 
 
 def test_unknown_projection_representation_remains_unclassified() -> None:

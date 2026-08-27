@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from dataclasses import replace
 from datetime import datetime, timezone
 
@@ -26,6 +28,7 @@ from memforge.source_projection import (
     SourceUnit,
     SourceUnitInventoryFilter,
     SourceUnitRevision,
+    source_projection_to_payload,
 )
 from memforge.models import DocumentRecord, Memory, MemorySource
 from memforge.storage.database import Database, MIGRATIONS
@@ -68,7 +71,7 @@ def _projection() -> SourceProjection:
         id="obs-page-1-body",
         source_id="src-1",
         source_unit_id="unit-page-1",
-        observation_type="body",
+        observation_type="page_body",
         provider_key="page-1:body",
         locator={"page_id": "page-1"},
     )
@@ -202,6 +205,37 @@ def _teams_inventory_projection(
     )
 
 
+def _carried_projection(
+    base: SourceProjection,
+    revision: SourceObservationRevision,
+    *,
+    run_id: str,
+    unit: SourceUnit | None = None,
+) -> SourceProjection:
+    carried_unit = unit or base.source_units[0]
+    unit_revision = replace(
+        base.source_unit_revisions[0],
+        id=f"unitrev-{run_id}",
+        source_unit_id=carried_unit.id,
+        observation_revision_ids=(revision.id,),
+    )
+    return SourceProjection(
+        run_id=run_id,
+        source_id=base.source_id,
+        source_type=base.source_type,
+        scope={},
+        coverage=ProjectionCoverage.PARTIAL_PROJECTION,
+        observations=(),
+        observation_revisions=(revision,),
+        source_units=(carried_unit,),
+        source_unit_revisions=(unit_revision,),
+        relations=(),
+        deltas=(),
+        checkpoint={},
+        carried_observation_revision_ids=(revision.id,),
+    )
+
+
 def test_projection_schema_has_a_forward_migration() -> None:
     version, description, statements = next(item for item in MIGRATIONS if item[0] == 47)
 
@@ -242,7 +276,7 @@ async def test_new_projection_revision_requires_an_explicit_evidence_profile(db:
     projection = _projection()
     unprofiled = replace(projection.observation_revisions[0], evidence_profile=None)
 
-    with pytest.raises(ValueError, match="require Evidence Representation Profiles"):
+    with pytest.raises(ValueError, match="does not match its registered representation declaration"):
         await db.record_source_projection(
             replace(
                 projection,
@@ -250,6 +284,195 @@ async def test_new_projection_revision_requires_an_explicit_evidence_profile(db:
                 observation_revisions=(unprofiled,),
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_new_projection_revision_rejects_an_unregistered_profile(db: Database) -> None:
+    projection = _projection()
+    unsupported = EvidenceRepresentationProfile(
+        name="markdown-structural",
+        version=99,
+        coordinate_space=EvidenceCoordinateSpace.UNICODE_SCALAR,
+    )
+
+    with pytest.raises(ValueError, match="does not match its registered representation declaration"):
+        await db.record_source_projection(
+            replace(
+                projection,
+                run_id="projection-run-unsupported-profile",
+                observation_revisions=(
+                    replace(projection.observation_revisions[0], evidence_profile=unsupported),
+                ),
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_projection_source_type_must_match_persisted_configured_source(db: Database) -> None:
+    projection = replace(
+        _projection(),
+        run_id="projection-run-forged-source-type",
+        source_type="teams",
+    )
+
+    with pytest.raises(ValueError, match="does not match the persisted Configured Source"):
+        await db.record_source_projection(projection)
+
+
+@pytest.mark.asyncio
+async def test_carried_revision_must_exist_and_is_never_inserted(db: Database) -> None:
+    projection = _projection()
+    await db.record_source_projection(projection)
+    forged = replace(
+        projection.observation_revisions[0],
+        id="obsrev-forged-carried",
+        evidence_profile=None,
+    )
+
+    with pytest.raises(ValueError, match="does not exist"):
+        await db.record_source_projection(
+            _carried_projection(
+                projection,
+                forged,
+                run_id="projection-run-forged-carried",
+            )
+        )
+
+    async with db.db.execute(
+        "SELECT COUNT(*) FROM source_observation_revisions WHERE id = ?",
+        (forged.id,),
+    ) as cursor:
+        assert (await cursor.fetchone())[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_carried_revision_uses_persisted_profile_in_new_run_payload(db: Database) -> None:
+    projection = _projection()
+    await db.record_source_projection(projection)
+    provided = replace(projection.observation_revisions[0], evidence_profile=None)
+    carried = _carried_projection(
+        projection,
+        provided,
+        run_id="projection-run-valid-carried",
+    )
+
+    await db.record_source_projection(carried)
+
+    restored = await db.get_source_projection(carried.run_id)
+    assert restored is not None
+    assert restored.observation_revisions[0].evidence_profile == MARKDOWN_PROFILE
+
+    await db.record_source_projection(carried)
+
+
+@pytest.mark.asyncio
+async def test_carried_revision_rejects_payload_or_source_unit_mismatch(db: Database) -> None:
+    projection = _projection()
+    await db.record_source_projection(projection)
+
+    mismatched = replace(
+        projection.observation_revisions[0],
+        content="forged carried content",
+        evidence_profile=None,
+    )
+    with pytest.raises(ValueError, match="payload mismatch"):
+        await db.record_source_projection(
+            _carried_projection(
+                projection,
+                mismatched,
+                run_id="projection-run-carried-content-mismatch",
+            )
+        )
+
+    await db.upsert_source(
+        id="src-other",
+        type="confluence",
+        name="Other source",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="owner-1",
+    )
+    other_observation = SourceObservation(
+        id="obs-other",
+        source_id="src-other",
+        source_unit_id="unit-other",
+        observation_type="page_body",
+        provider_key="other:body",
+    )
+    other_revision = SourceObservationRevision(
+        id="obsrev-other",
+        observation_id=other_observation.id,
+        semantic_hash="other-hash",
+        content="Other body",
+        evidence_profile=MARKDOWN_PROFILE,
+    )
+    other_unit = SourceUnit("unit-other", "src-other", "confluence_page", "other")
+    other_projection = SourceProjection(
+        run_id="projection-run-other",
+        source_id="src-other",
+        source_type="confluence",
+        scope={},
+        coverage=ProjectionCoverage.COMPLETE_SNAPSHOT,
+        observations=(other_observation,),
+        observation_revisions=(other_revision,),
+        source_units=(other_unit,),
+        source_unit_revisions=(
+            SourceUnitRevision(
+                id="unitrev-other",
+                source_unit_id=other_unit.id,
+                semantic_hash="other-unit-hash",
+                observation_revision_ids=(other_revision.id,),
+            ),
+        ),
+        relations=(),
+        deltas=(),
+        checkpoint={},
+    )
+    await db.record_source_projection(other_projection)
+
+    with pytest.raises(ValueError, match="belongs to another Source Unit"):
+        await db.record_source_projection(
+            _carried_projection(
+                projection,
+                replace(other_revision, evidence_profile=None),
+                run_id="projection-run-cross-source-carried",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_historical_projection_retry_treats_missing_profile_as_null(db: Database) -> None:
+    projection = _projection()
+    legacy_projection = replace(
+        projection,
+        run_id="projection-run-pre-profile",
+        observation_revisions=(
+            replace(projection.observation_revisions[0], evidence_profile=None),
+        ),
+    )
+    legacy_payload = source_projection_to_payload(legacy_projection)
+    for revision in legacy_payload["observation_revisions"]:
+        revision.pop("evidence_profile")
+    legacy_payload_json = json.dumps(legacy_payload, sort_keys=True, separators=(",", ":"))
+    legacy_payload_hash = hashlib.sha256(legacy_payload_json.encode()).hexdigest()
+    await db.db.execute(
+        """INSERT INTO source_projection_runs (
+               id, source_id, source_type, coverage, scope_json, checkpoint_json,
+               payload_json, payload_hash, created_at
+           ) VALUES (?, ?, ?, ?, '{}', '{}', ?, ?, ?)""",
+        (
+            legacy_projection.run_id,
+            legacy_projection.source_id,
+            legacy_projection.source_type,
+            legacy_projection.coverage.value,
+            legacy_payload_json,
+            legacy_payload_hash,
+            "2026-08-27T00:00:00+00:00",
+        ),
+    )
+    await db.db.commit()
+
+    await db.record_source_projection(legacy_projection)
 
 
 @pytest.mark.asyncio
@@ -340,6 +563,48 @@ async def test_legacy_profile_backfill_uses_only_adapter_owned_contracts(db: Dat
     assert retry.scanned_revision_count == 1
     assert retry.backfilled_revision_count == 0
     assert retry.unresolved_revision_ids == ("obsrev-legacy-unknown",)
+
+    unknown_revision = SourceObservationRevision(
+        id="obsrev-legacy-unknown",
+        observation_id="obs-legacy-unknown",
+        semantic_hash="hash-unknown",
+        content="opaque",
+        evidence_profile=None,
+    )
+    unknown_unit = SourceUnit(
+        id="unit-legacy-unknown",
+        source_id="src-extension",
+        unit_type="unknown",
+        provider_key="unknown-legacy",
+    )
+    carried_unknown = SourceProjection(
+        run_id="projection-run-carried-unknown",
+        source_id="src-extension",
+        source_type="extension_unknown",
+        scope={},
+        coverage=ProjectionCoverage.PARTIAL_PROJECTION,
+        observations=(),
+        observation_revisions=(unknown_revision,),
+        source_units=(unknown_unit,),
+        source_unit_revisions=(
+            SourceUnitRevision(
+                id="unitrev-carried-unknown",
+                source_unit_id=unknown_unit.id,
+                semantic_hash="unit-hash-unknown",
+                observation_revision_ids=(unknown_revision.id,),
+            ),
+        ),
+        relations=(),
+        deltas=(),
+        checkpoint={},
+        carried_observation_revision_ids=(unknown_revision.id,),
+    )
+
+    await db.record_source_projection(carried_unknown)
+
+    restored_unknown = await db.get_source_projection(carried_unknown.run_id)
+    assert restored_unknown is not None
+    assert restored_unknown.observation_revisions[0].evidence_profile is None
 
 
 @pytest.mark.asyncio

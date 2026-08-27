@@ -229,7 +229,11 @@ from memforge.source_projection import (
     projection_scope_attestation_from_payload,
     projection_scope_attestation_to_payload,
 )
-from memforge.source_representation import EvidenceProfileBackfillReport
+from memforge.source_representation import (
+    EvidenceProfileBackfillReport,
+    representation_contract_for_profile,
+    representation_profile_for_observation_contract,
+)
 from memforge.source_artifacts import (
     SourceArtifactEvidence,
     SourceArtifactRevision,
@@ -276,6 +280,43 @@ def _evidence_profile_from_storage_row(row: Mapping[str, object]) -> EvidenceRep
             else None
         ),
     )
+
+
+def _source_observation_revision_from_storage_row(
+    row: Mapping[str, object],
+) -> SourceObservationRevision:
+    return SourceObservationRevision(
+        id=str(row["id"]),
+        observation_id=str(row["observation_id"]),
+        semantic_hash=str(row["semantic_hash"]),
+        content=str(row["content"]),
+        observed_at=(str(row["observed_at"]) if row["observed_at"] is not None else None),
+        metadata=json.loads(str(row["metadata_json"] or "{}")),
+        evidence_profile=_evidence_profile_from_storage_row(row),
+    )
+
+
+def _projection_retry_comparison_json(
+    payload: Mapping[str, object],
+    *,
+    carried_profile_deferred_ids: frozenset[str] = frozenset(),
+) -> str:
+    """Normalize only the additive pre-profile payload shape for retry identity."""
+
+    normalized = dict(payload)
+    raw_revisions = payload.get("observation_revisions", [])
+    if not isinstance(raw_revisions, list):
+        raise ValueError("invalid projection retry payload")
+    revisions: list[object] = []
+    for raw in raw_revisions:
+        if not isinstance(raw, Mapping):
+            raise ValueError("invalid projection retry Observation Revision")
+        revision = dict(raw)
+        if revision.get("evidence_profile") is None or str(revision.get("id")) in carried_profile_deferred_ids:
+            revision.pop("evidence_profile", None)
+        revisions.append(revision)
+    normalized["observation_revisions"] = revisions
+    return json.dumps(normalized, sort_keys=True, separators=(",", ":"))
 
 
 def _canonical_json(value: object) -> str:
@@ -6006,6 +6047,95 @@ class Database:
             completed_at=(str(row["completed_at"]) if row["completed_at"] is not None else None),
         )
 
+    def _validate_new_projection_revision_declarations(
+        self,
+        projection: SourceProjection,
+    ) -> None:
+        carried_revision_ids = set(projection.carried_observation_revision_ids)
+        observations = {item.id: item for item in projection.observations}
+        for revision in projection.observation_revisions:
+            if revision.id in carried_revision_ids:
+                continue
+            observation = observations[revision.observation_id]
+            expected_profile = representation_profile_for_observation_contract(
+                source_type=projection.source_type,
+                observation_type=observation.observation_type,
+            )
+            if expected_profile is None:
+                raise ValueError(
+                    "Source Observation contract has no registered representation declaration: "
+                    f"{projection.source_type}/{observation.observation_type}"
+                )
+            if revision.evidence_profile != expected_profile:
+                raise ValueError(
+                    "new Observation Revision does not match its registered representation declaration: "
+                    f"{revision.id}"
+                )
+            if revision.evidence_profile is not None and representation_contract_for_profile(
+                revision.evidence_profile
+            ) is None:
+                raise ValueError(f"new Observation Revision uses an unsupported profile: {revision.id}")
+
+    async def _resolve_carried_projection_revisions_unlocked(
+        self,
+        projection: SourceProjection,
+    ) -> SourceProjection:
+        carried_revision_ids = set(projection.carried_observation_revision_ids)
+        if not carried_revision_ids:
+            return projection
+        expected_unit_by_revision: dict[str, str] = {}
+        for unit_revision in projection.source_unit_revisions:
+            for revision_id in carried_revision_ids.intersection(unit_revision.observation_revision_ids):
+                expected_unit_by_revision[revision_id] = unit_revision.source_unit_id
+
+        placeholders = ", ".join("?" for _ in carried_revision_ids)
+        async with self.db.execute(
+            f"""SELECT sor.*, so.source_id AS observation_source_id,
+                       so.source_unit_id AS observation_source_unit_id,
+                       so.current_revision_id AS observation_current_revision_id
+                  FROM source_observation_revisions sor
+                  JOIN source_observations so ON so.id = sor.observation_id
+                 WHERE sor.id IN ({placeholders})""",
+            tuple(sorted(carried_revision_ids)),
+        ) as cursor:
+            persisted_rows = {str(row["id"]): dict(row) async for row in cursor}
+        if set(persisted_rows) != carried_revision_ids:
+            missing = sorted(carried_revision_ids.difference(persisted_rows))
+            raise ValueError(f"carried Observation Revision does not exist: {', '.join(missing)}")
+
+        effective_by_id: dict[str, SourceObservationRevision] = {}
+        provided_by_id = {item.id: item for item in projection.observation_revisions}
+        for revision_id in sorted(carried_revision_ids):
+            row = persisted_rows[revision_id]
+            expected_unit_id = expected_unit_by_revision[revision_id]
+            if (
+                row["observation_source_id"] != projection.source_id
+                or row["observation_source_unit_id"] != expected_unit_id
+            ):
+                raise ValueError(f"carried Observation Revision belongs to another Source Unit: {revision_id}")
+            if row["observation_current_revision_id"] != revision_id:
+                raise ValueError(f"carried Observation Revision is not current: {revision_id}")
+            persisted = _source_observation_revision_from_storage_row(row)
+            provided = provided_by_id[revision_id]
+            if (
+                provided.observation_id != persisted.observation_id
+                or provided.semantic_hash != persisted.semantic_hash
+                or provided.content != persisted.content
+                or dict(provided.metadata) != dict(persisted.metadata)
+                or provided.observed_at != persisted.observed_at
+            ):
+                raise ValueError(f"carried Observation Revision payload mismatch: {revision_id}")
+            if provided.evidence_profile is not None and provided.evidence_profile != persisted.evidence_profile:
+                raise ValueError(f"carried Observation Revision profile mismatch: {revision_id}")
+            effective_by_id[revision_id] = persisted
+
+        return replace(
+            projection,
+            observation_revisions=tuple(
+                effective_by_id.get(item.id, item) for item in projection.observation_revisions
+            ),
+        )
+
     async def record_source_projection(
         self,
         projection: SourceProjection,
@@ -6020,21 +6150,9 @@ class Database:
         provider identity. Reusing a run id for a different payload is rejected.
         """
 
-        carried_revision_ids = set(projection.carried_observation_revision_ids)
-        missing_profiles = sorted(
-            revision.id
-            for revision in projection.observation_revisions
-            if revision.evidence_profile is None and revision.id not in carried_revision_ids
-        )
-        if missing_profiles:
-            raise ValueError(
-                "new inference-eligible Observation Revisions require Evidence Representation Profiles: "
-                + ", ".join(missing_profiles)
-            )
-
-        payload = source_projection_to_payload(projection)
-        payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        payload_hash = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+        incoming_payload = source_projection_to_payload(projection)
+        incoming_payload_json = json.dumps(incoming_payload, sort_keys=True, separators=(",", ":"))
+        incoming_payload_hash = hashlib.sha256(incoming_payload_json.encode("utf-8")).hexdigest()
         now = _now_iso()
         transaction_lock = self._write_lock if _manage_transaction else nullcontext()
         async with transaction_lock:
@@ -6045,29 +6163,56 @@ class Database:
                     "UPDATE sources SET status = status WHERE id = ?",
                     (projection.source_id,),
                 )
+                async with self.db.execute(
+                    "SELECT type, activity_epoch FROM sources WHERE id = ?",
+                    (projection.source_id,),
+                ) as cursor:
+                    persisted_source = await cursor.fetchone()
+                if persisted_source is None:
+                    raise ValueError("projection Source does not exist")
+                if str(persisted_source["type"]) != projection.source_type:
+                    raise ValueError("projection Source type does not match the persisted Configured Source")
                 if expected_source_activity_epoch is not None:
-                    async with self.db.execute(
-                        "SELECT activity_epoch FROM sources WHERE id = ?",
-                        (projection.source_id,),
-                    ) as cursor:
-                        source_epoch = await cursor.fetchone()
-                    current_epoch = int(source_epoch["activity_epoch"] or 0)
+                    current_epoch = int(persisted_source["activity_epoch"] or 0)
                     if current_epoch != expected_source_activity_epoch:
                         raise SourceActivityConflict(
                             "source activity epoch changed: "
                             f"expected {expected_source_activity_epoch}, current {current_epoch}"
                         )
                 async with self.db.execute(
-                    "SELECT payload_hash FROM source_projection_runs WHERE id = ?",
+                    "SELECT payload_hash, payload_json FROM source_projection_runs WHERE id = ?",
                     (projection.run_id,),
                 ) as cursor:
                     existing_run = await cursor.fetchone()
                 if existing_run is not None:
-                    if existing_run["payload_hash"] != payload_hash:
+                    existing_payload = json.loads(str(existing_run["payload_json"]))
+                    carried_profile_deferred_ids = frozenset(
+                        revision.id
+                        for revision in projection.observation_revisions
+                        if revision.id in projection.carried_observation_revision_ids
+                        and revision.evidence_profile is None
+                    )
+                    if existing_run["payload_hash"] != incoming_payload_hash and (
+                        _projection_retry_comparison_json(
+                            existing_payload,
+                            carried_profile_deferred_ids=carried_profile_deferred_ids,
+                        )
+                        != _projection_retry_comparison_json(
+                            incoming_payload,
+                            carried_profile_deferred_ids=carried_profile_deferred_ids,
+                        )
+                    ):
                         raise ValueError("projection retry payload mismatch")
                     if _manage_transaction:
                         await self.db.commit()
                     return
+
+                projection = await self._resolve_carried_projection_revisions_unlocked(projection)
+                self._validate_new_projection_revision_declarations(projection)
+                carried_revision_ids = set(projection.carried_observation_revision_ids)
+                payload = source_projection_to_payload(projection)
+                payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+                payload_hash = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
 
                 await self.db.execute(
                     """INSERT INTO source_projection_runs (
@@ -6202,6 +6347,8 @@ class Database:
                     )
 
                 for revision in projection.observation_revisions:
+                    if revision.id in carried_revision_ids:
+                        continue
                     metadata_json = json.dumps(dict(revision.metadata), sort_keys=True)
                     profile = revision.evidence_profile
                     await self.db.execute(
