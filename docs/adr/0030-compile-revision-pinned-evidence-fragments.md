@@ -77,8 +77,12 @@ Evidence authority, or another lifecycle state.
 
 The initial private adapter set is deliberately small:
 
-- `markdown-structural` compiles normalized Markdown, including embedded
-  HTML, headings, paragraphs, lists, tables, blockquotes, and code blocks;
+- `markdown-structural` compiles normalized Markdown headings, paragraphs,
+  lists, tables, blockquotes, and code blocks. A CommonMark raw-HTML block or
+  inline region is not one automatically atomic Markdown Fragment: the adapter
+  delegates that exact source range to an offset-preserving embedded-HTML
+  subparser so elements such as `li`, `tr`, `blockquote`, and `p` may become
+  child Fragments in the same Observation Revision coordinate space;
 - `canonical-record` compiles application-owned structured records into
   field- or record-level Fragments and delegates nested text bodies to the
   declared text representation;
@@ -91,6 +95,14 @@ email/MIME, or other formats enter through the same representation seam only
 when a real Source Observation contract can declare their coordinate space and
 revision identity.
 
+Embedded HTML delegation is an internal seam of `markdown-structural`, not a
+second public profile decision. The model-visible Fragment text may use a
+deterministic tag-free/entity-decoded presentation, but the Fragment authority
+always maps to one exact raw Markdown/HTML range in
+`SourceObservationRevision.content`. If malformed or unsupported HTML prevents
+an exact reversible mapping, that region is unselectable and reports a bounded
+compiler error; it never falls back to the enclosing raw-HTML block.
+
 Provider adapters continue to own provider identity, Source Unit and
 Observation topology, edit/delete semantics, relations, scope, and coverage.
 Evidence and Lifecycle code never branch on `source_type`.
@@ -99,9 +111,9 @@ Evidence and Lifecycle code never branch on `source_type`.
 
 | Source path | Projected shape | Evidence Representation Profile | Design consequence |
 | --- | --- | --- | --- |
-| Confluence | One normalized page-body Observation plus revision-pinned Artifacts | `markdown-structural`; `binary-artifact` | Embedded storage HTML is compiled inside Markdown; attachment inventory alone is not Evidence. |
+| Confluence | One normalized page-body Observation plus revision-pinned Artifacts | `markdown-structural`; `binary-artifact` | HTML converted by the Gene is ordinary Markdown; any preserved raw HTML uses the private embedded-HTML subparser. Attachment inventory alone is not Evidence. |
 | Jira | Canonical issue-core, comment, and changelog Observations plus Artifacts | `canonical-record`; `binary-artifact` | Field and comment identity remain provider-owned; the compiler does not parse raw Jira payloads. |
-| GitHub Repository | Normalized file-content Observation plus explicitly supported repository-file Artifacts | `markdown-structural`; `binary-artifact` | Markdown, code fences, and embedded HTML share one structural compiler. |
+| GitHub Repository | Normalized file-content Observation plus explicitly supported repository-file Artifacts | `markdown-structural`; `binary-artifact` | Markdown and code fences compile directly; preserved raw HTML delegates internally without changing the profile. |
 | GitHub Pages | Normalized rendered-page Observation | `markdown-structural` | No implicit linked-image crawl or provider-specific compiler. |
 | Local Markdown | Revision-pinned local-file Markdown Observation | `markdown-structural` | Local collection topology does not change Evidence semantics. |
 | Teams | Canonical message Observations with reply/precedence relations and separately projected hosted-image Artifacts | `canonical-record`; nested declared text; `binary-artifact` | Message edit/delete and conversation coverage remain Source Projection concerns. |
@@ -337,4 +349,5 @@ reassessment of prior events, or deployment.
 - [ADR 0010: Keep the support provenance projection complete](0010-keep-support-provenance-projection-complete.md)
 - [ADR 0014: Model binary Artifacts as revision-pinned Source Evidence](0014-model-binary-artifacts-as-revision-pinned-source-evidence.md)
 - [ADR 0028: Separate conversation coverage from content and retention](0028-separate-conversation-coverage-from-content-and-retention.md)
+- [CommonMark: HTML blocks are raw Markdown regions](https://spec.commonmark.org/spec#html-blocks)
 - [W3C Web Annotation Data Model selectors](https://www.w3.org/TR/annotation-model/#selectors)
