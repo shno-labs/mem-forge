@@ -66,21 +66,24 @@ compile_fragments(
 ) -> EvidenceFragmentCatalog
 ```
 
-`EvidenceRepresentationProfile` carries an exact profile name, version, and
-coordinate-space contract. The registry dispatches only on that typed profile;
-representation adapters and nested text parsing remain private implementation
+`EvidenceRepresentationProfile` carries an exact profile name, a separate
+positive integer version, and a coordinate-space contract. The registry key is
+the pair `(name, version)`; the name never embeds a `-vN` suffix. A version bump
+is required only when Fragment boundaries or coordinate semantics change, not
+for an implementation fix that preserves identical catalog output.
+Representation adapters and nested text parsing remain private implementation
 seams. The profile is technical revision/audit metadata, not Source identity,
 Evidence authority, or another lifecycle state.
 
 The initial private adapter set is deliberately small:
 
-- `markdown-structural-v1` compiles normalized Markdown, including embedded
+- `markdown-structural` compiles normalized Markdown, including embedded
   HTML, headings, paragraphs, lists, tables, blockquotes, and code blocks;
-- `canonical-record-v1` compiles application-owned structured records into
+- `canonical-record` compiles application-owned structured records into
   field- or record-level Fragments and delegates nested text bodies to the
   declared text representation;
-- `plain-text-v1` compiles paragraphs or one explicitly atomic text record;
-- `binary-artifact-v1` exposes one whole revision-pinned Artifact.
+- `plain-text` compiles paragraphs or one explicitly atomic text record;
+- `binary-artifact` exposes one whole revision-pinned Artifact.
 
 These are private adapters behind one compiler interface, not four extraction
 paths and not one compiler class per Source type. Future HTML-only, PDF-page,
@@ -96,14 +99,14 @@ Evidence and Lifecycle code never branch on `source_type`.
 
 | Source path | Projected shape | Evidence Representation Profile | Design consequence |
 | --- | --- | --- | --- |
-| Confluence | One normalized page-body Observation plus revision-pinned Artifacts | `markdown-structural-v1`; `binary-artifact-v1` | Embedded storage HTML is compiled inside Markdown; attachment inventory alone is not Evidence. |
-| Jira | Canonical issue-core, comment, and changelog Observations plus Artifacts | `canonical-record-v1`; `binary-artifact-v1` | Field and comment identity remain provider-owned; the compiler does not parse raw Jira payloads. |
-| GitHub Repository | Normalized file-content Observation plus explicitly supported repository-file Artifacts | `markdown-structural-v1`; `binary-artifact-v1` | Markdown, code fences, and embedded HTML share one structural compiler. |
-| GitHub Pages | Normalized rendered-page Observation | `markdown-structural-v1` | No implicit linked-image crawl or provider-specific compiler. |
-| Local Markdown | Revision-pinned local-file Markdown Observation | `markdown-structural-v1` | Local collection topology does not change Evidence semantics. |
-| Teams | Canonical message Observations with reply/precedence relations and separately projected hosted-image Artifacts | `canonical-record-v1`; nested declared text; `binary-artifact-v1` | Message edit/delete and conversation coverage remain Source Projection concerns. |
-| Agent Session document intake | Session-summary Markdown Observation | `markdown-structural-v1` | Codex and Claude Code use the same compiler; client remains provenance, not Source or syntax. |
-| Managed Agent Knowledge patch | Structurally classified session events followed by a projected concept-Markdown Observation | upstream authority contract plus `markdown-structural-v1` | Transient patch intent and event IDs authorize the proposal; the projected Evidence Unit remains durable authority. |
+| Confluence | One normalized page-body Observation plus revision-pinned Artifacts | `markdown-structural`; `binary-artifact` | Embedded storage HTML is compiled inside Markdown; attachment inventory alone is not Evidence. |
+| Jira | Canonical issue-core, comment, and changelog Observations plus Artifacts | `canonical-record`; `binary-artifact` | Field and comment identity remain provider-owned; the compiler does not parse raw Jira payloads. |
+| GitHub Repository | Normalized file-content Observation plus explicitly supported repository-file Artifacts | `markdown-structural`; `binary-artifact` | Markdown, code fences, and embedded HTML share one structural compiler. |
+| GitHub Pages | Normalized rendered-page Observation | `markdown-structural` | No implicit linked-image crawl or provider-specific compiler. |
+| Local Markdown | Revision-pinned local-file Markdown Observation | `markdown-structural` | Local collection topology does not change Evidence semantics. |
+| Teams | Canonical message Observations with reply/precedence relations and separately projected hosted-image Artifacts | `canonical-record`; nested declared text; `binary-artifact` | Message edit/delete and conversation coverage remain Source Projection concerns. |
+| Agent Session document intake | Session-summary Markdown Observation | `markdown-structural` | Codex and Claude Code use the same compiler; client remains provenance, not Source or syntax. |
+| Managed Agent Knowledge patch | Structurally classified session events followed by a projected concept-Markdown Observation | upstream authority contract plus `markdown-structural` | Transient patch intent and event IDs authorize the proposal; the projected Evidence Unit remains durable authority. |
 | Extension Gene fallback | Declared normalized Markdown, canonical record, plain text, or Artifact under Partial Projection unless it proves more | declared profile only | An extension without a supported profile may collect content but cannot invent selectable Evidence. |
 | Direct User create/correction | User-confirmed provenance in Virtual Documents; no Gene extraction | no model compiler | Explicit user authority is preserved and projected separately as described below. |
 
@@ -118,7 +121,7 @@ Binary Artifact selection remains a distinct schema variant. The offered
 reference resolves to the Artifact Observation's whole-observation Anchor and
 exact revision metadata and bytes. Filename, upload event, parent body, URL,
 OCR guess, or Artifact summary never substitutes for inspected Artifact
-content. `binary-artifact-v1` is offered only for an exact current Artifact that
+content. `binary-artifact` is offered only for an exact current Artifact that
 is inference-eligible and actually supplied to the configured model. A stored
 but ineligible or unsupported Artifact remains retrievable under its existing
 contract and cannot be selected as claim Evidence.
