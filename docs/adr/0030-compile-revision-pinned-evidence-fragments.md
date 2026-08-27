@@ -61,10 +61,14 @@ The one external compiler interface is equivalent to:
 ```python
 compile_fragments(
     revision: SourceObservationRevision,
-    profile: EvidenceRepresentationProfile,
     authority_ranges: tuple[EvidenceAuthorityRange, ...],
 ) -> EvidenceFragmentCatalog
 ```
+
+The compiler reads the profile only from the immutable Revision and resolves it
+through the application-owned representation registry. A missing or unsupported
+profile returns a deterministic typed failure; a caller cannot supply or override
+the Revision's representation.
 
 Each `EvidenceAuthorityRange` contains one owned Source Anchor and an
 application-owned `eligible_roles` set. Claim-authoritative ranges permit
@@ -90,17 +94,23 @@ typed `profile_name`, `profile_version`, `coordinate_space`, and nullable
 `representation_schema_name` / `representation_schema_version` fields. It is
 not hidden in free-form metadata. The Source Projection Adapter supplies these
 values when constructing the immutable Revision; Evidence code only validates
-and consumes them. New inference-eligible Revisions cannot be stored without a
-supported profile.
+and consumes them. Every new Source Observation Revision must use one exact
+application-registered representation contract; an unknown contract is rejected
+rather than persisted as an inference Revision. An extension may retain raw or
+normalized collected content outside this selectable projection until it can
+declare a supported profile. Historical Revisions whose profile cannot be
+backfilled remain retrievable and carry-only but cannot enter Fragment
+compilation.
 
 The initial private adapter set is deliberately small:
 
 - `markdown-structural` compiles normalized Markdown headings, paragraphs,
-  lists, tables, blockquotes, and code blocks. A CommonMark raw-HTML block or
-  inline region is not one automatically atomic Markdown Fragment: the adapter
-  delegates that exact source range to an offset-preserving embedded-HTML
-  subparser so elements such as `li`, `tr`, `blockquote`, and `p` may become
-  child Fragments in the same Observation Revision coordinate space;
+  lists, tables, blockquotes, and code blocks. CommonMark `html_inline` tokens
+  are validated and rendered through the private offset-preserving HTML seam but
+  remain inside one claim-coherent Markdown paragraph. Raw-HTML blocks may yield
+  structural `li`, `tr`, `blockquote`, or `p` Fragments when exact non-overlapping
+  child ranges are available; otherwise the exact CommonMark block is one
+  intentionally atomic Fragment;
 - `canonical-record` compiles application-owned canonical JSON records into
   field- or record-level Fragments and delegates only fields declared as nested
   text by a registered representation-schema descriptor;
@@ -117,9 +127,14 @@ Embedded HTML delegation is an internal seam of `markdown-structural`, not a
 second public profile decision. The model-visible Fragment text may use a
 deterministic tag-free/entity-decoded presentation, but the Fragment authority
 always maps to one exact raw Markdown/HTML range in
-`SourceObservationRevision.content`. If malformed or unsupported HTML prevents
-an exact reversible mapping, that region is unselectable and reports a bounded
-compiler error; it never falls back to the enclosing raw-HTML block.
+`SourceObservationRevision.content`. CommonMark recognizes individual inline
+open and closing tags; it does not require them to form a balanced DOM. The
+compiler therefore uses CommonMark `html_inline` tokens for validity and exact
+source localization rather than imposing tag-pair balance. Unsafe content or a
+token that cannot map reversibly is unselectable. Selecting an enclosing
+paragraph or raw-HTML block is permitted only when that is the representation's
+deterministic, predeclared structural unit; it is never localization-error
+fallback.
 
 The first version adds no generic embedded-language parser registry. Raw HTML
 is handled because it is a standard CommonMark construct and a demonstrated
@@ -154,7 +169,10 @@ whitespace normalization; canonical-record presentation decodes the selected
 JSON value. The raw slice hash and presentation hash are both kept in the
 catalog and the resolved Evidence Reference.
 
-Only non-overlapping, minimal claim-bearing ranges are selectable. Structural
+Only non-overlapping, claim-coherent structural ranges are selectable. The
+compiler prefers the smallest range that independently preserves the claim, but
+retains the enclosing deterministic paragraph or block when finer segmentation
+would destroy independent support. Structural
 parents such as heading paths are catalog metadata, not overlapping selectable
 Fragments. When an embedded adapter yields selectable children, those children
 replace the enclosing atomic candidate. A candidate must be wholly contained
@@ -182,8 +200,8 @@ token budgets remain deployment configuration and may change without changing
 Evidence semantics because the chosen values are persisted with the derivation
 batch and included in its deterministic input hash.
 
-Malformed raw-HTML tests must cover an unclosed element, nested lists, table
-rows with entities, comments, script/style raw text, duplicate visible text,
+Raw-HTML tests must cover valid unclosed CommonMark open tags, nested lists,
+table rows with entities, comments, script/style raw text, duplicate visible text,
 and a Unicode escape boundary in a canonical-record nested field. For every
 selectable case, tests assert exact raw range, raw slice hash, presentation
 text/hash, ordering, catalog digest, and retry reconstruction. Unsupported or
@@ -228,6 +246,15 @@ Fragment compilation or automatic revalidation; any existing Support that
 depends on it enters the existing legacy-limited/gated treatment described in
 the Support cutover below. After all built-in adapters write profiles for new
 rows, storage rejects any new inference-eligible Revision without one.
+
+A Partial Projection may carry an unprofiled historical Revision only by
+referencing an exact current row that already exists under the same Configured
+Source and Source Unit. Storage validates its immutable content, semantic hash,
+metadata, observed time, and any supplied profile, then uses the persisted row
+as the effective Revision in the new projection payload. The carried path never
+inserts a Revision. Historical projection-run retry treats an absent legacy
+profile field as equivalent only to an explicit null field; every other payload
+difference remains an immutable retry collision.
 
 Text Fragments use exact half-open ranges in the immutable Observation Revision.
 HTML list items, table rows, blockquotes, Markdown paragraphs, list items,
