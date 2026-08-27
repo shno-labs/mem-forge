@@ -103,6 +103,15 @@ always maps to one exact raw Markdown/HTML range in
 an exact reversible mapping, that region is unselectable and reports a bounded
 compiler error; it never falls back to the enclosing raw-HTML block.
 
+The first version adds no generic embedded-language parser registry. Raw HTML
+is handled because it is a standard CommonMark construct and a demonstrated
+source shape. Fenced code, YAML front matter, Mermaid, MDX/JSX, math, template
+directives, and other embedded syntaxes remain one atomic Fragment, deterministic
+metadata, or an unselectable region according to their existing normalized
+representation. A finer subparser is added only after a real claim-local
+Evidence requirement proves that atomic treatment is insufficient and the
+format has an exact reversible coordinate contract.
+
 Provider adapters continue to own provider identity, Source Unit and
 Observation topology, edit/delete semantics, relations, scope, and coverage.
 Evidence and Lifecycle code never branch on `source_type`.
@@ -320,6 +329,10 @@ causing lifecycle invalidation when that Context alone changes.
 - **Add a generic AND/OR Support expression engine** — rejected as unnecessary.
   Evidence Units have one fixed Primary-plus-all-Required invariant; independent
   Supports already express alternatives without a new logic language.
+- **Add a generic Markdown embedded-language parser registry** — rejected as
+  speculative. The initial Markdown adapter delegates only CommonMark raw HTML;
+  every later nested syntax requires a demonstrated Evidence consumer and exact
+  offset contract before gaining a subparser.
 
 ## Consequences
 
