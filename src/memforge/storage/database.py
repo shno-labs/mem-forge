@@ -211,6 +211,8 @@ from memforge.source_derivation import (
 )
 from memforge.source_projection import (
     AnchorKind,
+    EvidenceCoordinateSpace,
+    EvidenceRepresentationProfile,
     ProjectionCoverage,
     ProjectionScopeAttestation,
     ProjectionScopeTransition,
@@ -227,6 +229,7 @@ from memforge.source_projection import (
     projection_scope_attestation_from_payload,
     projection_scope_attestation_to_payload,
 )
+from memforge.source_representation import EvidenceProfileBackfillReport
 from memforge.source_artifacts import (
     SourceArtifactEvidence,
     SourceArtifactRevision,
@@ -246,6 +249,33 @@ from memforge.storage.admin_source import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _evidence_profile_from_storage_row(row: Mapping[str, object]) -> EvidenceRepresentationProfile | None:
+    keys = set(row.keys())
+    required_columns = {"profile_name", "profile_version", "coordinate_space"}
+    if not required_columns.issubset(keys):
+        return None
+    profile_values = tuple(row[key] for key in ("profile_name", "profile_version", "coordinate_space"))
+    if all(value is None for value in profile_values):
+        return None
+    if any(value is None for value in profile_values):
+        raise ValueError("stored Evidence Representation Profile is incomplete")
+    return EvidenceRepresentationProfile(
+        name=str(row["profile_name"]),
+        version=int(row["profile_version"]),
+        coordinate_space=EvidenceCoordinateSpace(str(row["coordinate_space"])),
+        schema_name=(
+            str(row["representation_schema_name"])
+            if "representation_schema_name" in keys and row["representation_schema_name"] is not None
+            else None
+        ),
+        schema_version=(
+            int(row["representation_schema_version"])
+            if "representation_schema_version" in keys and row["representation_schema_version"] is not None
+            else None
+        ),
+    )
 
 
 def _canonical_json(value: object) -> str:
@@ -985,13 +1015,28 @@ CREATE TABLE IF NOT EXISTS source_observations (
 );
 
 CREATE TABLE IF NOT EXISTS source_observation_revisions (
-    id              TEXT PRIMARY KEY,
-    observation_id  TEXT NOT NULL REFERENCES source_observations(id) ON DELETE CASCADE,
-    semantic_hash   TEXT NOT NULL,
-    content         TEXT NOT NULL,
-    metadata_json   TEXT NOT NULL DEFAULT '{}',
-    observed_at     TEXT,
-    created_at      TEXT NOT NULL
+    id                            TEXT PRIMARY KEY,
+    observation_id                TEXT NOT NULL REFERENCES source_observations(id) ON DELETE CASCADE,
+    semantic_hash                 TEXT NOT NULL,
+    content                       TEXT NOT NULL,
+    metadata_json                 TEXT NOT NULL DEFAULT '{}',
+    observed_at                   TEXT,
+    profile_name                  TEXT,
+    profile_version               INTEGER CHECK (profile_version IS NULL OR profile_version > 0),
+    coordinate_space              TEXT,
+    representation_schema_name    TEXT,
+    representation_schema_version INTEGER CHECK (
+        representation_schema_version IS NULL OR representation_schema_version > 0
+    ),
+    created_at                    TEXT NOT NULL,
+    CHECK (
+        (profile_name IS NULL AND profile_version IS NULL AND coordinate_space IS NULL)
+        OR
+        (profile_name IS NOT NULL AND profile_version IS NOT NULL AND coordinate_space IS NOT NULL)
+    ),
+    CHECK (
+        (representation_schema_name IS NULL) = (representation_schema_version IS NULL)
+    )
 );
 
 CREATE TABLE IF NOT EXISTS source_unit_revisions (
@@ -3959,6 +4004,17 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
             "ALTER TABLE source_sync_snapshot_manifests ADD COLUMN scope_attestations_json TEXT NOT NULL DEFAULT '[]'",
         ],
     ),
+    (
+        88,
+        "Declare Evidence representation profiles on Observation Revisions",
+        [
+            "ALTER TABLE source_observation_revisions ADD COLUMN profile_name TEXT",
+            "ALTER TABLE source_observation_revisions ADD COLUMN profile_version INTEGER",
+            "ALTER TABLE source_observation_revisions ADD COLUMN coordinate_space TEXT",
+            "ALTER TABLE source_observation_revisions ADD COLUMN representation_schema_name TEXT",
+            "ALTER TABLE source_observation_revisions ADD COLUMN representation_schema_version INTEGER",
+        ],
+    ),
 ]
 
 
@@ -4202,6 +4258,20 @@ class Database:
                 await self._partition_legacy_agent_session_sources_unlocked()
             if version == 62:
                 await self._reset_legacy_contradiction_summaries_unlocked()
+            if version == 88:
+                profile_report = await self._backfill_evidence_representation_profiles_unlocked()
+                logger.info(
+                    "Evidence profile backfill scanned=%d backfilled=%d unresolved=%d",
+                    profile_report.scanned_revision_count,
+                    profile_report.backfilled_revision_count,
+                    len(profile_report.unresolved_revision_ids),
+                )
+                if profile_report.unresolved_revision_ids:
+                    logger.warning(
+                        "Evidence profile backfill left %d revisions unselectable; "
+                        "run the report method for exact revision ids",
+                        len(profile_report.unresolved_revision_ids),
+                    )
             await self.db.execute(
                 "INSERT INTO schema_migrations (version, description, applied_at) VALUES (?, ?, ?)",
                 (version, description, _now_iso()),
@@ -4219,6 +4289,75 @@ class Database:
                     raise RuntimeError("failed to restore SQLite foreign key enforcement")
             logger.info("Applied migration %d: %s", version, description)
         await self._assert_memory_source_ids_resolved()
+
+    async def backfill_evidence_representation_profiles(self) -> EvidenceProfileBackfillReport:
+        """Classify legacy revisions from their adapter-owned stored contract."""
+
+        async with self._write_lock:
+            report = await self._backfill_evidence_representation_profiles_unlocked()
+            await self.db.commit()
+            return report
+
+    async def _backfill_evidence_representation_profiles_unlocked(
+        self,
+    ) -> EvidenceProfileBackfillReport:
+        from memforge.source_representation import (
+            representation_profile_for_observation_contract,
+        )
+
+        async with self.db.execute(
+            """SELECT sor.id, s.type AS source_type, so.observation_type,
+                      sor.profile_name, sor.profile_version, sor.coordinate_space
+                 FROM source_observation_revisions sor
+                 JOIN source_observations so ON so.id = sor.observation_id
+                 JOIN sources s ON s.id = so.source_id
+                WHERE sor.profile_name IS NULL
+                   OR sor.profile_version IS NULL
+                   OR sor.coordinate_space IS NULL
+                ORDER BY sor.id"""
+        ) as cursor:
+            rows = [dict(row) async for row in cursor]
+
+        backfilled = 0
+        unresolved: list[str] = []
+        for row in rows:
+            if any(row[key] is not None for key in ("profile_name", "profile_version", "coordinate_space")):
+                unresolved.append(str(row["id"]))
+                continue
+            profile = representation_profile_for_observation_contract(
+                source_type=str(row["source_type"]),
+                observation_type=str(row["observation_type"]),
+            )
+            if profile is None:
+                unresolved.append(str(row["id"]))
+                continue
+            update_cursor = await self.db.execute(
+                """UPDATE source_observation_revisions
+                      SET profile_name = ?, profile_version = ?, coordinate_space = ?,
+                          representation_schema_name = ?, representation_schema_version = ?
+                    WHERE id = ?
+                      AND profile_name IS NULL
+                      AND profile_version IS NULL
+                      AND coordinate_space IS NULL""",
+                (
+                    profile.name,
+                    profile.version,
+                    profile.coordinate_space.value,
+                    profile.schema_name,
+                    profile.schema_version,
+                    row["id"],
+                ),
+            )
+            if update_cursor.rowcount == 1:
+                backfilled += 1
+            else:
+                unresolved.append(str(row["id"]))
+
+        return EvidenceProfileBackfillReport(
+            scanned_revision_count=len(rows),
+            backfilled_revision_count=backfilled,
+            unresolved_revision_ids=tuple(unresolved),
+        )
 
     async def _reset_legacy_contradiction_summaries_unlocked(self) -> None:
         """Discard directional summary residue without assuming every legacy cache column exists."""
@@ -5881,6 +6020,18 @@ class Database:
         provider identity. Reusing a run id for a different payload is rejected.
         """
 
+        carried_revision_ids = set(projection.carried_observation_revision_ids)
+        missing_profiles = sorted(
+            revision.id
+            for revision in projection.observation_revisions
+            if revision.evidence_profile is None and revision.id not in carried_revision_ids
+        )
+        if missing_profiles:
+            raise ValueError(
+                "new inference-eligible Observation Revisions require Evidence Representation Profiles: "
+                + ", ".join(missing_profiles)
+            )
+
         payload = source_projection_to_payload(projection)
         payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         payload_hash = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
@@ -6052,11 +6203,14 @@ class Database:
 
                 for revision in projection.observation_revisions:
                     metadata_json = json.dumps(dict(revision.metadata), sort_keys=True)
+                    profile = revision.evidence_profile
                     await self.db.execute(
                         """INSERT OR IGNORE INTO source_observation_revisions (
                             id, observation_id, semantic_hash, content, metadata_json,
-                            observed_at, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                            observed_at, profile_name, profile_version, coordinate_space,
+                            representation_schema_name, representation_schema_version,
+                            created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             revision.id,
                             revision.observation_id,
@@ -6064,6 +6218,11 @@ class Database:
                             revision.content,
                             metadata_json,
                             revision.observed_at,
+                            profile.name if profile is not None else None,
+                            profile.version if profile is not None else None,
+                            profile.coordinate_space.value if profile is not None else None,
+                            profile.schema_name if profile is not None else None,
+                            profile.schema_version if profile is not None else None,
                             now,
                         ),
                     )
@@ -6075,6 +6234,11 @@ class Database:
                             "semantic_hash": revision.semantic_hash,
                             "content": revision.content,
                             "metadata_json": metadata_json,
+                            "profile_name": profile.name if profile is not None else None,
+                            "profile_version": profile.version if profile is not None else None,
+                            "coordinate_space": profile.coordinate_space.value if profile is not None else None,
+                            "representation_schema_name": profile.schema_name if profile is not None else None,
+                            "representation_schema_version": profile.schema_version if profile is not None else None,
                         },
                     )
                     await self.db.execute(
@@ -6394,6 +6558,7 @@ class Database:
                     content=row["content"],
                     observed_at=row["observed_at"],
                     metadata=json.loads(row["metadata_json"] or "{}"),
+                    evidence_profile=_evidence_profile_from_storage_row(row),
                 )
         return revisions
 

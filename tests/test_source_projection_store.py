@@ -10,6 +10,8 @@ import pytest_asyncio
 from memforge.source_projection import (
     AnchorKind,
     DeltaAxis,
+    EvidenceCoordinateSpace,
+    EvidenceRepresentationProfile,
     FragmentMapping,
     ProjectionCoverage,
     ProjectionScopeTransition,
@@ -27,6 +29,20 @@ from memforge.source_projection import (
 )
 from memforge.models import DocumentRecord, Memory, MemorySource
 from memforge.storage.database import Database, MIGRATIONS
+
+
+MARKDOWN_PROFILE = EvidenceRepresentationProfile(
+    name="markdown-structural",
+    version=1,
+    coordinate_space=EvidenceCoordinateSpace.UNICODE_SCALAR,
+)
+TEAMS_PROFILE = EvidenceRepresentationProfile(
+    name="canonical-record",
+    version=1,
+    coordinate_space=EvidenceCoordinateSpace.UNICODE_SCALAR,
+    schema_name="teams-message",
+    schema_version=1,
+)
 
 
 @pytest_asyncio.fixture
@@ -63,6 +79,7 @@ def _projection() -> SourceProjection:
         content="new body",
         observed_at="2026-07-15T00:00:00Z",
         metadata={"version": 2},
+        evidence_profile=MARKDOWN_PROFILE,
     )
     unit = SourceUnit(
         id="unit-page-1",
@@ -148,6 +165,7 @@ def _teams_inventory_projection(
         observation_id=observation.id,
         semantic_hash=f"hash-{unit_id}",
         content=unit_id,
+        evidence_profile=TEAMS_PROFILE,
     )
     unit = SourceUnit(
         id=unit_id,
@@ -198,6 +216,15 @@ def test_projection_schema_has_a_forward_migration() -> None:
     assert lineage_description == "Track Source Unit document lineage across moves"
     assert any("source_unit_document_lineage" in item for item in lineage_statements)
 
+    profile_version, profile_description, profile_statements = next(item for item in MIGRATIONS if item[0] == 88)
+    assert profile_version == 88
+    assert profile_description == "Declare Evidence representation profiles on Observation Revisions"
+    assert {statement.rsplit(" ", 2)[-2] for statement in profile_statements} >= {
+        "profile_name",
+        "profile_version",
+        "coordinate_space",
+    }
+
 
 @pytest.mark.asyncio
 async def test_source_projection_round_trips_as_one_atomic_record(db: Database) -> None:
@@ -208,6 +235,172 @@ async def test_source_projection_round_trips_as_one_atomic_record(db: Database) 
     assert await db.get_source_projection(projection.run_id) == projection
     assert await db.get_current_source_unit_revision("unit-page-1") == projection.source_unit_revisions[0]
     assert await db.list_current_source_units("src-1") == projection.source_units
+
+
+@pytest.mark.asyncio
+async def test_new_projection_revision_requires_an_explicit_evidence_profile(db: Database) -> None:
+    projection = _projection()
+    unprofiled = replace(projection.observation_revisions[0], evidence_profile=None)
+
+    with pytest.raises(ValueError, match="require Evidence Representation Profiles"):
+        await db.record_source_projection(
+            replace(
+                projection,
+                run_id="projection-run-unprofiled",
+                observation_revisions=(unprofiled,),
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_legacy_profile_backfill_uses_only_adapter_owned_contracts(db: Database) -> None:
+    await db.upsert_source(
+        id="src-extension",
+        type="extension_unknown",
+        name="Unknown extension",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="owner-1",
+    )
+    now = "2026-08-27T00:00:00+00:00"
+    rows = (
+        ("unit-legacy-page", "src-1", "confluence_page", "page-legacy"),
+        ("unit-legacy-unknown", "src-extension", "unknown", "unknown-legacy"),
+    )
+    await db.db.execute(
+        """INSERT INTO source_units (
+               id, source_id, unit_type, provider_key, locator_json, current_revision_id, updated_at
+           ) VALUES (?, ?, ?, ?, '{}', NULL, ?)""",
+        (*rows[0], now),
+    )
+    await db.db.execute(
+        """INSERT INTO source_units (
+               id, source_id, unit_type, provider_key, locator_json, current_revision_id, updated_at
+           ) VALUES (?, ?, ?, ?, '{}', NULL, ?)""",
+        (*rows[1], now),
+    )
+    await db.db.executemany(
+        """INSERT INTO source_observations (
+               id, source_id, source_unit_id, observation_type, provider_key,
+               locator_json, current_revision_id, updated_at
+           ) VALUES (?, ?, ?, ?, ?, '{}', ?, ?)""",
+        (
+            (
+                "obs-legacy-page",
+                "src-1",
+                "unit-legacy-page",
+                "page_body",
+                "page-legacy:body",
+                "obsrev-legacy-page",
+                now,
+            ),
+            (
+                "obs-legacy-unknown",
+                "src-extension",
+                "unit-legacy-unknown",
+                "unknown_shape",
+                "unknown-legacy:body",
+                "obsrev-legacy-unknown",
+                now,
+            ),
+        ),
+    )
+    await db.db.executemany(
+        """INSERT INTO source_observation_revisions (
+               id, observation_id, semantic_hash, content, metadata_json, observed_at, created_at
+           ) VALUES (?, ?, ?, ?, '{}', NULL, ?)""",
+        (
+            ("obsrev-legacy-page", "obs-legacy-page", "hash-page", "# Legacy", now),
+            ("obsrev-legacy-unknown", "obs-legacy-unknown", "hash-unknown", "opaque", now),
+        ),
+    )
+    await db.db.commit()
+
+    report = await db.backfill_evidence_representation_profiles()
+
+    assert report.scanned_revision_count == 2
+    assert report.backfilled_revision_count == 1
+    assert report.unresolved_revision_ids == ("obsrev-legacy-unknown",)
+    async with db.db.execute(
+        """SELECT semantic_hash, content, profile_name, profile_version, coordinate_space
+             FROM source_observation_revisions WHERE id = 'obsrev-legacy-page'"""
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert tuple(row) == (
+        "hash-page",
+        "# Legacy",
+        "markdown-structural",
+        1,
+        "unicode-scalar",
+    )
+    current = await db.get_current_source_observation_revisions("unit-legacy-page")
+    assert current["obs-legacy-page"].evidence_profile == MARKDOWN_PROFILE
+
+    retry = await db.backfill_evidence_representation_profiles()
+    assert retry.scanned_revision_count == 1
+    assert retry.backfilled_revision_count == 0
+    assert retry.unresolved_revision_ids == ("obsrev-legacy-unknown",)
+
+
+@pytest.mark.asyncio
+async def test_profile_migration_backfills_existing_revision_without_reingestion(tmp_path) -> None:
+    path = tmp_path / "profile-migration.db"
+    legacy = Database(str(path))
+    await legacy.connect()
+    await legacy.upsert_source(
+        id="src-legacy",
+        type="confluence",
+        name="Legacy source",
+        config_json="{}",
+        access_policy="workspace",
+        owner_user_id="owner-1",
+    )
+    now = "2026-08-27T00:00:00+00:00"
+    await legacy.db.execute(
+        """INSERT INTO source_units (
+               id, source_id, unit_type, provider_key, locator_json, current_revision_id, updated_at
+           ) VALUES ('unit-legacy', 'src-legacy', 'confluence_page', 'page-legacy', '{}', NULL, ?)""",
+        (now,),
+    )
+    await legacy.db.execute(
+        """INSERT INTO source_observations (
+               id, source_id, source_unit_id, observation_type, provider_key,
+               locator_json, current_revision_id, updated_at
+           ) VALUES (
+               'obs-legacy', 'src-legacy', 'unit-legacy', 'page_body',
+               'page-legacy:body', '{}', 'obsrev-legacy', ?
+           )""",
+        (now,),
+    )
+    await legacy.db.execute(
+        """INSERT INTO source_observation_revisions (
+               id, observation_id, semantic_hash, content, metadata_json, observed_at, created_at
+           ) VALUES ('obsrev-legacy', 'obs-legacy', 'semantic-before', '# Before', '{}', NULL, ?)""",
+        (now,),
+    )
+    await legacy.db.execute("DELETE FROM schema_migrations WHERE version = 88")
+    await legacy.db.commit()
+    await legacy.close()
+
+    migrated = Database(str(path))
+    await migrated.connect()
+    try:
+        async with migrated.db.execute(
+            """SELECT semantic_hash, content, profile_name, profile_version, coordinate_space
+                 FROM source_observation_revisions WHERE id = 'obsrev-legacy'"""
+        ) as cursor:
+            row = await cursor.fetchone()
+        assert tuple(row) == (
+            "semantic-before",
+            "# Before",
+            "markdown-structural",
+            1,
+            "unicode-scalar",
+        )
+        async with migrated.db.execute("SELECT COUNT(*) FROM schema_migrations WHERE version = 88") as cursor:
+            assert (await cursor.fetchone())[0] == 1
+    finally:
+        await migrated.close()
 
 
 @pytest.mark.asyncio
