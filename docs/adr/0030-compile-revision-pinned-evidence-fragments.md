@@ -387,8 +387,11 @@ splits it into atomic Memories instead of widening the Evidence model.
 ## Evidence Unit and Support
 
 The existing Evidence Unit is deepened as the claim-level aggregate. Its
-identity includes the target Source Unit Revision, claim content hash, complete
-resolved Primary/Required part-set digest, and access context. Compiler profile,
+identity includes the stable Source Unit id, claim content hash, complete
+resolved Primary/Required part-set digest, and access context. The target Source
+Unit Revision is retained as construction and audit scope, but is not identity:
+a Context-only Observation revision may change that aggregate Revision without
+changing any supporting part. Compiler profile,
 version, and catalog digest are audit and deterministic-reconstruction metadata,
 not business identity; changing the compiler alone cannot create a different
 Evidence Unit when the resolved current Evidence is identical. Each contained
@@ -402,7 +405,8 @@ The v2 part-set digest is exactly the hash of the canonically sorted tuple for
 each supporting part:
 `(role, kind, observation_id, observation_revision_id, anchor_kind,
 range_start, range_end, raw_slice_or_artifact_digest)`. It excludes the
-presentation hash, display excerpt, Fragment/catalog reference, catalog digest,
+presentation hash, display excerpt, target Source Unit Revision,
+Fragment/catalog reference, catalog digest,
 representation profile/schema, compiler contract version, and extraction-model
 metadata. A presentation-only or compiler-only change therefore cannot create
 a different Evidence Unit or Support edge when authoritative revision, Anchor,
