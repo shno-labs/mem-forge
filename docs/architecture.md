@@ -682,13 +682,15 @@ or `full_document` when no reliable previous snapshot exists or the diff is too
 large. This strategy is source-agnostic: Confluence pages, Jira tickets, Teams
 blocks, agent-session summaries, future GitHub Pages, and local markdown repos
 all share the same memory update path after normalization. Diff-guided
-extraction uses the full updated source item as context, but asks the extractor
-to produce only memories caused by changed hunks. The pipeline then enforces
-that contract: each candidate's exact quote must overlap an inserted or replaced
-current-revision range; unchanged-context candidates are audited and discarded.
-Deletion-only diffs authorize no new candidate. Full-document fallback uses
-the same deterministic structural units described above, so large pages are
-processed by owned sections without adding source-specific extraction logic.
+extraction may present the full updated source item as read-only context, but
+marks each compiled authority range with application-owned role eligibility.
+Primary refs are selectable only from claim-authoritative inserted or replaced
+ranges; Required refs may also come from bounded dependency ranges. Context-only
+material has no selectable role. The resolver enforces those permissions and
+fails closed on an unchanged Context selection. Deletion-only diffs authorize
+no new candidate. Full-document work uses the same deterministic Fragment
+compiler over explicitly owned ranges, so large pages do not add
+source-specific extraction logic or a whole-Block localization fallback.
 
 ```python
 async def update_memories_for_document(self, doc_id, new_content):
