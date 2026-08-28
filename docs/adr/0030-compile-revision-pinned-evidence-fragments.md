@@ -552,6 +552,17 @@ Two inputs share the same final v2 validation and `ATTACH_SUPPORT` mutation:
   and materializes new revision-pinned parts. The model never supplies durable
   ids, Evidence text, historical membership, or a lifecycle action.
 
+The structured response schema represents those three decisions as explicit
+discriminated variants. `supported` requires `primary_ref` in the provider-facing
+JSON Schema, while `not_supported` and `inconclusive` cannot carry selectors.
+This conditional contract must not exist only in a post-response validator,
+because such a validator can reject output that the provider was told was valid.
+An exhausted `invalid_response` is scoped to its exact transient batch and does
+not skip independent batches or Source Unit scopes. A provider or logical
+deadline failure may stop further calls for that Source invocation to avoid
+amplifying an unavailable dependency; every unexecuted item remains explicitly
+inconclusive. Reports retain only content-free terminal category and error code.
+
 Recovery is a support-only maintenance operation. It cannot emit UPDATE,
 SUPERSEDE, REMOVE_SUPPORT, RETIRE, or Review mutations. `not_supported`, an
 unusable catalog, unavailable current authority, invalid model coverage, or an
