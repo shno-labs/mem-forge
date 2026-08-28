@@ -481,7 +481,11 @@ logical Support edge:
    mechanically eligible only when its Unit has exactly one Primary and every
    support-granting Primary/Required Reference has exactly one old row with the
    same active state. Active rows require non-empty creation times; inactive
-   rows additionally require non-empty removal times.
+   rows additionally require non-empty removal times. The Unit's pinned
+   `SourceUnitRevision` must belong to the same `SourceUnit`, and every
+   supporting Reference Revision must be a member of that pinned Unit Revision;
+   otherwise the group is `unit_revision_lineage_invalid` and remains
+   legacy-limited rather than failing during apply.
 3. At the controlled cutover, web/worker lifecycle writers are quiesced and one
    migration lease protects an exact-count, idempotent final backfill. It creates
    one new Support edge for every eligible group. Both use the earliest creation
