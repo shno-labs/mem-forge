@@ -530,6 +530,46 @@ the existing review lineage. `memory_sources` is rebuilt and checked from the
 union of active v2 Supports and explicitly gated legacy-limited edges during
 the transition, then from v2 Supports alone after convergence.
 
+### Recovery of preserved legacy-limited Support
+
+Post-cutover recovery never edits, relabels, or reactivates the archived v1
+Unit, References, or Support rows. A still-active Memory may gain authority
+only by attaching a newly materialized Evidence Unit pinned to one exact
+stored-current `SourceUnitRevision`.
+
+Two inputs share the same final v2 validation and `ATTACH_SUPPORT` mutation:
+
+- A mixed text/Artifact group that failed only because the cutover classified
+  every Reference from Unit-level provenance is reconstructed per Reference.
+  Each Observation Revision's declared representation profile decides whether
+  the part is text or an Artifact; all bytes/ranges and Artifact digests must
+  verify exactly.
+- A group whose historical Unit Revision row is absent is not mechanically
+  repaired. The current stored Unit is compiled into the ordinary transient
+  Fragment catalog. A structured LLM returns `supported`, `not_supported`, or
+  `inconclusive`; only `supported` may select one Primary and zero or more
+  Required catalog references. The application resolver validates those refs
+  and materializes new revision-pinned parts. The model never supplies durable
+  ids, Evidence text, historical membership, or a lifecycle action.
+
+Recovery is a support-only maintenance operation. It cannot emit UPDATE,
+SUPERSEDE, REMOVE_SUPPORT, RETIRE, or Review mutations. `not_supported`, an
+unusable catalog, unavailable current authority, invalid model coverage, or an
+invalid selector leaves the Memory and legacy group unchanged and remains in
+the immutable recovery report. Terminal Memories are history and are never
+reactivated. An already-active v2 alternative is reported without mutation.
+
+The report identity covers Memory version, current support-set hash, current
+Unit Revision, access context, catalog digest, disposition, and selected
+transient refs. Apply reruns the report under the existing per-Source lifecycle
+maintenance fence and requires the exact expected report id; ordinary plan
+stale guards then recheck the same current revisions, Memory versions, and
+Support topology. A deterministic v2 Support that is already active is an
+idempotent result. The same Support found inactive is historical removal and
+must never be reactivated by recovery. SQLite and HANA use this same contract
+and persist the dry-run in the existing support-cutover report facility; no
+recovery state machine or replay ledger is introduced.
+
 ## Revision and lifecycle semantics
 
 Fragment references never survive their catalog and are never followed across
@@ -717,6 +757,7 @@ reassessment of prior events, or deployment.
 - [Evidence-Unit Support slice: shno-labs/mem-forge#307](https://github.com/shno-labs/mem-forge/issues/307)
 - [Grouped retrieval/evaluation slice: shno-labs/mem-forge#308](https://github.com/shno-labs/mem-forge/issues/308)
 - [Cloud HANA rollout slice: dodoman-sun/memforge-cloud#391](https://github.com/dodoman-sun/memforge-cloud/issues/391)
+- [Legacy-limited Support recovery: shno-labs/mem-forge#316](https://github.com/shno-labs/mem-forge/issues/316)
 - [ADR 0007: Bind extracted evidence to the current Source Projection](0007-bind-extracted-evidence-to-the-current-projection.md)
 - [ADR 0010: Keep the support provenance projection complete](0010-keep-support-provenance-projection-complete.md)
 - [ADR 0014: Model binary Artifacts as revision-pinned Source Evidence](0014-model-binary-artifacts-as-revision-pinned-source-evidence.md)
