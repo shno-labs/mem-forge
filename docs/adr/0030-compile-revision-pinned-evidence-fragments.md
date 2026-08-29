@@ -215,6 +215,13 @@ Application code verifies that every expected claim position occurs exactly
 once and every returned ref belongs to that exact window. Unknown, duplicate,
 foreign, missing, or overflowed results fail closed.
 
+When an otherwise schema-valid window response omits or duplicates claim
+positions, the application may request one bounded coverage correction for the
+same exact window, Memory batch, and expected position set. It cannot resize the
+batch, change Evidence, skip a window, or reinterpret absence as `none`. A
+second incomplete ledger is the existing batch-local `inconclusive` outcome;
+the correction attempt is transient and adds no retry state.
+
 After every window succeeds, application code forms one bounded union of the
 candidate refs and asks the ordinary final selector for `supported`,
 `not_supported`, or `inconclusive`. This final selector may choose Primary and
