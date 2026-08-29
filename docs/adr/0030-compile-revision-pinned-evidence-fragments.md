@@ -572,14 +572,18 @@ reactivated. An already-active v2 alternative is reported without mutation.
 
 The report identity covers Memory version, current support-set hash, current
 Unit Revision, access context, catalog digest, disposition, and selected
-transient refs. Apply reruns the report under the existing per-Source lifecycle
-maintenance fence and requires the exact expected report id; ordinary plan
-stale guards then recheck the same current revisions, Memory versions, and
-Support topology. A deterministic v2 Support that is already active is an
-idempotent result. The same Support found inactive is historical removal and
-must never be reactivated by recovery. SQLite and HANA use this same contract
-and persist the dry-run in the existing support-cutover report facility; no
-recovery state machine or replay ledger is introduced.
+transient refs. Apply loads that exact persisted decision manifest under the
+existing per-Source lifecycle maintenance fence; it does not ask the LLM to
+repeat its semantic judgment. Application code reloads the complete current
+candidate set, recompiles each deterministic catalog, requires the stored
+catalog digest, resolves the stored transient refs, and rebuilds mechanical
+parts. Any changed candidate coverage, revision, Memory version, Support
+topology, access context, catalog, or selector makes the report stale before a
+mutation. Ordinary Plan stale guards then enforce the same snapshot again at
+commit. A matching inactive v2 Support is historical removal and must never be
+reactivated by recovery. SQLite and HANA use this same contract and persist the
+dry-run in the existing support-cutover report facility; no recovery state
+machine, historical Source replay, or separate replay ledger is introduced.
 
 ## Revision and lifecycle semantics
 
