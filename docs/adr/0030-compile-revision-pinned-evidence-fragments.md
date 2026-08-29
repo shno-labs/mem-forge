@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-08-27)
+Accepted (2026-08-27; amended 2026-08-30)
 
 MemForge will replace provider-returned evidence text, single coarse Block
 selection, quote matching, and whole-Block fallback with application-owned
@@ -26,7 +26,8 @@ Assertion attaches a complete Evidence Unit rather than one Evidence Reference.
 Current Source Projection
   -> owned Source Observation Revisions and bounded Context
   -> representation-aware Evidence Fragment Compiler
-  -> immutable extraction catalog with transient Fragment references
+  -> immutable Fragment Corpus with transient global references
+  -> one bounded presentation or exhaustive deterministic Fragment windows
   -> extraction model returns Memory + primary_ref + required_refs
   -> Evidence Resolver validates and materializes exact revision-pinned references
   -> one complete Evidence Unit
@@ -47,8 +48,10 @@ is constrained separately below; it never becomes lifecycle authority.
 An Evidence Fragment is an application-owned structural region inside one
 current Source Observation Revision. Each offered Fragment carries an exact
 revision coordinate and content hash. Its short model-facing reference is valid
-only inside the exact immutable catalog sent to that model call and is absent
-from completed derivation and durable lifecycle records.
+only inside one exact immutable Fragment Corpus and is absent from completed
+derivation and durable lifecycle records. A bounded presentation window is a
+lossless transient view of that Corpus: it preserves the global reference and
+never renumbers, duplicates, splits, or widens a Fragment.
 
 The compiler varies by representation, not by Configured Source type. Every
 inference-eligible Source Observation Revision declares one typed, versioned
@@ -192,13 +195,34 @@ authority ranges with eligible roles, compiler contract version, and every
 ordered Fragment descriptor including its eligible roles.
 Compiler retries must reproduce the same digest and tokens byte-for-byte.
 
-Fragment-count and presentation-size limits are explicit compiler inputs and
-part of the derivation runtime contract. Exceeding either returns a typed
-`CATALOG_TOO_LARGE` result; it never silently truncates, merges Fragments,
-widens to a parent, or creates lifecycle-visible batching. Concrete provider
-token budgets remain deployment configuration and may change without changing
-Evidence semantics because the chosen values are persisted with the derivation
-batch and included in its deterministic input hash.
+Fragment Corpus resource ceilings and one-call presentation budgets are
+distinct explicit inputs. Exceeding a Corpus resource ceiling returns a typed
+`CATALOG_TOO_LARGE` result. Exceeding only a one-call presentation budget does
+not make otherwise valid Evidence unusable: the application deterministically
+packs complete Fragments in canonical order into bounded windows. It never
+silently truncates, merges Fragments, widens to a parent, or creates
+lifecycle-visible batching. A single claim-coherent Fragment that cannot fit
+one window is `fragment_unpresentable`; a Corpus requiring more than the
+bounded window count is `scan_budget_exhausted`. Both remain fail-closed and
+cannot authorize Support. Concrete provider token budgets remain deployment
+configuration and may change without changing Evidence semantics.
+
+Small Corpora retain the one-call fast path. For a multi-window Corpus, the
+model first returns a complete claim-position ledger for every window. Each
+ledger item contains either bounded candidate refs, `none`, `inconclusive`, or
+`candidate_overflow`; it is candidate discovery and never Support authority.
+Application code verifies that every expected claim position occurs exactly
+once and every returned ref belongs to that exact window. Unknown, duplicate,
+foreign, missing, or overflowed results fail closed.
+
+After every window succeeds, application code forms one bounded union of the
+candidate refs and asks the ordinary final selector for `supported`,
+`not_supported`, or `inconclusive`. This final selector may choose Primary and
+Required refs from different windows, but only from the verified union and the
+same Corpus. `not_supported` is permitted only after complete successful
+window coverage; any missing window, provider failure, ambiguous scan,
+candidate overflow, or exhausted budget is `inconclusive`. Window payloads and
+screening transcripts are never persisted and never become lifecycle state.
 
 Raw-HTML tests must cover valid unclosed CommonMark open tags, nested lists,
 table rows with entities, comments, script/style raw text, duplicate visible text,
@@ -585,6 +609,14 @@ reactivated by recovery. SQLite and HANA use this same contract and persist the
 dry-run in the existing support-cutover report facility; no recovery state
 machine, historical Source replay, or separate replay ledger is introduced.
 
+Recovery reports carry a selector contract version. Version 1 preserves the
+original one-call catalog identity. Version 2 records the complete Corpus
+digest and final global refs after either the one-call fast path or exhaustive
+windowed selection. Exact-report apply recompiles only the versioned Corpus and
+resolves the persisted final refs; it never reconstructs window transcripts or
+calls the LLM. Existing version-1 reports remain immutable and replay against
+their original compiler limits.
+
 ## Revision and lifecycle semantics
 
 Fragment references never survive their catalog and are never followed across
@@ -773,6 +805,7 @@ reassessment of prior events, or deployment.
 - [Grouped retrieval/evaluation slice: shno-labs/mem-forge#308](https://github.com/shno-labs/mem-forge/issues/308)
 - [Cloud HANA rollout slice: dodoman-sun/memforge-cloud#391](https://github.com/dodoman-sun/memforge-cloud/issues/391)
 - [Legacy-limited Support recovery: shno-labs/mem-forge#316](https://github.com/shno-labs/mem-forge/issues/316)
+- [Budgeted Fragment Corpus selection: shno-labs/mem-forge#329](https://github.com/shno-labs/mem-forge/issues/329)
 - [ADR 0007: Bind extracted evidence to the current Source Projection](0007-bind-extracted-evidence-to-the-current-projection.md)
 - [ADR 0010: Keep the support provenance projection complete](0010-keep-support-provenance-projection-complete.md)
 - [ADR 0014: Model binary Artifacts as revision-pinned Source Evidence](0014-model-binary-artifacts-as-revision-pinned-source-evidence.md)
