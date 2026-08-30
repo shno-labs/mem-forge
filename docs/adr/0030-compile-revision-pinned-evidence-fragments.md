@@ -599,7 +599,13 @@ SUPERSEDE, REMOVE_SUPPORT, RETIRE, or Review mutations. `not_supported`, an
 unusable catalog, unavailable current authority, invalid model coverage, or an
 invalid selector leaves the Memory and legacy group unchanged and remains in
 the immutable recovery report. Terminal Memories are history and are never
-reactivated. An already-active v2 alternative is reported without mutation.
+reactivated. An already-active v2 alternative is reported without mutation only
+when its Evidence Unit belongs to the same Source, Document, and access context
+as the legacy recovery candidate. Independent Support elsewhere on the same
+Memory cannot satisfy or block recovery of this Source/Document lineage. The
+same scope applies to inactive v2 Support: a matching inactive assertion remains
+historical removal and cannot be reactivated, while removal in another lineage
+does not make the current candidate unrecoverable.
 
 The report identity covers Memory version, current support-set hash, current
 Unit Revision, access context, catalog digest, disposition, and selected
