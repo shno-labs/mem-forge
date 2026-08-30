@@ -1,6 +1,7 @@
 # Keep the OSS public beta local-only
 
-Status: Accepted (2026-07-26)
+Status: Accepted (2026-07-26; clarified 2026-08-30 by
+[ADR 0031](0031-distribute-personal-local-oss-as-an-installed-tool.md))
 
 ## Context
 
@@ -17,10 +18,16 @@ small, self-contained deployment goal.
 
 ## Decision
 
-The OSS public-beta Compose profile is single-user, tenancy-unaware,
-authentication-free, and same-host only. Docker publishes both the Admin UI and
-API strictly on `127.0.0.1`. Host port numbers remain configurable for local
-conflict resolution, but the bind address is not an environment override.
+The OSS Personal Local Profile is single-user, tenancy-unaware,
+authentication-free, and same-host only. Every supported distribution binds
+its Admin UI and API strictly to loopback. Host port numbers may remain
+configurable for local conflict resolution, but an environment variable,
+native launcher option, container port declaration, or persisted setting may
+not widen the bind address.
+
+The current Compose path publishes both services on `127.0.0.1`. A native Web
+path must bind its one same-origin UI/API listener to `127.0.0.1` as well.
+Distribution choice does not weaken or replace the host security boundary.
 
 Same-host browser access, the Admin UI proxy, CLI, local-agent daemon, and
 packaged Codex or Claude MCP clients continue to use the loopback endpoints. A
@@ -35,6 +42,8 @@ proxy.
 ## Consequences
 
 The local beta relies on the host boundary rather than application login.
+[ADR 0031](0031-distribute-personal-local-oss-as-an-installed-tool.md) chooses
+the target installation and fallback surfaces without changing this invariant.
 Remote access becomes a supported profile only after a separate decision
 defines end-to-end identity, authenticated sessions or service credentials,
 authorization and tenancy semantics, TLS and origin protections, secret
