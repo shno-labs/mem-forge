@@ -44,6 +44,17 @@ correction, supersedes the incumbent, and writes Review-owned durable vector
 work in one relational transaction. Rejection retires only the challenger.
 The old `replace_memory` MCP tool, REST route, and client method are removed.
 
+A preserved `legacy_limited` configured-source Memory may have provenance edges
+but no complete active v2 Support Set. Those legacy edges cannot grant direct
+Correction Authority or synthesize a Support hash. A confirmed correction may
+still stage the ordinary hidden `user_correction` challenger and pending Review:
+the incumbent stays active, the Review records no Support-set hash, and the
+legacy provenance remains unchanged. Approval remains an explicit Review
+decision and succeeds only while participant versions are current and the
+incumbent still has no active Support; any newly attached v2 Support makes the
+Review stale/fail closed. This lets a correction be proposed without pretending
+that incomplete historical Source lineage is authoritative.
+
 ## Consequences
 
 - Agents learn one correction interface and always show a readable preview and
@@ -57,3 +68,5 @@ The old `replace_memory` MCP tool, REST route, and client method are removed.
   provenance preservation, and vector-outbox contract.
 - Self-hosted OSS exposes and consumes `owner`; it no longer masquerades as a
   Cloud Workspace Admin.
+- Legacy configured-source provenance can route a correction to Review but can
+  never authorize direct apply.
