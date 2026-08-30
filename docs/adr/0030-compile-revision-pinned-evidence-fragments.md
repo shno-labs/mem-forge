@@ -638,6 +638,19 @@ and resolves those refs without reading Artifact bytes or calling the LLM;
 metadata or catalog drift makes the report stale. Version-1 and version-2
 reports retain their original text-only semantics.
 
+A recovery report may additionally declare one explicit, sorted, duplicate-free
+Memory-id cohort. The cohort is part of immutable report identity and narrows
+candidate loading before any catalog compilation or LLM call. Replay and apply
+must find every requested Memory in the same configured Source, retain every
+legacy candidate group belonging to each requested Memory, and compare only
+that exact group set; a missing or cross-Source Memory, duplicate requested id,
+or changed candidate makes the report stale. An absent cohort preserves the
+historical whole-Source report contract and still requires complete Source
+candidate coverage. This is a maintenance request boundary, not lifecycle
+batching, a new Support state, or permission to omit an incumbent from ordinary
+reconciliation. Operator CLIs accept the cohort only while creating a report;
+apply derives it solely from the persisted report and never asks the LLM again.
+
 Legacy Support recovery is transitional maintenance, not the steady-state path
 for new Memories. Once the support marker is `evidence-unit-set-v2`, ordinary
 extraction and reconciliation create v2 Evidence Units and Support Assertions
@@ -840,6 +853,7 @@ reassessment of prior events, or deployment.
 - [Legacy-limited Support recovery: shno-labs/mem-forge#316](https://github.com/shno-labs/mem-forge/issues/316)
 - [Budgeted Fragment Corpus selection: shno-labs/mem-forge#329](https://github.com/shno-labs/mem-forge/issues/329)
 - [Artifact-aware legacy Support revalidation: shno-labs/mem-forge#332](https://github.com/shno-labs/mem-forge/issues/332)
+- [Exact recovery Memory cohorts: shno-labs/mem-forge#335](https://github.com/shno-labs/mem-forge/issues/335)
 - [ADR 0007: Bind extracted evidence to the current Source Projection](0007-bind-extracted-evidence-to-the-current-projection.md)
 - [ADR 0010: Keep the support provenance projection complete](0010-keep-support-provenance-projection-complete.md)
 - [ADR 0014: Model binary Artifacts as revision-pinned Source Evidence](0014-model-binary-artifacts-as-revision-pinned-source-evidence.md)
