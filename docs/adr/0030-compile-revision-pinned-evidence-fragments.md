@@ -624,6 +624,32 @@ resolves the persisted final refs; it never reconstructs window transcripts or
 calls the LLM. Existing version-1 reports remain immutable and replay against
 their original compiler limits.
 
+Version 3 admits current inference-eligible image Artifacts into that same
+Corpus only after the shared Projection image loader reads the exact stored
+bytes, verifies the revision-declared length and SHA-256 digest, and supplies
+the image to the structured call. Each Artifact catalog entry exposes the
+transient Fragment ref together with the image's model-input label so the model
+can select the ref without returning a durable Observation identity. Window
+screening and final adjudication receive only images represented by the
+Fragments in that exact payload. The persisted report retains the Corpus
+digest and selected refs, never image bytes or model transcripts. Exact-report
+apply reconstructs a version-3 Corpus from unchanged current revision metadata
+and resolves those refs without reading Artifact bytes or calling the LLM;
+metadata or catalog drift makes the report stale. Version-1 and version-2
+reports retain their original text-only semantics.
+
+Legacy Support recovery is transitional maintenance, not the steady-state path
+for new Memories. Once the support marker is `evidence-unit-set-v2`, ordinary
+extraction and reconciliation create v2 Evidence Units and Support Assertions
+directly. The shared Projection image loader is long-lived extraction
+infrastructure. The recovery CLI, report preparation, and apply orchestration
+remain only until an exact inventory proves zero active legacy-limited groups,
+no unapplied recovery report or active recovery job remains, and SQLite/HANA
+strict audits converge through one compatibility window. A later bounded
+cleanup may then remove those executable maintenance entry points while
+preserving historical report rows and the minimum read-only parser needed for
+audit; it must not delete or rewrite lifecycle history.
+
 ## Revision and lifecycle semantics
 
 Fragment references never survive their catalog and are never followed across
@@ -813,6 +839,7 @@ reassessment of prior events, or deployment.
 - [Cloud HANA rollout slice: dodoman-sun/memforge-cloud#391](https://github.com/dodoman-sun/memforge-cloud/issues/391)
 - [Legacy-limited Support recovery: shno-labs/mem-forge#316](https://github.com/shno-labs/mem-forge/issues/316)
 - [Budgeted Fragment Corpus selection: shno-labs/mem-forge#329](https://github.com/shno-labs/mem-forge/issues/329)
+- [Artifact-aware legacy Support revalidation: shno-labs/mem-forge#332](https://github.com/shno-labs/mem-forge/issues/332)
 - [ADR 0007: Bind extracted evidence to the current Source Projection](0007-bind-extracted-evidence-to-the-current-projection.md)
 - [ADR 0010: Keep the support provenance projection complete](0010-keep-support-provenance-projection-complete.md)
 - [ADR 0014: Model binary Artifacts as revision-pinned Source Evidence](0014-model-binary-artifacts-as-revision-pinned-source-evidence.md)
