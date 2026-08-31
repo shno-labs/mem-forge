@@ -43,6 +43,11 @@ separate factual incumbent-support audit. Application code owns the action
 matrix. A short transient revision proof is requested only for a unique
 challenger-to-incumbent `REFINES` pair that could become an automatic revision.
 
+Amended: 2026-08-31 to separate Maintenance Operator Authority from Owner
+Authority and Source Evidence Authority. A break-glass operator may close an
+exact Memory through the canonical lifecycle, but cannot be recorded as its
+owner, affirm the claim, fabricate Support, or rewrite lifecycle history.
+
 Amended: 2026-08-03 to let a deployment explicitly select a native-schema
 transport when a gateway capability registry lags the deployed model. This
 initially included a direct provider-SDK envelope; the 2026-08-06 refinement
@@ -145,6 +150,20 @@ ordinary projected lifecycle without fabricating or reactivating Support for
 the old Memory. Any identity mismatch fails closed through the typed lifecycle
 conflict. This authority is independent of legacy provenance and remains valid
 for future v2 owner actions; it is not an automated reconciliation fallback.
+
+Maintenance Operator Authority is a third, narrower case for situations where
+the owner path is unavailable and leaving an unsupported private Memory active
+would prevent bounded operational convergence. The actual operator and
+authority case must enter the shared lifecycle contract; invoking an internal
+service does not inherit Owner Authority. The operator may retire only the
+exact Memory named in an authorized manifest with its current stale guard, and
+the lifecycle plan records a maintenance closure rather than
+`explicit_owner_managed_claim`. This path cannot create, reaffirm, correct, or
+change the visibility or owner of a private claim, and it cannot fabricate or
+reactivate Support. A replacement may supersede the old Memory only through
+the ordinary path with complete current authoritative Evidence. All existing
+Memory, Evidence, Support, Plan, Relation, Review, Finding, and audit history is
+preserved.
 
 Exact pair classification reuses the bounded relation classifier and requires
 one decision per requested `pair_index`. Incumbent support audit returns one

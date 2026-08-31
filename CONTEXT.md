@@ -96,6 +96,13 @@
 - **Lifecycle Migration Attempt** — One idempotent durable recovery job identified by an explicit attempt label. Unprovable lineage remains a durable open finding and keeps destructive lifecycle gated; semantic similarity cannot close it.
 - **Non-Migrating SQLite Open** — An existing SQLite workspace opened through `Database.connect(run_migrations=False)`. It uses SQLite read-only/query-only mode, does not create the database or parent directories, and does not create schema or run migrations. It is for operator evaluation, never normal serving or repair.
 
+## Memory lifecycle authority
+
+- **Source Evidence Authority** — Authority for automatic lifecycle reconciliation derived from complete current Support for the affected Source scope. Historical provenance, semantic similarity, and operator access do not substitute for it. _Avoid_: Source ownership, legacy provenance
+- **Owner Authority** — Authority of the owner to correct or retire their exact private managed claim when its durable Memory, Agent Claim, concept, Source provenance, and ownership agree. It does not authorize automated Source reconciliation. _Avoid_: Administrator authority, inferred ownership
+- **Maintenance Operator Authority** — Explicitly granted and audited break-glass authority to close an exact Memory when its owner path is unavailable. It may retire the Memory but cannot affirm its claim, impersonate its owner, fabricate Support, or rewrite lifecycle history. _Avoid_: Owner bypass, admin flag, recovery-script access
+- **Break-glass Memory Closure** — A stale-guarded terminal retirement performed under Maintenance Operator Authority against an exact authorized manifest. It preserves the Memory and lifecycle record as history and creates no replacement claim. _Avoid_: Forced correction, hard delete, owner retirement
+
 ## Memory review
 
 - **Review** — An auditable request for a human-authorized decision when MemForge cannot safely complete or classify a Memory change on its own. Review status records whether that request is pending or terminal; it is not a Memory lifecycle state.
