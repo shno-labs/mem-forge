@@ -132,6 +132,20 @@ Lifecycle Plan may commit. Cross-document and cross-source discovery run after
 that commit through the bounded, non-destructive Relation Discovery contract in
 [ADR 0009](0009-bound-cross-document-relation-discovery.md).
 
+Automated Source reconciliation admits destructive incumbents only through
+current Source Unit Support. An explicit owner action on a private managed Agent
+Claim is a separate authority case: when the exact active Memory, durable Agent
+Claim, concept, configured Agent Session Source, Source/Document provenance,
+and owner all agree, the owner may correct or retire that claim even when its
+current v2 Support set is empty. The `IncumbentDecision` records
+`explicit_owner_managed_claim` rather than pretending that missing Support
+exists. Correction creates revision-pinned v2 Evidence and Support for the new
+Memory before atomically superseding the old Memory; retirement records the
+ordinary projected lifecycle without fabricating or reactivating Support for
+the old Memory. Any identity mismatch fails closed through the typed lifecycle
+conflict. This authority is independent of legacy provenance and remains valid
+for future v2 owner actions; it is not an automated reconciliation fallback.
+
 Exact pair classification reuses the bounded relation classifier and requires
 one decision per requested `pair_index`. Incumbent support audit returns one
 ordered boolean judgment per incumbent. Application code rejects incomplete or
