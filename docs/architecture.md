@@ -676,21 +676,24 @@ Lifecycle Plan complete before the core lifecycle state is committed.
 
 ### Update (When Source Items Change)
 
-When a sync detects a content hash change, the update planner chooses
-`diff_guided` when the previous and current normalized markdown can be compared,
-or `full_document` when no reliable previous snapshot exists or the diff is too
-large. This strategy is source-agnostic: Confluence pages, Jira tickets, Teams
-blocks, agent-session summaries, future GitHub Pages, and local markdown repos
-all share the same memory update path after normalization. Diff-guided
-extraction may present the full updated source item as read-only context, but
-marks each compiled authority range with application-owned role eligibility.
-Primary refs are selectable only from claim-authoritative inserted or replaced
-ranges; Required refs may also come from bounded dependency ranges. Context-only
-material has no selectable role. The resolver enforces those permissions and
-fails closed on an unchanged Context selection. Deletion-only diffs authorize
-no new candidate. Full-document work uses the same deterministic Fragment
-compiler over explicitly owned ranges, so large pages do not add
-source-specific extraction logic or a whole-Block localization fallback.
+When a sync produces a new Source Unit Revision, the update planner consumes the
+complete current Source Projection and its Revision Delta. It authorizes exact
+work for the current batch and adds bounded current Context; it does not make the
+whole document, issue, or conversation claim-authoritative merely because the
+projection contains it. Confluence pages, Jira tickets, Teams blocks,
+agent-session summaries, GitHub Pages, and local documents share this path after
+their provider and representation adapters have produced current Observations.
+
+Every compiled candidate may be selected as Required. The application marks
+only the current authorized work `primary_eligible`; bounded Context is
+selectable only as Required, and material without exact current supporting
+Evidence remains display-only. Source relations find and order bounded Context
+but never grant a role. The model selects one Primary and only the Context that
+is semantically necessary as Required, while the Resolver enforces Primary
+eligibility, catalog identity, revision, access, and Artifact supply. Initial
+extraction, explicit reprocess, and Evidence revalidation provide their own
+authorized worksets, so the invariant is Primary-from-authorized-work rather
+than Primary-from-delta. Deletion-only work authorizes no new candidate.
 
 ```python
 async def update_memories_for_document(self, doc_id, new_content):
