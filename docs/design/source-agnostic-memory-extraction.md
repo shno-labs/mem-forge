@@ -1,248 +1,397 @@
 # Source-Agnostic Memory Extraction
 
-MemForge keeps source-specific behavior at the projection boundary. A provider
-adapter owns how raw source data becomes stable Source Units, Observations, and
-normalized artifacts. After that, memory extraction, candidate selection,
-reconciliation, support management, review gating, and lifecycle/index writes
-use the shared pipeline.
+This document expands the runtime design accepted by
+[ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md). MemForge
+keeps provider identity and structure at the Source Projection seam,
+representation parsing inside the Evidence Fragment Compiler, semantic Evidence
+selection in the extraction model, and lifecycle authority in application code.
 
-## Core Rule
+The design is source-agnostic without pretending every source has one format.
+Jira comments, Teams messages, Markdown sections, HTML structures, canonical
+records, supplied Artifacts, and managed agent-session projections all enter the
+same extraction contract after their source and representation adapters have
+done their own deterministic work.
 
-```text
-Projection adapters customize source identity and observation structure.
-The memory pipeline stays centralized and reusable.
-```
-
-This means future sources such as GitHub Pages, local markdown repositories,
-Slack, Outlook, or code-review systems should not need their own memory
-extraction strategy. They should produce clean normalized markdown and let the
-shared update planner decide between diff-guided extraction and full-document
-fallback. Full-document extraction still uses deterministic structural units
-inside the shared pipeline; source genes do not choose or implement those units.
-
-## Normalization Contract
-
-Each source type should normalize into markdown with these properties:
-
-- deterministic section order
-- stable headings for repeated source fields
-- no fetch-time-only noise such as sync timestamps
-- operational metadata separated from memory-bearing content
-- comments, messages, revisions, or events sorted by source timestamp or stable id
-- source wording preserved when modality matters, such as proposals, open
-  questions, decisions, or rejected options
-
-Example Jira shape:
-
-```markdown
-# [Story] PAY-123: Cutoff flow
-
-## Source Metadata
-- Status: In Progress
-- Assignee: Alice
-- Sprint: Payroll 42
-
-## Description
-...
-
-## Acceptance Criteria
-...
-
-## Comments
-### 2026-05-20 Alice
-...
-```
-
-Example local markdown repository shape:
-
-```markdown
-# docs/cutoff-flow.md
-
-## Repository Metadata
-- Commit: abc123
-- Branch: main
-
-## Document
-...
-```
-
-## Shared Update Strategy
-
-For any updated source item with previous normalized markdown:
+## Runtime Flow
 
 ```text
-small normalized diff -> diff_guided extraction
-large normalized diff -> full_document extraction over deterministic units
-missing previous content -> full_document extraction over deterministic units
-diff-guided extraction failure -> full_document extraction over deterministic units
+provider payload
+  -> SourceProjectionAdapter
+  -> complete current Source Projection + Revision Delta
+  -> batch-local authorized work + bounded Context
+  -> representation-aware Evidence Fragment Compiler
+  -> immutable candidate catalog + display-only Context
+  -> LLM returns Memory content + primary_ref + required_refs
+  -> deterministic Evidence Resolver
+  -> one revision-pinned Evidence Unit
+  -> candidate selection and relation-first reconciliation
+  -> one atomic Lifecycle Plan
 ```
 
-The planner is intentionally source-agnostic. `source_type` and `doc_type` are
-prompt context, not strategy selectors.
+The complete Source Projection may contain the whole current Jira issue,
+conversation, document, or session. Ordinary extraction does not make that
+whole projection claim-authoritative. The planner authorizes exact work for the
+current batch and includes only bounded current Context needed to interpret it.
 
-## Full-Document Structural Units
+## Module Responsibilities
 
-Full-document mode means the whole normalized document is eligible for memory
-extraction, not that the LLM receives one unbounded document blob. The shared
-pipeline deterministically turns normalized markdown into extraction units:
+### SourceProjectionAdapter
+
+The adapter owns provider facts:
+
+- stable Source Unit and Observation identity;
+- immutable Observation Revisions;
+- edit, delete, ordering, containment, reply, and reference relations;
+- Revision Delta and provider coverage;
+- representation-profile assignment for each new Revision.
+
+It does not assign final Evidence roles. A `precedes`, `replies_to`,
+`contained_by`, or `references` relation may help the planner find bounded
+Context, but the relation alone never grants Primary or Required authority.
+
+### EvidenceRepresentationProfile
+
+The profile declares how one immutable Revision exposes exact Evidence. It is
+selected by representation rather than Configured Source type. Markdown, HTML,
+canonical records, plain text, and whole Artifacts use their registered,
+versioned representation contracts. A representation adapter may split or
+narrow exact structure, but it cannot widen the planner's authorized ranges.
+
+### Evidence Fragment Compiler
+
+The compiler has one external interface equivalent to:
+
+```python
+compile_fragments(
+    revision: SourceObservationRevision,
+    candidate_ranges: tuple[EvidenceCandidateRange, ...],
+) -> EvidenceFragmentCatalog
+```
+
+Each candidate range carries one exact current-revision Anchor and one transient
+Boolean:
 
 ```text
-normalized markdown -> heading tree -> extraction units -> unit-level extraction
+primary_eligible = true
+  The current work authorizes a claim to originate from this range.
+
+primary_eligible = false
+  The range is bounded Context. The model may select it only as Required.
 ```
 
-The rule is source-agnostic and deterministic:
+Every selectable Fragment may be selected as Required. Only a Fragment with
+`primary_eligible=true` may be selected as Primary. Material that cannot become
+exact supporting Evidence remains outside the catalog as display-only Context.
+The compiler copies the Boolean to contained Fragments and never infers it from
+the text or syntax.
 
-- split on real markdown headings, ignoring headings inside fenced code blocks
-- keep the whole normalized document as one unit when it fits the configured
-  unit input budget (`max_unit_input_tokens`, currently 20,000)
-- recursively split only oversized section subtrees, using child headings as
-  the next ownership boundary
-- keep parent preamble text as its own unit when a parent section must split
-- preserve heading-path ownership for every unit
-- split only oversized units with the shared overflow rule
-- never use source-specific chunking in a gene
+This Boolean is transient catalog policy, not a persistent Source, Fragment, or
+lifecycle state. Durable Evidence stores only the resolved role, exact Revision
+and Anchor, content or Artifact digest, and access scope.
 
-Each unit receives read-only context:
+## Deterministic Primary Eligibility
 
-```text
-document title
-document URL
-source_type and doc_type
-heading path
-resolved entities
-document outline
-glossary appendix
-unit markdown
+The application answers only one static authority question before extraction:
+
+> May a new or revalidated claim originate from this exact range in this work?
+
+The answer depends on the work kind, not on an LLM interpretation of the text:
+
+| Work kind | `primary_eligible=true` ranges |
+| --- | --- |
+| ordinary incremental extraction | exact changed or added ranges in the current batch |
+| initial extraction | added ranges owned by the current batch, not another batch |
+| explicit reprocess | current ranges explicitly selected by the authorized operation |
+| Evidence revalidation | current or rebound incumbent claim ranges and affected supporting ranges authorized for the revalidation |
+| managed agent knowledge | exact user-authorized event ranges projected into current Evidence |
+| supplied Artifact extraction | current inference-eligible Artifact actually supplied to the model |
+
+The name is deliberately not `delta`: initial extraction, explicit reprocess,
+revalidation, and managed capture can authorize claim work without an ordinary
+changed/added delta. The planner retains one internal concept of authorized work
+instead of adding a separate domain state for every work kind.
+
+For one persistent Markdown or HTML Observation, a provider delta may currently
+identify the whole Observation rather than exact changed paragraphs. In that
+case the batch's authorized range is necessarily broader. That is a projection
+granularity limitation, not a reason to ask the role layer or the LLM to invent
+finer authority. A future exact `FragmentMapping` may narrow the work without
+changing this contract.
+
+## Bounded Context and Required Selection
+
+The planner deterministically finds bounded current Context through structural
+ownership, immediate sequence neighbors, root information, and Source
+relations. Budgets bound the material actually presented to the model.
+
+The planner does not decide which Context is semantically necessary. Every
+exact, current, access-compatible Context Fragment admitted to the candidate
+catalog has `primary_eligible=false`. The extraction model may select such a
+Fragment in `required_refs` when the claim would otherwise be unsupported,
+ambiguous, or change meaning. If the model does not select it, it remains
+Context and does not become part of the immutable Evidence Unit.
+
+This avoids two unsafe or brittle alternatives:
+
+- a generic relation-to-role matrix, where an ordering relation such as
+  `precedes` accidentally becomes Required authority;
+- unrestricted model authority, where unchanged Context may become the Primary
+  for a newly extracted claim.
+
+Display-only Context is material shown for interpretation but not offered as a
+selectable Fragment. Examples include authorized structural labels, outlines,
+glossary hints, or an explicitly non-Evidence summary for an unsupplied Artifact.
+An inaccessible range is excluded before prompt construction; an unsupported or
+inconsistent Evidence Representation Profile fails closed rather than becoming
+display-only input. The model never returns Context references.
+
+## Catalog and Model Contract
+
+One catalog belongs to one exact Source, Source Unit Revision, access context,
+batch workset, compiler contract, and presentation. It contains only exact
+current-revision Fragments admitted for that batch; it is not the complete
+Source Unit contents.
+
+Conceptually, the model sees:
+
+```json
+[
+  {
+    "ref": "f000004",
+    "kind": "text",
+    "type": "paragraph",
+    "text": "Set the production timeout to 60 seconds.",
+    "primary_eligible": false
+  },
+  {
+    "ref": "f000012",
+    "kind": "text",
+    "type": "paragraph",
+    "text": "Approved. Apply this to production.",
+    "primary_eligible": true
+  }
+]
 ```
 
-The outline and glossary can resolve scope, acronyms, and references. They are
-not memory-bearing ownership zones. A model candidate must declare
-`evidence_anchor = "unit"` to pass the ownership boundary check. Evidence
-quotes remain useful for audit/provenance display, but raw quote containment is
-not the hard gate because rendered text can differ from markdown syntax.
+The model returns generated canonical Memory text and transient selectors:
 
-Unit identity is transient. It is not persisted on memories or source-support
-rows. Persistence keeps the normal memory, source excerpt, source document, and
-support kind. Unitization diagnostics stay in the audit event payload.
-
-## Diff-Guided Extraction Contract
-
-Input:
-
-```text
-source_type
-doc_type
-changed_hunks
-full updated normalized markdown
-resolved entities
-same-document extracted memories
+```json
+{
+  "content": "Production timeout should be 60 seconds.",
+  "memory_type": "decision",
+  "confidence": 0.92,
+  "entity_refs": [],
+  "valid_from": null,
+  "valid_until": null,
+  "primary_ref": "f000012",
+  "required_refs": ["f000004"]
+}
 ```
 
-Extractor responsibility:
+The model does not return Evidence text, Observation or Revision IDs, offsets,
+hashes, representation profiles, Context refs, or lifecycle actions. Uniform
+`f...` references remain catalog-local; role-prefixed durable identity and a
+dynamic enum schema are unnecessary.
 
-```text
-Extract only durable memory changes caused by changed_hunks.
-Use the full updated document only for context and quote validation.
-Return [] for formatting-only or operational metadata-only changes.
-```
+The Resolver fails closed unless all of these hold:
 
-The prompt is not the authority boundary. For every returned candidate, the
-pipeline requires an exact current-revision evidence quote that overlaps an
-inserted or replaced range. Candidates grounded only in unchanged context are
-rejected and counted in the extraction audit. A deletion-only diff grants no
-new-candidate authority; reconciliation owns incumbent removal. If the diff
-cannot fit the prompt budget, the planner selects `full_document` instead of
-silently truncating its authority.
+- exactly one `primary_ref` resolves in this catalog;
+- the Primary Fragment has `primary_eligible=true`;
+- every Required ref resolves in the same catalog;
+- Primary and Required refs are duplicate-free;
+- every selected Fragment is current, exact, access-compatible, and within the
+  supplied Artifact and batch budgets;
+- the catalog, policy contract, and stale guards match the work being applied.
 
-For a document represented by one persistent Observation, a safe small diff
-takes precedence over token-splitting that Observation into extraction batches.
-Provider-native multi-Observation sources keep changed-Observation batching.
+The weaker rule "some selected Fragment intersects the current work" is not
+sufficient. It would permit an unchanged old claim to become Primary while an
+unrelated changed Fragment is added as Required merely to pass admission.
 
-Operational metadata includes status, resolution, assignee, sprint, rank, labels,
-timestamps, participants, reactions, and edit time. These fields can still be
-used as context, but they should not become memories unless the changed text
-explicitly states a durable decision, constraint, procedure, or architectural
-fact.
+## Incremental, Initial, and Large Work
+
+For an ordinary provider-native multi-Observation update, changed or added
+Observations produce the authorized work. The model receives their compiled
+Fragments plus bounded Context, not the complete Jira issue or conversation.
+
+Initial extraction may authorize every added Observation, but batching remains
+a transport and computation detail. Only exact ranges owned by the current batch
+are Primary-eligible; an adjacent Observation assigned to another batch cannot
+cross that authority seam.
+
+Large Observations are split into exact, possibly overlapping presentation
+segments without changing Source identity. Primary eligibility remains local to
+the segment range. Context or overlap cannot widen a segment to the whole
+Observation, and batching cannot create lifecycle state or weaken complete
+coverage.
+
+A deletion-only delta grants no new-candidate authority. Absence, Support
+removal, and retirement remain reconciliation concerns.
+
+## Artifact Rules
+
+An Artifact may enter the selectable catalog only when its current bytes are
+inference-eligible and actually supplied to the configured model. A filename,
+upload event, parent text, OCR guess, or stored metadata does not substitute for
+Artifact content.
+
+A supplied Artifact can be Primary-eligible when the current work authorizes a
+visual claim to originate from it. A supplied bounded Context Artifact may be
+selected as Required but not Primary. An unsupplied Artifact may contribute an
+explicitly non-Evidence display summary but cannot become Support; an
+inaccessible Artifact is excluded.
+
+Primary and Required media share the same byte and concurrency budgets. Adapter
+implementations must preserve this behavior across SQLite and HANA.
+
+## Evidence Unit and Lifecycle
+
+The selected Primary plus every selected Required Fragment resolve atomically to
+one immutable Evidence Unit. They are jointly necessary; there is no AND/OR or
+`N_OF_M` evidence language. Unselected Context is not a member of the Unit and
+does not independently invalidate it.
+
+Role selection does not authorize a lifecycle action. Relation-first
+reconciliation, complete incumbent coverage, source authority, Reviews, and
+stale guards remain the sole owners of update, supersede, Support removal, and
+retirement.
+
+Revalidation uses the same candidate contract with a different authorized
+workset. An unchanged incumbent Primary may remain Primary when only one
+Required part changed, provided the revalidation work explicitly includes the
+current or rebound incumbent range. Therefore the invariant is
+Primary-from-authorized-work, not Primary-from-delta.
+
+Retries must reconstruct the same workset, candidate catalog, policy contract,
+and digest. A changed Primary-eligibility policy requires a new extraction or
+authority-policy discriminator so a completed batch under the old policy cannot
+be silently reused.
 
 ## Candidate Durability and Uniqueness
 
-All extraction batches for one Source Unit revision are aggregated before any
-Memory write. The shared pipeline then applies two separate policies:
+All extraction batches for one Source Unit Revision are aggregated before any
+Memory write. The shared pipeline then applies separate policies:
 
 ```text
-all batch candidates
+all resolved batch candidates
   -> deterministic durability gate
   -> deterministic exact-duplicate collapse
   -> complete semantic CandidateLedger
   -> incumbent reconciliation
-  -> atomic lifecycle plan
+  -> atomic Lifecycle Plan
 ```
 
 The durability gate rejects provenance bookkeeping such as attachment uploads
-and routing-field history. A claim extracted from the actual content of an
-attachment is different: it may pass when its evidence points to that content
-artifact. The gate is shared and never switches on provider type.
+and routing-field history. A claim extracted from the actual supplied content
+of an Artifact is different and may pass with revision-pinned Evidence. The
+gate is shared and never switches on provider type.
 
 CandidateLedger owns only within-revision uniqueness. It receives candidate
-index, memory type, self-contained content, and Observation identity. It does
-not receive the full document, Evidence quote, incumbent Memory ledger, or
-provider payload, and it never rewrites candidate content. Its only actions are
-`KEEP` and `DROP_REDUNDANT -> canonical_index`.
+identity, Memory type, canonical content, and resolved Evidence identity. It
+does not receive provider payloads and never rewrites candidate content. Its
+only actions remain `KEEP` and `DROP_REDUNDANT -> canonical_index`.
 
 The semantic ledger must return exactly one valid decision for every candidate.
-An incomplete ledger receives one corrective retry. A second invalid response,
-more than 200 non-identical candidates, or more than 100,000 serialized input
-characters fails closed: no candidate is written and no destructive incumbent
-lifecycle action is authorized. Exact duplicates are collapsed before these
-semantic budgets are applied.
+Incomplete or over-budget coverage fails closed: no candidate is written and no
+destructive incumbent lifecycle action is authorized. Exact duplicates are
+collapsed before semantic budgets are applied.
 
-## Lifecycle Boundary
+## Lifecycle Module Ownership
 
-The shared lifecycle rules remain unchanged:
+The shared lifecycle ownership remains unchanged:
 
 ```text
-MemoryEngine owns extraction/reconciliation decisions.
-MemoryStore owns SQLite, FTS5, Chroma, rollback, and lifecycle side effects.
-ReviewService owns human-gated approval/rejection.
+MemoryEngine owns extraction and reconciliation decisions.
+MemoryStore owns relational, search-index, rollback, and lifecycle side effects.
+ReviewService owns human-gated approval and rejection.
 ```
 
-New source types must not bypass these boundaries with direct memory writes.
+New source types and representation adapters must not bypass these Modules with
+direct Memory or Support writes.
+
+## Source-Type Extensibility
+
+The authority rule does not branch on Source type:
+
+- Jira comments and Teams or future Slack messages use provider-native
+  Observation deltas and bounded conversation Context.
+- Markdown, GitHub, Confluence, local files, and agent-session documents use
+  their declared representation profile; raw CommonMark HTML remains a private
+  Markdown adapter concern.
+- Canonical records expose schema-owned fields and ranges through the canonical
+  record representation adapter.
+- Codex and Claude Code managed-event capture keeps its explicit user-authority
+  validator before projecting ordinary current Evidence.
+- Binary Artifacts keep the supplied-byte eligibility rule.
+
+Adding a Source type requires a SourceProjectionAdapter and registered
+representation profile only when those things genuinely vary. It does not add a
+source-specific extraction strategy, compiler interface, role matrix, or
+lifecycle path.
+
+## Verification Contract
+
+Tests should exercise the external extraction-and-resolution interface rather
+than private planner state. At minimum they prove:
+
+1. ordinary current work can supply one Primary;
+2. a current approval may select an older proposal as Required;
+3. unchanged Context cannot become Primary, even when a Source relation exists;
+4. ordering, neighbor, and root Context do not gain authority by themselves;
+5. multiple changed Observations still produce exactly one Primary per atomic
+   claim and canonical Required ordering;
+6. initial extraction remains isolated by batch;
+7. explicit reprocess and revalidation authorize their current work without an
+   ordinary delta;
+8. deletion-only work emits no new extraction catalog;
+9. large segmented Observations preserve exact range-local authority;
+10. supplied and unsupplied Artifacts remain distinguishable;
+11. repeated compilation of the same inputs produces the same catalog and
+    policy digest;
+12. a Required change invalidates the complete Evidence Unit while unselected
+    Context does not.
+
+For a persisted incident, bounded verification should rehydrate the stored
+Source Projection and derivation batch, compile the old and proposed catalogs,
+and run any retained structured response through the Resolver. It does not need
+to rerun source ingestion or rewrite Memory or lifecycle history.
 
 ## Audit Expectations
 
-Every update should record:
+Every extraction should record content-free diagnostics sufficient to separate
+planning, model, admission, and lifecycle failures:
 
 ```text
-document_update_strategy_selected
-memory_change_extraction_completed, when diff-guided extraction runs
-  (including current_changed_range_count and
-  rejected_outside_changed_range_count)
-memory_extraction_completed, with unit_count, segmentation_version,
-partition_strategy, and max_unit_input_tokens for full-document units
-candidate_ledger_completed, when multiple or exact-duplicate candidates are selected
-candidate_ledger_failed, when a complete bounded ledger cannot be proven
-reconciliation_failed, when reconciliation returns no safe lifecycle decisions
-reconciliation_decision_returned
-reconciliation_authority_rejected, when needed
-reconciliation_review_gated, when needed
-lifecycle/index side-effect events from MemoryStore
+source derivation and batch identity
+extraction and authority-policy contract identity
+catalog digest and candidate counts
+structured LLM call outcome
+attempted Primary eligibility
+selected Primary/Required counts
+salted selection fingerprint
+typed admission rejection reason
+candidate-ledger and reconciliation outcome
+lifecycle or Review outcome
 ```
 
-The audit trail should make the strategy visible regardless of source type.
+Runtime events do not persist Fragment text or transient Fragment IDs. The
+selection fingerprint distinguishes the same generated Memory content paired
+with different selectors without exposing Evidence.
 
 ## Open Optimization Question: Cross-Document Checks
 
-Large source documents can create many new memories. Cross-document
-contradiction detection currently checks entity-overlap candidates after insert
-and should have enough response budget for large structured outputs.
+Large source documents can create many new Memories. Cross-document relation
+discovery still needs separate bounded ranking and response-budget decisions.
+Those optimizations must not cap the complete candidate catalog, change Primary
+eligibility, weaken complete incumbent coverage, or turn batching into a
+lifecycle state.
 
-Future optimization needs a careful design pass before changing behavior:
+## Non-Goals
 
-- whether to batch contradiction candidate pairs by token budget
-- whether to cap candidates per new memory, and what ranking signal should own
-  that cap
-- how to balance lower failure blast radius against repeated prompt overhead
-- how failed batches should appear in the audit ledger
-
-No candidate capping rule is finalized yet. The current short-term fix is to
-avoid an obviously too-small response budget for contradiction detection.
+- trusting model-returned Evidence text;
+- quote rematching or whole-Block fallback;
+- model-chosen Observation, Revision, offset, access, or lifecycle authority;
+- source-specific relation-to-role matrices;
+- persistent Fragment identity or Fragment lifecycle state;
+- generic Evidence Boolean expressions;
+- dynamic schemas containing every transient Fragment ID;
+- ingestion replay as a verification shortcut.
