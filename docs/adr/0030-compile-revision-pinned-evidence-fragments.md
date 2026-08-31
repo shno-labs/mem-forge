@@ -804,10 +804,11 @@ authorized fetch route; `get_resource` remains the operation that returns exact
 bytes. Primary Evidence is the default claim citation, Required Evidence is
 presented as a dependency, and Context is explicitly marked non-supporting.
 
-Existing `sources[]` and `evidence_artifacts[]` fields remain compatibility
-projections derived from the same authorized grouped result during one release
-window; they are never queried through a second source-of-truth path. Their
-deprecation is announced before removal. Artifact summaries remain selection hints only;
+`evidence[]` is the sole Memory-detail provenance projection. Each projected
+Unit carries its canonical document/resource locator, while Direct User and
+other application-authoritative Virtual Documents use an explicit document
+group with no fabricated Observation, Revision, Evidence Reference, or Source
+Unit identity. Artifact summaries remain selection hints only;
 callers use `get_resource` to inspect exact authorized bytes. A Context Artifact
 may therefore appear in `get_memory` without keeping the Memory active or
 causing lifecycle invalidation when that Context alone changes.

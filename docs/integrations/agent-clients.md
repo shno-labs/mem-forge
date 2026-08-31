@@ -123,8 +123,9 @@ Agents retrieve memory context progressively:
 - Use `search` first for compact memory cards.
 - Call MCP `get_memory(memory_id)` when source evidence, provenance,
   corroborating sources, contradiction context, or lifecycle metadata is needed.
-- Call MCP `get_resource` for whichever `get_memory.sources[]` artifact URL is
-  most useful.
+- Call MCP `get_resource` for the relevant
+  `get_memory.evidence[].document` or
+  `get_memory.evidence[].items[].artifact.url` locator.
 
 This keeps Codex, Claude Code, and future adapters source-format agnostic. The
 client follows service-provided URLs instead of assuming where MemForge stores
