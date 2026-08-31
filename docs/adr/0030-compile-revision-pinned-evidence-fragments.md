@@ -2,12 +2,14 @@
 
 ## Status
 
-Accepted (2026-08-27; amended 2026-08-30)
+Accepted (2026-08-27; amended 2026-08-31)
 
 MemForge will replace provider-returned evidence text, single coarse Block
 selection, quote matching, and whole-Block fallback with application-owned
 Evidence Fragments. The model selects one Primary Fragment and zero or more
-Required Fragments from one immutable extraction catalog; application code
+Required Fragments from one immutable extraction catalog. Application code
+marks only current authorized work as Primary-eligible, while exact bounded
+Context may be selected only as Required; application code then
 resolves every selection to exact current-revision Evidence and binds the
 result as one indivisible Evidence Unit. This preserves revision-pinned
 authority while removing format-sensitive quote copying and preventing a
@@ -24,9 +26,9 @@ Assertion attaches a complete Evidence Unit rather than one Evidence Reference.
 
 ```text
 Current Source Projection
-  -> owned Source Observation Revisions and bounded Context
+  -> batch-local authorized work and bounded Context
   -> representation-aware Evidence Fragment Compiler
-  -> immutable Fragment Corpus with transient global references
+  -> immutable candidate Corpus with transient global references
   -> one bounded presentation or exhaustive deterministic Fragment windows
   -> extraction model returns Memory + primary_ref + required_refs
   -> Evidence Resolver validates and materializes exact revision-pinned references
@@ -64,7 +66,7 @@ The one external compiler interface is equivalent to:
 ```python
 compile_fragments(
     revision: SourceObservationRevision,
-    authority_ranges: tuple[EvidenceAuthorityRange, ...],
+    candidate_ranges: tuple[EvidenceCandidateRange, ...],
 ) -> EvidenceFragmentCatalog
 ```
 
@@ -73,12 +75,21 @@ through the application-owned representation registry. A missing or unsupported
 profile returns a deterministic typed failure; a caller cannot supply or override
 the Revision's representation.
 
-Each `EvidenceAuthorityRange` contains one owned Source Anchor and an
-application-owned `eligible_roles` set. Claim-authoritative ranges permit
-`PRIMARY` and `REQUIRED`; bounded dependency ranges permit `REQUIRED` only.
-Read-only Context ranges have no selectable role and are presented outside the
-catalog. The compiler copies the eligible-role set to every contained Fragment;
-representation parsing can narrow structure but can never widen authority.
+Each `EvidenceCandidateRange` contains one owned Source Anchor and one transient
+application-owned `primary_eligible` Boolean. Every selectable range may be
+selected as `REQUIRED`; only current authorized work has
+`primary_eligible=true` and may be selected as `PRIMARY`. Exact bounded Context
+has `primary_eligible=false`. Material that cannot become exact supporting
+Evidence remains outside the catalog as display-only Context. The compiler
+copies this Boolean to every contained Fragment; representation parsing can
+narrow structure but can never widen authority.
+
+`primary_eligible` answers only whether a claim may originate from the range in
+the current work. It is determined from changed/added batch ranges, an explicit
+reprocess selection, current or rebound incumbent ranges authorized for
+revalidation, exact managed-user event authority, or a current inference-eligible
+Artifact actually supplied to the model. It is not inferred from content or
+Source relation type, and it is not persisted as Source or lifecycle state.
 
 `EvidenceRepresentationProfile` carries an exact profile name, a separate
 positive integer version, a coordinate-space contract, and an optional typed
@@ -179,20 +190,28 @@ would destroy independent support. Structural
 parents such as heading paths are catalog metadata, not overlapping selectable
 Fragments. When an embedded adapter yields selectable children, those children
 replace the enclosing atomic candidate. A candidate must be wholly contained
-inside exactly one authority range; a range crossing an authority boundary is
-rejected rather than clipped. The Resolver accepts `primary_ref` only from a
-Fragment eligible for Primary and accepts each `required_ref` only from a
-Fragment eligible for Required. A dependency/context input can therefore become
-Required when application planning explicitly authorized that range, but it can
-never become Primary merely because the model selected it.
+inside exactly one candidate range; a range crossing an authorized-work
+boundary is rejected rather than clipped. The Resolver accepts `primary_ref`
+only from a Fragment with `primary_eligible=true`. It accepts any other
+selectable Fragment as `required_ref`. Bounded Context can therefore become
+Required when the model determines that the claim would otherwise be
+unsupported, ambiguous, or change meaning, but it can never become Primary
+merely because the model selected it.
+
+Source relations only help application planning find bounded Context. A direct
+`precedes`, `replies_to`, `contained_by`, or `references` relation does not by
+itself set `primary_eligible` or make its endpoint Required. The model decides
+which presented Context is actually Required; unselected Context does not enter
+the Evidence Unit.
 
 Catalog order is deterministic by Observation Revision id, range start, range
 end, Fragment kind, raw-slice hash, and presentation hash. Model references are
 catalog-local ordinal tokens (`f000001`, `f000002`, ...), assigned only after
 that sort. The catalog digest hashes the target Source Unit Revision, ordered
 Observation Revision ids, complete representation profiles and schema refs,
-authority ranges with eligible roles, compiler contract version, and every
-ordered Fragment descriptor including its eligible roles.
+candidate ranges with Primary eligibility, the authority-policy/compiler
+contract version, and every ordered Fragment descriptor including its
+Primary-eligibility bit.
 Compiler retries must reproduce the same digest and tokens byte-for-byte.
 
 Fragment Corpus resource ceilings and one-call presentation budgets are
@@ -327,6 +346,14 @@ Configured Source, Source Unit Revision, and access context. The resolver sorts
 the durable Required set by canonical Fragment order before hashing, so model
 array order is not business identity.
 
+Every catalog entry exposes whether it is Primary-eligible. The model may choose
+`primary_ref` only from current authorized work and may choose `required_refs`
+from any selectable current Fragment in the catalog. Application code determines
+Primary eligibility without semantic LLM classification. The model determines
+which bounded Context is actually Required. Uniform catalog-local `f...`
+references remain sufficient; Primary eligibility is validated from the catalog
+rather than encoded as durable Fragment identity.
+
 The existing `projection-extraction-v8` contract is never interpreted as v9.
 Completed v8 derivations and lifecycle history remain immutable and readable
 through the existing legacy Evidence projection. A pending or retryable v8
@@ -411,14 +438,18 @@ projection described below.
 
 - **Primary** directly states the claim and is the authority from which the
   claim may be extracted. A text Primary resolves from `primary_ref`; a visual
-  claim may select a supplied Artifact as Primary.
+  claim may select a supplied Artifact as Primary. The selected Fragment must
+  be Primary-eligible for the current work.
 - **Required** is necessary for the claim to stand or retain its meaning. The
-  model may promote only a reference from the bounded dependency/context input
-  of the current work. Merely helpful material is not Required.
+  model may select any exact current Fragment presented in the candidate
+  catalog, including bounded Context that is not Primary-eligible. Merely
+  helpful material is not Required.
 - **Context** assists interpretation and resource inspection but does not
-  support the claim or independently trigger invalidation. Context is selected
-  by application-owned planning; the model does not return arbitrary Context
-  references. It is not a member of the immutable supporting Evidence Unit.
+  support the claim or independently trigger invalidation. Application planning
+  chooses bounded Context; the model may promote a selectable Context Fragment
+  only to Required. Unselected or display-only Context is not a member of the
+  immutable supporting Evidence Unit, and the model does not return Context
+  references.
 
 Primary and Required are jointly necessary evidence for one claim. This is one
 fixed domain invariant, not a configurable Boolean expression language. The
@@ -426,6 +457,11 @@ design adds no nested evidence expressions, `N_OF_M` policy, fragment lifecycle
 state, or general-purpose Support rules. If one candidate appears to need
 multiple independently claim-bearing Primary references, extraction normally
 splits it into atomic Memories instead of widening the Evidence model.
+
+The application does not statically decide whether bounded Context is Required.
+It decides only Primary eligibility. This preserves deterministic extraction
+authority while leaving semantic necessity to the model inside one exact,
+bounded, fail-closed catalog.
 
 ## Evidence Unit and Support
 
@@ -686,10 +722,13 @@ hashes.
 When a Revision Delta is proven Disjoint from every Primary and Required
 Anchor, the current Evidence Unit remains valid. An Affected or Unknown result
 creates one revalidation work item for the complete unit. The work item compiles
-a fresh catalog from the target revisions, presents the incumbent claim and its
-old resolved Evidence as read-only comparison context, and resolves a complete
-new Primary/Required set or an explicit unsupported/unknown result. It never
-maps an old transient Fragment reference into a new catalog. A provider-backed
+a fresh catalog from the target revisions. Its current authorized work includes
+the current or rebound incumbent claim range and any affected supporting ranges
+that the revalidation must prove; an unchanged incumbent Primary may therefore
+remain Primary when only a Required part changed. The work presents the
+incumbent claim and old resolved Evidence as comparison context and resolves a
+complete new Primary/Required set or an explicit unsupported/unknown result. It
+never maps an old transient Fragment reference into a new catalog. A provider-backed
 `FragmentMapping` may narrow impact or provide a rebind hint, but derived
 Markdown/HTML/record Fragments are not promoted to stable identity.
 
@@ -825,6 +864,16 @@ causing lifecycle invalidation when that Context alone changes.
 - **Keep quote matching and whole-Block fallback** — rejected because model
   copying is representation-sensitive for HTML and tables, and fallback can
   widen Evidence without proving complete claim-local support.
+- **Let the model assign any role to every presented Fragment** — rejected
+  because unchanged Context could become the Primary for a newly extracted
+  claim. Requiring only that some selected reference intersects current work is
+  also insufficient: an unrelated current Fragment could be added as Required
+  while an old claim remains Primary.
+- **Map generic Source relation types to Required authority** — rejected because
+  ordering, reply, containment, and reference edges identify useful bounded
+  Context but do not prove that the Context is necessary for one claim. The
+  application determines only Primary eligibility; the model selects necessary
+  Required refs from the bounded catalog.
 - **Add a generic AND/OR Support expression engine** — rejected as unnecessary.
   Evidence Units have one fixed Primary-plus-all-Required invariant; independent
   Supports already express alternatives without a new logic language.
@@ -847,9 +896,17 @@ projection Evidence materialization, no-op revalidation, revision composition,
 Lifecycle Plan mutations, Review fingerprints, support hashes, retrieval
 detail schema, and online evaluation taxonomy all change together. The old
 `whole_block_fallback` signal remains immutable historical evidence; the new
-contract records fragment/compiler identity, selected role counts, resolved
+contract records fragment/compiler and Primary-eligibility-policy identity,
+selected role counts, attempted Primary eligibility, a content-free selection
+fingerprint, resolved
 part ranges and hashes, and explicit rejection or review reasons without
 persisting source text in runtime events.
+
+Changing which ranges are Primary-eligible changes batch admission semantics.
+The manifest and catalog digest must therefore carry an authority-policy or
+extraction-contract discriminator so completed work under an older policy is not
+silently reused. No new persistent Fragment, Context, or lifecycle state is
+introduced.
 
 This ADR defines design and acceptance semantics only. It does not authorize
 source re-ingestion, historical Memory rewriting, lifecycle repair, automatic
@@ -857,6 +914,7 @@ reassessment of prior events, or deployment.
 
 ## References
 
+- [Detailed source-agnostic extraction design](../design/source-agnostic-memory-extraction.md)
 - [Implementation umbrella: shno-labs/mem-forge#303](https://github.com/shno-labs/mem-forge/issues/303)
 - [Profile and compiler slice: shno-labs/mem-forge#305](https://github.com/shno-labs/mem-forge/issues/305)
 - [Selection and resolver slice: shno-labs/mem-forge#306](https://github.com/shno-labs/mem-forge/issues/306)
