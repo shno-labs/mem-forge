@@ -382,6 +382,18 @@ References become durable Evidence; event ids and the receipt remain audit
 provenance and cannot be supplied directly to Lifecycle Plan mutations. A
 completed legacy managed patch is not replayed merely to adopt the new schema.
 
+One managed claim may be rendered as several adjacent Markdown structures, for
+example paragraphs followed by a list or code block. This remains one claim and
+one Evidence Unit. The Resolver first prefers one compiler-owned Fragment that
+contains the exact claim range. When none exists, it deterministically selects
+the smallest source-ordered, non-overlapping Fragment set whose union covers
+every non-whitespace character in that range; the first Fragment is Primary and
+the remaining Fragments are Required parts of the same Unit. Any uncovered
+content, ambiguous range, ineligible role, or cross-Revision set fails closed.
+The event receipt records the exact revision range for this multipart case. It
+does not widen Evidence to the whole Observation, introduce quote matching, or
+turn structural pieces into independent claims.
+
 `user_memory` and `user_correction` Virtual Documents do not call an extraction
 model and therefore do not need transient Fragment references. Their explicit,
 confirmed provenance is application-owned Primary Evidence. Existing correction
