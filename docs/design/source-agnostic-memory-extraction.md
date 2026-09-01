@@ -218,11 +218,21 @@ a transport and computation detail. Only exact ranges owned by the current batch
 are Primary-eligible; an adjacent Observation assigned to another batch cannot
 cross that authority seam.
 
-Large Observations are split into exact, possibly overlapping presentation
-segments without changing Source identity. Primary eligibility remains local to
-the segment range. Context or overlap cannot widen a segment to the whole
-Observation, and batching cannot create lifecycle state or weaken complete
-coverage.
+Large `markdown-structural` and `plain-text` Observations may be split into
+exact, possibly overlapping presentation ranges without changing Source
+identity. Primary eligibility remains local to each range. Context or overlap
+cannot widen it to the whole Observation.
+
+`canonical-record` and `binary-artifact` are different representation
+contracts, not Source-type exceptions. Their authorized work retains whole-
+Observation authority through compilation. The canonical compiler first
+resolves schema fields, decodes strings, and maps nested Markdown/plain-text
+ranges back to raw JSON; only those compiled Fragments are model-selectable.
+Artifacts remain atomic. Neither profile is raw character-sliced to satisfy a
+planner budget. The current normal-extraction catalog remains one-call bounded:
+an over-limit compiled result fails with typed `catalog_too_large` and no
+fallback. Generic multi-window extraction is deferred to
+[issue 365](https://github.com/shno-labs/mem-forge/issues/365).
 
 A deletion-only delta grants no new-candidate authority. Absence, Support
 removal, and retirement remain reconciliation concerns.
@@ -343,7 +353,8 @@ than private planner state. At minimum they prove:
 7. explicit reprocess and revalidation authorize their current work without an
    ordinary delta;
 8. deletion-only work emits no new extraction catalog;
-9. large segmented Observations preserve exact range-local authority;
+9. large range-addressable Observations preserve range-local authority, while
+   canonical records and Artifacts reach their compiler with whole authority;
 10. supplied and unsupplied Artifacts remain distinguishable;
 11. repeated compilation of the same inputs produces the same catalog and
     policy digest;

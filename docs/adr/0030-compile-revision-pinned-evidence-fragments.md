@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-08-27; amended 2026-08-31)
+Accepted (2026-08-27; amended 2026-09-01)
 
 MemForge will replace provider-returned evidence text, single coarse Block
 selection, quote matching, and whole-Block fallback with application-owned
@@ -29,7 +29,7 @@ Current Source Projection
   -> batch-local authorized work and bounded Context
   -> representation-aware Evidence Fragment Compiler
   -> immutable candidate Corpus with transient global references
-  -> one bounded presentation or exhaustive deterministic Fragment windows
+  -> one bounded presentation
   -> extraction model returns Memory + primary_ref + required_refs
   -> Evidence Resolver validates and materializes exact revision-pinned references
   -> one complete Evidence Unit
@@ -172,6 +172,15 @@ whose runtime type violates the descriptor, or a decoded boundary that cannot
 map exactly makes that field unselectable and fails the bounded compilation;
 the compiler never guesses a schema from `observation_type` or `source_type`.
 
+Primary authority segmentation follows the declared representation profile.
+`markdown-structural` and `plain-text` are range-addressable and may be divided
+into exact presentation ranges. `canonical-record` and `binary-artifact` retain
+whole-Observation authority through compilation: record fields must be decoded
+before their exact raw ranges exist, and Artifact bytes are atomic. The planner
+branches on profile contract only, never on Jira, Teams, or another Source type.
+This policy participates in extraction-batch identity so completed work from an
+earlier generic character-slicing policy is not silently reused.
+
 ### Deterministic catalog contract
 
 All text coordinates are zero-based, half-open Unicode scalar-value indices in
@@ -214,41 +223,13 @@ contract version, and every ordered Fragment descriptor including its
 Primary-eligibility bit.
 Compiler retries must reproduce the same digest and tokens byte-for-byte.
 
-Fragment Corpus resource ceilings and one-call presentation budgets are
-distinct explicit inputs. Exceeding a Corpus resource ceiling returns a typed
-`CATALOG_TOO_LARGE` result. Exceeding only a one-call presentation budget does
-not make otherwise valid Evidence unusable: the application deterministically
-packs complete Fragments in canonical order into bounded windows. It never
-silently truncates, merges Fragments, widens to a parent, or creates
-lifecycle-visible batching. A single claim-coherent Fragment that cannot fit
-one window is `fragment_unpresentable`; a Corpus requiring more than the
-bounded window count is `scan_budget_exhausted`. Both remain fail-closed and
-cannot authorize Support. Concrete provider token budgets remain deployment
-configuration and may change without changing Evidence semantics.
-
-Small Corpora retain the one-call fast path. For a multi-window Corpus, the
-model first returns a complete claim-position ledger for every window. Each
-ledger item contains either bounded candidate refs, `none`, `inconclusive`, or
-`candidate_overflow`; it is candidate discovery and never Support authority.
-Application code verifies that every expected claim position occurs exactly
-once and every returned ref belongs to that exact window. Unknown, duplicate,
-foreign, missing, or overflowed results fail closed.
-
-When an otherwise schema-valid window response omits or duplicates claim
-positions, the application may request one bounded coverage correction for the
-same exact window, Memory batch, and expected position set. It cannot resize the
-batch, change Evidence, skip a window, or reinterpret absence as `none`. A
-second incomplete ledger is the existing batch-local `inconclusive` outcome;
-the correction attempt is transient and adds no retry state.
-
-After every window succeeds, application code forms one bounded union of the
-candidate refs and asks the ordinary final selector for `supported`,
-`not_supported`, or `inconclusive`. This final selector may choose Primary and
-Required refs from different windows, but only from the verified union and the
-same Corpus. `not_supported` is permitted only after complete successful
-window coverage; any missing window, provider failure, ambiguous scan,
-candidate overflow, or exhausted budget is `inconclusive`. Window payloads and
-screening transcripts are never persisted and never become lifecycle state.
+Normal v9 extraction currently has one explicit catalog/presentation ceiling.
+Exceeding it returns typed `CATALOG_TOO_LARGE`; the planner and compiler never
+raw-slice a canonical record, silently truncate Fragments, widen to a parent,
+or fall back to whole-block Evidence. Generic exhaustive multi-window discovery
+and final adjudication require a separate post-compilation trigger and contract;
+they are deferred to [issue 365](https://github.com/shno-labs/mem-forge/issues/365)
+rather than being implied by Source batching.
 
 Raw-HTML tests must cover valid unclosed CommonMark open tags, nested lists,
 table rows with entities, comments, script/style raw text, duplicate visible text,
@@ -266,11 +247,11 @@ Evidence and Lifecycle code never branch on `source_type`.
 | Source path | Projected shape | Evidence Representation Profile | Design consequence |
 | --- | --- | --- | --- |
 | Confluence | One normalized page-body Observation plus revision-pinned Artifacts | `markdown-structural`; `binary-artifact` | HTML converted by the Gene is ordinary Markdown; any preserved raw HTML uses the private embedded-HTML subparser. Attachment inventory alone is not Evidence. |
-| Jira | Canonical issue-core, comment, and changelog Observations plus Artifacts | `canonical-record`; `binary-artifact` | Field and comment identity remain provider-owned; the compiler does not parse raw Jira payloads. |
+| Jira | Canonical issue-core, comment, and changelog Observations plus Artifacts | `canonical-record`; `binary-artifact` | Field and comment identity remain provider-owned; whole canonical authority reaches schema compilation before exact field ranges are presented. |
 | GitHub Repository | Normalized file-content Observation plus explicitly supported repository-file Artifacts | `markdown-structural`; `binary-artifact` | Markdown and code fences compile directly; preserved raw HTML delegates internally without changing the profile. |
 | GitHub Pages | Normalized rendered-page Observation | `markdown-structural` | No implicit linked-image crawl or provider-specific compiler. |
 | Local Markdown | Revision-pinned local-file Markdown Observation | `markdown-structural` | Local collection topology does not change Evidence semantics. |
-| Teams | Canonical message Observations with reply/precedence relations and separately projected hosted-image Artifacts | `canonical-record`; nested declared text; `binary-artifact` | Message edit/delete and conversation coverage remain Source Projection concerns. |
+| Teams | Canonical message Observations with reply/precedence relations and separately projected hosted-image Artifacts | `canonical-record`; nested declared text; `binary-artifact` | Message edit/delete and conversation coverage remain Source Projection concerns; canonical messages use the same whole-authority compiler contract as every canonical record. |
 | Agent Session document intake | Session-summary Markdown Observation | `markdown-structural` | Codex and Claude Code use the same compiler; client remains provenance, not Source or syntax. |
 | Managed Agent Knowledge patch | Structurally classified session events followed by a projected concept-Markdown Observation | upstream authority contract plus `markdown-structural` | Transient patch intent and event IDs authorize the proposal; the projected Evidence Unit remains durable authority. |
 | Extension Gene fallback | Declared normalized Markdown, canonical record, plain text, or Artifact under Partial Projection unless it proves more | declared profile only | An extension without a supported profile may collect content but cannot invent selectable Evidence. |
@@ -309,9 +290,11 @@ difference remains an immutable retry collision.
 Text Fragments use exact half-open ranges in the immutable Observation Revision.
 HTML list items, table rows, blockquotes, Markdown paragraphs, list items,
 table rows, and code blocks may therefore be independently selectable while
-mapping back to exact source characters. A whole Observation is selectable
-only when its versioned representation contract explicitly declares that
-Observation atomic; it is not a recovery fallback for failed localization.
+mapping back to exact source characters. `canonical-record` receives whole-
+Observation candidate authority so its schema compiler can decode fields before
+emitting exact field or nested-text ranges; that does not make the whole record
+a selectable fallback. A whole Observation Fragment is selectable only when its
+versioned representation contract explicitly declares that Observation atomic.
 
 Binary Artifact catalog entries carry a distinct `artifact` kind, but the model
 uses the same transient reference selection shape for text and Artifacts. The
@@ -947,6 +930,8 @@ reassessment of prior events, or deployment.
 - [Cloud HANA rollout slice: dodoman-sun/memforge-cloud#391](https://github.com/dodoman-sun/memforge-cloud/issues/391)
 - [Legacy-limited Support recovery: shno-labs/mem-forge#316](https://github.com/shno-labs/mem-forge/issues/316)
 - [Budgeted Fragment Corpus selection: shno-labs/mem-forge#329](https://github.com/shno-labs/mem-forge/issues/329)
+- [Canonical whole-authority planning: shno-labs/mem-forge#363](https://github.com/shno-labs/mem-forge/issues/363)
+- [Generic multi-window extraction: shno-labs/mem-forge#365](https://github.com/shno-labs/mem-forge/issues/365)
 - [Artifact-aware legacy Support revalidation: shno-labs/mem-forge#332](https://github.com/shno-labs/mem-forge/issues/332)
 - [Exact recovery Memory cohorts: shno-labs/mem-forge#335](https://github.com/shno-labs/mem-forge/issues/335)
 - [ADR 0007: Bind extracted evidence to the current Source Projection](0007-bind-extracted-evidence-to-the-current-projection.md)
