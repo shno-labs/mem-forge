@@ -805,9 +805,10 @@ One prepared Source Unit commit therefore has three execution dispositions:
 
 These are commit dispositions, not Memory lifecycle states. A Deferred attempt
 retains one same-process Prepared Lifecycle Intent containing the already
-resolved Evidence, semantic operations, and identity decisions. After normal
-per-Unit processing completes, the Source orchestrator may rematerialize only
-current Support topology, stale guards, and the deterministic Plan, then
+resolved Evidence, semantic operations, identity decisions, and exact initial
+Support-to-owner topology. After normal per-Unit and authoritative tombstone
+processing completes, the Source orchestrator may rematerialize only declared
+blocker-owned Support changes, stale guards, and the deterministic Plan, then
 perform at most three ordered commit-only convergence rounds. It never repeats
 extraction, candidate admission, reconciliation, entity or identity model work.
 Only blockers owned by Units in the same run are eligible; any round with zero

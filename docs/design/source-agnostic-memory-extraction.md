@@ -302,8 +302,9 @@ Review creation. A Plan that consumes that edge is Deferred only when its owner
 belongs to the same Source run; malformed, self-stale, or authority-changed work
 is Rejected. The orchestrator retries Deferred work through the prepared
 commit-only interface for at most three progress-making rounds after normal
-per-Unit processing. No model call, dependency graph, or durable retry state is
-part of convergence.
+per-Unit updates and authoritative tombstones. Only Support topology changes
+owned by the exact typed same-run blockers may be rematerialized. No model call,
+dependency graph, or durable retry state is part of convergence.
 
 ## Candidate Durability and Uniqueness
 
