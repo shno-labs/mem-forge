@@ -98,6 +98,9 @@
 
 ## Memory lifecycle authority
 
+- **Projected Lifecycle Commit Disposition** — The result of attempting one prepared Source Unit Lifecycle Plan: **Applied** when its causal write contract commits, **Deferred** when declared same-run cross-Unit Support may still converge, or **Rejected** when the Plan would introduce or depend on unrepairable invalid state. It is an execution result, not a Memory status or lifecycle action. _Avoid_: Retry status, lifecycle state
+- **Prepared Lifecycle Intent** — The transient same-process semantic result retained after extraction and reconciliation so a Deferred commit can refresh only deterministic Support and stale guards. It is not durable authority, a replay ledger, or lifecycle history. _Avoid_: Cached LLM response, pending Lifecycle Plan
+
 - **Source Evidence Authority** — Authority for automatic lifecycle reconciliation derived from complete current Support for the affected Source scope. Historical provenance, semantic similarity, and operator access do not substitute for it. _Avoid_: Source ownership, legacy provenance
 - **Owner Authority** — Authority of the owner to correct or retire their exact private managed claim when its durable Memory, Agent Claim, concept, Source provenance, and ownership agree. It does not authorize automated Source reconciliation. _Avoid_: Administrator authority, inferred ownership
 - **Maintenance Operator Authority** — Explicitly granted and audited break-glass authority to close an exact Memory when its owner path is unavailable. It may retire the Memory but cannot affirm its claim, impersonate its owner, fabricate Support, or rewrite lifecycle history. _Avoid_: Owner bypass, admin flag, recovery-script access

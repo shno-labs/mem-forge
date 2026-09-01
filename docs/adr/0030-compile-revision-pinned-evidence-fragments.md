@@ -783,11 +783,38 @@ ranges; lifecycle code never tests decoded presentation text against raw record
 content. The catalog Resolver then materializes the complete Unit. Expected
 ambiguous or unpresentable selection stages the existing Review-safe outcome;
 compiler or resolver contract violations propagate as failures rather than
-being misclassified as lifecycle Review. The shared stale/incomplete
-Unit-support postcondition remains transactional and fail-closed. Its
-deterministic failure is non-retryable within the Source sync, because repeating
-extraction or reconciliation cannot repair the same invalid plan; transport and
-provider failures retain their bounded retry policy.
+being misclassified as lifecycle Review. The shared Unit-support postcondition
+remains transactional and fail-closed but is causal rather than global. A Plan
+is rejected when it introduces stale or incomplete Support, leaves invalid
+Support in its own Source Unit, or consumes stale cross-Unit Support to
+authorize a destructive decision. A structurally valid historical Support
+owned by another Unit does not block a support-preserving write that neither
+mutates nor consumes that edge. Creating a pending Review is support-preserving
+because its proposed mutations remain staged. The unrelated stale edge remains
+ineligible for destructive authority and visible to lifecycle audit until its
+owning Unit handles it.
+
+One prepared Source Unit commit therefore has three execution dispositions:
+
+- **APPLIED** commits the complete atomic Plan;
+- **DEFERRED** rolls back and returns exact content-free cross-Unit blocker
+  identities when the Plan depends on Support whose owner may still commit in
+  the same Source run;
+- **REJECTED** rolls back malformed lineage, self-introduced staleness, changed
+  Memory or access authority, and every conflict that cannot safely converge.
+
+These are commit dispositions, not Memory lifecycle states. A Deferred attempt
+retains one same-process Prepared Lifecycle Intent containing the already
+resolved Evidence, semantic operations, and identity decisions. After normal
+per-Unit processing completes, the Source orchestrator may rematerialize only
+current Support topology, stale guards, and the deterministic Plan, then
+perform at most three ordered commit-only convergence rounds. It never repeats
+extraction, candidate admission, reconciliation, entity or identity model work.
+Only blockers owned by Units in the same run are eligible; any round with zero
+successful commits stops immediately. The Unit Plan remains atomic across all
+its Memories, and an unresolved dependency remains failed. No dependency graph,
+durable retry queue, replay ledger, source-type branch, or weakened destructive
+authority is introduced.
 
 Reconciliation still requires complete Mandatory Incumbent Scope coverage.
 Fragment compilation and revalidation can prove Evidence selection, but cannot
@@ -817,11 +844,14 @@ model-facing Fragment references remain local to that reconstruction.
 
 After a batch completes, the durable derivation output contains only resolved
 Evidence Units and References. Scheduler recovery reuses that output and may
-apply it only when the target revisions, access context, incumbent Memory
-versions, and complete Evidence-Unit Support topology still match the Plan's
-stale guards. A mismatch abandons the stale Plan and recalculates from current
-Projection state; it never recompiles under a newer profile while pretending to
-resume the old batch. No replay ledger or fragment lifecycle state is added.
+apply it only when the target revisions and semantic preparation authority
+still match. Within the same process, a Deferred Prepared Lifecycle Intent may
+accept only Support topology and derived Memory timestamp/corroboration changes
+caused by its declared same-run blockers; Memory content, status, visibility,
+owner, validity, gate, or access-context changes reject it. A process restart
+discards the transient intent and falls back to ordinary durable derivation
+recovery. It never recompiles under a newer profile while pretending to resume
+the old batch, and no replay ledger or fragment lifecycle state is added.
 
 ## Retrieval projection
 

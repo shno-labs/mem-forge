@@ -295,6 +295,16 @@ authority-policy discriminator. A changed model presentation policy similarly
 changes only v9 Source Derivation input identity, so a completed batch under
 the old flat selector presentation cannot be silently reused.
 
+Lifecycle commit validation is scoped to causal inputs. Unrelated structurally
+valid stale Support from another Source Unit cannot authorize a destructive
+decision, but it does not block a support-preserving write such as pending
+Review creation. A Plan that consumes that edge is Deferred only when its owner
+belongs to the same Source run; malformed, self-stale, or authority-changed work
+is Rejected. The orchestrator retries Deferred work through the prepared
+commit-only interface for at most three progress-making rounds after normal
+per-Unit processing. No model call, dependency graph, or durable retry state is
+part of convergence.
+
 ## Candidate Durability and Uniqueness
 
 All extraction batches for one Source Unit Revision are aggregated before any
@@ -330,6 +340,7 @@ The shared lifecycle ownership remains unchanged:
 
 ```text
 MemoryEngine owns extraction and reconciliation decisions.
+GeneSyncOrchestrator owns bounded same-run commit convergence.
 MemoryStore owns relational, search-index, rollback, and lifecycle side effects.
 ReviewService owns human-gated approval and rejection.
 ```
