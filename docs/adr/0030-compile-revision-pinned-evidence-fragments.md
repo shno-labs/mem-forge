@@ -817,6 +817,22 @@ its Memories, and an unresolved dependency remains failed. No dependency graph,
 durable retry queue, replay ledger, source-type branch, or weakened destructive
 authority is introduced.
 
+The external MemoryEngine seam exposes only:
+
+```text
+prepare_and_commit_projected_lifecycle(...)
+  -> applied stats | Deferred(handle, blocker owner ids) | Rejected
+
+retry_deferred_projected_lifecycle(handle, eligible same-run owner ids)
+  -> applied stats | Deferred(new handle) | Rejected
+```
+
+The Deferred handle is opaque. Initial Support ownership, declared-owner
+accumulation, authority hashes, Plan rematerialization, idempotency, and attempt
+accounting remain private to MemoryEngine. GeneSyncOrchestrator owns only the
+eligible Unit/tombstone set and the bounded round/no-progress policy. It never
+reads or mutates prepared topology state.
+
 Reconciliation still requires complete Mandatory Incumbent Scope coverage.
 Fragment compilation and revalidation can prove Evidence selection, but cannot
 turn an omitted incumbent into KEEP or reduce the requirement that every
