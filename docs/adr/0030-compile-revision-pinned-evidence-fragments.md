@@ -223,8 +223,11 @@ the Evidence Unit.
 
 Catalog order is deterministic by Observation Revision id, range start, range
 end, Fragment kind, raw-slice hash, and presentation hash. Model references are
-catalog-local ordinal tokens (`f000001`, `f000002`, ...), assigned only after
-that sort. The catalog digest hashes the target Source Unit Revision, ordered
+catalog-local typed ordinal tokens assigned only after that sort:
+Primary-capable Fragments use `pNNNNNN`, while Required-only Fragments use
+`rNNNNNN`. A `p...` Fragment may still be selected as Required for another
+claim. The prefix is transient model capability, not durable Evidence role or
+identity. The catalog digest hashes the target Source Unit Revision, ordered
 Observation Revision ids, complete representation profiles and schema refs,
 candidate ranges with Primary eligibility, the authority-policy/compiler
 contract version, and every ordered Fragment descriptor including its
@@ -323,19 +326,26 @@ with one discriminated candidate whose Evidence selection is:
 {
   "content": "...",
   "memory_type": "fact",
-  "primary_ref": "f000012",
-  "required_refs": ["f000018"]
+  "primary_ref": "p000012",
+  "required_refs": ["r000018"]
 }
 ```
 
 The selected catalog entry carries the `text` or `artifact` discriminator; the
 model never returns Observation ids, offsets, Evidence text, hashes, profile
 names, or lifecycle actions. `primary_ref` is required and singular.
-`required_refs` is an ordered, duplicate-free list and may mix text and Artifact
+Its structured schema accepts only `pNNNNNN`. `required_refs` is an ordered,
+duplicate-free list accepting `pNNNNNN` or `rNNNNNN`, and may mix text and Artifact
 entries with the Primary when all entries belong to the same offered catalog,
 Configured Source, Source Unit Revision, and access context. The resolver sorts
 the durable Required set by canonical Fragment order before hashing, so model
 array order is not business identity.
+
+The prompt presents `primary_candidates` and `required_only_candidates`
+separately. If a durable claim is stated only by Required-only historical
+Context and no Primary candidate directly states it, the model must return an
+empty `memories` array. This prevents a routine current delta from being used
+merely as a pretext to re-extract a durable historical claim.
 
 Provider output can redundantly repeat a Required ref or repeat the singular
 `primary_ref` inside `required_refs`. At the LLM candidate-admission boundary,
@@ -351,13 +361,15 @@ Evidence Unit identity remain unchanged. Runtime evaluator contract 3 classifies
 a successfully normalized and resolved selector as accepted while retaining its
 degraded normalization reason for operational visibility.
 
-Every catalog entry exposes whether it is Primary-eligible. The model may choose
-`primary_ref` only from current authorized work and may choose `required_refs`
-from any selectable current Fragment in the catalog. Application code determines
-Primary eligibility without semantic LLM classification. The model determines
-which bounded Context is actually Required. Uniform catalog-local `f...`
-references remain sufficient; Primary eligibility is validated from the catalog
-rather than encoded as durable Fragment identity.
+Application code determines Primary capability without semantic LLM
+classification. The model determines which bounded Context is actually
+Required. Typed model refs make that capability structural in the schema;
+Resolver eligibility validation remains defense-in-depth and never repairs an
+invalid selector. No dynamic per-catalog enum is required. The presentation
+policy has a separate version in v9 Source Derivation input identity so a
+corrected same-revision batch is not silently reused. It does not change
+Fragment coordinates, catalog digest, Evidence Unit identity, or lifecycle
+state. Legacy v8 derivation identity remains unchanged.
 
 The existing `projection-extraction-v8` contract is never interpreted as v9.
 Completed v8 derivations and lifecycle history remain immutable and readable
