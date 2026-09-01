@@ -821,9 +821,9 @@ The external MemoryEngine seam exposes only:
 
 ```text
 prepare_and_commit_projected_lifecycle(...)
-  -> applied stats | Deferred(handle, blocker owner ids) | Rejected
+  -> applied stats | Deferred(handle, blocking Source Unit ids) | Rejected
 
-retry_deferred_projected_lifecycle(handle, eligible same-run owner ids)
+retry_deferred_projected_lifecycle(handle, eligible same-run Source Unit ids)
   -> applied stats | Deferred(new handle) | Rejected
 ```
 

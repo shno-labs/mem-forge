@@ -308,7 +308,7 @@ dependency graph, or durable retry state is part of convergence.
 
 MemoryEngine presents this behavior through one prepare-and-commit interface
 and one retry-deferred interface. Deferred work crosses the seam as an opaque
-handle plus content-free blocker owner ids. The Source orchestrator supplies
+handle plus content-free blocking Source Unit ids. The Source orchestrator supplies
 only the current run's eligible Unit/tombstone ids and owns the three-round
 budget; topology snapshots, owner authorization, semantic authority guards,
 attempt accounting, Plan rematerialization, and idempotency stay private to
