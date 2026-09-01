@@ -223,15 +223,21 @@ exact, possibly overlapping presentation ranges without changing Source
 identity. Primary eligibility remains local to each range. Context or overlap
 cannot widen it to the whole Observation.
 
-`canonical-record` and `binary-artifact` are different representation
-contracts, not Source-type exceptions. Their authorized work retains whole-
-Observation authority through compilation. The canonical compiler first
-resolves schema fields, decodes strings, and maps nested Markdown/plain-text
-ranges back to raw JSON; only those compiled Fragments are model-selectable.
-Artifacts remain atomic. Neither profile is raw character-sliced to satisfy a
-planner budget. The current normal-extraction catalog remains one-call bounded:
-an over-limit compiled result fails with typed `catalog_too_large` and no
-fallback. Generic multi-window extraction is deferred to
+For compiler-backed v9, `canonical-record` and whole-Artifact coordinate
+profiles are different representation contracts, not Source-type exceptions.
+Their authorized work retains whole-Observation authority through compilation.
+The canonical compiler first resolves schema fields, decodes strings, and maps
+nested Markdown/plain-text ranges back to raw JSON; only those compiled
+Fragments are model-selectable. Artifacts remain atomic. Whole authority is
+derived from the immutable profile even when its version is not yet registered;
+the compiler then returns a typed unsupported-profile result instead of seeing a
+partial range. Legacy projection extraction continues to character-segment its
+direct batch-Markdown prompt.
+
+Neither v9 profile is raw character-sliced to satisfy a planner budget. The
+current normal-extraction catalog remains one-call bounded: an over-limit
+compiled result fails with typed `catalog_too_large` and no fallback. Generic
+multi-window extraction is deferred to
 [issue 365](https://github.com/shno-labs/mem-forge/issues/365).
 
 A deletion-only delta grants no new-candidate authority. Absence, Support
@@ -353,8 +359,9 @@ than private planner state. At minimum they prove:
 7. explicit reprocess and revalidation authorize their current work without an
    ordinary delta;
 8. deletion-only work emits no new extraction catalog;
-9. large range-addressable Observations preserve range-local authority, while
-   canonical records and Artifacts reach their compiler with whole authority;
+9. v9 range-addressable Observations preserve range-local authority, canonical
+   and whole-Artifact profiles reach their compiler with whole authority even
+   when unsupported, and legacy prompt segmentation remains bounded;
 10. supplied and unsupplied Artifacts remain distinguishable;
 11. repeated compilation of the same inputs produces the same catalog and
     policy digest;

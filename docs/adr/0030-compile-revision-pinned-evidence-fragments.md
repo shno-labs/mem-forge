@@ -172,14 +172,22 @@ whose runtime type violates the descriptor, or a decoded boundary that cannot
 map exactly makes that field unselectable and fails the bounded compilation;
 the compiler never guesses a schema from `observation_type` or `source_type`.
 
-Primary authority segmentation follows the declared representation profile.
-`markdown-structural` and `plain-text` are range-addressable and may be divided
-into exact presentation ranges. `canonical-record` and `binary-artifact` retain
-whole-Observation authority through compilation: record fields must be decoded
-before their exact raw ranges exist, and Artifact bytes are atomic. The planner
-branches on profile contract only, never on Jira, Teams, or another Source type.
-This policy participates in extraction-batch identity so completed work from an
-earlier generic character-slicing policy is not silently reused.
+Compiler-backed v9 Primary authority segmentation follows the immutable
+representation profile. `markdown-structural` and `plain-text` are
+range-addressable and may be divided into exact presentation ranges.
+`canonical-record` and every whole-Artifact coordinate profile retain whole-
+Observation authority through compilation: record fields must be decoded before
+their exact raw ranges exist, and Artifact bytes are atomic. This decision comes
+from the profile even when the current compiler registry does not support that
+profile version; the compiler then returns its typed unsupported-profile error
+without receiving a partial range. The planner never branches on Jira, Teams,
+or another Source type.
+
+Legacy projection extraction still presents batch Markdown directly and keeps
+its existing `max_primary_chars` segmentation. The v9 authority/segmentation
+policy has a distinct version in extraction-batch identity so completed v9 work
+from the earlier generic character-slicing policy is not silently reused while
+legacy batch identity remains stable.
 
 ### Deterministic catalog contract
 
@@ -903,7 +911,7 @@ projection Evidence materialization, no-op revalidation, revision composition,
 Lifecycle Plan mutations, Review fingerprints, support hashes, retrieval
 detail schema, and online evaluation taxonomy all change together. The old
 `whole_block_fallback` signal remains immutable historical evidence; the new
-contract records fragment/compiler and Primary-eligibility-policy identity,
+contract records fragment/compiler and authority/segmentation-policy identity,
 selected role counts, attempted Primary eligibility, a content-free selection
 fingerprint, resolved
 part ranges and hashes, and explicit rejection or review reasons without
