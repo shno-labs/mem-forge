@@ -341,6 +341,22 @@ Configured Source, Source Unit Revision, and access context. The resolver sorts
 the durable Required set by canonical Fragment order before hashing, so model
 array order is not business identity.
 
+Extraction version selection is capability-driven rather than inferred from a
+numeric suffix. One registry describes every readable historical contract and
+its behavior, currently whether it uses the Fragment catalog. A separate
+mapping selects the sole active contract from the durable Support scope:
+
+```text
+reference-set-v1     -> projection-extraction-v8  (legacy planner)
+evidence-unit-set-v2 -> projection-extraction-v9  (Fragment compiler)
+```
+
+Normal extraction, durable replay, batch identity, and startup recovery resolve
+the same descriptor. Promoting a future compiler-backed v10 therefore adds its
+descriptor and changes the active mapping; callers do not add `v9 or v10`
+branches. Historical v8 and v9 descriptors remain readable for audit and exact
+replay even when neither is active.
+
 The prompt presents `primary_candidates` and `required_only_candidates`
 separately. If a durable claim is stated only by Required-only historical
 Context and no Primary candidate directly states it, the model must return an
@@ -862,13 +878,28 @@ model-facing Fragment references remain local to that reconstruction.
 After a batch completes, the durable derivation output contains only resolved
 Evidence Units and References. Scheduler recovery reuses that output and may
 apply it only when the target revisions and semantic preparation authority
-still match. Within the same process, a Deferred Prepared Lifecycle Intent may
+still match. Recovery selects the active extraction contract through the same
+Support-scope resolver as normal extraction. It resumes only the current Source
+activity epoch and active contract. Inactive-contract pending or retryable work
+is terminally classified with `CONTRACT_SUPERSEDED`; completed inactive-contract
+output remains immutable audit history and is neither rewritten nor applied as
+current work. Within the same process, a Deferred Prepared Lifecycle Intent may
 accept only Support topology and derived Memory timestamp/corroboration changes
 caused by its declared same-run blockers; Memory content, status, visibility,
 owner, validity, gate, or access-context changes reject it. A process restart
 discards the transient intent and falls back to ordinary durable derivation
 recovery. It never recompiles under a newer profile while pretending to resume
 the old batch, and no replay ledger or fragment lifecycle state is added.
+
+Terminal derivations already misclassified before this resolver exists are not
+automatically reactivated, replaced by successor generations, or treated as
+current work. Correcting such data is a separately authorized operational
+action over an exact manifest cohort. It must verify the active contract,
+Source activity epoch, projection/context/batch hashes, completed batches,
+absence of a newer eligible attempt, absence of an applied Lifecycle Plan, and
+the still-eligible target revision. The failed Source Sync and terminal history
+remain auditable; ordinary runtime recovery retains its fail-closed rejection
+of `superseded` attempts.
 
 ## Retrieval projection
 

@@ -399,7 +399,14 @@ than private planner state. At minimum they prove:
 11. repeated compilation of the same inputs produces the same catalog and
     policy digest;
 12. a Required change invalidates the complete Evidence Unit while unselected
-    Context does not.
+    Context does not;
+13. normal extraction, replay, and startup recovery resolve one registered
+    active extraction-contract descriptor from the durable Support scope, so a
+    future compiler-backed contract is promoted without version-specific caller
+    branches;
+14. inactive-contract pending/retryable derivations receive the typed
+    `CONTRACT_SUPERSEDED` disposition, while completed inactive-contract output
+    remains immutable audit history.
 
 For a persisted incident, bounded verification should rehydrate the stored
 Source Projection and derivation batch, compile the old and proposed catalogs,
