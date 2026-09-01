@@ -752,14 +752,20 @@ NOOP revalidation scopes v2 incumbents by Evidence Unit id; the legacy v1 path
 continues to scope by Evidence Reference id. For every affected Unit, the
 application recompiles each current supporting Observation through its declared
 representation. A structured support judgment that accepts changed Required
-material must return one exact current quote for each affected Required
-Observation; the application resolves those quotes to one current Fragment and
-rebuilds the complete Unit. A missing, foreign, duplicate, or ambiguous quote
-stages the existing Review-safe outcome rather than widening authority. The
-shared stale/incomplete Unit-support postcondition remains transactional and
-fail-closed. Its deterministic failure is non-retryable within the Source sync,
-because repeating extraction or reconciliation cannot repair the same invalid
-plan; transport and provider failures retain their bounded retry policy.
+material receives one transient selector per affected Required Reference and
+must return one exact current presentation quote for every selector. Distinct
+Required References retain distinct selectors even when they belong to the same
+Observation. The shared representation compiler maps decoded canonical-record
+quotes, including escaped newlines, quotes, and Unicode, back to exact raw JSON
+ranges; lifecycle code never tests decoded presentation text against raw record
+content. The catalog Resolver then materializes the complete Unit. Expected
+ambiguous or unpresentable selection stages the existing Review-safe outcome;
+compiler or resolver contract violations propagate as failures rather than
+being misclassified as lifecycle Review. The shared stale/incomplete
+Unit-support postcondition remains transactional and fail-closed. Its
+deterministic failure is non-retryable within the Source sync, because repeating
+extraction or reconciliation cannot repair the same invalid plan; transport and
+provider failures retain their bounded retry policy.
 
 Reconciliation still requires complete Mandatory Incumbent Scope coverage.
 Fragment compilation and revalidation can prove Evidence selection, but cannot
