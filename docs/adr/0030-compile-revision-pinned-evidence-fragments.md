@@ -755,7 +755,12 @@ representation. A structured support judgment that accepts changed Required
 material receives one transient selector per affected Required Reference and
 must return one exact current presentation quote for every selector. Distinct
 Required References retain distinct selectors even when they belong to the same
-Observation. The shared representation compiler maps decoded canonical-record
+Observation. Revalidation first groups supporting parts by Evidence Unit id. A
+single Unit is rebound as one indivisible alternative; multiple independent
+Units in the same affected Source Unit are not flattened or arbitrarily chosen.
+Until the lifecycle operation shape can replace several alternatives atomically,
+that case is typed ambiguous and preserves every incumbent Support through
+Review. The shared representation compiler maps decoded canonical-record
 quotes, including escaped newlines, quotes, and Unicode, back to exact raw JSON
 ranges; lifecycle code never tests decoded presentation text against raw record
 content. The catalog Resolver then materializes the complete Unit. Expected
