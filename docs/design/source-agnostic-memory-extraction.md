@@ -155,22 +155,24 @@ Source Unit contents.
 Conceptually, the model sees:
 
 ```json
-[
-  {
-    "ref": "f000004",
-    "kind": "text",
-    "type": "paragraph",
-    "text": "Set the production timeout to 60 seconds.",
-    "primary_eligible": false
-  },
-  {
-    "ref": "f000012",
-    "kind": "text",
-    "type": "paragraph",
-    "text": "Approved. Apply this to production.",
-    "primary_eligible": true
-  }
-]
+{
+  "primary_candidates": [
+    {
+      "ref": "p000012",
+      "kind": "text",
+      "type": "paragraph",
+      "text": "Approved. Apply this to production."
+    }
+  ],
+  "required_only_candidates": [
+    {
+      "ref": "r000004",
+      "kind": "text",
+      "type": "paragraph",
+      "text": "Set the production timeout to 60 seconds."
+    }
+  ]
+}
 ```
 
 The model returns generated canonical Memory text and transient selectors:
@@ -183,20 +185,28 @@ The model returns generated canonical Memory text and transient selectors:
   "entity_refs": [],
   "valid_from": null,
   "valid_until": null,
-  "primary_ref": "f000012",
-  "required_refs": ["f000004"]
+  "primary_ref": "p000012",
+  "required_refs": ["r000004"]
 }
 ```
 
 The model does not return Evidence text, Observation or Revision IDs, offsets,
-hashes, representation profiles, Context refs, or lifecycle actions. Uniform
-`f...` references remain catalog-local; role-prefixed durable identity and a
-dynamic enum schema are unnecessary.
+hashes, representation profiles, Context refs, or lifecycle actions. Typed
+`p...` and `r...` refs remain catalog-local and transient. They encode only
+model-facing capability: `primary_ref` accepts `p...`; `required_refs` accepts
+both. They are not durable role-prefixed identity, and no dynamic enum schema
+is required.
+
+If no durable claim is directly stated in `primary_candidates`, the model must
+return `{"memories": []}` even when Required-only historical Context contains
+strong durable knowledge. Required-only Context may clarify a current claim;
+it cannot authorize re-extraction of an old one.
 
 The Resolver fails closed unless all of these hold:
 
 - exactly one `primary_ref` resolves in this catalog;
-- the Primary Fragment has `primary_eligible=true`;
+- the Primary selector uses the `p...` namespace and resolves to a
+  Primary-capable Fragment;
 - every Required ref resolves in the same catalog;
 - the LLM admission boundary removes redundant Required refs exactly once,
   including any repeat of the singular Primary, before canonical catalog
@@ -281,8 +291,9 @@ Primary-from-authorized-work, not Primary-from-delta.
 
 Retries must reconstruct the same workset, candidate catalog, policy contract,
 and digest. A changed Primary-eligibility policy requires a new extraction or
-authority-policy discriminator so a completed batch under the old policy cannot
-be silently reused.
+authority-policy discriminator. A changed model presentation policy similarly
+changes only v9 Source Derivation input identity, so a completed batch under
+the old flat selector presentation cannot be silently reused.
 
 ## Candidate Durability and Uniqueness
 
