@@ -306,6 +306,14 @@ per-Unit updates and authoritative tombstones. Only Support topology changes
 owned by the exact typed same-run blockers may be rematerialized. No model call,
 dependency graph, or durable retry state is part of convergence.
 
+MemoryEngine presents this behavior through one prepare-and-commit interface
+and one retry-deferred interface. Deferred work crosses the seam as an opaque
+handle plus content-free blocking Source Unit ids. The Source orchestrator supplies
+only the current run's eligible Unit/tombstone ids and owns the three-round
+budget; topology snapshots, owner authorization, semantic authority guards,
+attempt accounting, Plan rematerialization, and idempotency stay private to
+MemoryEngine.
+
 ## Candidate Durability and Uniqueness
 
 All extraction batches for one Source Unit Revision are aggregated before any
