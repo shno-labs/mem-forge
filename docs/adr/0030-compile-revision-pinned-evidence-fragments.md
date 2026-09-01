@@ -337,6 +337,18 @@ Configured Source, Source Unit Revision, and access context. The resolver sorts
 the durable Required set by canonical Fragment order before hashing, so model
 array order is not business identity.
 
+Provider output can redundantly repeat a Required ref or repeat the singular
+`primary_ref` inside `required_refs`. Before candidate admission, the application
+removes Primary from Required and de-duplicates Required by first occurrence;
+the Resolver then applies canonical Fragment order. This repair is exact and
+does not choose, guess, or widen a reference. Unknown, malformed, stale,
+cross-catalog, inaccessible, and Primary-ineligible refs still fail closed.
+Normalization emits only a bounded removed-ref count and fingerprint, never
+Evidence text or raw transient refs. A well-formed selector and its resulting
+Evidence Unit identity remain unchanged. Runtime evaluator contract 3 classifies
+a successfully normalized and resolved selector as accepted while retaining its
+degraded normalization reason for operational visibility.
+
 Every catalog entry exposes whether it is Primary-eligible. The model may choose
 `primary_ref` only from current authorized work and may choose `required_refs`
 from any selectable current Fragment in the catalog. Application code determines

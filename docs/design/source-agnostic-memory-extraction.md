@@ -198,7 +198,8 @@ The Resolver fails closed unless all of these hold:
 - exactly one `primary_ref` resolves in this catalog;
 - the Primary Fragment has `primary_eligible=true`;
 - every Required ref resolves in the same catalog;
-- Primary and Required refs are duplicate-free;
+- redundant Required refs are deterministically removed, including any repeat
+  of the singular Primary, before canonical catalog ordering;
 - every selected Fragment is current, exact, access-compatible, and within the
   supplied Artifact and batch budgets;
 - the catalog, policy contract, and stale guards match the work being applied.
