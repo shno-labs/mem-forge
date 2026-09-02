@@ -883,13 +883,29 @@ Support-scope resolver as normal extraction. It resumes only the current Source
 activity epoch and active contract. Inactive-contract pending or retryable work
 is terminally classified with `CONTRACT_SUPERSEDED`; completed inactive-contract
 output remains immutable audit history and is neither rewritten nor applied as
-current work. Within the same process, a Deferred Prepared Lifecycle Intent may
+current work.
+
+Current-policy planning then classifies one readable recovery disposition:
+
+- `RESUME_EXACT_DERIVATION`: produced and stored derivation identities match.
+  Completed batch output is reused without a model call; incomplete work runs
+  only its missing exact batches. Lifecycle commit applies that same identity.
+- `COMMIT_POLICY_REPLACEMENT`: the current presentation/authority policy
+  produces a different manifest identity. The stored attempt is terminally
+  classified as `DERIVATION_INPUT_SUPERSEDED`; current extraction and lifecycle
+  commit both use the replacement identity. If replacement commit fails, its
+  completed derivation remains recoverable while the policy-stale attempt is
+  never reactivated.
+
+This pure recovery-commit plan replaces caller-side status branching and keeps
+extraction runtime events, durable derivation state, and lifecycle commit on the
+same attempt identity. Within the same process, a Deferred Prepared Lifecycle
+Intent may
 accept only Support topology and derived Memory timestamp/corroboration changes
 caused by its declared same-run blockers; Memory content, status, visibility,
 owner, validity, gate, or access-context changes reject it. A process restart
 discards the transient intent and falls back to ordinary durable derivation
-recovery. It never recompiles under a newer profile while pretending to resume
-the old batch, and no replay ledger or fragment lifecycle state is added.
+recovery. No replay ledger or fragment lifecycle state is added.
 
 Terminal derivations already misclassified before this resolver exists are not
 automatically reactivated, replaced by successor generations, or treated as
