@@ -410,7 +410,11 @@ than private planner state. At minimum they prove:
 15. recovery classifies exact-manifest resume versus current-policy replacement
     before lifecycle commit; the derivation that produced extraction output is
     the same derivation marked applied, and a policy-stale attempt is explicitly
-    superseded rather than silently receiving the replacement result.
+    superseded rather than silently receiving the replacement result;
+16. compiler-backed range planning packs complete representation-owned
+    structural units, assigns each unit one Primary batch owner, and returns a
+    typed capacity outcome when one protected unit exceeds the presentation
+    budget; it never slices or widens authority to make a batch fit.
 
 For a persisted incident, bounded verification should rehydrate the stored
 Source Projection and derivation batch, compile the old and proposed catalogs,

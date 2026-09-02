@@ -357,6 +357,31 @@ descriptor and changes the active mapping; callers do not add `v9 or v10`
 branches. Historical v8 and v9 descriptors remain readable for audit and exact
 replay even when neither is active.
 
+### Representation-owned structural segmentation
+
+Compiler-backed range planning never cuts source text at an arbitrary character
+offset. One private representation-owned planning seam discovers complete
+structural units inside an already Primary-authorized Observation. It does not
+grant, widen, clip, or repair authority. The Batch Planner greedily packs exact
+unit ranges under its presentation budget and assigns each unit to exactly one
+Primary batch.
+
+For `markdown-structural`, protected units are complete paragraphs (including
+inline HTML), top-level list items with their nested subtree, whole tables,
+fenced or indented code, blockquotes, headings, and raw HTML blocks. Adjacent
+units remain broadly grouped while they fit. V9 does not duplicate Primary
+units through character overlap; optional neighboring Context may contain only
+complete Required-only units. `plain-text` uses complete paragraphs. Canonical
+records remain whole-authority until field compilation, including nested
+Markdown after JSON decoding, and binary Artifacts remain whole-Observation.
+
+One protected unit larger than the presentation budget returns the typed
+`structural_unit_too_large` planning outcome. It is not character-split or
+authority-widened. Multi-window discovery and adjudication for an oversized
+complete Fragment remains #365. This decision advances the compiler-backed
+authority policy from 3 to 4; legacy v8 retains policy 2 and its bounded
+character-window contract.
+
 The prompt presents `primary_candidates` and `required_only_candidates`
 separately. If a durable claim is stated only by Required-only historical
 Context and no Primary candidate directly states it, the model must return an
