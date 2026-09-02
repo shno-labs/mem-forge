@@ -13,7 +13,8 @@
 
 ## Source synchronization
 
-- **Source Lifecycle** — Whether a configured source is active or paused. Lifecycle is independent of where collection executes and whether the current device can perform that collection.
+- **Source Lifecycle** — Whether a configured source is active, paused, or retired. Lifecycle is independent of where collection executes and whether the current device can perform that collection.
+- **Functional Source Removal** — The owner-authorized transition of a configured Source to retired. It removes current Support and projections while preserving immutable Evidence and lifecycle history; it is not privacy erasure.
 - **Local Execution** — Collection work that must run through the source owner's MemForge daemon on a user-controlled device.
 - **Device Readiness** — Whether the source owner's local daemon is recently connected and able to accept collection work.
 - **Connection Readiness** — Whether a source-specific connection dependency, such as an authenticated browser session, is usable or requires user action.
@@ -22,6 +23,7 @@
 - **Source Sync Activity** — The user-visible lifecycle of current or recent work to bring one source up to date. It can cover both collection from the source and processing into memories.
 - **Collection** — Reading source items and, when required, transferring them from the execution device to MemForge.
 - **Collection Manifest** — An attempt-scoped declaration of stable Source Item identities and opaque revisions. It describes discovered membership without carrying every item body.
+- **Input Snapshot Presence** — Whether a local collection attempt supplied an immutable input snapshot, including a valid empty snapshot. It selects local replay rather than live provider access and is independent of Collection Coverage.
 - **Collection Coverage** — The proof attached to one collection result: a Complete Snapshot covers the whole configured scope, a Bounded Delta covers only explicit changes since a checkpoint, and Partial coverage proves neither absence nor a safe checkpoint advance.
 - **Projection Scope Attestation** — Attempt-scoped control evidence that a connector completely and successfully checked the target projection scope required for a destructive absence decision. It is not content, a Source Unit, a lifecycle state, or an authority independent of the configured policy.
 - **Initial History** — The requested backfill horizon used to establish or expand a conversational Source. Time passing beyond this horizon never removes established Support.
