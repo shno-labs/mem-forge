@@ -77,6 +77,14 @@ gateway aliases remain outside the shared client and its business callers.
 `MemoryExtractor(api_key=...)` remains a provider-neutral standalone-library
 compatibility path; application runtimes inject the shared client instead.
 
+Amended: 2026-09-02 to make the existing bounded schema-repair retry
+transport-neutral and feedback-aware. A JSON-text response that fails local
+schema validation receives at most one repair attempt under the same logical
+deadline, concurrency permit, and shared retry budget whether JSON text was
+selected initially or reached from native-schema fallback. The repair prompt
+contains only bounded validation locations and rule types plus the existing
+schema; it never includes or persists the prior raw response.
+
 ## Context
 
 The source-processing path performs a document-wide enrichment call before
@@ -451,6 +459,17 @@ schema support uses the existing JSON-text path from its first attempt. An
 invalid native result may still make the one existing bounded transition to
 JSON text; a provider error does not. Provider transport constraints do not
 become domain fields, source-specific branches, or additional lifecycle states.
+
+Application schema repair is owned by the same structured-LLM seam rather than
+by business callers or LiteLLM's provider retry. When a JSON-text response is
+invalid and the shared retry budget remains, the seam may issue exactly one
+additional JSON-text attempt. Its prompt identifies a bounded set of local
+validation locations and rule types and reuses the original Pydantic schema;
+it does not include the invalid value or prior response body. The same rule
+applies when JSON text is the initial transport and when it follows a native
+schema failure. Exhausted provider, authentication, and logical-deadline
+failures never enter schema repair. A second invalid result remains fail-closed;
+the application does not coerce, case-fold, or map unknown enum values.
 
 The same boundary emits one content-free terminal metric per logical call
 containing issued attempts, transport retries, schema fallback count, final
