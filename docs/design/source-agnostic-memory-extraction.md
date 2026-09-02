@@ -406,7 +406,11 @@ than private planner state. At minimum they prove:
     branches;
 14. inactive-contract pending/retryable derivations receive the typed
     `CONTRACT_SUPERSEDED` disposition, while completed inactive-contract output
-    remains immutable audit history.
+    remains immutable audit history;
+15. recovery classifies exact-manifest resume versus current-policy replacement
+    before lifecycle commit; the derivation that produced extraction output is
+    the same derivation marked applied, and a policy-stale attempt is explicitly
+    superseded rather than silently receiving the replacement result.
 
 For a persisted incident, bounded verification should rehydrate the stored
 Source Projection and derivation batch, compile the old and proposed catalogs,
