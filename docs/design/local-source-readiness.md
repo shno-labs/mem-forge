@@ -6,14 +6,14 @@ Source rows use one readiness model regardless of connector type. The model keep
 
 | Concept | Question it answers | Examples |
 | --- | --- | --- |
-| Source Lifecycle | Should this configured source run? | `active`, `paused` |
+| Source Lifecycle | Should this configured source run? | `active`, `paused`, `retired` |
 | Local Execution | Where must collection run? | the source owner's MemForge daemon |
 | Device Readiness | Can that daemon accept work now? | online, checking, unavailable |
 | Connection Readiness | Can the connector access its upstream system? | ready, sign-in required, account mismatch |
 | Local Source Readiness | Can this device collect this source now? | Local sync ready, Local sync unavailable, Sign in required |
 | Source Readiness | The compact user outcome derived from execution and connection readiness. | Local sync ready, Sign in required, Finish setup |
 
-Source Lifecycle is always rendered independently. An active source can still be locally unavailable, and a paused source does not become active merely because its daemon is online.
+Source Lifecycle is always rendered independently. An active source can still be locally unavailable, a paused source does not become active merely because its daemon is online, and a retired source is absent from current discovery.
 
 ## Wire contract
 

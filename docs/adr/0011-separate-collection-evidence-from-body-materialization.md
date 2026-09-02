@@ -66,6 +66,13 @@ complete snapshot distinguishable from an upload that has not finished.
 Retrying the same attempt with different identities, revisions, change kinds,
 or coverage is rejected.
 
+Input Snapshot Presence is also preserved when the manifest contains zero
+items. Presence selects the local replay path and prevents a connector from
+falling back to live provider authentication. It does not make the snapshot
+authoritative: an empty `bounded_delta` remains non-destructive, while an empty
+`complete_snapshot` may authorize absence only through its separate validated
+Collection Coverage.
+
 An embedded SQLite job lease is revalidated in the same storage transaction as
 manifest attachment. Cloud's lease authority and HANA are separate durable
 stores, so Cloud validates the external lease immediately before the HANA
