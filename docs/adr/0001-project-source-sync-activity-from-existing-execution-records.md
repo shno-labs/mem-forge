@@ -4,7 +4,8 @@ Amended: 2026-07-29 to preserve run progress across lease recovery and fence
 exhausted attempts; 2026-08-08 to make the lease-fenced terminal transaction
 the authority for Source freshness and history; 2026-08-12 to preserve
 provider-neutral retryability across the pipeline and durable worker seam;
-2026-08-18 to defer retryable local collection jobs at the broker boundary.
+2026-08-18 to defer retryable local collection jobs at the broker boundary;
+2026-09-02 to terminalize jobs invalidated by a Source Activity epoch fence.
 
 Local collection jobs, server processing runs, and lifecycle-maintenance jobs keep their independent durable lifecycles because they have different owners, leases, retries, and storage transactions. The Sources UI consumes one Source Sync Activity read model projected from those records, rather than introducing a cross-store master operation or extending one execution record to own the others.
 
@@ -14,8 +15,11 @@ Local collection authority is continuous rather than an admission-only check. An
 explicit lease rejection fences the running attempt immediately, and failure to
 renew beyond the last confirmed lease deadline fences it locally even when the
 server is unreachable. A fenced daemon attempt stops at its next cooperative
-checkpoint and never submits a terminal completion; the durable job may then be
-leased as a new attempt. Local progress distinguishes provider discovery,
+checkpoint and never submits a terminal completion. A transient ownership loss
+may leave the durable job eligible for a new attempt, but a server-observed
+Source Activity epoch mismatch is irreversible: the server terminally fails the
+job as non-retryable before rejecting the heartbeat, so an invalidated job can
+never be leased again. Local progress distinguishes provider discovery,
 content fetching, and Cloud upload so a refresh-safe UI does not present a slow
 collection phase as a frozen previous phase.
 
