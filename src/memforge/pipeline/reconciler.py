@@ -217,14 +217,14 @@ async def reconcile_memories(
                 revision_proof_failure_count=revision_proof_failure_count,
             )
 
-    if not new_extractions and not existing_memories:
-        return _return_result([], metrics=metrics(), include_metadata=include_metadata)
-    if not existing_memories:
-        return _return_result(
-            [ReconcileOperation(action=ReconcileAction.ADD, memory=raw) for raw in new_extractions],
-            metrics=metrics(),
-            include_metadata=include_metadata,
-        )
+        if not new_extractions and not existing_memories:
+            return _return_result([], metrics=metrics(), include_metadata=include_metadata)
+        if not existing_memories:
+            return _return_result(
+                [ReconcileOperation(action=ReconcileAction.ADD, memory=raw) for raw in new_extractions],
+                metrics=metrics(),
+                include_metadata=include_metadata,
+            )
 
         operation = "classify_memory_relations"
         try:
