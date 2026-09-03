@@ -46,6 +46,7 @@ class RepositorySession:
         self.sha = HELLO_SHA
         self.size = len(HELLO)
         self.mode = "100644"
+        self.entry_type = "blob"
 
     def get(self, url, **kwargs):
         self.calls.append((url, kwargs))
@@ -53,7 +54,7 @@ class RepositorySession:
             return Response({"sha": "commit-one", "commit": {"tree": {"sha": "tree-one"}}})
         if "/git/trees/" in url:
             return Response({"truncated": False, "tree": [{
-                "path": "README.md", "type": "blob", "mode": self.mode,
+                "path": "README.md", "type": self.entry_type, "mode": self.mode,
                 "sha": self.sha, "size": self.size,
             }]})
         if "/contents/" in url:
@@ -157,6 +158,18 @@ async def test_optional_sizes_do_not_prevent_identity_verification(cloud_collect
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("length", ["", "+6", "-6", "６", "6.0"])
+async def test_supplied_invalid_http_lengths_fail_before_body_read(cloud_collection, length):
+    gene, session = cloud_collection
+    original_get = session.get
+    session.get = lambda url, **kwargs: (Response(body=HELLO, headers={"content-length": length})
+                                        if "/git/blobs/" in url else original_get(url, **kwargs))
+    item = [item async for item in gene.discover()][0]
+    with pytest.raises(RuntimeError, match="transport length"):
+        await gene.fetch(item)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("size", [-1, True, "6"])
 async def test_invalid_inventory_size_does_not_allow_a_body(cloud_collection, size):
     gene, session = cloud_collection
@@ -217,6 +230,8 @@ async def test_raw_bytes_verified_but_mixed_encoding_is_not_repaired(cloud_colle
 async def test_selected_non_regular_files_are_not_treated_as_text(cloud_collection, mode):
     gene, session = cloud_collection
     session.mode = mode
+    if mode == "160000":
+        session.entry_type = "commit"
     item = [item async for item in gene.discover()][0]
     with pytest.raises(RuntimeError, match="unsupported file mode"):
         await gene.fetch(item)
@@ -240,3 +255,94 @@ async def test_stream_stops_before_buffering_more_than_declared_size(cloud_colle
     with pytest.raises(RuntimeError, match="exceeds declared size"):
         await gene.fetch(item)
     assert chunks_read == [b"hello\n", b"extra"]
+
+
+@pytest.mark.asyncio
+async def test_text_larger_than_four_mib_keeps_existing_input_range(cloud_collection):
+    gene, session = cloud_collection
+    session.body = b"valid text\n" * 500_000
+    session.size = len(session.body)
+    session.sha = hashlib.sha1(b"blob " + str(session.size).encode() + b"\0" + session.body).hexdigest()
+    item = [item async for item in gene.discover()][0]
+    raw = await gene.fetch(item)
+    assert raw.body == session.body
+    assert (await gene.normalize(raw)).markdown_body == session.body.decode()
+
+
+@pytest.mark.asyncio
+async def test_unknown_lengths_still_bound_actual_stream_bytes(cloud_collection, monkeypatch):
+    monkeypatch.setattr("memforge.github_repo_utils.GITHUB_BLOB_MAX_BYTES", 5)
+    gene, session = cloud_collection
+    session.size = None
+    original_get = session.get
+    session.get = lambda url, **kwargs: (Response(body=HELLO, headers={})
+                                        if "/git/blobs/" in url else original_get(url, **kwargs))
+    item = [item async for item in gene.discover()][0]
+    with pytest.raises(RuntimeError, match="provider byte limit"):
+        await gene.fetch(item)
+
+
+@pytest.mark.parametrize("failure", ["overflow", "timeout", "network", "http"])
+def test_daemon_raw_transfer_failure_closes_process_and_never_processes(monkeypatch, failure):
+    session = RepositorySession()
+    real_popen = subprocess.Popen
+    processes = []
+
+    def metadata(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(
+            session.get("https://api.github.com/" + cmd[2]).json()), stderr="")
+
+    scripts = {
+        "overflow": "import sys,time; sys.stdout.buffer.write(b'too long'); sys.stdout.flush(); time.sleep(60)",
+        "timeout": "import time; time.sleep(60)",
+        "network": "import sys; sys.stderr.write('error connecting to GitHub'); sys.exit(1)",
+        "http": "import sys; sys.stderr.write('HTTP 403 Forbidden'); sys.exit(1)",
+    }
+
+    def raw_process(cmd, **kwargs):
+        process = real_popen([sys.executable, "-c", scripts[failure]], **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(main.subprocess, "run", metadata)
+    monkeypatch.setattr(main.subprocess, "Popen", raw_process)
+    monkeypatch.setattr(main, "GITHUB_RAW_TRANSFER_TIMEOUT_SECONDS", 0.5)
+    FakeToolClient.reset({})
+    job = {
+        "job_id": "laj-error", "attempt_count": 1, "workspace_id": "workspace-a",
+        "operation": "github_repo_sync", "source_id": "src-test",
+        "payload": {"repo_url": "https://github.com/example/repo", "ref": "main"},
+    }
+    if failure in {"timeout", "network"}:
+        # The runner owns the existing network-backoff classification.
+        with pytest.raises(main.GitHubProviderConnectionError):
+            main._run_cloud_local_agent_job(job, _cloud_test_client())
+    else:
+        result = main._run_cloud_local_agent_job(job, _cloud_test_client())
+        assert result["counts"]["failed"] == 1
+    [process] = processes
+    assert process.poll() is not None
+    assert process.stdout.closed and process.stderr.closed
+    assert not any(call[0] == "start_source_processing" for call in FakeToolClient.calls)
+
+
+def test_daemon_selected_gitlink_is_not_an_empty_complete_snapshot(monkeypatch):
+    session = RepositorySession()
+    session.mode = "160000"
+    session.entry_type = "commit"
+
+    def metadata(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(
+            session.get("https://api.github.com/" + cmd[2]).json()), stderr="")
+
+    monkeypatch.setattr(main.subprocess, "run", metadata)
+    FakeToolClient.reset({})
+    with pytest.raises(main.click.ClickException, match="unsupported file mode"):
+        main._run_cloud_local_agent_job({
+            "job_id": "laj-gitlink", "attempt_count": 1, "workspace_id": "workspace-a",
+            "operation": "github_repo_sync", "source_id": "src-test",
+            "payload": {"repo_url": "https://github.com/example/repo", "ref": "main",
+                        "include_paths": ["README.md"]},
+        }, _cloud_test_client())
+    assert not any(call[0] in {"prepare_local_source_snapshot", "start_source_processing"}
+                   for call in FakeToolClient.calls)

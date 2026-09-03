@@ -263,7 +263,7 @@ class GitHubRepoGene(Gene):
         selected = [
             entry
             for entry in entries
-            if entry.get("type") == "blob"
+            if entry.get("type") in {"blob", "commit"}
             and github_path_in_scope(str(entry.get("path") or ""), include_paths, exclude_paths)
             and github_extension_allowed(str(entry.get("path") or ""), include_exts)
         ]
@@ -380,10 +380,13 @@ class GitHubRepoGene(Gene):
                 response.raise_for_status()
                 if response.headers.get("content-encoding", "identity").lower() != "identity":
                     raise ValueError("GitHub raw blob returned unsupported content encoding")
+                length_header = response.headers.get("content-length")
+                if length_header is not None and not re.fullmatch(r"[0-9]+", str(length_header).strip()):
+                    raise ValueError("GitHub raw blob has an invalid transport length")
                 buffer = GitHubBlobBuffer(
                     sha=str(item.extra.get("blob_sha") or ""),
                     size=item.extra.get("blob_size"),
-                    content_length=parse_source_artifact_content_length(response.headers.get("content-length")),
+                    content_length=int(length_header) if length_header is not None else None,
                     label=str(item.extra.get("relative_path") or item.item_id),
                 )
                 async for chunk in _iter_response_chunks(response):

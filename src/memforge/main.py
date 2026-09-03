@@ -102,6 +102,7 @@ DEFAULT_KB_INCLUDE = [
 DEFAULT_KB_EXCLUDE = [".obsidian/**", ".trash/**", ".git/**", "**/.git/**"]
 LOCAL_MARKDOWN_SOURCE_TYPE = "local_markdown"
 GITHUB_REPO_SOURCE_TYPE = "github_repo"
+GITHUB_RAW_TRANSFER_TIMEOUT_SECONDS = 30.0
 JIRA_SOURCE_TYPE = "jira"
 DEFAULT_GITHUB_INCLUDE_EXTENSIONS = DEFAULT_INCLUDE_EXTENSION_LIST
 # Watch defaults. The tick interval is deliberately shorter than a typical Jira
@@ -561,7 +562,7 @@ def _github_text_blob(
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     stderr = bytearray()
-    deadline = time.monotonic() + 30.0
+    deadline = time.monotonic() + GITHUB_RAW_TRANSFER_TIMEOUT_SECONDS
     try:
         with selectors.DefaultSelector() as selector:
             selector.register(process.stdout, selectors.EVENT_READ, "body")
@@ -628,7 +629,7 @@ def _preview_github_profile(name: str, profile: dict[str, Any], *, limit: int | 
     items: list[dict[str, Any]] = []
     tree = _github_tree(repo, snapshot.root_tree_sha)
     for entry in tree:
-        if entry.get("type") != "blob":
+        if entry.get("type") not in {"blob", "commit"}:
             continue
         relative_path = str(entry.get("path") or "")
         if not github_path_in_scope(relative_path, include_paths, exclude_paths):
