@@ -17,11 +17,12 @@ mutation. Baseline OSS `a9f66532`, with local Python 3.12 and installed
    memory leak; these measurements do not establish leak behavior or justify a persistent cache.
    Complete structural context must be preserved; slicing raw Markdown before
    parsing would reintroduce the earlier broken-structure defect.
-3. The daemon downloads text into the entire `prepared` list before uploading.
+3. At the measured baseline, the daemon downloaded text into the entire `prepared` list before uploading.
    Therefore retained text scales with the sum of changed file bodies, not just
    the largest file. This is a genuine ownership/lifetime problem already in B's
-   approved per-document upload/release plan. That collection change is **not**
-   implemented by the parser optimization recorded here.
+   approved per-document upload/release plan. It was not fixed by the parser
+   optimization itself; the subsequent [collection lifetime repair](2026-09-03-github-collection-body-lifetime.md)
+   implements it separately without changing the wire protocol.
 
 ## One-variable comparison
 

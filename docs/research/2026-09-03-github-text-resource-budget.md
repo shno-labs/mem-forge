@@ -1,6 +1,8 @@
 # GitHub text resource budget refinement
 
-Status: design proposal, not implemented or approved for rollout. No source sync,
+Status: raw-byte design proposal, not approved for rollout. The subsequent
+[body-lifetime repair](2026-09-03-github-collection-body-lifetime.md) implements
+only the per-document retention improvement. No source sync,
 Memory mutation, production query or upstream content edit was performed.
 Code inspected: OSS `5aba41a8`; Cloud `776937c`.
 
