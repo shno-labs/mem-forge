@@ -97,6 +97,18 @@ capability:
   fully enumerated and compared by path and blob SHA. Truncated recursive trees
   are walked by subtree or fail closed, and required bodies are fetched by the
   pinned object identity.
+  Both server and daemon text collection use the raw Git Blobs representation,
+  not Contents or JSON/Base64 materialization. Each transfer is bounded while
+  reading by available inventory/transport lengths and the provider's 100 MB
+  Blob envelope, then checked against those lengths and its recomputed Git
+  object hash before strict UTF-8 decoding. This envelope is not an extraction
+  memory guarantee or a new smaller document-size policy. A supplied invalid
+  length, mismatch, incomplete response or invalid UTF-8 fails explicitly; no
+  byte replacement, encoding guess or alternate endpoint repairs Evidence.
+  Selected non-regular file modes are unsupported, not empty or absent files.
+  The configured ref and path retain stable file identity; resolved commit/tree
+  identities pin only the collection snapshot. Binary Artifacts retain their
+  separate streaming/admission contract and storage limits.
 - **Local Markdown** performs a portable complete configured-scope scan and
   content hash. It initially reads local bytes to establish revisions but
   uploads only changed bodies. Traversal, stat, read, decode, or mutation races
