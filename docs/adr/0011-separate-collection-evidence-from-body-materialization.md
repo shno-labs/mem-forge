@@ -29,6 +29,15 @@ collection interface:
 3. **Materialize** and upload only those required bodies, then run the existing
    Source Projection and lifecycle path.
 
+For sequential GitHub collection, materialization owns one required body through
+its synchronous upload and then releases it before fetching the next. The outer
+collection loop retains the complete manifest, counters and body-free receipts,
+not all document bodies. This is a body-lifetime constraint behind the existing
+single-document upload interface, not a new batch, queue or lifecycle state.
+Fetching/uploading progress may alternate per item; both use the same workset
+total, while failures remain explicit. Final processing still waits for complete
+manifest materialization/reuse, and lease rejection stops further collection.
+
 Collection Coverage has exactly three semantics:
 
 - `complete_snapshot` proves the full current configured scope. Only this
