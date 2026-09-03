@@ -16,8 +16,8 @@ from memforge.llm.structured import (
 )
 from memforge.models import RawMemory
 from memforge.pipeline.reconciler import reconcile_memories
-from test_relation_first_reconciliation import _memory, _relations_from_prompt
-from test_projected_lifecycle_integration import (
+from tests.test_relation_first_reconciliation import _memory, _relations_from_prompt
+from tests.test_projected_lifecycle_integration import (
     db as db,
     _projection,
     _seed_incumbent_support,
