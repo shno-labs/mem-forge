@@ -38,6 +38,17 @@ candidate-provenance guards reject stale completion. One selected candidate
 ledger is indivisible; slice budgets decide whether to start another work item,
 not whether to silently complete a truncated ledger.
 
+Source-row dependencies distinguish actual Configured/Managed Capture Sources
+from Direct User document provenance. The existing `user_memory` and
+`user_correction` namespaces do not require configured Source rows. They remain
+selected candidates subject to the same current Memory, persisted provenance,
+Support, access, and lease guards; a returned origin marker alone grants nothing.
+This distinction applies only to candidate provenance: the work's owning Source
+and Source-backed Support dependencies still require their real Source rows.
+Missing or unknown Source identities cannot be dropped to make completion pass.
+Adapters reuse the shared provenance rule within their native transaction and
+locking boundaries; no additional origin field or lifecycle state is persisted.
+
 The current Evidence Relation projection has two ownership planes. The
 authoritative Lifecycle write owns source-support relations and may rebuild the
 whole projection when source evidence changes. Post-commit discovery owns only
