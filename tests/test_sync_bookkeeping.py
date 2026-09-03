@@ -7179,11 +7179,14 @@ async def test_retryable_local_agent_completion_requeues_same_job(db: Database):
         retryable=True,
         now=now + timedelta(seconds=1),
     )
+    assert await db.lease_local_agent_jobs(
+        user_id="owner-a", limit=1, lease_seconds=60, now=now + timedelta(seconds=2),
+    ) == []
     second = await db.lease_local_agent_jobs(
         user_id="owner-a",
         limit=1,
         lease_seconds=60,
-        now=now + timedelta(seconds=2),
+        now=now + timedelta(hours=1, seconds=1),
     )
 
     assert completed is True

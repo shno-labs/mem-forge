@@ -5,7 +5,9 @@ exhausted attempts; 2026-08-08 to make the lease-fenced terminal transaction
 the authority for Source freshness and history; 2026-08-12 to preserve
 provider-neutral retryability across the pipeline and durable worker seam;
 2026-08-18 to defer retryable local collection jobs at the broker boundary;
-2026-09-02 to terminalize jobs invalidated by a Source Activity epoch fence.
+2026-09-02 to terminalize jobs invalidated by a Source Activity epoch fence;
+2026-09-03 to distinguish durable retry waiting from execution and bind manual
+retry to the displayed execution record.
 
 Local collection jobs, server processing runs, and lifecycle-maintenance jobs keep their independent durable lifecycles because they have different owners, leases, retries, and storage transactions. The Sources UI consumes one Source Sync Activity read model projected from those records, rather than introducing a cross-store master operation or extending one execution record to own the others.
 
@@ -35,6 +37,45 @@ Queued jobs persist their not-before timestamp, and SQLite and Cloud adapters
 must exclude them from leasing until that timestamp. Terminal completion clears
 the timestamp and remains visible as Action needed after the attempt budget is
 exhausted.
+
+Waiting for a not-before timestamp is not execution. The activity presenter
+shows a static waiting state, the next retry time, and an authorized Retry now
+action; it reserves Syncing and busy progress for actual execution. Manual sync
+(including the existing force entrypoint) may advance a pending/queued record's
+eligibility. Scheduled admission preserves its backoff. Neither action resets
+attempt counts or failure history, and a running lease is never preempted.
+
+An exact retry identifies both the execution kind and its existing ID. Retrying
+a server run after local collection must not recollect or upload the Source.
+The owning store validates source/workspace, authority, configuration and
+maintenance fences, conditionally advances the queued record, and returns its
+authoritative state. A stale click on a running or terminal record does not
+create new work. Ordinary new sync requests retain the existing successor rules
+for new configuration, snapshots and force intent; those are not exact retries.
+Schedule advancement and job admission remain one atomic transaction.
+
+HTTP acceptance and durable completion are separate. The browser releases the
+request state when admission returns and observes workspace-scoped existing
+job/run queries. Query errors are display errors, never synthetic failed jobs.
+A local completion receipt keeps Source refresh active until its server run (or
+a newer authoritative run) is visible. Configure and Delete remain protected
+while the Source has active work, even when Retry now is available. No combined
+task state machine or cross-store polling coordinator is introduced.
+
+Admission responses expose the accepted record's server-created timestamp and
+current status. The UI retains only this real receipt until the corresponding
+query observes that execution or a newer one; terminal responses need no pending
+receipt. This handles both query outages and short executions skipped by a
+latest-record view without comparing browser clocks. The UI
+uses an exact, authorized job/run read when the latest view cannot establish
+completion (including equal timestamps); timestamps are not an ordering token.
+Current Source-job listing selects canonical sync operations before limiting and grouping by Source;
+setup/auth jobs remain available through their own exact job reads.
+
+OSS local jobs add the nullable eligibility timestamp without backfilling old
+rows. Rolling back to a broker that ignores this column loses retry-delay
+enforcement; operators must stop affected executors if that guarantee is needed
+during rollback. The column and durable failure history are retained.
 
 Server-processing progress belongs to the durable run, not to one worker lease.
 After validating the Source and before constructing its runtime or calling its
