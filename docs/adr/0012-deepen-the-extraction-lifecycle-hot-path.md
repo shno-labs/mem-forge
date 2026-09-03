@@ -104,6 +104,27 @@ lifecycle decisions.
 
 ## Decision
 
+### Observe actual Source Unit execution without changing lifecycle authority
+
+Normal execution and derivation recovery share one context-local structured-call
+collector per admitted Source Unit. Reconciliation reads an interval of that
+collector; its counters describe calls actually executed, including failed and
+cancelled in-flight calls, not planned batches or only successful stages.
+Nested stages reuse the collector and concurrent Units remain isolated.
+
+Classifier failures preserve a content-free operation, terminal category and
+error code through reconciliation into the existing immutable runtime event.
+Absent optional diagnostics preserve the original event payload/hash contract.
+Caller cancellation remains cancellation, not a provider or schema failure.
+No additional retry is introduced and mandatory coverage still fails closed
+before an incomplete Lifecycle Plan can commit.
+
+An admitted Unit records one summary on exit, distinguishing committed,
+deferred, skipped and failed execution. A returned extraction error is failure,
+not success. Attempts filtered before execution do not fabricate summaries;
+read-only rebaseline preflight does not persist diagnostic rows. Diagnostic
+write failure must not mask the business result or replay an applied Plan.
+
 ### Keep extraction claim-sized and lifecycle authority explicit
 
 One structured semantic extraction pass runs per token-bounded Source Unit
