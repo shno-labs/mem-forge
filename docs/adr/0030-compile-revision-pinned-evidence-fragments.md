@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-08-27; amended 2026-09-01)
+Accepted (2026-08-27; amended 2026-09-03)
 
 MemForge will replace provider-returned evidence text, single coarse Block
 selection, quote matching, and whole-Block fallback with application-owned
@@ -136,6 +136,13 @@ paths and not one compiler class per Source type. Future HTML-only, PDF-page,
 email/MIME, or other formats enter through the same representation seam only
 when a real Source Observation contract can declare their coordinate space and
 revision identity.
+
+Structural planning consumes CommonMark block coordinates without materializing
+inline children. Fragment compilation still performs full inline parsing and
+offset-preserving HTML validation. This keeps planning allocation proportional
+to the structures it consumes without weakening selection or changing Fragment
+boundaries, profile versions, catalog digests, or lifecycle authority. Parser
+instances remain call-local; no process-wide parsed-document cache is introduced.
 
 Embedded HTML delegation is an internal seam of `markdown-structural`, not a
 second public profile decision. The model-visible Fragment text may use a

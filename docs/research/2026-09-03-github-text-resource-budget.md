@@ -136,11 +136,12 @@ the same incomplete workset.
 - Inventory and size-distribution checks before rollout are read-only. They do
   not authorize fetching all bodies, LLM processing, sync or upstream edits.
 
-If dense structures fail this gate, do not repeatedly guess smaller byte caps
-or add ad-hoc Markdown truncation. Determine the specific existing parser seam
-where a small resource guard can stop allocation; bring that bounded design
-back for review. A parser guard is not established by this transport proposal.
-Until this named risk and compatibility are verified, B is not production-ready.
+Do not repeatedly guess smaller byte caps or add ad-hoc Markdown truncation.
+The [subsequent parser evaluation](2026-09-03-parser-memory-evaluation.md)
+separates existing structural cost from unused inline planning and retained
+collection bodies. Remove measured waste first; a generic parser-budget system
+is not a default prerequisite for B. Input compatibility and resource
+non-regression still require verification before claiming B production-ready.
 
 ## Bounded local evidence
 
