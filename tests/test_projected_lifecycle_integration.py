@@ -31,6 +31,7 @@ from memforge.evals.agent_evaluation import (
     QualitySignal,
     bind_quality_signals,
     bind_source_lifecycle_outcome,
+    evaluate_runtime_events,
     record_quality_signal,
 )
 from memforge.memory.audit import MemoryAuditLogger
@@ -2988,6 +2989,100 @@ async def test_source_derivation_separates_exact_payload_hash_from_stable_identi
     assert next_epoch_attempt.id != first_attempt.id
     assert next_epoch_attempt.target_unit_revision_id == (first_attempt.target_unit_revision_id)
     assert next_epoch_attempt.context.source_activity_epoch == 2
+
+
+@pytest.mark.asyncio
+async def test_exact_terminal_derivation_replay_keeps_creation_runtime_facts(
+    db: Database,
+) -> None:
+    projection = _projection(
+        run_id="projection-terminal-replay",
+        body="The incremental base is unavailable.",
+    )
+    document = await db.get_document("confluence-123")
+    assert document is not None
+    context = SourceUnitDerivationContext(
+        document=document,
+        doc_type="confluence",
+        project_key="ENG",
+        repo_identifier=None,
+        document_content="The incremental base is unavailable.",
+        update_mode="full_document",
+        changed_hunks=None,
+        update_plan_stats=None,
+        source_updated_at=None,
+        user_id=None,
+        source_activity_epoch=None,
+    )
+    manifest = source_derivation_manifest(projection, (), context=context)
+    signal = QualitySignal(
+        event_name="evidence_authority_planning",
+        outcome="failed",
+        reason_code="INCREMENTAL_BASE_UNAVAILABLE",
+    )
+
+    first_events = bind_quality_signals(
+        (signal,),
+        source_id=manifest.source_id,
+        source_type=projection.source_type,
+        doc_id=document.doc_id,
+        source_unit_id=manifest.source_unit_id,
+        target_unit_revision_id=manifest.target_unit_revision_id,
+        projection_run_id=projection.run_id,
+        derivation_id=manifest.id,
+        batch_id="authority-planning",
+        batch_attempt=1,
+        extraction_contract_version=manifest.extraction_contract_version,
+        occurred_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        deployment_revision="deployment-a",
+    )
+    retry_events = bind_quality_signals(
+        (signal,),
+        source_id=manifest.source_id,
+        source_type=projection.source_type,
+        doc_id=document.doc_id,
+        source_unit_id=manifest.source_unit_id,
+        target_unit_revision_id=manifest.target_unit_revision_id,
+        projection_run_id=projection.run_id,
+        derivation_id=manifest.id,
+        batch_id="authority-planning",
+        batch_attempt=1,
+        extraction_contract_version=manifest.extraction_contract_version,
+        occurred_at=datetime(2026, 9, 2, tzinfo=timezone.utc),
+        deployment_revision="deployment-b",
+    )
+    assert first_events[0].event_id == retry_events[0].event_id
+    assert first_events[0].payload_hash != retry_events[0].payload_hash
+
+    first_attempt = await db.stage_source_derivation(
+        manifest,
+        runtime_events=first_events,
+        agent_assessments=evaluate_runtime_events(first_events),
+    )
+    retry_attempt = await db.stage_source_derivation(
+        manifest,
+        runtime_events=retry_events,
+        agent_assessments=evaluate_runtime_events(retry_events),
+    )
+
+    events = await db.list_agent_runtime_events(
+        AgentRuntimeEventQuery(
+            occurred_from=datetime(2026, 8, 31, tzinfo=timezone.utc),
+            occurred_to=datetime(2026, 9, 3, tzinfo=timezone.utc),
+            event_id=first_events[0].event_id,
+        )
+    )
+    assessments = await db.list_agent_assessments(
+        AgentAssessmentQuery(
+            occurred_from=datetime(2026, 8, 31, tzinfo=timezone.utc),
+            occurred_to=datetime(2026, 9, 3, tzinfo=timezone.utc),
+            target_event_id=first_events[0].event_id,
+        )
+    )
+
+    assert retry_attempt == first_attempt
+    assert events == list(first_events)
+    assert assessments == list(evaluate_runtime_events(first_events))
 
 
 def test_single_observation_uses_projection_authority_when_document_view_differs():

@@ -6062,6 +6062,8 @@ class Database:
                                 now,
                             ),
                         )
+                    await self._insert_agent_runtime_events_unlocked(runtime_events)
+                    await self._insert_agent_assessments_unlocked(agent_assessments)
                 else:
                     immutable_values = {
                         "source_id": manifest.source_id,
@@ -6111,8 +6113,6 @@ class Database:
                     ]
                     if actual_batches != expected_batches:
                         raise ValueError("Source derivation retry batch manifest mismatch")
-                await self._insert_agent_runtime_events_unlocked(runtime_events)
-                await self._insert_agent_assessments_unlocked(agent_assessments)
                 await self.db.commit()
                 return await self._source_derivation_attempt_unlocked(
                     str(existing["id"]) if existing is not None else manifest.id
