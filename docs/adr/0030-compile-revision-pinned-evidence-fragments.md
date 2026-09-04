@@ -1079,6 +1079,23 @@ explicitly skips LLM and lifecycle mutation. Exact retries reuse the stable
 failure identity; Online Evaluation groups them rather than treating every
 retry as a separate model failure.
 
+The staged derivation also persists the complete content-free authority-plan
+identity. Immediately before the atomic Projection/lifecycle commit, the store
+compares the Unit's current revision with that staged effective base. A mismatch
+raises the shared `AUTHORITY_PLAN_STALE` invariant on SQLite and HANA before the
+target Projection or any lifecycle mutation is written. For explicit reprocess,
+the effective base is the committed current revision even when the Projection
+delta itself has no previous revision.
+
+The deterministic evaluator maps this event to the
+`evidence_authority_planning` criterion. Presentation overflow is the typed
+`STRUCTURAL_UNIT_TOO_LARGE` planning result rather than an exception before
+staging. All-current reprocess authority requires an explicit source-sync
+operation identity and, for an existing revision, the same committed-base
+validation as ordinary incremental work. Existing Evidence-Unit revalidation
+remains owned by the revision-pinned NOOP revalidation compiler; it is not
+recast as new-candidate extraction authority.
+
 Changing which ranges are Primary-eligible changes batch admission semantics.
 The manifest and catalog digest must therefore carry an authority-policy or
 extraction-contract discriminator so completed work under an older policy is not

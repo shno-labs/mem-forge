@@ -115,64 +115,49 @@ The implementation must preserve all of these rules:
 
 ## 4. Module boundary
 
-### 4.1 Public interface
+### 4.1 Internal interface
 
-The intended external interface is equivalent to:
+The implemented extraction interface is intentionally smaller than the
+conceptual transition value considered during design:
 
 ```python
 plan_projection_evidence_work(
-    request: EvidenceWorkRequest,
-) -> ProjectionEvidenceWorkPlan | TypedPlanningFailure
+    target_projection,
+    committed_base_snapshot,
+    reprocess_all_current_observations,
+    extraction_contract_version,
+) -> tuple[ProjectionExtractionBatch, ...] | TypedPlanningFailure
 ```
 
-The request is one small discriminated value:
+`SourceUnitDeriver` binds this plan to the access-context and inference-
+capability hashes. `SourceUnitDerivationContext` carries the source-activity
+epoch and, for an all-current reprocess, the explicit source-sync operation ID.
+Those values participate in derivation identity without creating another
+public request hierarchy or persistent business state.
 
-```python
-EvidenceWorkRequest(
-    target_projection=...,
-    committed_base_snapshot=...,  # None only for Initial
-    transition=(
-        Initial()
-        | Incremental()
-        | Reprocess(
-            operation_id=...,
-            authorized_anchors=...,
-            all_current=False,
-        )
-        | Revalidate(
-            evidence_unit_ids=...,
-            authorized_anchors=...,
-        )
-    ),
-    access_context_hash=...,
-    source_activity_epoch=...,
-    inference_capability_hash=...,
-)
-```
-
-The transition variants mean:
+The supported extraction transitions mean:
 
 - `INITIAL`: the target Observation is newly introduced;
 - `INCREMENTAL`: compare the request's committed current base snapshot captured
   at staging with the staged target;
-- `REPROCESS`: authorize only exact operator-selected current Anchors; all-current
-  scope must be explicit and carry the authorizing operation identity;
-- `REVALIDATE`: authorize complete Primary and Required current/rebound ranges
-  for the named Evidence Units under the existing revalidation authority.
+- `REPROCESS`: all-current scope is explicit and carries the authorizing source
+  sync operation identity; when a previous revision exists, the same committed
+  base validation remains mandatory.
 
-Revalidation preserves Evidence Unit semantics: if a Required part changed, an
-unchanged incumbent Primary may remain Primary only because the revalidation
-command explicitly authorizes that current/rebound Primary together with every
-Required part. Independent Evidence Units are not flattened into one work item,
-and this planner does not grant the lifecycle action.
+NOOP Evidence-Unit revalidation is deliberately not routed through the new-
+candidate extraction planner. The existing revision-pinned revalidation
+compiler in `projection_fragments.py` authorizes the complete current/rebound
+Primary-plus-Required set for one named Evidence Unit. Keeping that separate
+prevents extraction scope from becoming lifecycle authority and avoids a second
+transition state machine. Independent Evidence Units are not flattened.
 
 The top-level committed base snapshot is one value containing the Unit revision and its complete
 Observation Revision membership. The caller cannot pass an unrelated Unit row
 and a separate arbitrary revision mapping. The planner verifies the snapshot's
 Unit ownership, complete membership, and equality with
 `RevisionDelta.previous_unit_revision_id`. `None` is valid only for `INITIAL`;
-`INCREMENTAL`, `REPROCESS`, and `REVALIDATE` all use the same committed base for
-plan identity and stale guards.
+`INCREMENTAL` and reprocessing an existing revision use the same committed base
+for plan identity and stale guards.
 
 The result contains:
 
@@ -492,7 +477,10 @@ safe runtime event/Finding:
 | `INCREMENTAL_BASE_UNAVAILABLE` | required committed base snapshot cannot be proven complete | keep target staged and base current; report/review; no fabricated full extraction |
 | `INCREMENTAL_AUTHORITY_UNMAPPABLE` | text change cannot map to exact target coordinates/structures | fail closed; no whole-document fallback |
 | `CANONICAL_FIELD_MAPPING_INVALID` | registered schema field/type/raw range is invalid | fail closed; do not authorize siblings |
+| `EVIDENCE_WORK_IDENTITY_INCOMPLETE` | active compiler work lacks its access-context or inference-capability identity | fail closed before the LLM; no unscoped batch reuse |
 | `REPRESENTATION_PROFILE_UNSUPPORTED` | staged target profile is unknown | retain collected content only in the existing non-selectable staging/raw store; do not make it the current inference Revision |
+| `REPROCESS_AUTHORIZATION_MISSING` | an all-current reprocess has no explicit source-sync operation identity | fail closed before the LLM; do not silently reuse ordinary incremental authority |
+| `STRUCTURAL_UNIT_TOO_LARGE` | one complete authorized structure cannot fit the presentation budget | fail closed and preserve the complete structure; do not split it or retry the LLM |
 | `AUTHORITY_PLAN_STALE` | base, target, policy, scope, or access context changed before apply | prepare a new derivation; do not reuse old output |
 
 Transient provider/model/transport failures keep their existing bounded retry.
@@ -509,6 +497,9 @@ that path.
 Fail-closed planning must not become an invisible application-log-only error.
 Before the attempt exits, the pipeline records one durable, content-safe runtime
 audit event even though the staged target never becomes the current Projection.
+The same attempt stores a canonical `authority_plan_identity` snapshot; it is
+immutable on exact retry and is the source of the apply-time stale guard rather
+than a value recomputed from mutable current state.
 The event contains enough identity for deterministic Online Evaluation:
 
 - outcome (`fail` or explicitly defined `degraded`) and typed reason code;
@@ -525,7 +516,9 @@ or unbounded parser errors. Exact retries keep attempt accounting but Online
 Evaluation groups the same base/target/policy failure by stable identity instead
 of presenting every retry as a new product issue.
 
-The deterministic evaluator must treat an unexpected mapping/profile/schema
+The deterministic evaluator maps `evidence_authority_planning` to the
+`evidence_authority_planning` criterion and labels a failed event `fail`. It
+must treat an unexpected mapping/profile/schema
 failure as a real authority-planning failure, not an extraction-model failure or
 an evaluator false positive. Its bounded verification points back to the staged
 base/target and stored plan/failure manifest; it must not require source
@@ -681,6 +674,12 @@ The fix is complete only when:
 - OSS/SQLite and Cloud/HANA contract behavior matches;
 - the canonical ADR, both PRs, CF deployment evidence and bounded live smokes
   are recorded against issue #390.
+
+The code and read-only deployment smoke may merge before the separately
+authorized post-watermark Source canary. Issue #390 remains open until the
+Markdown/Jira/Teams incremental canary and resulting Online Evaluation cohort
+are recorded; this does not authorize an ingestion rerun or historical data
+rewrite.
 
 This is a bounded design: one facade, three representation strategies, existing
 Source Projection and Evidence/lifecycle contracts, and no new business state.
