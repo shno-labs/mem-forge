@@ -819,42 +819,54 @@ Markdown/HTML/record Fragments are not promoted to stable identity.
 NOOP revalidation scopes v2 incumbents by Evidence Unit id; the legacy v1 path
 continues to scope by Evidence Reference id. For every affected Unit, the
 application recompiles each current supporting Observation through its declared
-representation. A structured support judgment that accepts changed Required
-material receives one transient selector per affected Required Reference and
-must return one exact current presentation quote for every selector. Distinct
-Required References retain distinct selectors even when they belong to the same
-Observation. Revalidation first groups supporting parts by Evidence Unit id. A
-single Unit is rebound as one indivisible alternative; multiple independent
-Units in the same affected Source Unit are not flattened or arbitrarily chosen.
-Until the lifecycle operation shape can replace several alternatives atomically,
-that case is typed ambiguous and preserves every incumbent Support through
-Review. The shared representation compiler maps decoded canonical-record
-quotes, including escaped newlines, quotes, and Unicode, back to exact raw JSON
-ranges; lifecycle code never tests decoded presentation text against raw record
-content.
+representation. One operation-local structural index is built at most once for
+each current supporting Revision and reused by every Memory in that operation.
+Each complete Evidence Unit then receives one bounded, claim-specific workset.
+The application prefers an exact current claim Fragment for Primary, an exact
+prior presentation or current-anchor overlap for each part, and otherwise a
+bounded deterministic lexical shortlist for a coarse whole-Observation anchor.
+This shortlist grants no authority and makes no semantic decision; the model
+still proves whether the complete claim is supported.
+
+The support model receives application-issued transient `fNNNNNN` references,
+Fragment type, presentation text, and bounded structural context. A supported
+response must return exactly one `primary_ref` and exactly one `evidence_ref`
+for every supplied Required selector. Distinct Required References retain
+distinct selectors even when they belong to the same Observation. Application
+code validates complete selector coverage, rejects duplicate or unknown refs,
+and passes the exact selected current Fragments directly to the ordinary
+Resolver. It does not ask the model to copy Evidence text and does not rematch a
+selected quote against the Revision.
+
+Revalidation first groups supporting parts by Evidence Unit id. A single Unit
+is rebound as one indivisible alternative; multiple independent Units in the
+same affected Source Unit are not flattened or arbitrarily chosen. Until the
+lifecycle operation shape can replace several alternatives atomically, that
+case is typed ambiguous and preserves every incumbent Support through Review.
 
 Revalidation does not present the complete current Observation Revision merely
 because one existing Evidence Unit must be rebound. The shared compiler first
-builds one ephemeral, complete structural index for each supporting Revision.
+builds the ephemeral, complete structural index for each supporting Revision.
 This index is local application state: it has no model-facing contract, prompt
-payload, persistent identity, or presentation budget. The resolver uses the
-prior revision-pinned Anchor plus the accepted current quote to require one
-unique current Fragment for every Primary and Required part. Only those exact
-current ranges are then compiled into the ordinary bounded catalog presented to
-the selector. The normal Fragment-count and presentation-character limits apply
-to that complete Evidence Unit; they do not apply to unrelated historical
-content in the same Revision. A selected Unit that itself exceeds the limits is
-still typed unpresentable, and an ambiguous remap remains fail-closed. Fatal
-profile or structural errors still invalidate the index, while diagnostics
-outside the selected Unit cannot make its bounded catalog unusable. This is one
-representation-profile-neutral path for Markdown, plain text, canonical records,
-and eligible binary Artifacts; source adapters do not implement revalidation
-catalog rules.
+payload, persistent identity, or presentation budget. Only the workset's exact
+current Fragments are presented and then compiled into the resolved Evidence
+Unit. The normal Fragment-count and presentation-character limits apply to that
+workset; they do not apply to unrelated historical content in the same
+Revision. Fatal profile or structural errors still invalidate the index, while
+diagnostics outside the selected Unit cannot make its bounded workset unusable.
+This is one representation-profile-neutral path for Markdown, plain text,
+canonical records, and current eligible binary Artifacts; source adapters do
+not implement revalidation catalog rules.
 
-The catalog Resolver then materializes the complete Unit. Expected
-ambiguous or unpresentable selection stages the existing Review-safe outcome;
-compiler or resolver contract violations propagate as failures rather than
-being misclassified as lifecycle Review. The shared Unit-support postcondition
+The catalog Resolver then materializes the complete Unit. Human Review is
+reserved for a semantic `supported=false` result or a genuinely unpresentable
+or indistinguishable current Evidence choice. Structured-model failure,
+missing/unknown/duplicate selectors, compiler failure, and capacity failure are
+retryable execution failures and do not create Review rows. They emit the
+content-safe `support_revalidation_failed` lifecycle runtime outcome with model
+call accounting. Successful executions report work-item count, reused Revision
+index count, total prompt characters, and automatic rebind count. The shared
+Unit-support postcondition
 remains transactional and fail-closed but is causal rather than global. A Plan
 is rejected when it introduces stale or incomplete Support, leaves invalid
 Support in its own Source Unit, or consumes stale cross-Unit Support to
@@ -1140,6 +1152,7 @@ reassessment of prior events, or deployment.
 - [Canonical whole-authority planning: shno-labs/mem-forge#363](https://github.com/shno-labs/mem-forge/issues/363)
 - [Generic multi-window extraction: shno-labs/mem-forge#365](https://github.com/shno-labs/mem-forge/issues/365)
 - [Bounded NOOP Support revalidation: shno-labs/mem-forge#392](https://github.com/shno-labs/mem-forge/issues/392)
+- [Operation-scoped Support revalidation and Review classification: shno-labs/mem-forge#394](https://github.com/shno-labs/mem-forge/issues/394)
 - [Artifact-aware legacy Support revalidation: shno-labs/mem-forge#332](https://github.com/shno-labs/mem-forge/issues/332)
 - [Exact recovery Memory cohorts: shno-labs/mem-forge#335](https://github.com/shno-labs/mem-forge/issues/335)
 - [ADR 0007: Bind extracted evidence to the current Source Projection](0007-bind-extracted-evidence-to-the-current-projection.md)
