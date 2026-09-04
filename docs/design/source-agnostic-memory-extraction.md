@@ -313,11 +313,23 @@ item-count cap: the model output budget scales with the complete selector set,
 and an unrepresentable result becomes a typed capacity limitation instead of a
 partial response.
 
+Because the static response schema cannot enumerate one transient workset's
+exact refs, a schema-valid but unknown, duplicate, or incomplete selection gets
+one application-owned correction call with the same workset and exact allowed
+refs. A valid correction continues normally. Exhaustion produces typed
+`support_revalidation_failed`, preserves existing Support, creates no Review,
+and stops the surrounding document retry from replaying extraction and relation
+work. This is one provider-neutral execution rule after representation-specific
+candidate construction, so it applies identically to Markdown, plain text,
+canonical records, and eligible Artifacts.
+
 Review is the last-resort semantic/authority outcome: `supported=false`, no
 presentable current Evidence, or candidates that remain indistinguishable after
 their representation type and bounded structural context are included. Model
-transport/schema failure and missing/unknown/duplicate refs are retryable
-execution failures. Unsupported representation, compiler-contract failure, and
+transport/schema failure retains bounded runtime retry. Missing, unknown, or
+duplicate refs receive one workset-local correction; exhausted correction is a
+typed execution failure that cannot replay the surrounding document.
+Unsupported representation, compiler-contract failure, and
 capacity exhaustion are non-retryable operational limitations. Neither creates
 a human Review. Runtime failures use `support_revalidation_failed`; typed
 operational outcomes use

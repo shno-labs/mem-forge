@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-08-27; amended 2026-09-04)
+Accepted (2026-08-27; amended 2026-09-05)
 
 MemForge will replace provider-returned evidence text, single coarse Block
 selection, quote matching, and whole-Block fallback with application-owned
@@ -846,6 +846,20 @@ Evidence Unit whose complete response cannot fit the supported output capacity
 fails as a typed processing-capacity limitation rather than being truncated or
 retried forever.
 
+The static response schema can validate the shape of `fNNNNNN` and `rNNNNNN`
+tokens, but it cannot encode the exact refs in one transient workset. When a
+schema-valid response selects an unknown ref, duplicates one Fragment across
+distinct Evidence parts, or omits a Required selector, application code makes
+at most one correction call against the same immutable workset and exact
+allowed-ref manifest. It does not rebuild the Revision index, rerun extraction,
+or rerun relation reconciliation. If the corrected response is still invalid,
+the Unit records `support_revalidation_failed` with the content-safe selector
+failure in `error_code`, preserves incumbent Support, creates no Review, and is
+non-retryable by the surrounding document loop. Provider/transport/schema
+failures retain their existing bounded
+structured-LLM retry contract; semantic `supported=false` retains the Review
+path.
+
 Revalidation first groups supporting parts by Evidence Unit id. A single Unit
 is rebound as one indivisible alternative; multiple independent Units in the
 same affected Source Unit are not flattened or arbitrarily chosen. Until the
@@ -868,8 +882,11 @@ not implement revalidation catalog rules.
 
 The catalog Resolver then materializes the complete Unit. Human Review is
 reserved for a semantic `supported=false` result or a genuinely unpresentable
-or indistinguishable current Evidence choice. Structured-model failure and
-missing/unknown/duplicate selectors are retryable execution failures.
+or indistinguishable current Evidence choice. Structured-model
+provider/transport/schema failure keeps its bounded runtime retry. A
+missing/unknown/duplicate selector receives the one workset-local correction
+defined above; exhausted correction is terminal for the surrounding document
+attempt rather than permission to replay earlier semantic stages.
 Unsupported representation, compiler-contract, and processing-capacity
 limitations are non-retryable operational failures. Neither class creates a
 Review row. Runtime failures emit `support_revalidation_failed`; operational
@@ -987,6 +1004,14 @@ caused by its declared same-run blockers; Memory content, status, visibility,
 owner, validity, gate, or access-context changes reject it. A process restart
 discards the transient intent and falls back to ordinary durable derivation
 recovery. No replay ledger or fragment lifecycle state is added.
+
+Dynamic selector correction is local to one Support-revalidation workset. Its
+at most two logical Support-validation calls, when needed, are counted in the
+same Agent Execution; provider/schema attempts inside each call remain separate
+transport telemetry. Once that bounded correction is exhausted, the generic
+document retry must not
+replay already-completed candidate admission, relation reconciliation, or
+other Support worksets merely to resample the same invalid selector.
 
 Terminal derivations already misclassified before this resolver exists are not
 automatically reactivated, replaced by successor generations, or treated as

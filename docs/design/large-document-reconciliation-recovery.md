@@ -1,6 +1,7 @@
 # 大文档 Memory 关系判断与恢复：修复方案
 
-状态：设计提案；不是已实现、已测试或已部署的声明。日期：2026-09-03。
+状态：分阶段落实。增量 Primary authority 与 bounded Support revalidation
+已经进入主线；多候选冲突 Review 仍是设计提案，不是已实现能力。日期：2026-09-05。
 
 代码核对基线：OSS `d4004b44`；Cloud `d31dc5bd`。共享语义由 OSS 维护，Cloud 实现相同契约。
 本文整理本次修复及独立设计评审结论。增量提取与重试基线属于已请求修复的范围；多候选 Review 是推荐的设计扩展，尚未批准为本次实现范围。既有 Accepted ADR 在修订获批前仍是当前契约。
@@ -171,6 +172,7 @@ A/B 指同一环境、时间和规则，不能同时成立；如果分别指测�
 | 情况 | 推荐处理 |
 | --- | --- |
 | 单次模型调用的暂时性错误或可恢复 schema 错误 | 现有 structured-LLM 层在同一逻辑预算内有限重试 |
+| Support revalidation 返回 schema 合法但不属于当前 workset 的 ref | 使用同一不可变小 workset 和 allowed-ref manifest 最多纠正一次；仍失败则终止该 Unit，不重跑 extraction/relation |
 | 逻辑调用预算耗尽、关系 ledger 不完整 | 不提交 Unit Plan；保留精确失败和已有提取结果；本轮不再透明重放整个关系矩阵 |
 | 完整判断发现 A/B 不相容 | 按第 5 节形成 Review 业务结果，不靠再次采样期待矛盾消失 |
 | 已准备好 Plan，只是可修复的提交依赖未就绪 | 保留既有 Deferred / commit-only retry，不重跑 LLM |
