@@ -2445,13 +2445,15 @@ async def test_atomic_projection_lifecycle_commits_document_and_derivation(
         user_id=None,
         source_activity_epoch=None,
     )
-    attempt = await db.stage_source_derivation(
-        source_derivation_manifest(
-            second,
-            (),
-            context=context,
+    attempt = (
+        await db.stage_source_derivation(
+            source_derivation_manifest(
+                second,
+                (),
+                context=context,
+            )
         )
-    )
+    ).attempt
     assert attempt.context.document == staged_document
     delta = second.deltas[0]
     scope = ReconciliationScope(
@@ -2655,9 +2657,11 @@ async def test_atomic_projection_lifecycle_fences_other_sqlite_writers_before_ba
         user_id=None,
         source_activity_epoch=None,
     )
-    attempt = await db.stage_source_derivation(
-        source_derivation_manifest(second, (), context=context)
-    )
+    attempt = (
+        await db.stage_source_derivation(
+            source_derivation_manifest(second, (), context=context)
+        )
+    ).attempt
     delta = second.deltas[0]
     plan = build_lifecycle_plan(
         plan_id="plan-derivation-fence",
@@ -2974,14 +2978,21 @@ async def test_source_derivation_separates_exact_payload_hash_from_stable_identi
         ).hexdigest()
     )
 
-    first_attempt = await db.stage_source_derivation(first_manifest)
-    retry_attempt = await db.stage_source_derivation(second_manifest)
+    first_stage = await db.stage_source_derivation(first_manifest)
+    retry_stage = await db.stage_source_derivation(second_manifest)
     next_epoch_manifest = source_derivation_manifest(
         second,
         (),
         context=replace(context, source_activity_epoch=2),
     )
-    next_epoch_attempt = await db.stage_source_derivation(next_epoch_manifest)
+    next_epoch_stage = await db.stage_source_derivation(next_epoch_manifest)
+
+    first_attempt = first_stage.attempt
+    retry_attempt = retry_stage.attempt
+    next_epoch_attempt = next_epoch_stage.attempt
+    assert first_stage.created is True
+    assert retry_stage.created is False
+    assert next_epoch_stage.created is True
 
     assert retry_attempt.id == first_attempt.id
     assert retry_attempt.projection_payload_hash == first_manifest.projection_payload_hash
@@ -3054,16 +3065,18 @@ async def test_exact_terminal_derivation_replay_keeps_creation_runtime_facts(
     assert first_events[0].event_id == retry_events[0].event_id
     assert first_events[0].payload_hash != retry_events[0].payload_hash
 
-    first_attempt = await db.stage_source_derivation(
+    first_stage = await db.stage_source_derivation(
         manifest,
         runtime_events=first_events,
         agent_assessments=evaluate_runtime_events(first_events),
     )
-    retry_attempt = await db.stage_source_derivation(
+    retry_stage = await db.stage_source_derivation(
         manifest,
         runtime_events=retry_events,
         agent_assessments=evaluate_runtime_events(retry_events),
     )
+    first_attempt = first_stage.attempt
+    retry_attempt = retry_stage.attempt
 
     events = await db.list_agent_runtime_events(
         AgentRuntimeEventQuery(
@@ -3081,6 +3094,8 @@ async def test_exact_terminal_derivation_replay_keeps_creation_runtime_facts(
     )
 
     assert retry_attempt == first_attempt
+    assert first_stage.created is True
+    assert retry_stage.created is False
     assert events == list(first_events)
     assert assessments == list(evaluate_runtime_events(first_events))
 
@@ -3157,7 +3172,7 @@ async def test_projection_extraction_contract_change_invalidates_staged_derivati
         context=context,
         extraction_contract_version="projection-extraction-v2",
     )
-    previous_attempt = await db.stage_source_derivation(previous)
+    previous_attempt = (await db.stage_source_derivation(previous)).attempt
     for batch in previous_batches:
         previous_attempt = await db.record_source_derivation_batch_result(
             derivation_id=previous.id,
@@ -3250,7 +3265,7 @@ async def test_batch_result_and_runtime_events_rollback_together(db: Database) -
             runtime_events=(invalid_event,),
         )
 
-    attempt = await db.stage_source_derivation(manifest)
+    attempt = (await db.stage_source_derivation(manifest)).attempt
     assert attempt.batches[0].status == "pending"
 
 
@@ -3337,25 +3352,27 @@ async def test_noop_without_current_evidence_rolls_back_stale_support(db: Databa
         title="Must roll back",
         content_hash=content_hash("A7 is retained."),
     )
-    attempt = await db.stage_source_derivation(
-        source_derivation_manifest(
-            second,
-            (),
-            context=SourceUnitDerivationContext(
-                document=staged_document,
-                doc_type="confluence",
-                project_key="ENG",
-                repo_identifier=None,
-                document_content="A7 is retained.",
-                update_mode="full_document",
-                changed_hunks=None,
-                update_plan_stats=None,
-                source_updated_at=None,
-                user_id=None,
-                source_activity_epoch=None,
-            ),
+    attempt = (
+        await db.stage_source_derivation(
+            source_derivation_manifest(
+                second,
+                (),
+                context=SourceUnitDerivationContext(
+                    document=staged_document,
+                    doc_type="confluence",
+                    project_key="ENG",
+                    repo_identifier=None,
+                    document_content="A7 is retained.",
+                    update_mode="full_document",
+                    changed_hunks=None,
+                    update_plan_stats=None,
+                    source_updated_at=None,
+                    user_id=None,
+                    source_activity_epoch=None,
+                ),
+            )
         )
-    )
+    ).attempt
 
     with pytest.raises(ValueError, match="stale or ambiguous source support"):
         await db.apply_source_projection_lifecycle(

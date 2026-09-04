@@ -512,15 +512,35 @@ async def test_missing_v9_authority_base_is_durable_and_skips_the_llm(
         access_context_hash="access-unmappable-authority",
         inference_capability_hash="inference-unmappable-authority",
     )
+    published_events: list[tuple] = []
+    published_assessments: list[tuple] = []
+
+    class RuntimeSink:
+        def publish(self, events):
+            published_events.append(events)
+
+    class AssessmentSink:
+        def publish(self, assessments, events):
+            published_assessments.append((assessments, events))
+
+    deriver = SourceUnitDeriver(
+        db,
+        runtime_event_trace_sink=RuntimeSink(),
+        agent_assessment_sink=AssessmentSink(),
+    )
     monkeypatch.setenv("MEMFORGE_DEPLOYMENT_REVISION", "deployment-a")
 
-    result = await SourceUnitDeriver(db).derive(request)
+    result = await deriver.derive(request)
 
     monkeypatch.setenv("MEMFORGE_DEPLOYMENT_REVISION", "deployment-b")
-    replay = await SourceUnitDeriver(db).derive(request)
+    replay = await deriver.derive(request)
 
     assert extractor_called is False
     assert replay.derivation == result.derivation
+    assert len(published_events) == 1
+    assert published_events[0][0].deployment_revision == "deployment-a"
+    assert len(published_assessments) == 1
+    assert published_assessments[0][1] == published_events[0]
     assert result.extraction.error_type == "evidence_authority_planning_failed"
     assert result.derivation.status == "completed"
     assert (
