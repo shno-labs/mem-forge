@@ -105,7 +105,26 @@ capability:
   memory guarantee or a new smaller document-size policy. A supplied invalid
   length, mismatch, incomplete response or invalid UTF-8 fails explicitly; no
   byte replacement, encoding guess or alternate endpoint repairs Evidence.
-  Selected non-regular file modes are unsupported, not empty or absent files.
+  A selected text path represented by Git mode `120000` is resolved within the
+  same complete immutable tree. The selected logical path remains Document
+  identity and source URL; the final regular target blob supplies the body and
+  provider revision. Resolution uses verified raw link blobs, POSIX-relative
+  paths, a 40-hop bound, cycle detection, and exact tree lookup. Absolute,
+  repository-escaping, broken, cyclic, or explicitly excluded targets fail
+  closed, as do targets that are not regular `100644` or `100755` blobs.
+  Include paths, extensions, and `max_files` apply to the selected logical path;
+  explicit exclusions also guard every dereferenced path. Symlinked binary
+  Artifacts, gitlinks, and other non-regular modes remain unsupported rather
+  than becoming empty or absent files. Cloud pull and daemon collection share
+  one resolver; only their verified blob transports differ.
+
+  The materialized package records the link chain and final resolved path as an
+  audit locator. The final content blob SHA remains the revision so retargeting
+  a link to byte-identical content does not manufacture semantic work. In that
+  no-content-change case a reused input retains its prior materialization-time
+  locator; the current attempt's immutable tree manifest remains the membership
+  proof. Locator metadata is not claimed to be a current link-state projection
+  on every no-op run.
   The configured ref and path retain stable file identity; resolved commit/tree
   identities pin only the collection snapshot. Binary Artifacts retain their
   separate streaming/admission contract and storage limits.
@@ -214,6 +233,8 @@ delivery failure cannot reverse the authoritative relational commit.
 - [ADR 0004: Use proven authoritative snapshots as the rebaseline corpus](0004-use-proven-authoritative-snapshots-for-rebaseline.md)
 - [ADR 0002: Renew Teams access through a dedicated browser session](0002-renew-teams-access-through-a-dedicated-browser-session.md)
 - [GitHub REST Git Trees](https://docs.github.com/rest/git/trees)
+- [Git repository contents and symlinks](https://docs.github.com/rest/repos/contents)
+- [Git object modes](https://git-scm.com/book/en/v2/Git-Internals-Git-Objects)
 - [Jira Cloud issue search](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-search/)
 - [Linux inotify](https://man7.org/linux/man-pages/man7/inotify.7.html)
 - [Apple File System Events](https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/FSEvents_ProgGuide/UsingtheFSEventsFramework/UsingtheFSEventsFramework.html)

@@ -19,6 +19,17 @@ GitHub Repository scope has three ordered filters:
 
 Paths are repository-relative, slash-normalized, reject `..`, and have one identity regardless of whether the tree API returns a folder with a trailing slash. Redundant descendants under an already-selected ancestor are collapsed before storage.
 
+A selected text path may be a Git symbolic link. MemForge resolves it only
+inside the same pinned complete Git tree and keeps the selected logical path as
+the single Source Unit identity. `include_paths`, `include_extensions`, and
+`max_files` apply to that logical path; the link target is not another selected
+document merely because it is a target, though it remains independently selected
+when it also matches the configured logical scope. Explicit exclusions guard
+every intermediate and final target. Unsafe,
+broken, cyclic, overlong, non-UTF-8, directory, gitlink, or binary-Artifact link
+resolution fails the attempt before manifest attachment. Cloud and local access
+use the same resolver and differ only in how they read verified immutable blobs.
+
 The same scope contract applies to cloud discovery, daemon preview, daemon upload, package validation, and local adapter counting. There is no source-type route fallback or compatibility bridge.
 
 ## UX
