@@ -63,8 +63,11 @@ from memforge.pipeline.projection_fragments import (
     FragmentSelectionError,
     FragmentSelectionErrorCode,
     RevalidatedSelectionError,
+    SupportRevalidationSelection,
     SupportRevalidationLimitation,
     SupportRevalidationLimitationCode,
+    SupportRevalidationSelectionFailure,
+    SupportRevalidationWorkset,
     group_revalidated_support_unit,
     prepare_support_revalidation_workset,
     resolve_revalidated_noop_selection,
@@ -127,6 +130,38 @@ a Fragment ref. When supported=false, return no Primary or Required selections.
 {case_json}
 </case_json>
 """
+
+SUPPORT_REVALIDATION_SELECTION_CORRECTION_ATTEMPTS = 1
+
+
+def _support_revalidation_correction_prompt(
+    prompt: str,
+    *,
+    workset: SupportRevalidationWorkset,
+    error: FragmentSelectionError,
+) -> str:
+    """Bind one selector correction to the same immutable workset."""
+
+    selection_contract = {
+        "previous_error": error.code.value,
+        "allowed_primary_refs": list(workset.primary_refs),
+        "required": [
+            {
+                "selector": selector,
+                "allowed_refs": list(references),
+            }
+            for selector, references in workset.required_refs_by_selector.items()
+        ],
+    }
+    return (
+        f"{prompt}\n"
+        "The previous response passed the static response schema but violated the exact "
+        "selection contract below. Return the complete semantic decision again using only "
+        "these supplied selectors and Fragment refs. Do not change or invent a ref.\n"
+        "<selection_correction>\n"
+        f"{json.dumps(selection_contract, sort_keys=True, separators=(',', ':'))}\n"
+        "</selection_correction>\n"
+    )
 
 
 class SourceUnitLifecycleExecutionError(RuntimeError):
@@ -483,6 +518,62 @@ class MemoryEngine:
             if protected_source_observation_ids.intersection(observation_ids)
         )
 
+    async def _validate_support_revalidation_workset(
+        self,
+        *,
+        validator: Any,
+        prompt: str,
+        workset: SupportRevalidationWorkset,
+        metrics: MutableMapping[str, int],
+    ) -> tuple[Any, SupportRevalidationSelection | None]:
+        """Resolve one workset without replaying the surrounding lifecycle work."""
+
+        current_prompt = prompt
+        max_output_tokens = workset.model_max_output_tokens()
+        total_attempts = 1 + SUPPORT_REVALIDATION_SELECTION_CORRECTION_ATTEMPTS
+        last_error: FragmentSelectionError | None = None
+        for attempt in range(total_attempts):
+            metrics["support_revalidation_prompt_chars"] += len(current_prompt)
+            metrics["support_revalidation_model_call_count"] += 1
+            validation = await validator(
+                current_prompt,
+                max_tokens=max_output_tokens,
+                model=self.llm_model,
+            )
+            if not validation.supported:
+                return validation, None
+            try:
+                returned_required_by_selector = {
+                    item.selector: item.evidence_ref
+                    for item in validation.required_evidence
+                }
+                if len(returned_required_by_selector) != len(
+                    validation.required_evidence
+                ):
+                    raise FragmentSelectionError(
+                        FragmentSelectionErrorCode.INVALID_SELECTION,
+                        "support validation returned duplicate Required selectors",
+                    )
+                return validation, workset.resolve_model_selection(
+                    primary_ref=validation.primary_ref,
+                    required_refs_by_selector=returned_required_by_selector,
+                )
+            except FragmentSelectionError as exc:
+                last_error = exc
+                if attempt + 1 >= total_attempts:
+                    break
+                current_prompt = _support_revalidation_correction_prompt(
+                    prompt,
+                    workset=workset,
+                    error=exc,
+                )
+        assert last_error is not None
+        raise SupportRevalidationSelectionFailure(
+            last_error.code,
+            "support validation exhausted bounded Fragment selection correction",
+            attempt_count=total_attempts,
+        ) from last_error
+
     async def _rebind_noop_evidence_to_current_revision(
         self,
         *,
@@ -675,13 +766,13 @@ class MemoryEngine:
                     )
                 )
                 metrics["support_revalidation_work_item_count"] += 1
-                metrics["support_revalidation_prompt_chars"] += len(prompt)
-                max_output_tokens = workset.model_max_output_tokens()
-                metrics["support_revalidation_model_call_count"] += 1
-                validation = await validator(
-                    prompt,
-                    max_tokens=max_output_tokens,
-                    model=self.llm_model,
+                validation, model_selection = (
+                    await self._validate_support_revalidation_workset(
+                        validator=validator,
+                        prompt=prompt,
+                        workset=workset,
+                        metrics=metrics,
+                    )
                 )
                 support_validation = {
                     "method": "structured_classifier",
@@ -701,18 +792,7 @@ class MemoryEngine:
                         )
                     )
                     continue
-                returned_required_by_selector = {
-                    item.selector: item.evidence_ref for item in validation.required_evidence
-                }
-                if len(returned_required_by_selector) != len(validation.required_evidence):
-                    raise FragmentSelectionError(
-                        FragmentSelectionErrorCode.INVALID_SELECTION,
-                        "support validation returned duplicate Required selectors",
-                    )
-                model_selection = workset.resolve_model_selection(
-                    primary_ref=validation.primary_ref,
-                    required_refs_by_selector=returned_required_by_selector,
-                )
+                assert model_selection is not None
                 current_primary_quote = model_selection.primary.presentation_text
                 current_required_quotes_by_reference_id.update(
                     {
@@ -901,6 +981,7 @@ class MemoryEngine:
                     (
                         ProjectedSupportInvariantError,
                         SupportRevalidationLimitation,
+                        SupportRevalidationSelectionFailure,
                     ),
                 ),
             ) from exc

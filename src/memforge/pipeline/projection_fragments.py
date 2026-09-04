@@ -65,6 +65,21 @@ class FragmentSelectionError(ValueError):
         self.code = code
 
 
+class SupportRevalidationSelectionFailure(RuntimeError):
+    """Bounded selector correction exhausted for one immutable workset."""
+
+    def __init__(
+        self,
+        code: FragmentSelectionErrorCode,
+        message: str,
+        *,
+        attempt_count: int,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.attempt_count = attempt_count
+
+
 class RevalidatedSelectionErrorCode(str, Enum):
     AMBIGUOUS = "ambiguous"
     UNPRESENTABLE = "unpresentable"
