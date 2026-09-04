@@ -822,11 +822,15 @@ application recompiles each current supporting Observation through its declared
 representation. One operation-local structural index is built at most once for
 each current supporting Revision and reused by every Memory in that operation.
 Each complete Evidence Unit then receives one bounded, claim-specific workset.
-The application prefers an exact current claim Fragment for Primary, an exact
-prior presentation or current-anchor overlap for each part, and otherwise a
+The application first requires provider Fragment correspondence for a prior
+stable-Fragment Anchor, when that Anchor crosses Revisions. It then prefers an
+exact persisted raw or presentation digest, exact prior presentation, exact
+current claim Fragment for Primary, or current-anchor overlap, and otherwise a
 bounded deterministic lexical shortlist for a coarse whole-Observation anchor.
-This shortlist grants no authority and makes no semantic decision; the model
-still proves whether the complete claim is supported.
+Provider mapping grants correspondence, not text authority: durable text
+Evidence still resolves to an exact current-Revision range. The shortlist
+grants no authority and makes no semantic decision; the model still proves
+whether the complete claim is supported.
 
 The support model receives application-issued transient `fNNNNNN` references,
 Fragment type, presentation text, and bounded structural context. A supported
@@ -836,7 +840,11 @@ distinct selectors even when they belong to the same Observation. Application
 code validates complete selector coverage, rejects duplicate or unknown refs,
 and passes the exact selected current Fragments directly to the ordinary
 Resolver. It does not ask the model to copy Evidence text and does not rematch a
-selected quote against the Revision.
+selected quote against the Revision. Required coverage has no independent item
+count ceiling. The output budget is derived from the complete selector set; an
+Evidence Unit whose complete response cannot fit the supported output capacity
+fails as a typed processing-capacity limitation rather than being truncated or
+retried forever.
 
 Revalidation first groups supporting parts by Evidence Unit id. A single Unit
 is rebound as one indivisible alternative; multiple independent Units in the
@@ -860,12 +868,18 @@ not implement revalidation catalog rules.
 
 The catalog Resolver then materializes the complete Unit. Human Review is
 reserved for a semantic `supported=false` result or a genuinely unpresentable
-or indistinguishable current Evidence choice. Structured-model failure,
-missing/unknown/duplicate selectors, compiler failure, and capacity failure are
-retryable execution failures and do not create Review rows. They emit the
-content-safe `support_revalidation_failed` lifecycle runtime outcome with model
-call accounting. Successful executions report work-item count, reused Revision
-index count, total prompt characters, and automatic rebind count. The shared
+or indistinguishable current Evidence choice. Structured-model failure and
+missing/unknown/duplicate selectors are retryable execution failures.
+Unsupported representation, compiler-contract, and processing-capacity
+limitations are non-retryable operational failures. Neither class creates a
+Review row. Runtime failures emit `support_revalidation_failed`; operational
+limitations emit the typed, content-safe
+`support_revalidation_unsupported_representation`,
+`support_revalidation_compiler_failure`, or
+`support_revalidation_capacity_exceeded` lifecycle outcome so Online Evaluation
+provides the Finding path without inventing a lifecycle decision. Successful
+executions report work-item count, reused Revision index count, total prompt
+characters, actual model-call count, and automatic rebind count. The shared
 Unit-support postcondition
 remains transactional and fail-closed but is causal rather than global. A Plan
 is rejected when it introduces stale or incomplete Support, leaves invalid

@@ -293,26 +293,39 @@ Primary-from-authorized-work, not Primary-from-delta.
 
 One revalidation operation builds each current Revision's representation index
 once. Every affected Evidence Unit then derives a bounded claim-specific
-workset from that shared index: exact current claim text for Primary when
-available, exact prior presentation or current-anchor overlap for each part,
-and a bounded deterministic lexical shortlist only when a coarse
-whole-Observation anchor would otherwise expose a large Revision. Candidate
-retrieval grants no Evidence role and does not replace semantic validation.
+workset from that shared index. A prior stable-Fragment Anchor first requires
+the projection's provider mapping across Revisions. Selection then prefers
+persisted raw or presentation digest, exact prior presentation, exact current
+claim text for Primary, or current-anchor overlap, and uses a bounded
+deterministic lexical shortlist only when a coarse whole-Observation anchor
+would otherwise expose a large Revision. Provider mapping proves
+correspondence; durable text Evidence still resolves to an exact current range.
+Candidate retrieval grants no Evidence role and does not replace semantic
+validation.
 
 The model selects transient `fNNNNNN` refs from that workset. A supported result
 must select one Primary and one candidate for every Required selector. The
 application validates full coverage and resolves the selected exact Fragments;
 there is no model-returned Evidence text or quote-rematching step. This path is
 shared by Markdown, plain text, canonical records, and current eligible
-Artifacts and never branches on Source type.
+Artifacts and never branches on Source type. Required coverage has no separate
+item-count cap: the model output budget scales with the complete selector set,
+and an unrepresentable result becomes a typed capacity limitation instead of a
+partial response.
 
 Review is the last-resort semantic/authority outcome: `supported=false`, no
 presentable current Evidence, or candidates that remain indistinguishable after
 their representation type and bounded structural context are included. Model
-transport/schema failure, missing/unknown/duplicate refs, compiler failure, or
-capacity failure is an execution failure and creates no human Review. The
-failed lifecycle runtime event uses `support_revalidation_failed`; successful
-stats include work-item count, shared Revision-index count, prompt characters,
+transport/schema failure and missing/unknown/duplicate refs are retryable
+execution failures. Unsupported representation, compiler-contract failure, and
+capacity exhaustion are non-retryable operational limitations. Neither creates
+a human Review. Runtime failures use `support_revalidation_failed`; typed
+operational outcomes use
+`support_revalidation_unsupported_representation`,
+`support_revalidation_compiler_failure`, or
+`support_revalidation_capacity_exceeded`, making the failure visible to Online
+Evaluation without mutating lifecycle state. Successful stats include work-item
+count, shared Revision-index count, prompt characters, actual model-call count,
 and automatic rebind count.
 
 Retries must reconstruct the same workset, candidate catalog, policy contract,
