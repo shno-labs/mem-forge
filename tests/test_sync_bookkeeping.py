@@ -95,6 +95,7 @@ from memforge.source_artifacts import (
     SourceArtifactSummary,
 )
 from memforge.source_derivation import (
+    DERIVATION_INPUT_SUPERSEDED,
     SourceDerivationAttempt,
     SourceUnitDerivationContext,
     SourceUnitDerivationRequest,
@@ -5471,7 +5472,10 @@ async def _stage_completed_v9_recovery_attempt(
         ),
         normalized=NormalizedContent(item=item, markdown_body=body),
         scope={},
-        access_context={"visibility": "workspace"},
+        access_context={
+            "access_policy": "workspace",
+            "owner_user_id": "dev",
+        },
     )
     document = DocumentRecord(
         doc_id=item.item_id,
@@ -5532,6 +5536,76 @@ async def _stage_completed_v9_recovery_attempt(
     assert attempt.extraction_contract_version == PROJECTION_EXTRACTION_V9
     assert attempt.status == "completed"
     return attempt
+
+
+class V9RecoveryReplayGene:
+    """Rediscover the exact provider target retained by a recovery attempt."""
+
+    discovery_complete = False
+
+    def __init__(
+        self,
+        attempt: SourceDerivationAttempt,
+        *,
+        document_content: str | None = None,
+        version: str | None = None,
+    ) -> None:
+        self.attempt = attempt
+        self.document_content = (
+            document_content
+            if document_content is not None
+            else attempt.context.document_content
+        )
+        self.version = version or attempt.context.document.version
+
+    @classmethod
+    def metadata(cls):
+        return GeneMetadata(
+            name="github_repo",
+            display_name="GitHub Repository",
+            description="",
+            default_sync_interval_minutes=1440,
+            auth_method="pat",
+            data_shape="document",
+        )
+
+    def requires_pdf_artifact(
+        self,
+        *,
+        item,
+        existing_doc,
+        existing_hash,
+        new_hash,
+    ) -> bool:
+        return False
+
+    async def authenticate(self) -> None:
+        return None
+
+    async def discover(self, since=None):
+        del since
+        document = self.attempt.context.document
+        yield ContentItem(
+            item_id=document.doc_id,
+            title=document.title,
+            source_url=document.source_url,
+            last_modified=document.last_modified,
+            content_type="text/markdown",
+            version=self.version,
+        )
+
+    async def fetch(self, item):
+        return RawContent(
+            item=item,
+            body=self.document_content.encode(),
+            content_type="text/markdown",
+        )
+
+    async def normalize(self, raw):
+        return NormalizedContent(
+            item=raw.item,
+            markdown_body=self.document_content,
+        )
 
 
 @pytest.mark.asyncio
@@ -5622,6 +5696,138 @@ async def test_recovered_deferred_lifecycle_joins_commit_only_convergence(
     assert engine.commit_only_calls == 1
     [committed] = await db.list_source_derivation_attempts(source_id=source_id)
     assert committed.status == "applied"
+
+
+@pytest.mark.asyncio
+async def test_exact_provider_rediscovery_reuses_recovered_deferred_intent(
+    db: Database,
+) -> None:
+    source_id = "src-recovery-provider-overlap"
+    attempt = await _stage_completed_v9_recovery_attempt(
+        db,
+        source_id=source_id,
+    )
+    engine = RecoveryDeferredMemoryEngine(
+        blocker_source_unit_id=attempt.source_unit_id,
+    )
+    recovery = GeneSyncOrchestrator(
+        db=db,
+        doc_store=StubDocumentStore(),
+        memory_extractor=ProjectionFragmentRecordingExtractor(
+            fail_if_called=True,
+        ),
+        memory_engine=engine,
+        memory_store=None,
+        max_concurrent=1,
+    )
+
+    state = await recovery.sync_gene(
+        gene=V9RecoveryReplayGene(attempt),
+        source_name="Recovery provider overlap",
+        source_id=source_id,
+        source_activity_epoch=attempt.context.source_activity_epoch,
+        lifecycle_cycle_id="run-recovery-provider-overlap",
+    )
+
+    assert state.last_sync_status == "success"
+    assert state.docs_processed == 1
+    assert state.docs_updated == 1
+    assert state.docs_failed == 0
+    assert state.runtime_bundles == ()
+    assert engine.semantic_calls == 1
+    assert engine.commit_only_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_newer_provider_target_supersedes_recovered_deferred_intent(
+    db: Database,
+) -> None:
+    source_id = "src-recovery-provider-newer"
+    attempt = await _stage_completed_v9_recovery_attempt(
+        db,
+        source_id=source_id,
+    )
+    engine = RecoveryDeferredMemoryEngine(
+        blocker_source_unit_id=attempt.source_unit_id,
+    )
+    recovery = GeneSyncOrchestrator(
+        db=db,
+        doc_store=StubDocumentStore(),
+        memory_extractor=ProjectionFragmentRecordingExtractor(),
+        memory_engine=engine,
+        memory_store=None,
+        max_concurrent=1,
+    )
+
+    state = await recovery.sync_gene(
+        gene=V9RecoveryReplayGene(
+            attempt,
+            document_content=(
+                attempt.context.document_content
+                + "\nThe provider now carries a newer rule.\n"
+            ),
+            version="2",
+        ),
+        source_name="Recovery provider newer target",
+        source_id=source_id,
+        source_activity_epoch=attempt.context.source_activity_epoch,
+        lifecycle_cycle_id="run-recovery-provider-newer",
+    )
+
+    assert state.last_sync_status == "success"
+    assert state.docs_processed == 1
+    assert state.docs_updated == 1
+    assert state.docs_failed == 0
+    assert engine.semantic_calls == 2
+    assert engine.commit_only_calls == 1
+    attempts = {
+        item.id: item
+        for item in await db.list_source_derivation_attempts(
+            source_id=source_id
+        )
+    }
+    assert attempts[attempt.id].status == "superseded"
+    assert (
+        attempts[attempt.id].terminal_reason_code
+        == DERIVATION_INPUT_SUPERSEDED
+    )
+
+
+@pytest.mark.asyncio
+async def test_successful_recovery_is_counted_without_provider_rediscovery(
+    db: Database,
+) -> None:
+    source_id = "src-recovery-counts"
+    attempt = await _stage_completed_v9_recovery_attempt(
+        db,
+        source_id=source_id,
+    )
+    engine = RecordingMemoryEngine()
+    recovery = GeneSyncOrchestrator(
+        db=db,
+        doc_store=StubDocumentStore(),
+        memory_extractor=ProjectionFragmentRecordingExtractor(
+            fail_if_called=True,
+        ),
+        memory_engine=engine,
+        memory_store=None,
+        max_concurrent=1,
+    )
+
+    state = await recovery.sync_gene(
+        gene=IncompleteEmptyGene(),
+        source_name="Recovery counts",
+        source_id=source_id,
+        source_activity_epoch=attempt.context.source_activity_epoch,
+        lifecycle_cycle_id="run-recovery-counts",
+    )
+
+    assert state.last_sync_status == "success"
+    assert state.docs_processed == 1
+    assert state.docs_updated == 1
+    assert state.docs_failed == 0
+    assert state.runtime_bundles == ()
+    assert len(engine.projected_lifecycle_calls) == 1
 
 
 @pytest.mark.asyncio

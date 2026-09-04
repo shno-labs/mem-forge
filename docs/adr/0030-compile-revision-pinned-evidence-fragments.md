@@ -1005,6 +1005,11 @@ An unresolved recovered blocker fails only its owning Unit and makes the Source
 run partial or failed; it does not abort discovery before other Units can heal
 that blocker. This continuation never repeats the recovered Unit's extraction,
 candidate admission, relation reconciliation, or other semantic work.
+If provider discovery returns that same Unit and target Revision, the prepared
+intent remains authoritative and the provider path stops before semantic work.
+A genuinely newer provider target supersedes the recovered derivation and runs
+normally. Recovery and provider outcomes are then selected once per effective
+Unit before sync counters and terminal runtime bundles are aggregated.
 
 Within the same process, a Deferred Prepared Lifecycle Intent may
 accept only Support topology and derived Memory timestamp/corroboration changes
