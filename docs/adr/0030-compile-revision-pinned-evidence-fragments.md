@@ -997,8 +997,16 @@ Current-policy planning then classifies one readable recovery disposition:
 
 This pure recovery-commit plan replaces caller-side status branching and keeps
 extraction runtime events, durable derivation state, and lifecycle commit on the
-same attempt identity. Within the same process, a Deferred Prepared Lifecycle
-Intent may
+same attempt identity. If recovery produces a Deferred Prepared Lifecycle
+Intent, the orchestrator retains its opaque handle and continues provider
+discovery, other Source Units, and authoritative tombstones. Recovered and
+newly prepared handles enter the same bounded commit-only convergence rounds.
+An unresolved recovered blocker fails only its owning Unit and makes the Source
+run partial or failed; it does not abort discovery before other Units can heal
+that blocker. This continuation never repeats the recovered Unit's extraction,
+candidate admission, relation reconciliation, or other semantic work.
+
+Within the same process, a Deferred Prepared Lifecycle Intent may
 accept only Support topology and derived Memory timestamp/corroboration changes
 caused by its declared same-run blockers; Memory content, status, visibility,
 owner, validity, gate, or access-context changes reject it. A process restart
@@ -1189,6 +1197,7 @@ reassessment of prior events, or deployment.
 - [Evidence-Unit Support slice: shno-labs/mem-forge#307](https://github.com/shno-labs/mem-forge/issues/307)
 - [Grouped retrieval/evaluation slice: shno-labs/mem-forge#308](https://github.com/shno-labs/mem-forge/issues/308)
 - [Terminal derivation replay fix: shno-labs/mem-forge#400](https://github.com/shno-labs/mem-forge/issues/400)
+- [Causal commit and bounded convergence: shno-labs/mem-forge#362](https://github.com/shno-labs/mem-forge/issues/362)
 - [Cloud HANA rollout slice: dodoman-sun/memforge-cloud#391](https://github.com/dodoman-sun/memforge-cloud/issues/391)
 - [Legacy-limited Support recovery: shno-labs/mem-forge#316](https://github.com/shno-labs/mem-forge/issues/316)
 - [Budgeted Fragment Corpus selection: shno-labs/mem-forge#329](https://github.com/shno-labs/mem-forge/issues/329)

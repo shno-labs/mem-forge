@@ -3400,6 +3400,72 @@ class DeferredOnceMemoryEngine(NoopMemoryEngine):
         return result
 
 
+class RecoveryDeferredMemoryEngine(NoopMemoryEngine):
+    def __init__(self, *, blocker_source_unit_id: str) -> None:
+        self.blocker_source_unit_id = blocker_source_unit_id
+        self.semantic_calls = 0
+        self.commit_only_calls = 0
+
+    async def prepare_and_commit_projected_lifecycle(self, **kwargs):
+        self.semantic_calls += 1
+        projection = kwargs["projection"]
+        delta = projection.deltas[0]
+        bundle = bind_source_lifecycle_outcome(
+            source_id=projection.source_id,
+            source_type=projection.source_type,
+            doc_id=kwargs["doc_id"],
+            source_unit_id=delta.source_unit_id,
+            base_unit_revision_id=delta.previous_unit_revision_id,
+            target_unit_revision_id=delta.current_unit_revision_id,
+            projection_run_id=projection.run_id,
+            operation_input_hash="e" * 64,
+            execution_owner_id=kwargs["lifecycle_execution_owner_id"],
+            outcome="failed",
+            reason_code="lifecycle_commit_deferred",
+            attempt_count=kwargs["lifecycle_attempt_count"],
+            duration_ms=1,
+            incumbent_count=1,
+            relation_pair_count=0,
+            mutation_count=1,
+            review_count=0,
+            model_call_count=0,
+            deployment_revision="test",
+        )
+        prepared = SimpleNamespace(
+            source_unit_id=delta.source_unit_id,
+            kwargs=dict(kwargs),
+        )
+        raise SourceUnitLifecycleDeferred(
+            "recovered lifecycle depends on another Source Unit",
+            bundle,
+            handle=DeferredProjectedLifecycleHandle(
+                source_unit_id=delta.source_unit_id,
+                blocking_source_unit_ids=(self.blocker_source_unit_id,),
+                _prepared=prepared,
+                _runtime_bundle=bundle,
+            ),
+        )
+
+    async def retry_deferred_projected_lifecycle(
+        self,
+        handle,
+        *,
+        eligible_same_run_source_unit_ids,
+    ):
+        self.commit_only_calls += 1
+        if self.blocker_source_unit_id not in eligible_same_run_source_unit_ids:
+            raise SourceUnitLifecycleExecutionError(
+                "recovered lifecycle blocker is outside this Source run",
+                handle._runtime_bundle,
+                retryable=False,
+                commit_attempted=False,
+            )
+        return await NoopMemoryEngine.prepare_and_commit_projected_lifecycle(
+            self,
+            **handle._prepared.kwargs,
+        )
+
+
 class RoundControlledConvergenceMemoryEngine(NoopMemoryEngine):
     def __init__(self, *, never_converge: bool = False) -> None:
         self.never_converge = never_converge
@@ -5326,12 +5392,13 @@ async def test_derivation_recovery_supersedes_an_old_extraction_contract(
         run_id="run-contract-upgrade",
     )
 
-    assert stats == {
-        "processed": 0,
-        "updated": 0,
-        "memories_extracted": 0,
-        "memories_corroborated": 0,
-    }
+    assert (
+        stats.processed,
+        stats.updated,
+        stats.memories_extracted,
+        stats.memories_corroborated,
+        stats.deferred_results,
+    ) == (0, 0, 0, 0, ())
     [superseded] = await db.list_source_derivation_attempts(source_id=source_id)
     assert superseded.status == "superseded"
     assert superseded.terminal_reason_code == "CONTRACT_SUPERSEDED"
@@ -5350,12 +5417,13 @@ async def test_derivation_recovery_supersedes_an_old_extraction_contract(
         run_id="run-completed-contract-history",
     )
 
-    assert repeated == {
-        "processed": 0,
-        "updated": 0,
-        "memories_extracted": 0,
-        "memories_corroborated": 0,
-    }
+    assert (
+        repeated.processed,
+        repeated.updated,
+        repeated.memories_extracted,
+        repeated.memories_corroborated,
+        repeated.deferred_results,
+    ) == (0, 0, 0, 0, ())
     [completed_history] = await db.list_source_derivation_attempts(
         source_id=source_id
     )
@@ -5494,15 +5562,129 @@ async def test_v2_derivation_recovery_resumes_active_v9_before_provider_work(
         run_id="run-v9-recovery",
     )
 
-    assert stats == {
-        "processed": 1,
-        "updated": 1,
-        "memories_extracted": 0,
-        "memories_corroborated": 0,
-    }
+    assert (
+        stats.processed,
+        stats.updated,
+        stats.memories_extracted,
+        stats.memories_corroborated,
+        stats.deferred_results,
+    ) == (1, 1, 0, 0, ())
     assert len(recovery_engine.projected_lifecycle_calls) == 1
     [preserved] = await db.list_source_derivation_attempts(source_id=source_id)
     assert preserved.status == "applied"
+
+
+@pytest.mark.asyncio
+async def test_recovered_deferred_lifecycle_joins_commit_only_convergence(
+    db: Database,
+) -> None:
+    source_id = "src-recovery-deferred-convergence"
+    attempt = await _stage_completed_v9_recovery_attempt(
+        db,
+        source_id=source_id,
+    )
+    blocker_source_unit_id = "unit-same-run-blocker"
+    engine = RecoveryDeferredMemoryEngine(
+        blocker_source_unit_id=blocker_source_unit_id,
+    )
+    recovery = GeneSyncOrchestrator(
+        db=db,
+        doc_store=StubDocumentStore(),
+        memory_extractor=ProjectionFragmentRecordingExtractor(
+            fail_if_called=True,
+        ),
+        memory_engine=engine,
+        memory_store=None,
+        max_concurrent=1,
+    )
+
+    outcome = await recovery._resume_source_derivations(
+        source_id=source_id,
+        source_activity_epoch=attempt.context.source_activity_epoch,
+        run_id="run-recovery-deferred-convergence",
+        lifecycle_execution_owner_id=(
+            "run-recovery-deferred-convergence:attempt:1"
+        ),
+    )
+
+    assert outcome.processed == 0
+    assert len(outcome.deferred_results) == 1
+    [deferred_result] = outcome.deferred_results
+    await recovery._converge_deferred_projected_lifecycle(
+        [deferred_result],
+        additional_source_unit_ids={blocker_source_unit_id},
+    )
+
+    assert deferred_result["processed"] is True
+    assert "terminal_error" not in deferred_result
+    assert deferred_result["deferred_lifecycle"] is None
+    assert engine.semantic_calls == 1
+    assert engine.commit_only_calls == 1
+    [committed] = await db.list_source_derivation_attempts(source_id=source_id)
+    assert committed.status == "applied"
+
+
+@pytest.mark.asyncio
+async def test_recovered_external_blocker_does_not_stop_provider_discovery(
+    db: Database,
+) -> None:
+    source_id = "src-recovery-external-blocker"
+    attempt = await _stage_completed_v9_recovery_attempt(
+        db,
+        source_id=source_id,
+    )
+    engine = RecoveryDeferredMemoryEngine(
+        blocker_source_unit_id="unit-external-blocker",
+    )
+
+    class RecordingEmptyGene(EmptyGene):
+        def __init__(self) -> None:
+            super().__init__()
+            self.authenticated = False
+            self.discovered = False
+
+        async def authenticate(self) -> None:
+            self.authenticated = True
+
+        async def discover(self, since=None):
+            del since
+            self.discovered = True
+            if False:
+                yield ContentItem(
+                    item_id="never",
+                    title="never",
+                    last_modified=datetime.now(timezone.utc),
+                )
+
+    gene = RecordingEmptyGene()
+    recovery = GeneSyncOrchestrator(
+        db=db,
+        doc_store=StubDocumentStore(),
+        memory_extractor=ProjectionFragmentRecordingExtractor(
+            fail_if_called=True,
+        ),
+        memory_engine=engine,
+        memory_store=None,
+        max_concurrent=1,
+    )
+
+    state = await recovery.sync_gene(
+        gene=gene,
+        source_name="Recovery external blocker",
+        source_id=source_id,
+        source_activity_epoch=attempt.context.source_activity_epoch,
+        lifecycle_cycle_id="run-recovery-external-blocker",
+    )
+
+    assert gene.authenticated is True
+    assert gene.discovered is True
+    assert state.last_sync_status == "failed"
+    assert state.docs_failed == 1
+    assert state.failure_retryable is False
+    assert engine.semantic_calls == 1
+    assert engine.commit_only_calls == 1
+    [preserved] = await db.list_source_derivation_attempts(source_id=source_id)
+    assert preserved.status == "completed"
 
 
 @pytest.mark.asyncio
@@ -5540,12 +5722,13 @@ async def test_v2_derivation_recovery_commits_the_current_policy_identity(
         run_id="run-v9-policy-replacement",
     )
 
-    assert stats == {
-        "processed": 1,
-        "updated": 1,
-        "memories_extracted": 0,
-        "memories_corroborated": 0,
-    }
+    assert (
+        stats.processed,
+        stats.updated,
+        stats.memories_extracted,
+        stats.memories_corroborated,
+        stats.deferred_results,
+    ) == (1, 1, 0, 0, ())
     assert extractor.fragment_calls
     [lifecycle_call] = recovery_engine.projected_lifecycle_calls
     replacement_id = lifecycle_call["derivation_id"]
@@ -12094,13 +12277,13 @@ async def test_recovery_summary_distinguishes_nonthrowing_outcomes(db: Database,
     if outcome == "stale":
         # Stale attempts are filtered before execution; do not fabricate a scope.
         assert summaries == []
-        assert stats["processed"] == 0
+        assert stats.processed == 0
         assert engine.projected_lifecycle_calls == []
         return
     assert len(summaries) == 1
     assert summaries[0].status == {"returned_error": "failed", "stale": "skipped", "success": "committed"}[outcome]
     assert summaries[0].payload["logical_calls"] == 0
-    assert stats["processed"] == (1 if outcome == "success" else 0)
+    assert stats.processed == (1 if outcome == "success" else 0)
     assert len(engine.projected_lifecycle_calls) == (1 if outcome == "success" else 0)
 
 
