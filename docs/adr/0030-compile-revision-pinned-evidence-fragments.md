@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-08-27; amended 2026-09-03)
+Accepted (2026-08-27; amended 2026-09-04)
 
 MemForge will replace provider-returned evidence text, single coarse Block
 selection, quote matching, and whole-Block fallback with application-owned
@@ -179,16 +179,17 @@ whose runtime type violates the descriptor, or a decoded boundary that cannot
 map exactly makes that field unselectable and fails the bounded compilation;
 the compiler never guesses a schema from `observation_type` or `source_type`.
 
-Compiler-backed v9 Primary authority segmentation follows the immutable
-representation profile. `markdown-structural` and `plain-text` are
-range-addressable and may be divided into exact presentation ranges.
-`canonical-record` and every whole-Artifact coordinate profile retain whole-
-Observation authority through compilation: record fields must be decoded before
-their exact raw ranges exist, and Artifact bytes are atomic. This decision comes
-from the profile even when the current compiler registry does not support that
-profile version; the compiler then returns its typed unsupported-profile error
-without receiving a partial range. The planner never branches on Jira, Teams,
-or another Source type.
+Every active fragment-catalog contract uses one provider-neutral
+`ProjectionEvidenceWorkPlanner` before presentation batching. The planner
+compares the committed base with the staged target through the same
+representation index used by compilation. `markdown-structural` and
+`plain-text` authorize only changed complete target structures. A
+`canonical-record` is parsed as a whole but authorizes only changed registered
+field or nested-text ranges; complete parse access is not whole-record Primary
+authority. A binary Artifact remains atomic and is Primary only when changed
+bytes are selectable under the bound inference capability. The planner never
+branches on Jira, Teams, or another Source type, and an unmappable change fails
+closed instead of widening to the Observation.
 
 Legacy projection extraction still presents batch Markdown directly and keeps
 its existing `max_primary_chars` segmentation. The v9 authority/segmentation
@@ -265,11 +266,11 @@ Evidence and Lifecycle code never branch on `source_type`.
 | Source path | Projected shape | Evidence Representation Profile | Design consequence |
 | --- | --- | --- | --- |
 | Confluence | One normalized page-body Observation plus revision-pinned Artifacts | `markdown-structural`; `binary-artifact` | HTML converted by the Gene is ordinary Markdown; any preserved raw HTML uses the private embedded-HTML subparser. Attachment inventory alone is not Evidence. |
-| Jira | Canonical issue-core, comment, and changelog Observations plus Artifacts | `canonical-record`; `binary-artifact` | Field and comment identity remain provider-owned; whole canonical authority reaches schema compilation before exact field ranges are presented. |
+| Jira | Canonical issue-core, comment, and changelog Observations plus Artifacts | `canonical-record`; `binary-artifact` | Field and comment identity remain provider-owned; only changed registered fields or nested text structures are Primary-capable. |
 | GitHub Repository | Normalized file-content Observation plus explicitly supported repository-file Artifacts | `markdown-structural`; `binary-artifact` | Markdown and code fences compile directly; preserved raw HTML delegates internally without changing the profile. |
 | GitHub Pages | Normalized rendered-page Observation | `markdown-structural` | No implicit linked-image crawl or provider-specific compiler. |
 | Local Markdown | Revision-pinned local-file Markdown Observation | `markdown-structural` | Local collection topology does not change Evidence semantics. |
-| Teams | Canonical message Observations with reply/precedence relations and separately projected hosted-image Artifacts | `canonical-record`; nested declared text; `binary-artifact` | Message edit/delete and conversation coverage remain Source Projection concerns; canonical messages use the same whole-authority compiler contract as every canonical record. |
+| Teams | Canonical message Observations with reply/precedence relations and separately projected hosted-image Artifacts | `canonical-record`; nested declared text; `binary-artifact` | Message edit/delete and conversation coverage remain Source Projection concerns; changed content structures are exact Primary ranges and an active tombstone produces no new Primary. |
 | Agent Session document intake | Session-summary Markdown Observation | `markdown-structural` | Codex and Claude Code use the same compiler; client remains provenance, not Source or syntax. |
 | Managed Agent Knowledge patch | Structurally classified session events followed by a projected concept-Markdown Observation | upstream authority contract plus `markdown-structural` | Transient patch intent and event IDs authorize the proposal; the projected Evidence Unit remains durable authority. |
 | Extension Gene fallback | Declared normalized Markdown, canonical record, plain text, or Artifact under Partial Projection unless it proves more | declared profile only | An extension without a supported profile may collect content but cannot invent selectable Evidence. |
@@ -308,11 +309,12 @@ difference remains an immutable retry collision.
 Text Fragments use exact half-open ranges in the immutable Observation Revision.
 HTML list items, table rows, blockquotes, Markdown paragraphs, list items,
 table rows, and code blocks may therefore be independently selectable while
-mapping back to exact source characters. `canonical-record` receives whole-
-Observation candidate authority so its schema compiler can decode fields before
-emitting exact field or nested-text ranges; that does not make the whole record
-a selectable fallback. A whole Observation Fragment is selectable only when its
-versioned representation contract explicitly declares that Observation atomic.
+mapping back to exact source characters. `canonical-record` is parsed as a
+whole so exact JSON Pointer and escaped-string coordinates can be indexed, but
+the planner supplies only changed registered field or nested-text ranges as
+Primary authority. Complete parse access never creates a whole-record fallback.
+A whole Observation Fragment is selectable only when its versioned
+representation contract explicitly declares that Observation atomic.
 
 Binary Artifact catalog entries carry a distinct `artifact` kind, but the model
 uses the same transient reference selection shape for text and Artifacts. The
@@ -367,11 +369,12 @@ replay even when neither is active.
 ### Representation-owned structural segmentation
 
 Compiler-backed range planning never cuts source text at an arbitrary character
-offset. One private representation-owned planning seam discovers complete
-structural units inside an already Primary-authorized Observation. It does not
-grant, widen, clip, or repair authority. The Batch Planner greedily packs exact
-unit ranges under its presentation budget and assigns each unit to exactly one
-Primary batch.
+offset. One private representation-owned index discovers complete structural
+or registered field ranges in both the committed base and staged target. The
+work planner authorizes only target structures that are not provably unchanged;
+the Fragment compiler consumes the same boundaries and cannot widen them.
+Presentation batching then greedily packs already-authorized exact ranges and
+assigns each range to exactly one Primary batch.
 
 For `markdown-structural`, protected units are complete paragraphs (including
 inline HTML), top-level list items with their nested subtree, whole tables,
@@ -379,14 +382,14 @@ fenced or indented code, blockquotes, headings, and raw HTML blocks. Adjacent
 units remain broadly grouped while they fit. V9 does not duplicate Primary
 units through character overlap; optional neighboring Context may contain only
 complete Required-only units. `plain-text` uses complete paragraphs. Canonical
-records remain whole-authority until field compilation, including nested
-Markdown after JSON decoding, and binary Artifacts remain whole-Observation.
+records are parsed completely but carry only changed registered field or nested
+text ranges as Primary authority, and binary Artifacts remain whole-Observation.
 
 One protected unit larger than the presentation budget returns the typed
 `structural_unit_too_large` planning outcome. It is not character-split or
 authority-widened. Multi-window discovery and adjudication for an oversized
 complete Fragment remains #365. This decision advances the compiler-backed
-authority policy from 3 to 4; legacy v8 retains policy 2 and its bounded
+authority policy from 4 to 5; legacy v8 retains policy 2 and its bounded
 character-window contract.
 
 The prompt presents `primary_candidates` and `required_only_candidates`
@@ -1068,6 +1071,30 @@ selected role counts, attempted Primary eligibility, a content-free selection
 fingerprint, resolved
 part ranges and hashes, and explicit rejection or review reasons without
 persisting source text in runtime events.
+
+A deterministic authority-planning failure is staged as a terminal derivation
+with its typed reason and one content-safe durable runtime event in the same
+transaction. It records Source/Unit/base/target/profile/policy identity and
+explicitly skips LLM and lifecycle mutation. Exact retries reuse the stable
+failure identity; Online Evaluation groups them rather than treating every
+retry as a separate model failure.
+
+The staged derivation also persists the complete content-free authority-plan
+identity. Immediately before the atomic Projection/lifecycle commit, the store
+compares the Unit's current revision with that staged effective base. A mismatch
+raises the shared `AUTHORITY_PLAN_STALE` invariant on SQLite and HANA before the
+target Projection or any lifecycle mutation is written. For explicit reprocess,
+the effective base is the committed current revision even when the Projection
+delta itself has no previous revision.
+
+The deterministic evaluator maps this event to the
+`evidence_authority_planning` criterion. Presentation overflow is the typed
+`STRUCTURAL_UNIT_TOO_LARGE` planning result rather than an exception before
+staging. All-current reprocess authority requires an explicit source-sync
+operation identity and, for an existing revision, the same committed-base
+validation as ordinary incremental work. Existing Evidence-Unit revalidation
+remains owned by the revision-pinned NOOP revalidation compiler; it is not
+recast as new-candidate extraction authority.
 
 Changing which ranges are Primary-eligible changes batch admission semantics.
 The manifest and catalog digest must therefore carry an authority-policy or
