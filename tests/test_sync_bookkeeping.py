@@ -83,6 +83,7 @@ from memforge.pipeline.sync import (
     ExtractionAdmission,
     ExtractionWorkPool,
     GeneSyncOrchestrator,
+    MemoryExtractionFailure,
     SourceSyncMode,
     _aggregate_extraction_metrics,
     summarize_failed_documents,
@@ -5794,6 +5795,69 @@ async def test_newer_provider_target_supersedes_recovered_deferred_intent(
 
 
 @pytest.mark.asyncio
+async def test_failed_newer_provider_target_still_supersedes_recovered_intent(
+    db: Database,
+) -> None:
+    source_id = "src-recovery-provider-newer-failed"
+    attempt = await _stage_completed_v9_recovery_attempt(
+        db,
+        source_id=source_id,
+    )
+    class FailingNewerTargetEngine(RecoveryDeferredMemoryEngine):
+        async def prepare_and_commit_projected_lifecycle(self, **kwargs):
+            if self.semantic_calls:
+                self.semantic_calls += 1
+                raise MemoryExtractionFailure(
+                    "newer provider target failed after target resolution"
+                )
+            return await super().prepare_and_commit_projected_lifecycle(
+                **kwargs
+            )
+
+    engine = FailingNewerTargetEngine(
+        blocker_source_unit_id=attempt.source_unit_id,
+    )
+    recovery = GeneSyncOrchestrator(
+        db=db,
+        doc_store=StubDocumentStore(),
+        memory_extractor=ProjectionFragmentRecordingExtractor(),
+        memory_engine=engine,
+        memory_store=None,
+        max_concurrent=1,
+        retry_sleep=_skip_retry_delay,
+    )
+
+    state = await recovery.sync_gene(
+        gene=V9RecoveryReplayGene(
+            attempt,
+            document_content=(
+                attempt.context.document_content
+                + "\nThe provider target cannot be extracted yet.\n"
+            ),
+            version="2",
+        ),
+        source_name="Failed recovery provider target",
+        source_id=source_id,
+        source_activity_epoch=attempt.context.source_activity_epoch,
+        lifecycle_cycle_id="run-recovery-provider-newer-failed",
+    )
+
+    assert state.last_sync_status == "failed"
+    assert state.docs_processed == 0
+    assert state.docs_failed == 1
+    assert engine.semantic_calls == 2
+    [superseded] = await db.list_source_derivation_attempts(
+        source_id=source_id
+    )
+    assert superseded.id == attempt.id
+    assert superseded.status == "superseded"
+    assert (
+        superseded.terminal_reason_code
+        == DERIVATION_INPUT_SUPERSEDED
+    )
+
+
+@pytest.mark.asyncio
 async def test_successful_recovery_is_counted_without_provider_rediscovery(
     db: Database,
 ) -> None:
@@ -5820,6 +5884,43 @@ async def test_successful_recovery_is_counted_without_provider_rediscovery(
         source_id=source_id,
         source_activity_epoch=attempt.context.source_activity_epoch,
         lifecycle_cycle_id="run-recovery-counts",
+    )
+
+    assert state.last_sync_status == "success"
+    assert state.docs_processed == 1
+    assert state.docs_updated == 1
+    assert state.docs_failed == 0
+    assert state.runtime_bundles == ()
+    assert len(engine.projected_lifecycle_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_successful_recovery_keeps_counts_on_exact_provider_rediscovery(
+    db: Database,
+) -> None:
+    source_id = "src-recovery-counts-provider-overlap"
+    attempt = await _stage_completed_v9_recovery_attempt(
+        db,
+        source_id=source_id,
+    )
+    engine = RecordingMemoryEngine()
+    recovery = GeneSyncOrchestrator(
+        db=db,
+        doc_store=StubDocumentStore(),
+        memory_extractor=ProjectionFragmentRecordingExtractor(
+            fail_if_called=True,
+        ),
+        memory_engine=engine,
+        memory_store=None,
+        max_concurrent=1,
+    )
+
+    state = await recovery.sync_gene(
+        gene=V9RecoveryReplayGene(attempt),
+        source_name="Recovery counts provider overlap",
+        source_id=source_id,
+        source_activity_epoch=attempt.context.source_activity_epoch,
+        lifecycle_cycle_id="run-recovery-counts-provider-overlap",
     )
 
     assert state.last_sync_status == "success"

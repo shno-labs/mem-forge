@@ -1041,12 +1041,22 @@ class GeneSyncOrchestrator:
                     "preflight_observation_ids": (),
                     "runtime_bundle": None,
                     "source_unit_id": None,
+                    "provider_target_unit_revision_id": None,
                     "deferred_lifecycle": None,
                     "recovered_deferred_target": None,
                     "doc_id": item.item_id,
                     "title": item.title,
                 }
                 document_completed = False
+
+                def on_item_target(
+                    source_unit_id: str,
+                    target_unit_revision_id: str,
+                ) -> None:
+                    stats["source_unit_id"] = source_unit_id
+                    stats["provider_target_unit_revision_id"] = (
+                        target_unit_revision_id
+                    )
 
                 def on_item_progress(progress: dict) -> None:
                     nonlocal document_completed, progress_counter
@@ -1103,6 +1113,7 @@ class GeneSyncOrchestrator:
                                 expected_source_activity_epoch=source_activity_epoch,
                                 lifecycle_execution_owner_id=durable_cycle_id,
                                 lifecycle_attempt_count=attempt,
+                                source_unit_target_callback=on_item_target,
                                 recovered_deferred_targets=(
                                     recovered_targets_by_doc_id.get(
                                         item.item_id,
@@ -1241,10 +1252,25 @@ class GeneSyncOrchestrator:
                 await asyncio.gather(*item_tasks, return_exceptions=True)
                 raise
 
+            completed_recovery_targets = {
+                (
+                    str(result["source_unit_id"]),
+                    str(result["target_unit_revision_id"]),
+                )
+                for result in recovered_completed_results
+            }
             provider_results = [
                 result
                 for result in results
                 if result.get("recovered_deferred_target") is None
+                and (
+                    str(result.get("source_unit_id") or ""),
+                    str(
+                        result.get("provider_target_unit_revision_id")
+                        or ""
+                    ),
+                )
+                not in completed_recovery_targets
             ]
             provider_source_unit_ids = {
                 str(result["source_unit_id"])
@@ -1993,6 +2019,7 @@ class GeneSyncOrchestrator:
         expected_source_activity_epoch: int | None = None,
         lifecycle_execution_owner_id: str | None = None,
         lifecycle_attempt_count: int = 1,
+        source_unit_target_callback: Callable[[str, str], None] | None = None,
         recovered_deferred_targets: frozenset[tuple[str, str]] = frozenset(),
     ) -> dict:
         doc_id = item.item_id
@@ -2032,6 +2059,7 @@ class GeneSyncOrchestrator:
                         expected_source_activity_epoch=expected_source_activity_epoch,
                         lifecycle_execution_owner_id=lifecycle_execution_owner_id,
                         lifecycle_attempt_count=lifecycle_attempt_count,
+                        source_unit_target_callback=source_unit_target_callback,
                         recovered_deferred_targets=recovered_deferred_targets,
                         source_unit_id_callback=(
                             None
@@ -2091,6 +2119,7 @@ class GeneSyncOrchestrator:
         source_unit_id_callback: Callable[[str], None] | None = None,
         lifecycle_execution_owner_id: str | None = None,
         lifecycle_attempt_count: int = 1,
+        source_unit_target_callback: Callable[[str, str], None] | None = None,
         recovered_deferred_targets: frozenset[tuple[str, str]] = frozenset(),
     ) -> dict:
         """Process a single content item through the full pipeline.
@@ -2346,6 +2375,8 @@ class GeneSyncOrchestrator:
             source_unit.id,
             projection_probe.source_unit_revisions[0].id,
         )
+        if source_unit_target_callback is not None:
+            source_unit_target_callback(*current_target)
         if current_target in recovered_deferred_targets:
             stats["recovered_deferred_target"] = current_target
             if progress_callback:
