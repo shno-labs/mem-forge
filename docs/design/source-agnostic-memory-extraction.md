@@ -291,6 +291,30 @@ Required part changed, provided the revalidation work explicitly includes the
 current or rebound incumbent range. Therefore the invariant is
 Primary-from-authorized-work, not Primary-from-delta.
 
+One revalidation operation builds each current Revision's representation index
+once. Every affected Evidence Unit then derives a bounded claim-specific
+workset from that shared index: exact current claim text for Primary when
+available, exact prior presentation or current-anchor overlap for each part,
+and a bounded deterministic lexical shortlist only when a coarse
+whole-Observation anchor would otherwise expose a large Revision. Candidate
+retrieval grants no Evidence role and does not replace semantic validation.
+
+The model selects transient `fNNNNNN` refs from that workset. A supported result
+must select one Primary and one candidate for every Required selector. The
+application validates full coverage and resolves the selected exact Fragments;
+there is no model-returned Evidence text or quote-rematching step. This path is
+shared by Markdown, plain text, canonical records, and current eligible
+Artifacts and never branches on Source type.
+
+Review is the last-resort semantic/authority outcome: `supported=false`, no
+presentable current Evidence, or candidates that remain indistinguishable after
+their representation type and bounded structural context are included. Model
+transport/schema failure, missing/unknown/duplicate refs, compiler failure, or
+capacity failure is an execution failure and creates no human Review. The
+failed lifecycle runtime event uses `support_revalidation_failed`; successful
+stats include work-item count, shared Revision-index count, prompt characters,
+and automatic rebind count.
+
 Retries must reconstruct the same workset, candidate catalog, policy contract,
 access context, binary inference capability, and digest. A change to any of
 these inputs changes v9 Source Derivation and batch identity, so completed output
@@ -439,6 +463,8 @@ salted selection fingerprint
 typed admission rejection reason
 candidate-ledger and reconciliation outcome
 lifecycle or Review outcome
+support-revalidation work items, shared Revision indexes, prompt characters,
+automatic rebinds, and typed execution failure when applicable
 ```
 
 Runtime events do not persist Fragment text or transient Fragment IDs. The
