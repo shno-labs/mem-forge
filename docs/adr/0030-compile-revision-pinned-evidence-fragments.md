@@ -831,7 +831,27 @@ that case is typed ambiguous and preserves every incumbent Support through
 Review. The shared representation compiler maps decoded canonical-record
 quotes, including escaped newlines, quotes, and Unicode, back to exact raw JSON
 ranges; lifecycle code never tests decoded presentation text against raw record
-content. The catalog Resolver then materializes the complete Unit. Expected
+content.
+
+Revalidation does not present the complete current Observation Revision merely
+because one existing Evidence Unit must be rebound. The shared compiler first
+builds one ephemeral, complete structural index for each supporting Revision.
+This index is local application state: it has no model-facing contract, prompt
+payload, persistent identity, or presentation budget. The resolver uses the
+prior revision-pinned Anchor plus the accepted current quote to require one
+unique current Fragment for every Primary and Required part. Only those exact
+current ranges are then compiled into the ordinary bounded catalog presented to
+the selector. The normal Fragment-count and presentation-character limits apply
+to that complete Evidence Unit; they do not apply to unrelated historical
+content in the same Revision. A selected Unit that itself exceeds the limits is
+still typed unpresentable, and an ambiguous remap remains fail-closed. Fatal
+profile or structural errors still invalidate the index, while diagnostics
+outside the selected Unit cannot make its bounded catalog unusable. This is one
+representation-profile-neutral path for Markdown, plain text, canonical records,
+and eligible binary Artifacts; source adapters do not implement revalidation
+catalog rules.
+
+The catalog Resolver then materializes the complete Unit. Expected
 ambiguous or unpresentable selection stages the existing Review-safe outcome;
 compiler or resolver contract violations propagate as failures rather than
 being misclassified as lifecycle Review. The shared Unit-support postcondition
@@ -1119,6 +1139,7 @@ reassessment of prior events, or deployment.
 - [Budgeted Fragment Corpus selection: shno-labs/mem-forge#329](https://github.com/shno-labs/mem-forge/issues/329)
 - [Canonical whole-authority planning: shno-labs/mem-forge#363](https://github.com/shno-labs/mem-forge/issues/363)
 - [Generic multi-window extraction: shno-labs/mem-forge#365](https://github.com/shno-labs/mem-forge/issues/365)
+- [Bounded NOOP Support revalidation: shno-labs/mem-forge#392](https://github.com/shno-labs/mem-forge/issues/392)
 - [Artifact-aware legacy Support revalidation: shno-labs/mem-forge#332](https://github.com/shno-labs/mem-forge/issues/332)
 - [Exact recovery Memory cohorts: shno-labs/mem-forge#335](https://github.com/shno-labs/mem-forge/issues/335)
 - [ADR 0007: Bind extracted evidence to the current Source Projection](0007-bind-extracted-evidence-to-the-current-projection.md)
