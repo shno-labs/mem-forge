@@ -1147,8 +1147,11 @@ A deterministic authority-planning failure is staged as a terminal derivation
 with its typed reason and one content-safe durable runtime event in the same
 transaction. It records Source/Unit/base/target/profile/policy identity and
 explicitly skips LLM and lifecycle mutation. Exact retries reuse the stable
-failure identity; Online Evaluation groups them rather than treating every
-retry as a separate model failure.
+failure identity and the originally stored event and assessment; they do not
+rebind or resubmit those creation facts with a later deployment revision.
+Online Evaluation therefore preserves the deployment that created the failure
+and groups exact retries rather than treating every retry as a separate model
+failure.
 
 The staged derivation also persists the complete content-free authority-plan
 identity. Immediately before the atomic Projection/lifecycle commit, the store
@@ -1185,6 +1188,7 @@ reassessment of prior events, or deployment.
 - [Selection and resolver slice: shno-labs/mem-forge#306](https://github.com/shno-labs/mem-forge/issues/306)
 - [Evidence-Unit Support slice: shno-labs/mem-forge#307](https://github.com/shno-labs/mem-forge/issues/307)
 - [Grouped retrieval/evaluation slice: shno-labs/mem-forge#308](https://github.com/shno-labs/mem-forge/issues/308)
+- [Terminal derivation replay fix: shno-labs/mem-forge#400](https://github.com/shno-labs/mem-forge/issues/400)
 - [Cloud HANA rollout slice: dodoman-sun/memforge-cloud#391](https://github.com/dodoman-sun/memforge-cloud/issues/391)
 - [Legacy-limited Support recovery: shno-labs/mem-forge#316](https://github.com/shno-labs/mem-forge/issues/316)
 - [Budgeted Fragment Corpus selection: shno-labs/mem-forge#329](https://github.com/shno-labs/mem-forge/issues/329)

@@ -2,6 +2,10 @@
 
 Status: Accepted (2026-07-27)
 
+Amended: 2026-09-05 to make derivation creation runtime events and deterministic
+assessments first-write facts. Exact manifest replay validates and returns the
+stored attempt without rebinding those facts to the current deployment.
+
 Amended: 2026-08-13 to require structural-unit selectable text to map into the
 single current Source Observation authority. When a provider's rendered
 Document view adds text outside that Observation, planning uses projection
@@ -195,6 +199,14 @@ contract version, Primary Observation revision identities, and deterministic
 segment ranges. It never contains the operational sync run id. Retrying the
 same immutable target therefore reuses completed outputs and executes only
 missing or failed batches.
+
+Runtime events and deterministic assessments supplied while the derivation is
+first staged are creation facts and are inserted atomically with that attempt.
+On an exact manifest replay, the store still validates immutable manifest and
+batch identity, but returns the stored attempt without resubmitting freshly
+bound creation facts. In particular, a later deployment cannot rewrite the
+original event's deployment revision. Runtime facts recorded for later batch
+attempts retain their normal per-attempt idempotency and collision checks.
 
 A material extraction prompt or response-schema change advances the extractor
 contract version. The new version changes derivation and batch input identity,
