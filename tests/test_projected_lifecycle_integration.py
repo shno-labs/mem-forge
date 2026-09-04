@@ -133,6 +133,7 @@ from memforge.source_projection import (
 )
 from memforge.source_artifacts import StoredSourceArtifact
 from memforge.source_derivation import (
+    SourceDerivationBatchManifest,
     SourceUnitDerivationRequest,
     SourceUnitDerivationContext,
     SourceUnitDeriver,
@@ -3001,6 +3002,33 @@ async def test_source_derivation_separates_exact_payload_hash_from_stable_identi
     assert next_epoch_attempt.target_unit_revision_id == (first_attempt.target_unit_revision_id)
     assert next_epoch_attempt.context.source_activity_epoch == 2
 
+    with pytest.raises(
+        ValueError,
+        match="Source derivation retry payload mismatch: target_unit_revision_id",
+    ):
+        await db.stage_source_derivation(
+            replace(
+                first_manifest,
+                target_unit_revision_id="unitrev-immutable-mismatch",
+            )
+        )
+    with pytest.raises(
+        ValueError,
+        match="Source derivation retry batch manifest mismatch",
+    ):
+        await db.stage_source_derivation(
+            replace(
+                first_manifest,
+                batches=(
+                    SourceDerivationBatchManifest(
+                        batch_id="unexpected-batch",
+                        input_payload_hash="a" * 64,
+                        primary_observation_ids=(),
+                    ),
+                ),
+            )
+        )
+
 
 @pytest.mark.asyncio
 async def test_exact_terminal_derivation_replay_keeps_creation_runtime_facts(
@@ -3098,6 +3126,67 @@ async def test_exact_terminal_derivation_replay_keeps_creation_runtime_facts(
     assert retry_stage.created is False
     assert events == list(first_events)
     assert assessments == list(evaluate_runtime_events(first_events))
+
+
+@pytest.mark.asyncio
+async def test_source_derivation_creation_audit_failure_rolls_back_manifest(
+    db: Database,
+) -> None:
+    projection = _projection(
+        run_id="projection-creation-rollback",
+        body="Creation audit must be atomic.",
+    )
+    document = await db.get_document("confluence-123")
+    assert document is not None
+    context = SourceUnitDerivationContext(
+        document=document,
+        doc_type="confluence",
+        project_key="ENG",
+        repo_identifier=None,
+        document_content="Creation audit must be atomic.",
+        update_mode="full_document",
+        changed_hunks=None,
+        update_plan_stats=None,
+        source_updated_at=None,
+        user_id=None,
+        source_activity_epoch=None,
+    )
+    manifest = source_derivation_manifest(projection, (), context=context)
+    [event] = bind_quality_signals(
+        (
+            QualitySignal(
+                event_name="evidence_authority_planning",
+                outcome="failed",
+                reason_code="INCREMENTAL_BASE_UNAVAILABLE",
+            ),
+        ),
+        source_id=manifest.source_id,
+        source_type=projection.source_type,
+        doc_id=document.doc_id,
+        source_unit_id=manifest.source_unit_id,
+        target_unit_revision_id=manifest.target_unit_revision_id,
+        projection_run_id=projection.run_id,
+        derivation_id=manifest.id,
+        batch_id="authority-planning",
+        batch_attempt=1,
+        extraction_contract_version=manifest.extraction_contract_version,
+    )
+    invalid_event = replace(event, source_id="missing-source")
+
+    with pytest.raises(Exception, match="FOREIGN KEY"):
+        await db.stage_source_derivation(
+            manifest,
+            runtime_events=(invalid_event,),
+            agent_assessments=evaluate_runtime_events((invalid_event,)),
+        )
+
+    assert await db.list_source_derivation_attempts(source_id=manifest.source_id) == ()
+    assert await db.db.execute_fetchall(
+        "SELECT event_id FROM agent_runtime_events"
+    ) == []
+    assert await db.db.execute_fetchall(
+        "SELECT assessment_id FROM agent_assessments"
+    ) == []
 
 
 def test_single_observation_uses_projection_authority_when_document_view_differs():
