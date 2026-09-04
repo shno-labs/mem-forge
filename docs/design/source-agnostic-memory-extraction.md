@@ -18,7 +18,8 @@ done their own deterministic work.
 provider payload
   -> SourceProjectionAdapter
   -> complete current Source Projection + Revision Delta
-  -> batch-local authorized work + bounded Context
+  -> committed base + staged target ProjectionEvidenceWorkPlanner
+  -> exact batch-local authorized ranges + bounded Context
   -> representation-aware Evidence Fragment Compiler
   -> immutable candidate catalog + display-only Context
   -> LLM returns Memory content + primary_ref + required_refs
@@ -221,8 +222,9 @@ unrelated changed Fragment is added as Required merely to pass admission.
 
 ## Incremental, Initial, and Large Work
 
-For an ordinary provider-native multi-Observation update, changed or added
-Observations produce the authorized work. The model receives their compiled
+For an ordinary provider-native multi-Observation update, added Observations
+and exact current structures or registered fields proven changed against the
+committed base produce the authorized work. The model receives their compiled
 Fragments plus bounded Context, not the complete Jira issue or conversation.
 
 Initial extraction may authorize every added Observation, but batching remains
@@ -230,21 +232,21 @@ a transport and computation detail. Only exact ranges owned by the current batch
 are Primary-eligible; an adjacent Observation assigned to another batch cannot
 cross that authority seam.
 
-Large `markdown-structural` and `plain-text` Observations may be split into
-exact, possibly overlapping presentation ranges without changing Source
-identity. Primary eligibility remains local to each range. Context or overlap
-cannot widen it to the whole Observation.
+Large `markdown-structural` and `plain-text` Observations are indexed into
+complete representation-owned structures before packing. Each authorized
+structure has one Primary batch owner; there is no overlapping Primary window.
+Primary eligibility remains local to each exact range, and Context cannot widen
+it to the whole Observation.
 
 For compiler-backed v9, `canonical-record` and whole-Artifact coordinate
 profiles are different representation contracts, not Source-type exceptions.
-Their authorized work retains whole-Observation authority through compilation.
-The canonical compiler first resolves schema fields, decodes strings, and maps
-nested Markdown/plain-text ranges back to raw JSON; only those compiled
-Fragments are model-selectable. Artifacts remain atomic. Whole authority is
-derived from the immutable profile even when its version is not yet registered;
-the compiler then returns a typed unsupported-profile result instead of seeing a
-partial range. Legacy projection extraction continues to character-segment its
-direct batch-Markdown prompt.
+The canonical planner first resolves schema-owned fields, compares their stable
+business projections, and maps changed nested Markdown/plain-text structures
+back to raw JSON. Only those exact current ranges are Primary-capable at
+compilation. Artifacts remain atomic. An unregistered or unmappable profile
+returns a typed planning failure before the LLM; it never falls back to whole
+Observation authority. Legacy projection extraction continues to
+character-segment its direct batch-Markdown prompt.
 
 Neither v9 profile is raw character-sliced to satisfy a planner budget. The
 current normal-extraction catalog remains one-call bounded: an over-limit
@@ -290,10 +292,9 @@ current or rebound incumbent range. Therefore the invariant is
 Primary-from-authorized-work, not Primary-from-delta.
 
 Retries must reconstruct the same workset, candidate catalog, policy contract,
-and digest. A changed Primary-eligibility policy requires a new extraction or
-authority-policy discriminator. A changed model presentation policy similarly
-changes only v9 Source Derivation input identity, so a completed batch under
-the old flat selector presentation cannot be silently reused.
+access context, binary inference capability, and digest. A change to any of
+these inputs changes v9 Source Derivation and batch identity, so completed output
+from the old authority or model-input contract cannot be silently reused.
 
 Lifecycle commit validation is scoped to causal inputs. Unrelated structurally
 valid stale Support from another Source Unit cannot authorize a destructive
@@ -386,15 +387,16 @@ than private planner state. At minimum they prove:
 2. a current approval may select an older proposal as Required;
 3. unchanged Context cannot become Primary, even when a Source relation exists;
 4. ordering, neighbor, and root Context do not gain authority by themselves;
-5. multiple changed Observations still produce exactly one Primary per atomic
+5. multiple changed ranges still produce exactly one Primary per atomic
    claim and canonical Required ordering;
 6. initial extraction remains isolated by batch;
 7. explicit reprocess and revalidation authorize their current work without an
    ordinary delta;
 8. deletion-only work emits no new extraction catalog;
 9. v9 range-addressable Observations preserve range-local authority, canonical
-   and whole-Artifact profiles reach their compiler with whole authority even
-   when unsupported, and legacy prompt segmentation remains bounded;
+   records expose only changed registered fields, Artifacts remain atomic only
+   when selectable, unsupported profiles fail closed, and legacy prompt
+   segmentation remains bounded;
 10. supplied and unsupplied Artifacts remain distinguishable;
 11. repeated compilation of the same inputs produces the same catalog and
     policy digest;
