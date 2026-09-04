@@ -4534,6 +4534,8 @@ async def test_incremental_noop_exhausted_fragment_repair_stops_document_retry_w
     assert raised.value.__cause__ is not None
     assert getattr(raised.value.__cause__, "code") is FragmentSelectionErrorCode.UNKNOWN_REF
     assert raised.value.runtime_bundle.event.reason_code == "support_revalidation_failed"
+    assert raised.value.runtime_bundle.event.terminal_category == "invalid_response"
+    assert raised.value.runtime_bundle.event.error_code == "unknown_ref"
     assert raised.value.runtime_bundle.event.model_call_count == 2
     current = await db.get_memory(incumbent.id)
     assert current is not None and current.status == "active"
@@ -5224,6 +5226,9 @@ async def test_noop_exhausted_duplicate_selector_repair_stops_document_retry_wit
     assert raised.value.retryable is False
     assert raised.value.__cause__ is not None
     assert raised.value.__cause__.code is FragmentSelectionErrorCode.INVALID_SELECTION
+    assert raised.value.runtime_bundle.event.reason_code == "support_revalidation_failed"
+    assert raised.value.runtime_bundle.event.terminal_category == "invalid_response"
+    assert raised.value.runtime_bundle.event.error_code == "invalid_selection"
     assert raised.value.runtime_bundle.event.model_call_count == 2
     assert await db.list_lifecycle_reviews("src-1") == []
 

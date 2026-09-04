@@ -66,7 +66,6 @@ from memforge.pipeline.projection_fragments import (
     SupportRevalidationSelection,
     SupportRevalidationLimitation,
     SupportRevalidationLimitationCode,
-    SupportRevalidationSelectionFailure,
     SupportRevalidationWorkset,
     group_revalidated_support_unit,
     prepare_support_revalidation_workset,
@@ -132,6 +131,18 @@ a Fragment ref. When supported=false, return no Primary or Required selections.
 """
 
 SUPPORT_REVALIDATION_SELECTION_CORRECTION_ATTEMPTS = 1
+
+
+class _SupportRevalidationSelectionFailure(RuntimeError):
+    """Engine-local terminal failure after bounded selector correction."""
+
+    def __init__(
+        self,
+        code: FragmentSelectionErrorCode,
+        message: str,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def _support_revalidation_correction_prompt(
@@ -567,11 +578,11 @@ class MemoryEngine:
                     workset=workset,
                     error=exc,
                 )
-        assert last_error is not None
-        raise SupportRevalidationSelectionFailure(
+        if last_error is None:  # pragma: no cover - loop always validates once
+            raise RuntimeError("support validation ended without a selection result")
+        raise _SupportRevalidationSelectionFailure(
             last_error.code,
             "support validation exhausted bounded Fragment selection correction",
-            attempt_count=total_attempts,
         ) from last_error
 
     async def _rebind_noop_evidence_to_current_revision(
@@ -792,7 +803,11 @@ class MemoryEngine:
                         )
                     )
                     continue
-                assert model_selection is not None
+                if model_selection is None:  # pragma: no cover - guarded by supported result
+                    raise _SupportRevalidationSelectionFailure(
+                        FragmentSelectionErrorCode.INVALID_SELECTION,
+                        "supported validation did not resolve a Fragment selection",
+                    )
                 current_primary_quote = model_selection.primary.presentation_text
                 current_required_quotes_by_reference_id.update(
                     {
@@ -972,6 +987,16 @@ class MemoryEngine:
                 review_count=0,
                 model_call_count=runtime_context.model_call_count,
                 deployment_revision=current_deployment_revision(),
+                terminal_category=(
+                    "invalid_response"
+                    if isinstance(exc, _SupportRevalidationSelectionFailure)
+                    else None
+                ),
+                error_code=(
+                    exc.code.value
+                    if isinstance(exc, _SupportRevalidationSelectionFailure)
+                    else None
+                ),
             )
             raise SourceUnitLifecycleExecutionError(
                 str(exc),
@@ -981,7 +1006,7 @@ class MemoryEngine:
                     (
                         ProjectedSupportInvariantError,
                         SupportRevalidationLimitation,
-                        SupportRevalidationSelectionFailure,
+                        _SupportRevalidationSelectionFailure,
                     ),
                 ),
             ) from exc

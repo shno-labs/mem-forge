@@ -853,9 +853,10 @@ distinct Evidence parts, or omits a Required selector, application code makes
 at most one correction call against the same immutable workset and exact
 allowed-ref manifest. It does not rebuild the Revision index, rerun extraction,
 or rerun relation reconciliation. If the corrected response is still invalid,
-the Unit records typed `support_revalidation_failed`, preserves incumbent
-Support, creates no Review, and is non-retryable by the surrounding document
-loop. Provider/transport/schema failures retain their existing bounded
+the Unit records `support_revalidation_failed` with the content-safe selector
+failure in `error_code`, preserves incumbent Support, creates no Review, and is
+non-retryable by the surrounding document loop. Provider/transport/schema
+failures retain their existing bounded
 structured-LLM retry contract; semantic `supported=false` retains the Review
 path.
 
@@ -1005,8 +1006,10 @@ discards the transient intent and falls back to ordinary durable derivation
 recovery. No replay ledger or fragment lifecycle state is added.
 
 Dynamic selector correction is local to one Support-revalidation workset. Its
-two model attempts, when needed, are counted in the same Agent Execution. Once
-that bounded correction is exhausted, the generic document retry must not
+at most two logical Support-validation calls, when needed, are counted in the
+same Agent Execution; provider/schema attempts inside each call remain separate
+transport telemetry. Once that bounded correction is exhausted, the generic
+document retry must not
 replay already-completed candidate admission, relation reconciliation, or
 other Support worksets merely to resample the same invalid selector.
 
