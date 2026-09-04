@@ -1252,6 +1252,10 @@ class GeneSyncOrchestrator:
                 await asyncio.gather(*item_tasks, return_exceptions=True)
                 raise
 
+            # A successful recovery has already applied this target, so exact
+            # provider rediscovery follows the projected no-op path without
+            # semantic work. Retain the recovery outcome as the single source
+            # of terminal counts instead of replacing it with that no-op.
             completed_recovery_targets = {
                 (
                     str(result["source_unit_id"]),
