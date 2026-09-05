@@ -648,7 +648,11 @@ logical Support edge:
    the marker to `evidence-unit-set-v2`, and activate v2 code. From that point,
    all new writes, current-support queries, support hashes, Lifecycle Plan
    mutations, Reviews, recovery, and provenance checks use Unit ids and the
-   legacy table is immutable archive.
+   legacy table is immutable archive. The compatibility projection is rebuilt
+   active-v2 first by exact `(memory_id, source_id, doc_id)` locator. A
+   conservative `legacy_limited` fallback may retain unmatched old provenance
+   for a Memory with an ineligible group, but it must never relabel or override
+   a locator already covered by active v2 Support.
 
 Before the marker changes, rollback removes no data: the new binary may be
 withdrawn and the legacy writer resumed. After the first v2 write, downgrade to
