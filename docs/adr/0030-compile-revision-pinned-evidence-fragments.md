@@ -632,7 +632,11 @@ logical Support edge:
    `SourceUnitRevision` must belong to the same `SourceUnit`, and every
    supporting Reference Revision must be a member of that pinned Unit Revision;
    otherwise the group is `unit_revision_lineage_invalid` and remains
-   legacy-limited rather than failing during apply.
+   legacy-limited rather than failing during apply. An active group is eligible
+   only when every supporting Reference also pins its Observation's current
+   stable Revision at cutover. A non-current active group is
+   `active_support_revision_non_current` and remains legacy-limited; inactive
+   historical groups retain their recorded revision-pinned history.
 3. At the controlled cutover, web/worker lifecycle writers are quiesced and one
    migration lease protects an exact-count, idempotent final backfill. It creates
    one new Support edge for every eligible group. Both use the earliest creation
