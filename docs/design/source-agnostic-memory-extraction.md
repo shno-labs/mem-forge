@@ -407,6 +407,23 @@ ReviewService owns human-gated approval and rejection.
 New source types and representation adapters must not bypass these Modules with
 direct Memory or Support writes.
 
+## Support Cutover Eligibility
+
+The v1-to-v2 Support cutover is a mechanical authority migration, not semantic
+revalidation. An active v1 group is eligible only when every Primary and
+Required Evidence Reference pins its Observation's current stable Revision at
+the locked cutover snapshot. A non-current active group remains preserved as
+non-authoritative `legacy_limited` provenance with reason
+`active_support_revision_non_current`; the cutover must not infer that old
+Evidence still supports the current claim. Inactive groups retain their pinned
+historical Revisions because they grant no current lifecycle authority.
+
+The complete grouping, exact-count, transaction, and forward-only rollout
+contract is defined by
+[ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md#support-schema-and-cutover).
+This rule is representation- and Source-neutral: all providers reach it through
+the same stable Observation and current-Revision identities.
+
 ## Source-Type Extensibility
 
 The authority rule does not branch on Source type:
