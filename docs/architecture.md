@@ -1,5 +1,12 @@
 # MemForge: Architecture Design Document
 
+For the complete source lifecycle and its accepted, not-yet-implemented
+assessment changes, start with [Source sync to Memory](design/source-sync-to-memory.md).
+[ADR 0034](adr/0034-unify-incremental-support-and-claim-assessment.md) records
+the target contract. The pipeline sections below describe the current baseline;
+separate support/proof calls must not be read as the target design.
+
+
 > Auto-evolutionary agent memory layer for development teams.
 > Sits between users/agents and knowledge sources, providing persistent team-wide memory
 > that grows and refines as source documents change.
@@ -306,23 +313,17 @@ class Memory:
 
 ### Provenance Chain
 
+```text
+Source Unit revision -> Observation revisions -> exact Evidence references
+                    -> complete Evidence Unit -> Support assertion -> Memory
+Memory -> memory_entities -> Entity / aliases
 ```
-Source Document(s)  -->  memory_sources  -->  Memory  -->  memory_entities  -->  Entity
-     (documents)         (join table)      (memories)      (join table)       (entities)
-```
 
-Provenance is bidirectional:
-- From a memory: trace back to every source document that owns or corroborates it
-- From a document: find memories extracted from it and memories it corroborates
-- When a document changes: know which extracted memories need reconciliation and which corroborated supports need revalidation
-
-`memory_sources.support_kind` separates ownership from additional evidence:
-- `extracted`: the memory originated from this document, so the document can participate in same-document reconciliation.
-- `corroborated`: the document directly supports an existing memory with a validated excerpt, but cannot update, supersede, retire, or review-queue that memory by itself.
-
-Both kinds are valid source support for keeping a memory active. `extracted`
-controls reconciliation ownership; it is not required for the memory to keep
-existing while corroborated support remains.
+A Memory can have independent complete Support from multiple documents.
+`memory_sources` remains a document/provenance projection and legacy record;
+its extracted/corroborated labels do not replace v2 Evidence Unit authority.
+Current Support, revisions, scoped ownership and Source Authority govern
+reconciliation. See [Evidence and lifecycle semantics](design/document-memory-lifecycle.md).
 
 ---
 
@@ -582,273 +583,55 @@ projections are absent, and summary totals match projection/patch rows.
 
 ## 6. Memory Extraction Pipeline
 
-### Source Unit Extraction
+The runtime flow, entity table, model inputs and initial/update scenarios are
+maintained in [Source sync to Memory](design/source-sync-to-memory.md).
+Representation and selector details belong to
+[Source-Agnostic Memory Extraction](design/source-agnostic-memory-extraction.md)
+and [incremental Primary authority](design/representation-scoped-incremental-primary-authority.md).
 
-Every source type follows the same provider-neutral flow:
+Source adapters normalize and project provider content into stable Units and
+immutable Observations. The work planner authorizes exact current structures,
+prepares bounded context and stages recoverable extraction. Models generate
+candidates and select exact supplied Evidence; they do not grant authority or
+write Memory. CandidateLedger selects among existing candidates without
+inventing merged claims. The complete Unit's work reaches one lifecycle Plan.
 
-    Gene discovery and fetch
-      -> normalized source artifact
-      -> deterministic, token-bounded Source Units
-      -> one structured semantic extraction per Source Unit batch
-           - transient Memory candidates
-           - revision-pinned Evidence localization
-           - entity mentions
-      -> deterministic quality gate and exact duplicate collapse
-      -> CandidateLedger when multiple semantic candidates remain
-      -> batched entity resolution
-      -> Lifecycle Plan against the complete mandatory same-source incumbent scope
-      -> atomic core lifecycle commit, Memory-vector outbox, and relation work
-      -> bounded post-commit Relation Discovery
-
-Extraction is grounded only in the owned Source Unit plus bounded structural
-context. It does not receive unbounded workspace Memory history. This keeps the
-hot path independent of corpus size without weakening lifecycle safety:
-
-- Same-source destructive reconciliation loads every active incumbent that the
-  changed revision can replace, retire, or retain.
-- Cross-document and cross-source discovery retrieves a bounded candidate set
-  after the core lifecycle state commits.
-- Cross-source relations are non-destructive unless an explicit Source
-  Authority or Review gate authorizes the action.
-
-The structured extraction output contains no generated document summary, tag,
-entity kind, relationship list, complexity score, or document-vector payload.
-Those fields have no default-path consumer or lifecycle acceptance contract.
-Source-native labels remain source metadata; they are not generated Memory tags.
-
-### Pre-Persistence Quality Gate
-
-Structured extraction output is candidate data. Before persistence,
-MemoryEngine rejects metadata-only, reference-only, attachment-event-only,
-operational-history-only, open-question, or context-only candidates. Conditional
-domain rules remain valid when the condition is part of the grounded claim. The
-same gate applies to lifecycle replacement candidates, so an invalid replacement
-cannot supersede an incumbent.
-
-### CandidateLedger
-
-Every Source Unit revision is aggregated before lifecycle planning. Exact content
-duplicates collapse deterministically. Multiple remaining candidates pass through
-one complete semantic uniqueness ledger:
-
-- one KEEP or DROP_REDUNDANT -> canonical_index decision per candidate;
-- original candidate and Evidence objects remain unchanged;
-- no full document, incumbent list, or provider payload is included;
-- one corrective retry is allowed for an incomplete ledger;
-- explicit candidate and serialized-input limits fail closed.
-
-A failed ledger writes no Memory and authorizes no incumbent mutation. The ledger
-is retained as an auditable processing boundary, not as a second extraction pass.
-
-### Entity Resolution and Relation Discovery
-
-Entity mentions are resolved in one batch after extraction. Exact and alias
-matches are deterministic; unresolved mentions use bounded candidates,
-embeddings, and bounded structured ambiguity batches. The resolved mapping is then
-applied back to the original candidates without rewriting their content or
-Evidence.
-
-After the lifecycle commit, Relation Discovery retrieves candidates with the
-same visibility, owner, project, source, lineage, Anchor, and revision predicates
-used by retrieval. It records a candidate ledger and classifies only the bounded
-pairs. Relation results never substitute for exact Evidence attribution.
-
-### Token and Cost Boundaries
-
-- Source Units and batch input have explicit token/character ceilings.
-- CandidateLedger and entity adjudication require exact output coverage and fail
-  closed when incomplete.
-- Relation candidate retrieval is bounded and excludes deterministic lineage,
-  Anchor, and RevisionDelta disjointness before LLM classification.
-- Aggregate metrics record candidate counts, structured LLM calls, latency, and
-  failure class without logging source content or Evidence excerpts.
-- Unchanged source items are skipped by revision/content identity.
+Current reconciliation still has separate relation classification, incumbent
+support audit, conditional revision proof and NOOP Evidence validation calls.
+[ADR 0034](adr/0034-unify-incremental-support-and-claim-assessment.md) defines
+the pending unified L3 support/Evidence and L4 relation/revision assessments.
+Do not confuse its target call diagram with deployed behavior.
 
 ## 7. Memory Lifecycle
 
-### Creation (During Sync)
+The maintained domain rules are in
+[Document Memory Lifecycle](design/document-memory-lifecycle.md); complete
+step-by-step examples and change sizing live in the
+[Source sync design](design/source-sync-to-memory.md).
 
-Triggered inside the sync pipeline after normalization:
+An ordinary source operation may attach or remove only its authorized complete
+Support, and destructive claim changes require complete incumbent coverage,
+Source Authority and all relevant Support/gates. Equivalent candidates reuse a
+compatible Memory identity. An admissible same-identity revision creates a new
+materialization and supersedes the old record; it does not add an independent
+fact or a new MemoryRevision domain entity.
 
-The Source Unit Extractor emits transient candidates and revision-pinned
-Evidence localization. The quality gate, CandidateLedger, entity resolver, and
-Lifecycle Plan complete before the core lifecycle state is committed.
+The relational commit owns current Projection, Evidence, Support, Memory,
+Reviews and durable vector/relation work. Models and remote indexes do not run
+inside that transaction. A permitted Review can preserve only its exact
+contested prior Support, not any stale edge in the Plan.
 
-### Update (When Source Items Change)
+Cross-document relation discovery follows the commit asynchronously. Both
+independently supported conflicting Memories may be active before a conflict
+is annotated; this window is accepted. A cross-source Review's confirm/dismiss
+records a relationship disposition, whereas a gated LifecycleReview's
+approval/rejection applies a complete protected Plan. Neither similarity nor
+source recency is destructive authority.
 
-When a sync produces a new Source Unit Revision, the update planner consumes the
-complete current Source Projection and its Revision Delta. It authorizes exact
-work for the current batch and adds bounded current Context; it does not make the
-whole document, issue, or conversation claim-authoritative merely because the
-projection contains it. Confluence pages, Jira tickets, Teams blocks,
-agent-session summaries, GitHub Pages, and local documents share this path after
-their provider and representation adapters have produced current Observations.
-
-Every compiled candidate may be selected as Required. The application marks
-only the current authorized work `primary_eligible`; bounded Context is
-selectable only as Required, and material without exact current supporting
-Evidence remains display-only. Source relations find and order bounded Context
-but never grant a role. The model selects one Primary and only the Context that
-is semantically necessary as Required, while the Resolver enforces Primary
-eligibility, catalog identity, revision, access, and Artifact supply. Initial
-extraction, explicit reprocess, and Evidence revalidation provide their own
-authorized worksets, so the invariant is Primary-from-authorized-work rather
-than Primary-from-delta. Deletion-only work authorizes no new candidate.
-
-```python
-async def update_memories_for_document(self, doc_id, new_content):
-    existing = await self.db.get_memories_by_source_doc(doc_id, support_kind="extracted")
-    existing_active = [m for m in existing if m.status == "active"]
-    new_candidates = extraction_result.memories  # scoped by Source Unit and update mode
-
-    if not existing_active:
-        for mem in new_candidates:
-            await self.deduplicate_and_insert(mem)
-        return
-
-    relations = await self.classify_exact_pairs(new_candidates, existing_active)
-    support = await self.audit_current_source_support(existing_active, new_content)
-    revision_proofs = await self.prove_unique_refinements(relations)
-    operations = reduce_relation_ledger(relations, support, revision_proofs)
-    for op in operations:
-        match op.action:
-            case "ADD":      await self.add_memory(op.memory)
-            case "UPDATE":   await self.update_memory(op.existing_id, op.memory)
-            case "SUPERSEDE": await self.supersede_memory(op.existing_id, op.memory)
-            case "DELETE":   await self.remove_source_support(op.existing_id, doc_id)
-            case "NOOP":     pass
-```
-
-The models return semantic relations, factual support, and conditional revision
-proofs; they do not return lifecycle verbs. The deterministic reducer chooses
-ADD, UPDATE, SUPERSEDE, DELETE, or NOOP, and the Lifecycle Planner remains the
-mutation authority. ADD, UPDATE, and SUPERSEDE candidates go through the same pre-persistence quality
-gate used by initial extraction. If a proposed replacement is metadata-only,
-reference-only, or an unresolved question, it is skipped and the old memory is
-left unchanged.
-
-DELETE is scoped to the updated source document. It removes that document's
-support link from the memory; the memory is retired only when no usable source
-support remains. This lets one document stop supporting a fact without hiding a
-memory that is still supported by other documents.
-
-Same-document reconciliation can mutate only memories where the current document
-has `support_kind='extracted'`. A reducer proposal outside that authority is
-rejected and audited.
-If a direct content mutation would affect another valid support edge, the system
-stages a challenger for review instead of silently rewriting shared provenance.
-
-The full state matrix for same-document and cross-document provenance conflicts
-lives in `docs/design/document-memory-lifecycle.md`.
-
-The source normalization boundary and reusable extraction contract are captured
-in `docs/design/source-agnostic-memory-extraction.md`.
-
-### Deterministic Reconciliation Operations
-
-| Operation | When | Example |
-|-----------|------|---------|
-| **ADD** | New fact not in existing memories | New service dependency documented |
-| **UPDATE** | Unique additive REFINES pair passes same-identity, truth-preservation, canonical-candidate, and current-Evidence proof | Existing timeout claim gains its configuration key without losing the timeout value |
-| **SUPERSEDE** | Current candidate contradicts an incumbent that this Source Unit no longer supports | Current database version replaces the old incompatible version |
-| **DELETE** | Fact no longer supported by this source document | Section deleted; remove this document's support, retire only if support count becomes zero |
-| **NOOP** | No change | Fact still accurately represented |
-
-### Deduplication (Semantic Similarity)
-
-Before inserting any memory, check for near-duplicates:
-
-```python
-async def deduplicate_and_insert(self, candidate, doc_id):
-    embedding = await self.embed_memory(candidate)
-    similar = self.memory_collection.query(
-        query_embeddings=[embedding], n_results=3,
-        where={"status": "active"}
-    )
-    if similar["ids"][0] and similar["distances"][0][0] < 0.08:
-        # Near-duplicate extracted from this document: add extracted provenance
-        # instead of creating a duplicate memory.
-        existing_id = similar["ids"][0][0]
-        await self.db.add_memory_source(existing_id, doc_id, support_kind="extracted")
-        return existing_id
-
-    # No duplicate: insert new memory
-    await self.db.insert_memory(candidate)
-    return candidate.id
-```
-
-### Source Support Detection
-
-After extraction and reconciliation, the pipeline checks whether the current
-document directly supports existing active memories for the same resolved
-entities. This is evidence attachment, not memory extraction.
-
-Candidate selection is deterministic and bounded:
-- active memories only
-- shared resolved entities with the current document
-- no existing source link for the current document, except already-corroborated rows can be rechecked for a better excerpt
-- same project/team preferred
-- ranked by same project, entity overlap, corroboration count, confidence, and recency
-- capped to a small batch for the verifier
-
-The LLM acts only as a verifier. It returns a memory ID, `supported=true`, an
-exact excerpt, and a short reason. The system persists support only when the
-excerpt is contained in the normalized document and is not link-only,
-metadata-only, or malformed. A persisted support row uses
-`support_kind='corroborated'`.
-
-Corroborated rows count toward `corroboration_count` and show in provenance,
-but they do not participate in same-document reconciliation. If a document is
-updated and an old corroborated excerpt is no longer present, the support row is
-removed unless the verifier supplies a replacement excerpt from the updated
-document.
-
-### Lifecycle Cleanup
-
-Memory state changes go through the lean lifecycle rules:
-
-```python
-async def retire_stale_memories(self):
-    # 1. Memories from deleted source documents lose only that source support.
-    orphaned = await self.db.get_memories_with_deleted_sources()
-    for mem in orphaned:
-        if await self.db.count_usable_sources(mem.id) > 1:
-            await self.db.remove_source(mem.id, deleted_doc_id)
-        else:
-            await self.db.update_status(mem.id, "retired", reason="source_deleted")
-
-    # 2. Expired episodic memories are retired by the daily scheduler job.
-    expired = await self.db.get_expired_memories()
-    for mem in expired:
-        await self.db.update_status(mem.id, "retired", reason="expired")
-```
-
-`active` is the only default-searchable state. `pending_review` is quarantined,
-`superseded` is historical replacement with `superseded_by`, and `retired` is
-hidden because the memory has no current support or was explicitly hidden.
-`decayed` is accepted only as a compatibility alias for `retired`.
-
-Retired and pending-review memories are excluded from default search, but
-queryable in explicit admin/history views.
-
-### Contradiction Handling
-
-When multiple sources produce conflicting memories, the system does not infer
-which Source is authoritative. The Review kind determines the postcondition:
-
-- Clear same-source replacement: old memory becomes `superseded`, new memory becomes `active`.
-- Ordinary workbench supersede: the challenger remains staged until a stale-guarded Review chooses the current Memory state.
-- Cross-source conflict: both independently supported Memories remain active. Confirming records the pair as a reviewed conflict; dismissing records that the pair is not an effective conflict. Search and Memory detail derive the visible disposition from the Review and expose it only when both participants are visible.
-- Projected lifecycle change: a `LifecycleReview` gates its complete Source Evidence Plan; approval or rejection runs only through that Plan's atomic path.
-- A durably stale, nonterminal `LifecycleReview` may be explicitly rechecked through the Review UI or authenticated admin route against the current complete Support and Memory snapshot. The stale Review remains immutable, and the resulting new pending Review still requires an ordinary decision. This exceptional recovery operation is not exposed as a general-purpose MCP tool. Terminal retirement or supersession proposals require source replanning instead of mechanical refresh.
-- High-corroboration same-document replacement or delete: flagged for human review instead of automatic demotion.
-
-> **Cut from earlier design:** Synthetic "meta-memories" that recorded conflicts were removed.
-> The two original Memories, their auditable Review/Relation, and the derived
-> `conflict_contexts` read model are sufficient. Creating a third Memory would
-> clutter results and make lifecycle cleanup ambiguous.
-
----
+[ADR 0009](adr/0009-bound-cross-document-relation-discovery.md),
+[ADR 0017](adr/0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md)
+and [ADR 0023](adr/0023-keep-review-orchestration-outside-memory-lifecycle.md)
+own the detailed work, atomicity and Review contracts.
 
 ## 8. Entity Resolution and Alias Scope
 
@@ -1023,8 +806,8 @@ application-level cleanup where external indexes or lifecycle semantics are
 involved:
 
 - Source/document removal deletes source-support links and retires memories only
-  when no usable source support remains. Usable support includes extracted and
-  corroborated provenance rows whose documents still exist.
+  when no complete valid Support remains and the authoritative lifecycle
+  conditions permit retirement. Legacy document links alone do not prove current Support.
 - Memory retirement removes the memory from FTS5 in the owning transaction and
   publishes a durable outbox operation that removes the ChromaDB vector after commit.
   Lifecycle Plans and Review decisions retain separate outbox ownership even though
@@ -1042,7 +825,7 @@ write `memories_fts` or ChromaDB directly from LLM output.
 Canonical memory insert and supersede both follow this derived-index sequence:
 
 1. Insert or supersede the `memories` row in SQLite.
-2. Link durable provenance in `memory_sources`.
+2. Persist exact Evidence, complete Support and the document provenance projection.
 3. Link canonical entities in `memory_entities`.
 4. Rebuild `memories_fts` from `memories JOIN memory_entities JOIN entities`.
 5. Build the memory embedding text from the same canonical entity names.
@@ -1839,60 +1622,18 @@ truth for the session.
 
 ---
 
-## 14e. Reconciliation Prompt
+## 14e. Reconciliation Model Contract
 
-When a document is updated and existing memories need reconciliation, this is the
-third LLM call (only on updates, not new documents). It compares new candidates
-against existing active memories linked to the same source document and also
-audits those existing memories against the updated document text:
+Models classify relations and support; the deterministic reducer and Lifecycle
+Planner decide actions. No prompt may let omitted incumbents implicitly pass or
+let a model directly select database ADD/DELETE/SUPERSEDE operations.
 
-```
-You are reconciling team knowledge. A document was updated and new facts
-were extracted. Compare them against existing memories from the same document
-and the updated document content.
-
-For each new extraction, decide ONE action:
-
-- ADD: Genuinely new information not covered by any existing memory.
-- UPDATE: An existing memory covers the same fact but needs minor refinement.
-- SUPERSEDE: An existing memory covers the same topic but is now materially wrong.
-- DELETE: An existing memory is demonstrably false or was extracted in error.
-- NOOP: The new extraction adds nothing beyond what existing memories capture.
-
-Also audit existing memories from this same document against the updated
-document. If an existing memory is no longer supported by the updated document
-and no new extraction supersedes it, return a DELETE action with its memory_id.
-If an existing memory is still supported, you may omit it.
-
-<new_extractions>
-{json_list_of_new_candidates}
-</new_extractions>
-
-<existing_memories>
-{json_list_of_existing_memories_with_ids}
-</existing_memories>
-
-<updated_document>
-{new_normalized_content}
-</updated_document>
-
-Return a JSON array of operations:
-[
-  {"index": 0, "action": "ADD", "reason": "New fact about deployment"},
-  {"index": 1, "action": "SUPERSEDE", "memory_id": "mem-abc123",
-   "reason": "Database migrated from v14 to v16", "flag_for_review": false},
-  {"index": 2, "action": "NOOP", "memory_id": "mem-ghi789",
-   "reason": "Already captured"},
-  {"action": "DELETE", "memory_id": "mem-old999",
-   "reason": "The updated document no longer supports this memory"}
-]
-```
-
-In the persistence layer, DELETE from reconciliation means "remove this source
-document as support." It is not a hard purge and it does not retire the memory
-while other source documents still support it.
-
----
+The current implementation contract is in `pipeline/reconciler.py` and
+`memory/relation_classifier.py`. The accepted target combines support/Evidence
+assessment and relation/revision assessment as described in
+[Source sync to Memory](design/source-sync-to-memory.md) and
+[ADR 0034](adr/0034-unify-incremental-support-and-claim-assessment.md).
+Prompt examples and JSON layouts are intentionally not duplicated here.
 
 ## 14f. Observability & Monitoring
 

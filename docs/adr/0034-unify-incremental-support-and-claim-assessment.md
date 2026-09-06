@@ -1,0 +1,129 @@
+# Unify incremental Support and claim assessment within the existing lifecycle
+
+## Status
+
+Accepted design (2026-09-06); implementation pending. This documentation change
+neither activates the new model contract nor proves an OSS/Cloud deployment.
+
+## Context
+
+Current reconciliation classifies claim pairs, audits incumbent support, and
+conditionally makes a separate revision-composition call. The subsequent NOOP
+path independently selects and validates current Evidence. Repeating support
+judgments and limiting current candidates through old-location correspondence
+can lose valid rewritten or split Evidence. Full-document context also needs to
+remain distinct from authority to extract new claims.
+
+The end-to-end explanation and implementation comparison live in
+[Source sync to Memory](../design/source-sync-to-memory.md). This ADR records
+only the decision; it does not replace the representation compiler, storage
+protocol, or the complete lifecycle description.
+
+## Decision
+
+1. Reuse one operation-scoped representation index and existing staged base/target
+   snapshots. For document semantic assessment, provide the current full catalog
+   when the complete request fits the configured input budget (initially about
+   80% of available input capacity); otherwise provide the complete structural
+   net delta plus necessary prior claim/Evidence and deterministic context. The
+   baseline must apply to the evaluated Support. A contested older Support does
+   not acquire the last sync's baseline automatically. Missing baseline or
+   capacity cannot become an empty or truncated successful input. Initial import
+   keeps its existing complete-coverage execution contract.
+2. Keep read scope separate from new-claim Primary authority. Ordinary extraction
+   still requires authorized added/changed complete structures or canonical
+   fields, even when unchanged context is readable. Existing-claim validation
+   can use current unchanged Evidence without authorizing duplicate extraction.
+3. One L3 assessment returns the fixed claim's support result and necessary
+   current Evidence reconstruction. The application can retain proven unchanged
+   parts and resolves a complete Evidence Unit; Required membership can split,
+   merge, grow, or shrink. An old offset locates only its own revision. Semantic
+   selection of current supplied fragments does not require reconstructing the
+   author's unique edit history. Stored provenance remains exact and immutable.
+4. One L4 call combines claim relation classification and conditional revision
+   assessment. Its relationship vocabulary is EQUIVALENT, directional REFINES,
+   CONTRADICTS, and UNRELATED. Insufficient input is an unresolved assessment,
+   not an unrelated pair or a new persisted relationship. Only a new-to-old
+   refinement with the same knowledge identity, all old meaning and scope
+   preserved, a self-contained new claim, and complete current supporting
+   Evidence may propose revision. Non-applicable revision assessment is explicit
+   in a fixed result contract. The reducer validates completeness and consistency
+   with the same-input L3 result before proposing actions.
+5. Keep existing Lifecycle Plan, complete incumbent coverage, Source Authority,
+   Review, causal stale guards, and atomic commit. Model output never directly
+   creates or retires Memory. Unknown selectors and malformed or incomplete
+   results remain execution failures with the existing bounded correction/retry
+   contract; they cannot fall back to independent ADD. A semantic uncertainty
+   becomes Review only when an existing single proposal can express its complete
+   protected postcondition. Otherwise reject the Unit without a partial commit.
+   Competing incompatible refiners retain the existing fail-closed boundary;
+   this decision does not introduce multi-option Review, all-candidate conflict
+   scanning, or a new checkpoint ledger.
+6. Retain pre-creation identity reuse and post-commit bounded relation discovery
+   from ADRs 0006/0009. New supported Memory may be visible before cross-document
+   conflicts are discovered. This temporary window is accepted; no conflict-free
+   publication guarantee or fixed completion deadline is implied. Persist work
+   with the lifecycle transaction, retain auditable failure/retry, and never give
+   discovery authority to retire another source's knowledge.
+
+The delta mode deliberately accepts occasional semantic false acceptance when
+unchanged remote context is missing and the model does not recognize the gap.
+Recognized uncertainty, illegal provenance, incomplete delta, visibility errors,
+and destructive authority violations are not covered by that tradeoff.
+Supplemental agentic reads remain the separate beta in
+[Cloud issue #468](https://github.com/dodoman-sun/memforge-cloud/issues/468).
+
+## Relationship to existing decisions
+
+Upon implementation, this amends ADR 0030's one-selector-per-old-Required
+revalidation mechanics and the separate support/proof orchestration described
+in ADR 0012. Their immutable Evidence, authority, storage, and retry invariants
+remain. ADR 0008's pruning is semantic-conservative: unchanged old Evidence or
+cross-revision position non-overlap alone cannot rule out an exception elsewhere.
+ADRs 0009, 0017, 0019 and 0023 remain the owners of asynchronous discovery,
+recoverable derivation, vector delivery and Review orchestration.
+
+Until the implementation is delivered, existing selectors, separate calls and
+failure behavior remain current runtime behavior. No migration is implied by
+renaming model responsibilities in a design diagram. Cloud implements the same
+shared contracts; only HANA/hosting consequences belong in Cloud ADRs.
+
+## Validation and version boundaries
+
+Preserve existing deterministic admission normalization and fixed-slot binding
+before strict resolution. Unambiguous redundant extraction refs and the current
+first-decision pair normalization must not become whole-document failures.
+Validate only fields applicable to the selected result; derive mechanical
+eligibility in application code rather than requiring redundant model agreement.
+Existing one-workset selector correction and typed non-retryable exhaustion
+remain. Semantic disagreement is not a transport retry signal. These allowances
+never repair an unknown identity by guessing, omit required coverage, or grant
+out-of-scope authority.
+
+`projection-extraction-v9` is an extraction contract selected by current v2
+Support capability; it is not the Evidence compiler version, currently 3.
+Update the affected L3/L4 semantic work identities and any changed input-policy
+identity through existing descriptors/hashes. Do not bump the compiler unless
+fragment/coordinate semantics change, invent a Support migration, or rename an
+unchanged L1 contract solely because downstream calls were combined. Already
+committed history is not rewritten; incomplete work obeys existing invalidation
+and recovery boundaries.
+
+## Consequences
+
+The material changes concentrate in input preparation, L3, L4, and reducer/Plan
+integration. Entity resolution stays a bounded retrieval helper, not a truth or
+identity authority. No new scheduler, persistent Fragment model, MemoryRevision
+entity, or historical-document browser is required.
+
+Fewer logical calls do not prove lower total cost: L4 now receives complete
+candidate Evidence, and complete same-Unit comparisons remain required. Validate
+accuracy, input/call cost, unresolved outcomes and latency on a fixed cohort;
+do not hide capacity limits by new batching or silent truncation.
+
+## References
+
+- [Existing fragment and lifecycle contract](0030-compile-revision-pinned-evidence-fragments.md)
+- [Existing asynchronous relation contract](0009-bound-cross-document-relation-discovery.md)
+- [Transactional outbox pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): durable follow-up work and idempotent delivery, not conflict-free publication.
+- [Building effective agents](https://www.anthropic.com/engineering/building-effective-agents): start with bounded workflows and justify additional agentic complexity through evaluation.

@@ -1,5 +1,12 @@
 # 大文档 Memory 关系判断与恢复：修复方案
 
+> 文档定位：保留的问题分析与设计选项，不是当前完整流程或执行 backlog。
+> 主入口已统一到 [Source sync to Memory](source-sync-to-memory.md)，目标决策见
+> [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md)。本文的多选提案
+> Review/UI 扩展仍未批准，不能因主流程合并 L3/L4 就认为该扩展已纳入或已实现。
+> 下文基线和问题状态是当时快照；当前执行状态以对应 GitHub Issue 为准。
+
+
 状态：分阶段落实。增量 Primary authority 与 bounded Support revalidation
 已经进入主线；多候选冲突 Review 仍是设计提案，不是已实现能力。日期：2026-09-05。
 

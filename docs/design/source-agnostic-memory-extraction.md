@@ -1,5 +1,11 @@
 # Source-Agnostic Memory Extraction
 
+Scope: current extraction and Evidence-selection mechanics. The complete runtime
+entry is [Source sync to Memory](source-sync-to-memory.md); its L3/L4 changes
+are accepted design pending implementation under [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md).
+This document does not define a second lifecycle or conflict-discovery pipeline.
+
+
 This document expands the runtime design accepted by
 [ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md). MemForge
 keeps provider identity and structure at the Source Projection seam,
@@ -112,12 +118,14 @@ revalidation, and managed capture can authorize claim work without an ordinary
 changed/added delta. The planner retains one internal concept of authorized work
 instead of adding a separate domain state for every work kind.
 
-For one persistent Markdown or HTML Observation, a provider delta may currently
-identify the whole Observation rather than exact changed paragraphs. In that
-case the batch's authorized range is necessarily broader. That is a projection
-granularity limitation, not a reason to ask the role layer or the LLM to invent
-finer authority. A future exact `FragmentMapping` may narrow the work without
-changing this contract.
+A provider delta may identify a whole mutable Observation. For active
+compiler-backed work, the representation-owned planner compares complete
+structures or schema fields before granting incremental Primary eligibility;
+a coarse provider delta does not automatically authorize the whole old body.
+See [representation-scoped incremental authority](representation-scoped-incremental-primary-authority.md)
+for the implemented algorithm and [ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md)
+for the canonical boundary. Whole-record parsing permission is not Primary
+permission for every decoded field.
 
 ## Bounded Context and Required Selection
 
@@ -291,54 +299,14 @@ Required part changed, provided the revalidation work explicitly includes the
 current or rebound incumbent range. Therefore the invariant is
 Primary-from-authorized-work, not Primary-from-delta.
 
-One revalidation operation builds each current Revision's representation index
-once. Every affected Evidence Unit then derives a bounded claim-specific
-workset from that shared index. A prior stable-Fragment Anchor first requires
-the projection's provider mapping across Revisions. Selection then prefers
-persisted raw or presentation digest, exact prior presentation, exact current
-claim text for Primary, or current-anchor overlap, and uses a bounded
-deterministic lexical shortlist only when a coarse whole-Observation anchor
-would otherwise expose a large Revision. Provider mapping proves
-correspondence; durable text Evidence still resolves to an exact current range.
-Candidate retrieval grants no Evidence role and does not replace semantic
-validation.
-
-The model selects transient `fNNNNNN` refs from that workset. A supported result
-must select one Primary and one candidate for every Required selector. The
-application validates full coverage and resolves the selected exact Fragments;
-there is no model-returned Evidence text or quote-rematching step. This path is
-shared by Markdown, plain text, canonical records, and current eligible
-Artifacts and never branches on Source type. Required coverage has no separate
-item-count cap: the model output budget scales with the complete selector set,
-and an unrepresentable result becomes a typed capacity limitation instead of a
-partial response.
-
-Because the static response schema cannot enumerate one transient workset's
-exact refs, a schema-valid but unknown, duplicate, or incomplete selection gets
-one application-owned correction call with the same workset and exact allowed
-refs. A valid correction continues normally. Exhaustion produces typed
-`support_revalidation_failed`, preserves existing Support, creates no Review,
-and stops the surrounding document retry from replaying extraction and relation
-work. This is one provider-neutral execution rule after representation-specific
-candidate construction, so it applies identically to Markdown, plain text,
-canonical records, and eligible Artifacts.
-
-Review is the last-resort semantic/authority outcome: `supported=false`, no
-presentable current Evidence, or candidates that remain indistinguishable after
-their representation type and bounded structural context are included. Model
-transport/schema failure retains bounded runtime retry. Missing, unknown, or
-duplicate refs receive one workset-local correction; exhausted correction is a
-typed execution failure that cannot replay the surrounding document.
-Unsupported representation, compiler-contract failure, and
-capacity exhaustion are non-retryable operational limitations. Neither creates
-a human Review. Runtime failures use `support_revalidation_failed`; typed
-operational outcomes use
-`support_revalidation_unsupported_representation`,
-`support_revalidation_compiler_failure`, or
-`support_revalidation_capacity_exceeded`, making the failure visible to Online
-Evaluation without mutating lifecycle state. Successful stats include work-item
-count, shared Revision-index count, prompt characters, actual model-call count,
-and automatic rebind count.
+The current NOOP path builds an operation-scoped Revision index and bounded
+claim-specific worksets, selects one Primary and one result per old Required
+selector, and permits one workset-local correction of invalid selectors.
+Its exact matching, completeness and failure rules are maintained in
+[ADR 0030, revision and lifecycle semantics](../adr/0030-compile-revision-pinned-evidence-fragments.md#revision-and-lifecycle-semantics).
+The target L3 instead combines support assessment with complete Evidence
+reconstruction and variable Required membership; see [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md).
+This target has not replaced the current runtime contract yet.
 
 Retries must reconstruct the same workset, candidate catalog, policy contract,
 access context, binary inference capability, and digest. A change to any of
@@ -513,13 +481,14 @@ Runtime events do not persist Fragment text or transient Fragment IDs. The
 selection fingerprint distinguishes the same generated Memory content paired
 with different selectors without exposing Evidence.
 
-## Open Optimization Question: Cross-Document Checks
+## Cross-document checks
 
-Large source documents can create many new Memories. Cross-document relation
-discovery still needs separate bounded ranking and response-budget decisions.
-Those optimizations must not cap the complete candidate catalog, change Primary
-eligibility, weaken complete incumbent coverage, or turn batching into a
-lifecycle state.
+Identity matching before creation and bounded asynchronous relation discovery
+after commit are separate existing contracts. Their pipeline, scenarios and
+accepted temporary conflict window are described in
+[Source sync to Memory](source-sync-to-memory.md); durable discovery semantics
+remain in [ADR 0009](../adr/0009-bound-cross-document-relation-discovery.md).
+They must not cap complete same-Unit incumbent coverage or widen Primary authority.
 
 ## Non-Goals
 
