@@ -163,3 +163,27 @@ shared relation-classifier identity. Compiler, extraction, representation,
 Support storage and historical Evidence formats remain unchanged. Frozen
 failures are retained alongside new necessary/sufficient and scope holdouts;
 prompt improvement does not establish population accuracy.
+
+
+### Revision identity is continuity, not equivalence
+
+L4's same-item condition means continuity of an independently maintained fact,
+rule or decision about its subject and concern across a revision. It is distinct
+from L6 equivalence, which requires identical truth conditions. A compatible added
+requirement can preserve the knowledge item's identity while making the current
+proposition stronger. Complete replacement text must already state the old meaning
+and the refinement; adding information does not itself make that text incomplete.
+
+The former L4 fields named `candidate_*` were ambiguous because the shared pair
+input calls the incumbent “candidate,” while the lifecycle reducer calls new
+extractions candidates. The model-facing revision response now names the current
+challenger explicitly and describes each condition in its schema. This changes the
+L4 work contract to v3, with an explicit mapping into the existing reducer proof;
+compiler, storage, L3 and historical Evidence contracts are unaffected. Unsupported
+old claims need not be negated: loss of universal coverage alone does not establish
+contradiction with a compatible subset rule.
+
+Acceptance must evaluate the complete revision conjunction and the resulting
+reducer action. Correct Support, relation and preservation fields alone do not
+prove an eligible UPDATE. Frozen failed results remain evidence even when a later
+prompt/schema version corrects them.
