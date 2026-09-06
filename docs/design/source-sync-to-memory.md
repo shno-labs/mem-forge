@@ -1,14 +1,14 @@
 # 单篇文档从 Sync 到 Memory 的完整设计
 
-日期：2026-09-06。状态：已讨论确认的目标设计；本次仅整理文档，语义流程改造尚未实施。
+日期：2026-09-06。本文描述共享代码的 Sync→Memory 合同；发布、部署与运行验收由 [Cloud #470](https://github.com/dodoman-sun/memforge-cloud/issues/470) 跟踪。
 
-本文以一篇 Confluence 页面为主线，覆盖首次导入和后续更新。Jira、Markdown 和带附件的文档复用相同领域流程，差异集中在源解析与表示方式。已有代码依据为 OSS main `abdbdf18a3c1100289051c289046c0c07092fa76`：本轮核对的相关路径与固定复核工作树 `3b8b1fc4` 一致。Cloud 对照基线为 `11338e0235ab23df3199b8024a05c1b17ed71d10`。这里不宣称线上 Cloud 已部署目标设计。
+本文以一篇 Confluence 页面为主线，覆盖首次导入和后续更新。Jira、Markdown 和带附件的文档复用相同领域流程，差异集中在源解析与表示方式。实施前评审基线为 OSS main `abdbdf18a3c1100289051c289046c0c07092fa76`：基线核对的相关路径与固定复核工作树 `3b8b1fc4` 一致。Cloud 对照基线为 `11338e0235ab23df3199b8024a05c1b17ed71d10`。这里不宣称线上 Cloud 已部署目标设计。
 
-**阅读约定：**“已有”表示有代码基础；“改造”表示本次设计需要实现或调整。L1–L7 是目标设计的模型职责编号，不是保证每篇文档恰好调用七次。L4 在同一次调用中完成关系分类与条件性的修订判断。没有触发条件的阶段不调用模型，同一职责也可能按既有执行合同有多个请求。
+**阅读约定：**“已有”表示沿用的职责；“改造”表示此次替换的职责。第 18 节保留实施前差异评审并列出实际落点。L1–L7 是目标设计的模型职责编号，不是保证每篇文档恰好调用七次。L4 在同一次调用中完成关系分类与条件性的修订判断。没有触发条件的阶段不调用模型，同一职责也可能按既有执行合同有多个请求。
 
 ## 文档职责与阅读入口
 
-本文是普通 Source 文档从 Sync 到 Memory 的完整流程入口，解释模块、数据、模型调用和失败边界。共享决策以 OSS ADR 为准；本次合并判断与输入策略由 [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md) 记录为已接受、待实施。第 18 节逐步区分现有实现与目标改动。
+本文是普通 Source 文档从 Sync 到 Memory 的完整流程入口，解释模块、数据、模型调用和失败边界。共享决策以 OSS ADR 为准；本次合并判断与输入策略由 [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md) 记录共享决策。第 18 节区分实施前基线与改造落点。
 
 - [Document Memory Lifecycle](document-memory-lifecycle.md) 只定义 Evidence/Support、动作与 Review 的领域约束，不再重复完整 Sync 流程。
 - [Source-Agnostic Memory Extraction](source-agnostic-memory-extraction.md) 负责当前提取、角色和 selector 合同；[增量 Primary authority](representation-scoped-incremental-primary-authority.md) 负责表示级差量算法。本文不另造 compiler 或授权规则。
@@ -177,7 +177,7 @@ offset 只在它所属的固定 Observation Revision 内用于定位或校验证
 
 程序将可证明沿用的部分和模型选择组合成完整当前 Evidence 候选。两个层面分别校验：LLM 判断语义；程序核对 revision、范围、digest、角色和资格。继承未显示证据是基于已有有效 Support 的增量推导，不能称为模型重新逐段验证了整套证据。
 
-**与现有实现的区别：**现有 reconciliation support audit 和之后的 NOOP rebind validation 有分开的判断调用。本次目标是让 L3 统一提供固定 claim 的判断及必要证据重构结果，供后续复用；不在已经有同输入有效结果时重复判定。
+**实现边界：**L3 已替代此前分开的 support audit 和 NOOP rebind validation。固定 claim 的判断及当前证据重构结果供后续直接复用，同输入不再独立重复判定。
 
 L3 不能只筛选“直接编辑旧 Evidence”的 delta；其他位置新增的例外同样可能影响旧 claim。缺少远处未变解释造成的语义误判属于用户接受的第一阶段风险。
 
@@ -393,13 +393,13 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 | L3/L4 的语义工作合同及输入身份 | 决定结果是否可复用 | **必须显式更新**：新输入模式、支持判断、可变 Required 与合并关系/修订响应不能复用旧合同结果；沿用现有 descriptor/hash/staging 机制，不新建版本账本 |
 | Source revision / Evidence Unit v2 | 前者是采集内容版本，后者是 Support 数据模型能力 | 都不因模型调用合并自动变化；本阶段没有新 Support schema 或历史内容迁移要求 |
 
-现有 `source_derivation.py` 将 extraction contract、base/target、权限、inference 能力及 authority/presentation 规则纳入可复用身份。L3/L4 的输出并非都已持久缓存；实施时应在真实复用边界绑定新语义身份，而非假设改 compiler 常量就能失效所有旧结果。未完成 derivation 按现有合同变更流程失效/重建，已提交 Memory 和历史 Evidence 不被批量改写。本次仅更新文档，未修改任何上述版本常量。
+现有 `source_derivation.py` 将 extraction contract、base/target、权限、inference 能力及 authority/presentation 规则纳入可复用身份。L3/L4 的输出并非都已持久缓存；实施时应在真实复用边界绑定新语义身份，而非假设改 compiler 常量就能失效所有旧结果。未完成 derivation 按现有合同变更流程失效/重建，已提交 Memory 和历史 Evidence 不被批量改写。本实现保持 L1 v9、compiler 3、authority policy 5 和 presentation policy 2；新语义合同为 revision-support-v1 / claim-revision-v1，输入策略为 revision-input-v1。
 
 ## 18. 逐步实现评审与改动规模
 
-以下为上述两个 main 快照的静态调用链审计，不是工期承诺或部署证明。小＝复用为主/局部接线；中＝共享合同及多处调用适配；大＝语义与生命周期衔接需完整回归。模型职责编号不对应一组新 service。
+以下矩阵保留上述两个 main 快照的**实施前**调用链审计，解释改造范围，不代表改造后的运行状态或部署证明。小＝复用为主/局部接线；中＝共享合同及多处调用适配；大＝语义与生命周期衔接需完整回归。模型职责编号不对应一组新 service。
 
-| 步骤 | 当前实现与可复用部分 | 目标差异及规模 | 必须验证的边界 |
+| 步骤 | 实施前代码与可复用部分 | 目标差异及规模 | 必须验证的边界 |
 |---|---|---|---|
 | 1 Trigger/Worker | `admin_api` 的 Source sync 路由 → SyncService → SourceSyncWorker，已有 run/lease/coalescing | 无行为改造 | 只恢复失败工作；不新增调度器 |
 | 2 采集/快照 | `pipeline/sync.py`、SourceProjectionAdapter、不可变 revisions、raw/normalized/Artifact 存储 | 无基础重构；资格问题单独见下表 | provider 部分覆盖、删除证明、稳定 Unit 身份 |
@@ -416,6 +416,14 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 | 11 向量交付 | 现有 `lifecycle_vector_outbox` 与 worker | **无必需改造** | 重试当前关系事实，不重新提取，不复活终态 Memory |
 | 11 L7 关系发现 | 现有 durable work、RRF 候选发现、分类、Review 和原子完成 | **无异步架构改造**；共享分类结果的适配为小改动 | 可见冲突窗口已接受；跨 Source Review 与同 Source 关系不同；不穷尽全库 |
 | 12 Run 完成/恢复 | 已有 Run、derivation、模型 typed errors、work/outbox 重试与活动进度 | **中**：新语义合同版本和错误分类接入既有恢复/指标 | 单次 selector correction、技术失败和业务 Review 分开；不是所有模型结果都已持久缓存 |
+
+实际落点：
+
+- `RevisionAssessmentContext` 复用固定 revision 索引，为 L1/L3 选择完整全文或完整净差量。L1 只保留原授权 Primary；L3 按独立 Evidence Unit 评估固定旧 claim，并解析当前完整选择。
+- `assess_claim_pairs` 在既有配对执行边界内合并 L4。一个候选的完整 Evidence 在同一组只传一次，各旧 claim 有独立 Support 结果与结果槽位。
+- MemoryEngine 将 L3/L4 结果交给原 reducer/Plan；已删除旧 NOOP 的第二次语义验证路径。L5/L6/L7、原子提交和 outbox 保持原职责。
+- 输入预算采用可配置的 input/context/output 上限及 0.8 比例，同时预留本次输出和 schema。已知模型上限进一步约束配置；初始保守默认值分别为 32768/65536/32768 tokens。不是所有模型都拥有同样窗口。`MEMFORGE_LLM_MAX_INPUT_TOKENS`、`MEMFORGE_LLM_CONTEXT_WINDOW_TOKENS`、`MEMFORGE_LLM_MAX_OUTPUT_TOKENS`、`MEMFORGE_LLM_INPUT_BUDGET_FRACTION` 可调整；实际提取输出 allowance 同样进入恢复身份。
+- 完整上下文可能需要图片时先取得既有图片执行配额；按最终目录加载准确 bytes，并统计实际供应。容量不足可以选择完整 delta，不能丢弃其必需图片；摘要、长度或资格错误不会触发整篇文档重试。
 
 主要代码入口见第 20 节；上表不是新执行 backlog。此次目标集中在输入准备、L3、L4 和它们与 reducer/Plan 的接线，不是重写整套 Sync。
 
@@ -448,7 +456,7 @@ L4 合并减少逻辑调用次数，但完整候选 Evidence 会增加关系请�
 - 每个 incumbent 有明确结果；模型未判到的事实风险与程序丢失完整输入/非法引用分开评价。
 - 一个失败 batch、一次 stale commit、一次 vector failure 分别从正确位置恢复，不能放大成重跑整个 Source。
 - 报告真实模型的错误接受、错误拒绝、Review、重复 Memory、输入量、调用数及 P95；80% 阈值和“大多数可覆盖”均不能只靠静态设计证明。
-- OSS 记录共享 ADR/协议，Cloud/HANA 做同合同测试。实施阶段的 Cloud pin、部署和 smoke 是另外的交付证据，本文没有执行。
+- OSS 记录共享 ADR/协议，Cloud/HANA 做同合同测试。实施阶段的 Cloud pin、部署和 smoke 是另外的交付证据，结果以发布证据为准。
 
 ## 20. 代码依据
 
@@ -468,4 +476,4 @@ L4 合并减少逻辑调用次数，但完整候选 Evidence 会增加关系请�
 - [Evidence compiler 合同版本](https://github.com/shno-labs/mem-forge/blob/abdbdf18a3c1100289051c289046c0c07092fa76/src/memforge/pipeline/evidence_fragments.py)
 - [ADR 0017：阶段、覆盖与提交](https://github.com/shno-labs/mem-forge/blob/abdbdf18a3c1100289051c289046c0c07092fa76/docs/adr/0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md)
 
-本轮进行了静态调用链和数据模型核对；当前实现的实体、身份、关系发现、reconciliation 与投影集成测试用于验证可复用基础。未修改产品代码，未运行线上 sync 或真实模型评估；测试数量及命令记录在本次文档 PR。
+测试、真实模型和部署结果记录在实现 PR 与 Cloud 发布证据中；静态设计本身不证明准确率、P95 或线上运行成功。

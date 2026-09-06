@@ -1,10 +1,9 @@
 # MemForge: Architecture Design Document
 
-For the complete source lifecycle and its accepted, not-yet-implemented
-assessment changes, start with [Source sync to Memory](design/source-sync-to-memory.md).
-[ADR 0034](adr/0034-unify-incremental-support-and-claim-assessment.md) records
-the target contract. The pipeline sections below describe the current baseline;
-separate support/proof calls must not be read as the target design.
+For the complete source lifecycle and unified Support/claim assessment contract,
+start with [Source sync to Memory](design/source-sync-to-memory.md) and
+[ADR 0034](adr/0034-unify-incremental-support-and-claim-assessment.md).
+Source implementation, the Cloud pin and deployment acceptance are separate evidence.
 
 
 > Auto-evolutionary agent memory layer for development teams.
@@ -596,11 +595,11 @@ candidates and select exact supplied Evidence; they do not grant authority or
 write Memory. CandidateLedger selects among existing candidates without
 inventing merged claims. The complete Unit's work reaches one lifecycle Plan.
 
-Current reconciliation still has separate relation classification, incumbent
-support audit, conditional revision proof and NOOP Evidence validation calls.
-[ADR 0034](adr/0034-unify-incremental-support-and-claim-assessment.md) defines
-the pending unified L3 support/Evidence and L4 relation/revision assessments.
-Do not confuse its target call diagram with deployed behavior.
+Reconciliation consumes unified L3 support/Evidence and L4 relation/revision
+assessments under [ADR 0034](adr/0034-unify-incremental-support-and-claim-assessment.md).
+Each old Support alternative is assessed completely; L4 shares each candidate
+Evidence payload across the existing pair group. No second NOOP validation call
+is required. Cloud deployment is verified independently.
 
 ## 7. Memory Lifecycle
 

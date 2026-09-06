@@ -1,9 +1,9 @@
 # ADR 0030: Compile revision-pinned Evidence Fragments
 
 Design transition (2026-09-06): [ADR 0034](0034-unify-incremental-support-and-claim-assessment.md)
-records the accepted, pending implementation of unified Support assessment and
-claim relation/revision judgment. Existing implementation mechanics below remain
-the runtime baseline until that change is delivered; preserved authority,
+records the implemented unified Support assessment and claim relation/revision
+judgment. Its L3/L4 orchestration supersedes the earlier matching and separate-call
+mechanics below; preserved authority,
 coverage, representation and transaction invariants still apply.
 
 

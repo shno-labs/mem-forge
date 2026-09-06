@@ -2,7 +2,7 @@
 
 Scope: current extraction and Evidence-selection mechanics. The complete runtime
 entry is [Source sync to Memory](source-sync-to-memory.md); its L3/L4 changes
-are accepted design pending implementation under [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md).
+are implemented under [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md).
 This document does not define a second lifecycle or conflict-discovery pipeline.
 
 
@@ -299,14 +299,14 @@ Required part changed, provided the revalidation work explicitly includes the
 current or rebound incumbent range. Therefore the invariant is
 Primary-from-authorized-work, not Primary-from-delta.
 
-The current NOOP path builds an operation-scoped Revision index and bounded
-claim-specific worksets, selects one Primary and one result per old Required
-selector, and permits one workset-local correction of invalid selectors.
-Its exact matching, completeness and failure rules are maintained in
-[ADR 0030, revision and lifecycle semantics](../adr/0030-compile-revision-pinned-evidence-fragments.md#revision-and-lifecycle-semantics).
-The target L3 instead combines support assessment with complete Evidence
-reconstruction and variable Required membership; see [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md).
-This target has not replaced the current runtime contract yet.
+L3 now performs one fixed-claim support assessment and complete current Evidence
+reconstruction using full or complete delta context. Required membership can
+split, merge, grow or shrink; there is no selector per old Required part. One
+local correction remains available for unknown current refs. Unresolved support
+and exhausted correction cannot become independent ADD or a whole-document
+semantic retry. See [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md)
+for orchestration and [ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md)
+for immutable representation and storage invariants.
 
 Retries must reconstruct the same workset, candidate catalog, policy contract,
 access context, binary inference capability, and digest. A change to any of

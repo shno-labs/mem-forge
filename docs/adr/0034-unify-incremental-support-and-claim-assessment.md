@@ -2,12 +2,13 @@
 
 ## Status
 
-Accepted design (2026-09-06); implementation pending. This documentation change
-neither activates the new model contract nor proves an OSS/Cloud deployment.
+Accepted and implemented (2026-09-06). Release and deployment acceptance are
+tracked in [Cloud issue #470](https://github.com/dodoman-sun/memforge-cloud/issues/470);
+a source change alone does not prove a deployed Cloud runtime.
 
 ## Context
 
-Current reconciliation classifies claim pairs, audits incumbent support, and
+The preceding reconciliation classified claim pairs, audits incumbent support, and
 conditionally makes a separate revision-composition call. The subsequent NOOP
 path independently selects and validates current Evidence. Repeating support
 judgments and limiting current candidates through old-location correspondence
@@ -75,7 +76,7 @@ Supplemental agentic reads remain the separate beta in
 
 ## Relationship to existing decisions
 
-Upon implementation, this amends ADR 0030's one-selector-per-old-Required
+This amends ADR 0030's one-selector-per-old-Required
 revalidation mechanics and the separate support/proof orchestration described
 in ADR 0012. Their immutable Evidence, authority, storage, and retry invariants
 remain. ADR 0008's pruning is semantic-conservative: unchanged old Evidence or
@@ -83,9 +84,9 @@ cross-revision position non-overlap alone cannot rule out an exception elsewhere
 ADRs 0009, 0017, 0019 and 0023 remain the owners of asynchronous discovery,
 recoverable derivation, vector delivery and Review orchestration.
 
-Until the implementation is delivered, existing selectors, separate calls and
-failure behavior remain current runtime behavior. No migration is implied by
-renaming model responsibilities in a design diagram. Cloud implements the same
+The shared Source sync engine now consumes unified L3 and L4 results. Historical
+ADRs retain the superseded mechanics for context; no historical Evidence is
+rewritten. Cloud implements the same
 shared contracts; only HANA/hosting consequences belong in Cloud ADRs.
 
 ## Validation and version boundaries
@@ -108,6 +109,16 @@ fragment/coordinate semantics change, invent a Support migration, or rename an
 unchanged L1 contract solely because downstream calls were combined. Already
 committed history is not rewritten; incomplete work obeys existing invalidation
 and recovery boundaries.
+
+The input policy counts the prompt, response schema, actual supplied images and
+requested output allowance. Conservative configurable input/context/output
+ceilings are intersected with known provider limits; the default fraction is
+0.8. Actual extractor model/output allowance and policy configuration participate
+in derivation identity. L4 shares one candidate/Evidence payload across its
+comparison group and sizes output to the existing pair workload. It does not
+change pair coverage or introduce smaller batches. Image-capable context reserves
+existing multimodal admission before loading bytes; image integrity errors are
+terminal, while unavailable storage remains a recoverable read failure.
 
 ## Consequences
 
