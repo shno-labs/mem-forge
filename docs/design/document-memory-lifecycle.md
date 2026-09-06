@@ -2,9 +2,9 @@
 
 This is the domain reference for source-backed Memory authority, Support and
 lifecycle actions. For the complete runtime flow, model responsibilities and
-pending changes, start with [Source sync to Memory](source-sync-to-memory.md).
-The accepted target assessment changes are in [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md);
-they are not yet implemented. Current Evidence semantics remain defined by
+assessment flow, start with [Source sync to Memory](source-sync-to-memory.md).
+The unified assessment contract is in [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md);
+immutable Evidence semantics remain defined by
 [ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md).
 
 ## Memory, Evidence and Support
