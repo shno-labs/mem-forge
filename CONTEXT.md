@@ -10,6 +10,7 @@
 - **Workspace Selection Source** — The reason the Authorized Workspace Context was chosen: Requested Workspace or the caller's singleton accessible workspace.
 - **Repository Context** — Repository attribution used for provenance and retrieval relevance. It never selects or authorizes a workspace.
 - **Self-Hosted Owner** — The single authenticated owner of the OSS `local` workspace. It has local management capabilities without borrowing a Cloud Workspace Membership Role. _Avoid_: Local Workspace Admin
+- **Personal Local Profile** — The OSS operating boundary for one owner, one local machine, one `local` workspace, and one writable MemForge service instance. Team, remote-server, replicated, and high-concurrency operation belong to Cloud rather than to a larger OSS profile. _Avoid_: OSS Server Profile, Local Cloud
 
 ## Source synchronization
 
