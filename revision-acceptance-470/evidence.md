@@ -1,3 +1,11 @@
 # Project Larch-470 release policy
 
-Project Larch-470 requires two approvers for every US regular payroll release.
+## Scope
+
+Country: US.
+
+Payroll type: regular.
+
+## Approval rule
+
+Every payroll release in this scope requires two approvers for Project Larch-470.
