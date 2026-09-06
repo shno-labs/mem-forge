@@ -89,6 +89,12 @@ RelationRun identity, which includes the selected candidate snapshot.
 This supersedes the assumption that a truncated cross-document discovery page
 is an incomplete mandatory lifecycle ledger.
 
+The product explicitly accepts the interval between a supported Memory's commit
+and discovery of its cross-document conflicts. Readability is not gated on a
+completed conflict scan; queue failure or bounded recall can prolong or leave
+gaps in annotations. Completion and failure remain visible, and neither an
+empty queue nor a successful run proves global consistency.
+
 ## Consequences
 
 Memory corpus size remains behind indexed stores instead of becoming process

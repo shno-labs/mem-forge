@@ -4,7 +4,12 @@ Status: Implemented for review in [OSS issue #390](https://github.com/shno-labs/
 
 Date: 2026-09-04
 
-Canonical decision to amend during implementation: [ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md)
+Canonical decision: [ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md)
+
+Document scope: the representation-specific authority algorithm. For the full
+sync lifecycle and pending Support assessment changes, use
+[Source sync to Memory](source-sync-to-memory.md). This algorithm continues to
+govern new-candidate Primary eligibility in both full-context and delta modes.
 
 ## 1. Decision
 
