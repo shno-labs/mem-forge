@@ -138,3 +138,28 @@ do not hide capacity limits by new batching or silent truncation.
 - [Existing asynchronous relation contract](0009-bound-cross-document-relation-discovery.md)
 - [Transactional outbox pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): durable follow-up work and idempotent delivery, not conflict-free publication.
 - [Building effective agents](https://www.anthropic.com/engineering/building-effective-agents): start with bounded workflows and justify additional agentic complexity through evaluation.
+
+## Directional support and overlapping scope
+
+The deployed fixed-fixture evaluation exposed a distinction the original prompt
+left ambiguous: L3 asks whether current evidence entails the old proposition,
+not whether the new and old rules are equivalent or enumerate the same complete
+set of requirements. A stronger necessary obligation over the same population
+can preserve a weaker necessary obligation. Do not infer sufficiency or
+exclusivity absent from the old claim; explicit sufficiency, scope, time and
+modality remain material. Restricting the population cannot establish a prior
+universal claim.
+
+Likewise, an exception can contradict a universal rule on their overlapping
+scope; narrower scope alone does not make incompatible assertions a refinement.
+The shared relation definition uses this intersection, while cross-source
+mutation still requires the existing Review/Source Authority gates. L4 must
+reject an entailment chain that contradicts L3 (current evidence supports the
+new claim and the new claim preserves the old claim, but L3 rejected old support).
+It must not manufacture a supported verdict or fall back to delete/add.
+
+This clarification advances only the Support/claim semantic contracts and the
+shared relation-classifier identity. Compiler, extraction, representation,
+Support storage and historical Evidence formats remain unchanged. Frozen
+failures are retained alongside new necessary/sufficient and scope holdouts;
+prompt improvement does not establish population accuracy.
