@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 
-from revision_client_fixture import RevisionClientFixture
+from tests.revision_client_fixture import RevisionClientFixture
 
 import pytest
 

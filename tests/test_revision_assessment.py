@@ -12,7 +12,7 @@ from memforge.pipeline.revision_assessment import RevisionAssessmentContext
 from memforge.pipeline.reconciler import ReconciliationContractError
 from memforge.pipeline.projection_fragments import SupportRevalidationLimitation
 from memforge.source_projection import ProjectionCoverage
-from test_projection_fragments import _projection
+from tests.test_projection_fragments import _projection
 
 
 def revisions(old, new):
@@ -149,7 +149,7 @@ def test_partial_projection_keeps_exact_carried_member():
 def test_large_unchanged_artifacts_do_not_block_text_delta_or_get_read(monkeypatch):
     from types import SimpleNamespace
     from memforge.pipeline.projection_images import load_projection_images
-    from test_projected_lifecycle_integration import _projection_with_artifact
+    from tests.test_projected_lifecycle_integration import _projection_with_artifact
 
     base = _projection_with_artifact(
         run_id="image-base",
@@ -193,7 +193,7 @@ async def test_changed_artifact_bytes_are_supplied_to_the_selected_delta():
     from types import SimpleNamespace
     from memforge.llm.structured_images import StructuredLlmImage
     from memforge.pipeline.projection_images import load_projection_images
-    from test_projected_lifecycle_integration import _projection_with_artifact
+    from tests.test_projected_lifecycle_integration import _projection_with_artifact
 
     base = _projection_with_artifact(
         run_id="image-base",

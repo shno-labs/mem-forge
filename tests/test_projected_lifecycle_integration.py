@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from revision_client_fixture import RevisionClientFixture
+from tests.revision_client_fixture import RevisionClientFixture
 
 import pytest
 import pytest_asyncio

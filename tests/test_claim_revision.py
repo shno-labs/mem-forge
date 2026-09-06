@@ -9,7 +9,7 @@ from memforge.llm.structured import (
 from memforge.models import RawMemory, ReconcileAction
 from memforge.pipeline.reconciler import SupportAuditEntry, reconcile_memories
 from memforge.pipeline.revision_assessment import RevisionAssessmentContext
-from test_revision_assessment import revisions, memory
+from tests.test_revision_assessment import revisions, memory
 
 
 class Client:
