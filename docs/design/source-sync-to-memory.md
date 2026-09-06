@@ -393,7 +393,7 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 | L3/L4 的语义工作合同及输入身份 | 决定结果是否可复用 | **必须显式更新**：新输入模式、支持判断、可变 Required 与合并关系/修订响应不能复用旧合同结果；沿用现有 descriptor/hash/staging 机制，不新建版本账本 |
 | Source revision / Evidence Unit v2 | 前者是采集内容版本，后者是 Support 数据模型能力 | 都不因模型调用合并自动变化；本阶段没有新 Support schema 或历史内容迁移要求 |
 
-现有 `source_derivation.py` 将 extraction contract、base/target、权限、inference 能力及 authority/presentation 规则纳入可复用身份。L3/L4 的输出并非都已持久缓存；实施时应在真实复用边界绑定新语义身份，而非假设改 compiler 常量就能失效所有旧结果。未完成 derivation 按现有合同变更流程失效/重建，已提交 Memory 和历史 Evidence 不被批量改写。本实现保持 L1 v9、compiler 3、authority policy 5 和 presentation policy 2；语义合同为 revision-support-v2 / claim-revision-v2，共享关系分类为 memory-relation-v3，输入策略为 revision-input-v1。这些身份对应方向性蕴含与重叠作用域判断，并进入实际工作复用边界。
+现有 `source_derivation.py` 将 extraction contract、base/target、权限、inference 能力及 authority/presentation 规则纳入可复用身份。L3/L4 的输出并非都已持久缓存；实施时应在真实复用边界绑定新语义身份，而非假设改 compiler 常量就能失效所有旧结果。未完成 derivation 按现有合同变更流程失效/重建，已提交 Memory 和历史 Evidence 不被批量改写。本实现保持 L1 v9、compiler 3、authority policy 5 和 presentation policy 2；语义合同为 revision-support-v2 / claim-revision-v3，共享关系分类为 memory-relation-v3，输入策略为 revision-input-v1。这些身份对应方向性蕴含与重叠作用域判断，并进入实际工作复用边界。
 
 ## 18. 逐步实现评审与改动规模
 
