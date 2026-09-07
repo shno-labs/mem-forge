@@ -208,6 +208,12 @@ representation failure is a capability error; ordinary length is a batching conc
 A frozen LiteLLM capacity snapshot and the actual model bind request/recovery
 identity. Planning includes schema, images, output and correction space; actual
 native-schema/fallback sends consume that reserve rather than reserving it twice.
+Reduction output is sized from the complete reference-bearing response, including
+finding IDs and carried dependencies, with allowance for explanations and formatting.
+This supersedes sizing by finding count alone: a deep node can contain hundreds
+of refs even after its prose was condensed. The same allowance drives packing and
+sending, and participates in the stage identity; a reducer-only budget change does
+not invalidate unchanged scan work or require a new global input policy.
 The presentation/input policies change; compiler 3, Primary authority policy 5,
 projection-extraction-v9 and Support v2 semantics do not.
 
