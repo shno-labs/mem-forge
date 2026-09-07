@@ -194,7 +194,13 @@ fixed claim/Support; explicit no-local-effect is not a final validation. Complet
 range coverage precedes final synthesis. Bounded reduction accounts for every
 finding, preserves relevant exact refs and unresolved dependencies, and never
 turns summaries into Evidence. Multiple claims may share scan and final requests.
-Independent Support groups remain independent. Large historical Evidence may be
+Independent Support groups remain independent. Historical Support parts use integer
+indices into a deduplicated explanation array, separate from selectable current
+or removed-delta refs. This supersedes the shared `ref` namespace: a fixed-input
+runtime replay returned supplied historical `e0`/`e1` IDs as scan findings despite
+matching sender/validator catalogs. Scope correction alone did not remove this
+input-contract ambiguity. The input policy changes to v3; previous stage results
+are retained but cannot satisfy requests with the changed input identity. Large historical Evidence may be
 omitted by selecting complete current-full revalidation; latest-sync delta cannot
 stand in for an older Support baseline. Only an indivisible input/proof or genuine
 representation failure is a capability error; ordinary length is a batching concern.
@@ -207,7 +213,13 @@ projection-extraction-v9 and Support v2 semantics do not.
 
 Recoverable scan/reduce/final records belong to the existing derivation root
 under [ADR 0017](0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md).
-No LLM runs in the lifecycle transaction, and no scan can commit partial Support.
+No LLM runs in the lifecycle transaction, and no scan can commit partial Support. Independent claim batches within one Source range reuse the existing
+bounded-work helper and structured-client concurrency limit; provider admission
+alone is not a bound on queued prompt/image memory. An ordinary sibling failure
+stops new admission and drains already started siblings so their successful stages
+remain reusable. Aggregation follows planning order, and all required ranges must
+still complete before final synthesis. External cancellation may interrupt active
+calls; only already persisted successes are promised on resume.
 Semantic recall remains imperfect; supplemental exploration is still #468.
 
 ## References
