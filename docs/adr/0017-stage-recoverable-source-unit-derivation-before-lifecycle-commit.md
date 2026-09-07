@@ -615,3 +615,28 @@ schema-valid output can be semantically invalid.
 - [LiteLLM structured outputs](https://docs.litellm.ai/docs/completion/json_mode)
 - [AWS transactional outbox pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html)
 - `memforge-cloud` Issue #277
+
+
+### Recover bounded Support inference under the same derivation root (2026-09-07)
+
+The bounded input decision in ADR 0034 extends recoverable execution beyond L1.
+Existing extraction BatchRecords remain authoritative for extraction. Additional
+DerivationWork records store immutable scan, reduction and final-assessment inputs
+and results under the same SourceDerivationAttempt. These are execution records,
+not Memory/Support states or an independent scheduling subsystem.
+
+Work identity uses canonical JSON primitives and includes fixed claim/Support,
+source range, prompt/schema, actual model/capacity snapshot, and exact completed
+parent result hashes. Stage and result writes serialize on the derivation root;
+completed results cannot be overwritten by duplicate execution or late failure.
+Missing, incomplete or mismatched parent results cannot be consumed. Retries reuse
+only exact successful stages; changed inputs produce new identities. A final
+assessment still unresolved semantically is not automatically retried as transport.
+
+The existing atomic lifecycle transaction checks every finalize record it consumes
+is complete under its root, in addition to the existing target, claim, Support,
+visibility and Source Authority guards. SQLite and HANA implement the same contract.
+Stage writes do not acquire Source locks after the derivation lock; final commit
+retains its established Source/derivation lock order. No model calls or stage writes
+occur inside the Memory lifecycle transaction. Source or claim changes can leave
+staged results as history but cannot authorize a stale commit.

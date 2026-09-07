@@ -28,9 +28,10 @@ protocol, or the complete lifecycle description.
    80% of available input capacity); otherwise provide the complete structural
    net delta plus necessary prior claim/Evidence and deterministic context. The
    baseline must apply to the evaluated Support. A contested older Support does
-   not acquire the last sync's baseline automatically. Missing baseline or
-   capacity cannot become an empty or truncated successful input. Initial import
-   keeps its existing complete-coverage execution contract.
+   not acquire the last sync's baseline automatically. Missing baseline selects
+   current-full assessment. Oversized complete inputs use bounded Source × claim
+   execution, never an empty or truncated successful input. Initial import
+   retains complete Primary coverage within token-budgeted extraction requests.
 2. Keep read scope separate from new-claim Primary authority. Ordinary extraction
    still requires authorized added/changed complete structures or canonical
    fields, even when unchanged context is readable. Existing-claim validation
@@ -59,7 +60,7 @@ protocol, or the complete lifecycle description.
    protected postcondition. Otherwise reject the Unit without a partial commit.
    Competing incompatible refiners retain the existing fail-closed boundary;
    this decision does not introduce multi-option Review, all-candidate conflict
-   scanning, or a new checkpoint ledger.
+   scanning, or a separate Memory lifecycle state.
 6. Retain pre-creation identity reuse and post-commit bounded relation discovery
    from ADRs 0006/0009. New supported Memory may be visible before cross-document
    conflicts are discovered. This temporary window is accepted; no conflict-free
@@ -158,11 +159,13 @@ and recovery boundaries.
 
 The input policy counts the prompt, response schema, actual supplied images and
 requested output allowance. Conservative configurable input/context/output
-ceilings are intersected with known provider limits; the default fraction is
+operator caps are intersected with LiteLLM metadata; unknown aliases require
+explicit route capacity rather than a silent universal limit. The default fraction is
 0.8. Actual extractor model/output allowance and policy configuration participate
 in derivation identity. L4 shares one candidate/Evidence payload across its
 comparison group and sizes output to the existing pair workload. It does not
-change pair coverage or introduce smaller batches. Image-capable context reserves
+change pair coverage; oversized pair requests subdivide within that complete
+workload. Image-capable context reserves
 existing multimodal admission before loading bytes; image integrity errors are
 terminal, while unavailable storage remains a recoverable read failure.
 
@@ -176,7 +179,36 @@ entity, or historical-document browser is required.
 Fewer logical calls do not prove lower total cost: L4 now receives complete
 candidate Evidence, and complete same-Unit comparisons remain required. Validate
 accuracy, input/call cost, unresolved outcomes and latency on a fixed cohort;
-do not hide capacity limits by new batching or silent truncation.
+record request coverage and capability failures rather than silently truncating.
+
+## Bounded execution refinement (2026-09-07)
+
+[Cloud #473](https://github.com/dodoman-sun/memforge-cloud/issues/473) supersedes
+single-request capacity rejection with approved recoverable Source × claim
+execution. Compact model catalogs preserve exact text, eligible roles and the
+minimal representation/ancestry information needed for interpretation. Titles
+remain selectable Evidence; navigation text does not replace a Required ref.
+
+Scans produce potential evidence, counterexamples, scope or dependencies for each
+fixed claim/Support; explicit no-local-effect is not a final validation. Complete
+range coverage precedes final synthesis. Bounded reduction accounts for every
+finding, preserves relevant exact refs and unresolved dependencies, and never
+turns summaries into Evidence. Multiple claims may share scan and final requests.
+Independent Support groups remain independent. Large historical Evidence may be
+omitted by selecting complete current-full revalidation; latest-sync delta cannot
+stand in for an older Support baseline. Only an indivisible input/proof or genuine
+representation failure is a capability error; ordinary length is a batching concern.
+
+A frozen LiteLLM capacity snapshot and the actual model bind request/recovery
+identity. Planning includes schema, images, output and correction space; actual
+native-schema/fallback sends consume that reserve rather than reserving it twice.
+The presentation/input policies change; compiler 3, Primary authority policy 5,
+projection-extraction-v9 and Support v2 semantics do not.
+
+Recoverable scan/reduce/final records belong to the existing derivation root
+under [ADR 0017](0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md).
+No LLM runs in the lifecycle transaction, and no scan can commit partial Support.
+Semantic recall remains imperfect; supplemental exploration is still #468.
 
 ## References
 
