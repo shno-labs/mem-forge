@@ -1,6 +1,6 @@
 # 单篇文档从 Sync 到 Memory 的完整设计
 
-日期：2026-09-06。本文描述共享代码的 Sync→Memory 合同；发布、部署与运行验收由 [Cloud #470](https://github.com/dodoman-sun/memforge-cloud/issues/470) 跟踪。
+日期：2026-09-07。本文描述共享代码的 Sync→Memory 合同；紧凑 catalog 与可恢复分批的发布、部署及运行验收由 [Cloud #473](https://github.com/dodoman-sun/memforge-cloud/issues/473) 跟踪。
 
 本文以一篇 Confluence 页面为主线，覆盖首次导入和后续更新。Jira、Markdown 和带附件的文档复用相同领域流程，差异集中在源解析与表示方式。实施前评审基线为 OSS main `abdbdf18a3c1100289051c289046c0c07092fa76`：基线核对的相关路径与固定复核工作树 `3b8b1fc4` 一致。Cloud 对照基线为 `11338e0235ab23df3199b8024a05c1b17ed71d10`。这里不宣称线上 Cloud 已部署目标设计。
 
@@ -129,12 +129,29 @@ Representation 为需要的固定 revision 构建一次索引；相同 base/targ
 - 完整当前目录可装入工作预算，则可以使用全文上下文。初始预算按讨论采用约 80% 的可用输入上限，作为可调配置，不作为准确率保证。
 - 超过预算且存在可用基线，则使用完整结构 delta，加必要的旧 claim/受影响旧 Evidence 和程序可确定的标题、字段、表头等上下文。
 - 原证据内容、结构语境和资格可确认未受影响时，可以由程序沿用，不强制把所有旧 Evidence 反复给模型。
-- delta 仍超限则报告容量问题；不偷偷截断，不自动启用 agentic，不新增未经批准的 batching。
-- 初次导入没有旧基线，不能制造 delta。沿用初次提取已有完整覆盖执行合同；不满足能力边界时明确失败。
+- 全文或完整 delta 仍超限时，按 Source 结构切分，再按完整请求预算装入多个 claim/Support；覆盖全部 Source × claim 工作后统一汇总。容量不会直接产生 semantic Review。
+- 初次导入没有旧基线，不能制造 delta。L1 在原 Primary 授权内按完整请求预算分批，所有授权片段恰好作为 Primary 候选覆盖一次。标题等必要上下文可以按准确 ref 作为 Required 随批提供。
 
-对已正常处理的 Support，base 通常是上一成功处理快照。Review 中的 contested Support 不假装具有该有效基线：需要重判时，使用其已知有效基线到 target 的完整净差量，或预算允许的当前全文；基线无法恢复则明确未决或能力失败，不能把最近一次 sync 的空 diff 当作通过。源端未采集的中间编辑无需回放，比较两个实际快照即可。
+对已正常处理的 Support，base 通常是上一成功处理快照。Review 中的 contested Support 不假装具有该有效基线：需要重判时，使用其已知有效基线到 target 的完整净差量，或分批读取当前全文；基线无法恢复则使用当前全文重新判断，不能把最近一次 sync 的空 diff 当作通过。源端未采集的中间编辑无需回放，比较两个实际快照即可。
 
 Token 预算应统计完整请求而非正文字符，参见 [官方 token counting 说明](https://platform.claude.com/docs/en/build-with-claude/token-counting)。预算不是 provider Coverage 或语义充分性的证明。
+
+### 6.3 紧凑 catalog 与大文档执行
+
+模型侧的普通文本是 `[ref, 准确原文]`。Primary/Required 目录仍显式区分，Observation/Revision 只在映射中出现一次，结构组使用短别名。标题仍是普通可引用 Fragment；字段路径、表头、HTML 中被剥离的标题/代码/引用类型等必要语义保留。内部 anchor、类型和 hash 不变。按准确身份去重上下文与旧 Evidence，独立 Support 的分组不合并。
+
+小输入可以一次判断多个固定 claim。大输入采用固定流程：
+
+1. 为每个 Source 批次装入预算允许的 claim/Support。扫描只返回相关依据、反例、范围、依赖，或明确本批无影响；不升级 Evidence。
+2. 程序确认每个工作项的完整输入范围均有有效结果。只有 ID、没有判断的响应不能算完成；相同重复响应可归一化，冲突或缺项做一次 correction。
+3. 按 claim 汇集所有批次的发现，取回准确原文及可确定的原标题等祖先 Fragment。若汇总仍超限，逐层归约，每条 finding 都须有保留或消除冗余的处置。摘要只作导航，不能成为 Evidence。
+4. 最终请求可以合装多个 claim；联合考虑全部相关材料，返回固定 claim 的判断与一组完整当前 Evidence。不存在“每批都没冲突，所以整体通过”的投票规则。
+
+每个 Support 使用自己的有效基线；相同基线的 delta 只算一次，相同目标全文可共享。历史 Evidence 本身过大时，可以不携带全部旧文，改为完整扫描当前全文验证固定 claim。普通 Source 总长度通过分批处理；单个不可分结构、必要视觉输入或无法再归约的完整证明超过能力时，才报告明确能力错误，保留已有成功工作，不伪装为语义结论。
+
+LiteLLM 提供模型 metadata 与 token 估算；应用不维护第二份模型清单。已知模型没有隐含统一窗口上限，部署可显式降低 input/context/output caps；未知路由必须配置能力。规划为指令、schema、Source、claims、历史 Evidence、图片、输出和一次 correction 预留空间。发送前按实际展开的 JSON fallback/模板值再次检查；纠错可消费已预留空间，不重复扣留同一 reserve。
+
+新增 `DerivationWork` 是已有 SourceDerivationAttempt 下的执行阶段记录：scan、reduce、finalize。L1 复用已有 BatchRecord。输入身份包含模型及能力快照、范围、claim/Support、prompt/schema 和父阶段结果 hash。成功阶段不可被迟到失败覆盖；恢复复用完全匹配的成功结果。最终 Lifecycle 事务除既有 stale guards 外，还要求本次使用的 finalize 阶段完成。批次不会创建新的 Memory 状态或额外 Support。
 
 ## 7. 步骤四：提取新候选 L1【已有，输入合同需改造】
 
@@ -353,7 +370,7 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 | provider 抓取失败 | Run 与错误；可能有其他成功页面 | 本页不据此证明删除 | provider/本页采集 |
 | Artifact 不适合当前推理 | 准确原始 Artifact 与 eligibility | 依赖它的 Support 走明确未决保护；不伪造视觉验证 | eligibility/既有 Review |
 | 提取 schema/transport 失败 | 固定 target 与成功 sibling batch 输出 | 本页不以不完整提取覆盖提交新知识 | 失败工作；精确输出复用 |
-| delta 或输入超容量 | 固定目标与明确能力错误 | 不截断成“完整”，不标 semantic unsupported | 容量问题处理 |
+| 完整请求超容量 | 固定目标与成功阶段 | 按 Source × claim 分批，不截断成“完整” | 精确复用成功阶段；不可分证明才报告能力错误 |
 | 已识别语义不确定/分类矛盾 | 判断诊断与可表达的 Review | 不强行支持，不擅自破坏旧知识；无可表达提案时停止本 Unit | 单提案 Review 或明确未决失败，不自动语义重试 |
 | 事务锁冲突/可重试提交失败 | 准备结果；业务事务回滚 | 不留下半套 Memory/Support | 同一准备结果重试并重查 guards |
 | target/旧 Memory/Support 已改变 | 历史准备与审计 | 不使用过期判断提交 | 重新针对适用快照准备 |
@@ -422,7 +439,7 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 - `RevisionAssessmentContext` 复用固定 revision 索引，为 L1/L3 选择完整全文或完整净差量。L1 只保留原授权 Primary；L3 按独立 Evidence Unit 评估固定旧 claim，并解析当前完整选择。
 - `assess_claim_pairs` 在既有配对执行边界内合并 L4。一个候选的完整 Evidence 在同一组只传一次，各旧 claim 有独立 Support 结果与结果槽位。
 - MemoryEngine 将 L3/L4 结果交给原 reducer/Plan；已删除旧 NOOP 的第二次语义验证路径。L5/L6/L7、原子提交和 outbox 保持原职责。
-- 输入预算采用可配置的 input/context/output 上限及 0.8 比例，同时预留本次输出和 schema。已知模型上限进一步约束配置；初始保守默认值分别为 32768/65536/32768 tokens。不是所有模型都拥有同样窗口。`MEMFORGE_LLM_MAX_INPUT_TOKENS`、`MEMFORGE_LLM_CONTEXT_WINDOW_TOKENS`、`MEMFORGE_LLM_MAX_OUTPUT_TOKENS`、`MEMFORGE_LLM_INPUT_BUDGET_FRACTION` 可调整；实际提取输出 allowance 同样进入恢复身份。
+- 输入预算采用 LiteLLM 已知能力、显式部署 input/context/output 上限及 0.8 比例，同时预留本次输出、schema 和 correction。未知模型路由需要明确配置，不静默假设通用模型窗口。`MEMFORGE_LLM_MAX_INPUT_TOKENS`、`MEMFORGE_LLM_CONTEXT_WINDOW_TOKENS`、`MEMFORGE_LLM_MAX_OUTPUT_TOKENS`、`MEMFORGE_LLM_INPUT_BUDGET_FRACTION` 可调整；实际提取输出 allowance 同样进入恢复身份。
 - 完整上下文可能需要图片时先取得既有图片执行配额；按最终目录加载准确 bytes，并统计实际供应。容量不足可以选择完整 delta，不能丢弃其必需图片；摘要、长度或资格错误不会触发整篇文档重试。
 
 主要代码入口见第 20 节；上表不是新执行 backlog。此次目标集中在输入准备、L3、L4 和它们与 reducer/Plan 的接线，不是重写整套 Sync。
@@ -439,7 +456,7 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 
 保留已有 Source Projection、Evidence Unit/Support、Lifecycle Plan、outbox/work 和 Review；不新增通用 agent 框架、永久 Fragment 表、语义 checkpoint 账本、独立 MemoryRevision、全库冲突扫描或历史文档浏览器。一次操作复用表示索引与证据准备，只减少重复计算，不扩展成第二套业务状态。
 
-L4 合并减少逻辑调用次数，但完整候选 Evidence 会增加关系请求体积，不能宣称总 token 或延迟必然下降。继续完整比较本 Unit 的既有知识；不通过截断候选、缩小批次或新的 batching 隐藏容量问题。L5 的收益用已有指标评估，本次不扩充实体框架。
+L4 合并减少逻辑调用次数，但完整候选 Evidence 会增加关系请求体积，不能宣称总 token 或延迟必然下降。继续完整比较本 Unit 的既有知识；配对全集不变，完整请求超限时拆分其传输批次，不截断候选。L5 的收益用已有指标评估，本次不扩充实体框架。
 
 未实现的 agentic 补读仅由 [Cloud Issue #468](https://github.com/dodoman-sun/memforge-cloud/issues/468) 跟踪；未识别的远处背景缺失可能造成少量误判，属于已接受的第一阶段取舍。多选提案 Review 是历史分析中的未批准选项，不纳入本阶段，不据此新增框架。
 
