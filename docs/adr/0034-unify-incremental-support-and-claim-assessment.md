@@ -194,6 +194,19 @@ fixed claim/Support; explicit no-local-effect is not a final validation. Complet
 range coverage precedes final synthesis. Bounded reduction accounts for every
 finding, preserves relevant exact refs and unresolved dependencies, and never
 turns summaries into Evidence. Multiple claims may share scan and final requests.
+Reduction selects one complete sufficient proof with its required scope and
+dependencies, while retaining materially distinct potential counterexamples and
+exceptions. Related mentions or equivalent examples need not all survive; examples
+of following a rule do not independently establish its universal requirement.
+Every finding still receives an explicit disposition, and necessary proof is never
+discarded merely to satisfy capacity.
+Current matches to old Support are disposable candidates in that same reduction,
+not a permanent union added back after every pass. After complete current-full
+scanning, one shared final scope omits explanation-only historical excerpts for
+preparation, packing and sending; delta and direct small-input validation retain
+their history contract. Before declaring reduction stalled, rebuild and test the
+complete final request. If it still exceeds capacity, compare its actual token and
+output cost, rather than the length of navigation summaries alone.
 Independent Support groups remain independent. Historical Support parts use integer
 indices into a deduplicated explanation array, separate from selectable current
 or removed-delta refs. This supersedes the shared `ref` namespace: a fixed-input
