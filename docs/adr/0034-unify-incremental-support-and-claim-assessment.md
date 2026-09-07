@@ -22,16 +22,14 @@ protocol, or the complete lifecycle description.
 
 ## Decision
 
-1. Reuse one operation-scoped representation index and existing staged base/target
-   snapshots. For document semantic assessment, provide the current full catalog
-   when the complete request fits the configured input budget (initially about
-   80% of available input capacity); otherwise provide the complete structural
-   net delta plus necessary prior claim/Evidence and deterministic context. The
-   baseline must apply to the evaluated Support. A contested older Support does
-   not acquire the last sync's baseline automatically. Missing baseline selects
-   current-full assessment. Oversized complete inputs use bounded Source × claim
-   execution, never an empty or truncated successful input. Initial import
-   retains complete Primary coverage within token-budgeted extraction requests.
+1. Reuse one operation-scoped representation index and staged base/target
+   snapshots. Normal updates assess the complete structural net delta, necessary
+   prior claim/Evidence and deterministic context, even when the full document
+   fits. The baseline belongs to the evaluated Support, not its Evidence birth
+   revision or the latest Source sync. Only an unavailable reliable baseline
+   requires current-full assessment. Initial import uses the full authorized
+   catalog for extraction. Oversized requests batch Source and claims under
+   one complete request budget; they never silently truncate coverage.
 2. Keep read scope separate from new-claim Primary authority. Ordinary extraction
    still requires authorized added/changed complete structures or canonical
    fields, even when unchanged context is readable. Existing-claim validation
@@ -181,52 +179,54 @@ candidate Evidence, and complete same-Unit comparisons remain required. Validate
 accuracy, input/call cost, unresolved outcomes and latency on a fixed cohort;
 record request coverage and capability failures rather than silently truncating.
 
-## Bounded execution refinement (2026-09-07)
+## Direct delta assessment and bounded execution
 
-[Cloud #473](https://github.com/dodoman-sun/memforge-cloud/issues/473) supersedes
-single-request capacity rejection with approved recoverable Source × claim
-execution. Compact model catalogs preserve exact text, eligible roles and the
-minimal representation/ancestry information needed for interpretation. Titles
-remain selectable Evidence; navigation text does not replace a Required ref.
+The delta-first decision supersedes full-first cost selection and the large-input
+scan/reduce/final inference chain. L3 has one model responsibility: assess the
+fixed claim and update its current Support evidence in light of the supplied
+changes. A rule remaining in force is distinct from execution compliance; missing
+results or unfinished examples do not by themselves revoke a normative obligation.
+Deletion, rewrite, heading/scope change, and Required split/merge use that same
+contract rather than source-specific classifiers.
 
-Scans produce potential evidence, counterexamples, scope or dependencies for each
-fixed claim/Support; explicit no-local-effect is not a final validation. Complete
-range coverage precedes final synthesis. Bounded reduction accounts for every
-finding, preserves relevant exact refs and unresolved dependencies, and never
-turns summaries into Evidence. Multiple claims may share scan and final requests.
-Independent Support groups remain independent. Historical Support parts use integer
-indices into a deduplicated explanation array, separate from selectable current
-or removed-delta refs. This supersedes the shared `ref` namespace: a fixed-input
-runtime replay returned supplied historical `e0`/`e1` IDs as scan findings despite
-matching sender/validator catalogs. Scope correction alone did not remove this
-input-contract ambiguity. The input policy changes to v3; previous stage results
-are retained but cannot satisfy requests with the changed input identity. Large historical Evidence may be
-omitted by selecting complete current-full revalidation; latest-sync delta cannot
-stand in for an older Support baseline. Only an indivisible input/proof or genuine
-representation failure is a capability error; ordinary length is a batching concern.
+A fitting delta and claim group uses one model request. Larger deltas use the same
+cumulative assessment contract over stable Source batches. Each request receives
+the fixed claims, necessary prior Evidence, previous cumulative judgments,
+current exact catalog, removed historical text and processed-range metadata.
+It preserves decision-relevant counterexamples, conditions, partial premises and
+unresolved dependencies. Batches describe one base/target pair, not intermediate
+Source revisions. Unknown-baseline current-full assessment uses the same executor
+without assuming old Support validity.
 
-A frozen LiteLLM capacity snapshot and the actual model bind request/recovery
-identity. Planning includes schema, images, output and correction space; actual
-native-schema/fallback sends consume that reserve rather than reserving it twice.
-Reduction output is sized from the complete reference-bearing response, including
-finding IDs and carried dependencies, with allowance for explanations and formatting.
-This supersedes sizing by finding count alone: a deep node can contain hundreds
-of refs even after its prose was condensed. The same allowance drives packing and
-sending, and participates in the stage identity; a reducer-only budget change does
-not invalidate unchanged scan work or require a new global input policy.
-The presentation/input policies change; compiler 3, Primary authority policy 5,
-projection-extraction-v9 and Support v2 semantics do not.
+Current selectors are limited to the current request and that Support's previously
+grounded state. Historical material never becomes selectable current Evidence.
+The application validates the final complete Evidence Unit from exact original
+refs; it does not require a final model request to reread all retained raw text.
+Cumulative explanations are inference state, not stored Evidence. This deliberately
+trades some joint-reading accuracy for bounded execution: complete range coverage
+cannot guarantee all cross-batch semantic relationships are preserved. Known
+unresolved dependencies remain unresolved; supplemental exploration stays #468.
 
-Recoverable scan/reduce/final records belong to the existing derivation root
-under [ADR 0017](0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md).
-No LLM runs in the lifecycle transaction, and no scan can commit partial Support. Independent claim batches within one Source range reuse the existing
-bounded-work helper and structured-client concurrency limit; provider admission
-alone is not a bound on queued prompt/image memory. An ordinary sibling failure
-stops new admission and drains already started siblings so their successful stages
-remain reusable. Aggregation follows planning order, and all required ranges must
-still complete before final synthesis. External cancellation may interrupt active
-calls; only already persisted successes are promised on resume.
-Semantic recall remains imperfect; supplemental exploration is still #468.
+Claim batches may share Source input. When cumulative state grows, repartition only
+the unfinished claim work, retaining its processed prefix and parent results. A
+frozen LiteLLM capacity snapshot budgets the actual transport, schema, images,
+per-claim output references, cumulative state and correction reserve. Neither
+output truncation nor smaller business scopes substitutes for execution coverage.
+An indivisible representation or cumulative state beyond available capability
+remains an explicit execution limitation, not a successful or semantic judgment.
+
+`support_assess` records persist exact model inputs/results under the existing
+Source derivation. `support_finalize` is a program-generated completion receipt
+binding complete coverage and all assessment dependencies; it is not another LLM
+call. Existing atomic lifecycle/stale guards consume that receipt. Changed model
+work contracts invalidate their own reuse, without changing compiler 3, authority
+5, extraction v9, Support v2, or the catalog input policy merely for execution.
+Legacy stage records remain immutable history. See ADR 0017 for storage ownership.
+
+First-import extraction separately batches its full authorized catalog. Incremental
+L1 uses authorized changed structures and required context; neither path widens
+Primary authority or requires a final full-document reread. L1 and L3 share catalog,
+budget and durable execution primitives, while retaining distinct semantic duties.
 
 ## References
 
