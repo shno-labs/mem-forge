@@ -202,6 +202,8 @@ offset 只在它所属的固定 Observation Revision 内用于定位或校验证
 - 原 claim 仍被当前 Source 支持 / 当前 Source 不再支持 / 所给材料不足。
 - 成立时，受影响 Evidence 应选用哪些当前片段；可以新增、删除或拆分 Required。程序可沿用的未变部分不要求模型重复输出正文。
 
+L3 返回 `insufficient` 时，直接跳过该旧 Memory：本轮生成不带新 Evidence 的 NOOP / KEEP，不进入 L4 替换或删除判断，不新增 Review。任一独立 Support 材料不足时，整条旧 Memory 本轮保留。其他 Memory 和新候选继续处理，Source revision 可以正常提交。旧 Support、Evidence 与其验证基线均不推进；Plan 的 KEEP 决定只记录本次保留的准确旧 Support IDs，不能据此放行新附加的过期证据。新候选仍可通过全局身份匹配为该 Memory 增加独立 Support，不能借此撤掉被跳过的旧 Support。后续更新继续从实际有效基线比较。
+
 这是一次固定 claim 的支持评估，不能用 Required 隐式改变 claim。对于 changed Evidence，需要完整当前 Unit，但模型不必恢复作者的编辑历史，也不必把旧每个 Required 对应为恰好一个新 Required。
 
 程序将可证明沿用的部分和模型选择组合成完整当前 Evidence 候选。两个层面分别校验：LLM 判断语义；程序核对 revision、范围、digest、角色和资格。继承未显示证据是基于已有有效 Support 的增量推导，不能称为模型重新逐段验证了整套证据。
@@ -383,7 +385,8 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 | Artifact 不适合当前推理 | 准确原始 Artifact 与 eligibility | 依赖它的 Support 走明确未决保护；不伪造视觉验证 | eligibility/既有 Review |
 | 提取 schema/transport 失败 | 固定 target 与成功 sibling batch 输出 | 本页不以不完整提取覆盖提交新知识 | 失败工作；精确输出复用 |
 | 完整请求超容量 | 固定目标与成功阶段 | 按 Source × claim 分批，不截断成“完整” | 精确复用成功阶段；不可分材料或累计判断超能力才报告错误 |
-| 已识别语义不确定/分类矛盾 | 判断诊断与可表达的 Review | 不强行支持，不擅自破坏旧知识；无可表达提案时停止本 Unit | 单提案 Review 或明确未决失败，不自动语义重试 |
+| L3 材料不足 (`insufficient`) | 原 Memory、Support、Evidence、验证基线 | 本轮 NOOP，其他处理和 Source 提交继续 | KEEP 记录准确旧 Support IDs，不新增 Review或补读 |
+| L4 语义不确定/分类矛盾 | 判断诊断与可表达的 Review | 不强行支持，不擅自破坏旧知识；无可表达提案时停止本 Unit | 单提案 Review 或明确未决失败，不自动语义重试 |
 | 事务锁冲突/可重试提交失败 | 准备结果；业务事务回滚 | 不留下半套 Memory/Support | 同一准备结果重试并重查 guards |
 | target/旧 Memory/Support 已改变 | 历史准备与审计 | 不使用过期判断提交 | 重新针对适用快照准备 |
 | 进程在 commit 前崩溃 | 持久 extraction staging 保留；部分生命周期准备仍可能只是内存 | 不保证所有生命周期模型结果都免重跑 | 已有恢复合同 |
@@ -404,7 +407,7 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 | 语义相同但 Evidence 被拆分/合并、移动或改写 | 接受合法当前片段构成的新完整 Unit；不要求旧/新 offset 接近或 Required 数量相同 |
 | 静态格式有效但当前 workset selector 无效 | 沿现有边界最多一次局部纠正，保持相同输入与 allowed refs；耗尽后产生明确错误，不让外层重跑 extraction、关系分类或同目标整个文档 |
 | revision/access/Primary 资格错误、缺失必需决策、捏造引用或不完整 Support | 保留硬约束，不能默认为有效、无关或独立 ADD；局部修复不可行则明确终止当前工作 |
-| 内容真的存在冲突或无法判断 | 视为语义结果而非可重试 transport 错误；按可表达的 Review 或明确未决失败处理，不自动重跑期待模型改口 |
+| 内容真的存在冲突或无法判断 | L3 `insufficient` 保留旧 Memory 并继续提交；其他语义冲突按既有 Review 或明确未决失败处理，不自动重跑期待模型改口 |
 
 不同阶段的容错有不同语义：L2 保留原候选是既有准入容错，不能复制成 L3/L4 的“失败也直接新增”。反过来，L3/L4 的引用硬约束也不能用来取消 L2 已批准的非破坏性容错。保留已有日志/指标，分别统计确定性规范化、局部纠正、语义 Review、能力失败及实际外层重试；不能只看最终 partial sync 数量。
 
