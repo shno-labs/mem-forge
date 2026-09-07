@@ -197,6 +197,9 @@ It preserves decision-relevant counterexamples, conditions, partial premises and
 unresolved dependencies. Batches describe one base/target pair, not intermediate
 Source revisions. Unknown-baseline current-full assessment uses the same executor
 without assuming old Support validity.
+Here “old” means Evidence from the historical Source revision. Earlier batches
+of this same target revision remain valid assessment context in both modes;
+their selected refs do not expire when the next batch omits their raw text.
 
 Current selectors are limited to the current request and that Support's previously
 grounded state. Historical material never becomes selectable current Evidence.
