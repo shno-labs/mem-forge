@@ -212,7 +212,24 @@ Cumulative explanations are inference state, not stored Evidence. This deliberat
 trades some joint-reading accuracy for bounded execution: complete range coverage
 cannot guarantee all cross-batch semantic relationships are preserved. The final
 status remains the sole semantic result; removing a context checklist does not turn
-an explicit insufficient judgment into supported. Supplemental exploration stays #468.
+an explicit insufficient judgment into supported. An L3 `insufficient` result skips
+that incumbent for this revision: the program emits a bare NOOP / KEEP, preserves
+its existing Support and Evidence, and does not advance its validation baseline.
+If any independent Support is insufficient, the whole incumbent is skipped for
+this round. Other incumbents and extraction candidates continue, and the Source
+revision may commit; this supersedes stopping the Unit on L3 insufficiency. No
+Review or additional model call is required. The existing Plan records the exact
+preserved Support IDs on its KEEP decision under the usual Support-set stale guard.
+This exception cannot validate a new attachment or authorize destructive mutation.
+Skipped incumbents bypass L4 but remain eligible for ordinary candidate identity
+matching and independent corroboration. A later assessment still uses each
+Support's actual validation baseline, not the last Source sync revision.
+
+SQLite and HANA apply the same support-preserving invariant in both Support
+representations: a structurally valid unrelated Unit's historical Support cannot
+block a non-destructive write; destructive decisions still require complete current
+Support. Technical failures, invalid selectors and incomplete execution coverage
+remain errors. Supplemental exploration stays #468.
 
 Claim batches may share Source input. When cumulative state grows, repartition only
 the unfinished claim work, retaining its processed prefix and parent results. A
