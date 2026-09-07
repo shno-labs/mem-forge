@@ -621,8 +621,8 @@ schema-valid output can be semantically invalid.
 
 The bounded input decision in ADR 0034 extends recoverable execution beyond L1.
 Existing extraction BatchRecords remain authoritative for extraction. Additional
-DerivationWork records store immutable scan, reduction and final-assessment inputs
-and results under the same SourceDerivationAttempt. These are execution records,
+DerivationWork records store immutable cumulative assessment inputs/results and
+program completion receipts under the same SourceDerivationAttempt. These are execution records,
 not Memory/Support states or an independent scheduling subsystem.
 
 Work identity uses canonical JSON primitives and includes fixed claim/Support,
@@ -633,6 +633,8 @@ Missing, incomplete or mismatched parent results cannot be consumed. Retries reu
 only exact successful stages; changed inputs produce new identities. A final
 assessment still unresolved semantically is not automatically retried as transport.
 
+A program completion receipt binds all assessment stages and complete Source ×
+claim coverage; it is not an additional model call or a new business state.
 The existing atomic lifecycle transaction checks every finalize record it consumes
 is complete under its root, in addition to the existing target, claim, Support,
 visibility and Source Authority guards. SQLite and HANA implement the same contract.

@@ -127,35 +127,41 @@ Representation 为需要的固定 revision 构建一次索引；相同 base/targ
 
 小文档读全文也不能扩大第二个范围。旧片段可支持固定旧 claim；不能因为成为 revalidation Primary 就获得 extraction Primary 授权。Required 和辅助 Context 不自动产生新的提取权限。首次导入或明确全量 reprocess 使用其自身授权合同。
 
-### 6.2 文档语义输入的全文与 delta 选择
+### 6.2 输入范围与请求预算
 
-- 先按实际模型统计完整请求预计输入，包括指令、claim、目录包装、schema 和多模态内容；同时处理输出空间与 provider 限制。
-- 完整当前目录可装入工作预算，则可以使用全文上下文。初始预算按讨论采用约 80% 的可用输入上限，作为可调配置，不作为准确率保证。
-- 超过预算且存在可用基线，则使用完整结构 delta，加必要的旧 claim/受影响旧 Evidence 和程序可确定的标题、字段、表头等上下文。
-- 原证据内容、结构语境和资格可确认未受影响时，可以由程序沿用，不强制把所有旧 Evidence 反复给模型。
-- 全文或完整 delta 仍超限时，按 Source 结构切分，再按完整请求预算装入多个 claim/Support；覆盖全部 Source × claim 工作后统一汇总。容量不会直接产生 semantic Review。
-- 初次导入没有旧基线，不能制造 delta。L1 在原 Primary 授权内按完整请求预算分批，所有授权片段恰好作为 Primary 候选覆盖一次。标题等必要上下文可以按准确 ref 作为 Required 随批提供。
+首次导入：L1 使用全文的授权 catalog，超限时按合法结构分批提取候选。
+正常更新：L1 使用新增、修改的授权结构及必要上下文；L3 使用适用 Support
+基线到目标的完整 delta、固定旧 claim 与必要旧 Evidence。删除前内容、修改后
+内容和必要标题/表头都在同一通用输入合同内，不按语义 case 增加专用流程。
+程序仍可解析完整快照以计算准确 delta；这不代表把全文交给模型。
 
-对已正常处理的 Support，base 通常是上一成功处理快照。Review 中的 contested Support 不假装具有该有效基线：需要重判时，使用其已知有效基线到 target 的完整净差量，或分批读取当前全文；基线无法恢复则使用当前全文重新判断，不能把最近一次 sync 的空 diff 当作通过。源端未采集的中间编辑无需回放，比较两个实际快照即可。
+基线是这组 Support 最后可靠验证的快照，不是 Evidence 的创建版本或最近一次
+Source sync。相同基线的 delta 计算一次。缺失可靠基线时才使用当前全文重判，
+且不能继承未经证明的旧支持。正常更新不再因为全文装得下就优先发送全文。
 
-Token 预算应统计完整请求而非正文字符，参见 [官方 token counting 说明](https://platform.claude.com/docs/en/build-with-claude/token-counting)。预算不是 provider Coverage 或语义充分性的证明。
+LiteLLM 提供模型能力与 token 估算；应用统一预算指令、schema、Source、claims、
+必要历史、累计状态、图片、输出和纠错余量。输入与输出超限均通过传输分批处理，
+不能截断为成功结果。初始 80% 余量是可调执行策略，不是准确率保证。
 
-### 6.3 紧凑 catalog 与大文档执行
+### 6.3 紧凑 catalog 与 L3 分批执行
 
-模型侧的普通文本是 `[ref, 准确原文]`。Primary/Required 目录仍显式区分，Observation/Revision 只在映射中出现一次，结构组使用短别名。标题仍是普通可引用 Fragment；字段路径、表头、HTML 中被剥离的标题/代码/引用类型等必要语义保留。内部 anchor、类型和 hash 不变。按准确身份去重上下文与旧 Evidence，独立 Support 的分组不合并。
+普通文本采用 `[ref, 准确原文]`；角色资格显式区分，重复 Observation/Revision
+元数据在映射中出现一次。标题、表头等仍是普通可引用 Evidence，内部 anchor、
+类型、hash 与权限不变。模型不需要回传这些程序可查回的元数据。
 
-小输入可以一次判断多个固定 claim。大输入采用固定流程：
+L3 只有一个语义职责：根据变化判断固定旧 claim，并调整其 Evidence。
+完整请求能装下时，一次调用可以判断多条 claim。大 delta 使用同一合同分批，
+每次带前批的累计判断、准确引用及未解决依赖；无关后续内容不能覆盖已有例外。
+最后一批后，由程序检查完整覆盖、当前 Evidence 与原子提交条件。
 
-1. 为每个 Source 批次装入预算允许的 claim/Support。扫描只返回相关依据、反例、范围、依赖，或明确本批无影响；不升级 Evidence。
-2. 程序确认每个工作项的完整输入范围均有有效结果。只有 ID、没有判断的响应不能算完成；相同重复响应可归一化，冲突或缺项做一次 correction。
-3. 按 claim 汇集所有批次的发现，取回准确原文及可确定的原标题等祖先 Fragment。若汇总仍超限，逐层归约，每条 finding 都须有保留或消除冗余的处置。摘要只作导航，不能成为 Evidence。
-4. 最终请求可以合装多个 claim；联合考虑全部相关材料，返回固定 claim 的判断与一组完整当前 Evidence。不存在“每批都没冲突，所以整体通过”的投票规则。
+不再强制 scan → reduce → finalize 三段模型调用，也不在末尾重新聚合全文。
+分批的中间结论是判断过程，不会存成 Evidence；跨批解释遗漏仍是模型风险。
+累计状态增长时，可以拆开尚未处理的 claim 分组，保留已完成前缀，不重跑历史。
+无法解析的材料或单个必需结构/累计状态超出能力，仍如实报告无法完成。
 
-每个 Support 使用自己的有效基线；相同基线的 delta 只算一次，相同目标全文可共享。执行前比较各基线分批的预计总成本与共享全文的预计总成本，包含重复请求、输出及图片；用实际序列化请求和有界装箱采样估算，不追求全局最优。实际执行仍独立检查每批预算与完整覆盖。历史 Evidence 本身过大时，可以不携带全部旧文，改为完整扫描当前全文验证固定 claim。普通 Source 总长度通过分批处理；单个不可分结构、必要视觉输入或无法再归约的完整证明超过能力时，才报告明确能力错误，保留已有成功工作，不伪装为语义结论。
-
-LiteLLM 提供模型 metadata 与 token 估算；应用不维护第二份模型清单。已知模型没有隐含统一窗口上限，部署可显式降低 input/context/output caps；未知路由必须配置能力。规划为指令、schema、Source、claims、历史 Evidence、图片、输出和一次 correction 预留空间。发送前按实际展开的 JSON fallback/模板值再次检查；纠错可消费已预留空间，不重复扣留同一 reserve。
-
-新增 `DerivationWork` 是已有 SourceDerivationAttempt 下的执行阶段记录：scan、reduce、finalize。L1 复用已有 BatchRecord。输入身份包含模型及能力快照、范围、claim/Support、prompt/schema 和父阶段结果 hash。成功阶段不可被迟到失败覆盖；恢复复用完全匹配的成功结果。最终 Lifecycle 事务除既有 stale guards 外，还要求本次使用的 finalize 阶段完成。批次不会创建新的 Memory 状态或额外 Support。
+`support_assess` 保存模型阶段；`support_finalize` 仅是程序完成收据，绑定全部
+已处理范围及阶段结果。二者复用现有 derivation、恢复与提交门禁，不新增业务状态。
+存储语义见 ADR 0017，输入与推理决策见 ADR 0034。
 
 ## 7. 步骤四：提取新候选 L1【已有，输入合同需改造】
 
@@ -187,7 +193,7 @@ offset 只在它所属的固定 Observation Revision 内用于定位或校验证
 
 只有程序能依据完整变化事实确定本次变化不影响该支持时，才可明确保留而跳过语义调用。仅发现旧证据正文没改，或其位置附近没有 diff，不足以排除文档其他位置新增的例外。
 
-**输入：**固定旧 claim、本次授权范围和完整全文或 delta 材料，以及判断受影响部分所需的旧证据。未变部分可由程序继承；输入必须说明旧内容是历史材料、新内容属于哪个固定 revision。
+**输入：**固定旧 claim、本次允许读取范围和完整 delta 材料（仅缺失可靠基线时用当前全文），以及判断受影响部分所需的旧证据。未变部分可由程序继承；输入必须说明旧内容是历史材料、新内容属于哪个固定 revision。
 
 **LLM 输出两个相互对应的结果：**
 
@@ -335,7 +341,7 @@ SourceSyncRun/SyncState 汇总页面处理结果，报告成功、局部失败�
 |---|---|---|---|---|---|
 | L1 | 新候选提取 | 有获授权 Primary 工作 | 当前片段目录、授权、解释上下文、实际图片 | Candidate + 当前 Evidence selection | 否 |
 | L2 | 候选准入 | 多个候选需判断重复/价值 | 本次候选集合 | 选择与拒绝理由 | 否 |
-| L3 | 旧 claim 支持与 Evidence 重构 | 存在需要语义判断的旧 Support | 旧 claim、全文或完整 delta、必要旧证据 | 支持判断 + Evidence 计划 | 否 |
+| L3 | 旧 claim 支持与 Evidence 重构 | 存在需要语义判断的旧 Support | 旧 claim、完整 delta、必要旧证据及累计判断 | 支持判断 + Evidence 计划 | 否 |
 | L4 | 同 Unit 新旧关系与条件性修订判断 | 存在待比较候选与旧 Memory | claim 对与适用条件、完整候选当前 Evidence、L3 结果 | 关系及方向、条件性修订判断、一致性或未决结果 | 否 |
 | L5 | 实体消歧 | 精确名称/别名不足以确定 | mention、实体候选、必要局部语境 | 匹配/不匹配 | 否；实体字典可准备写入 |
 | L6 | 跨文档身份判断 | 精确 claim 未命中且召回候选 | 新旧 claim 与范围 | 等价目标或无目标 | 否 |
@@ -374,7 +380,7 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 | provider 抓取失败 | Run 与错误；可能有其他成功页面 | 本页不据此证明删除 | provider/本页采集 |
 | Artifact 不适合当前推理 | 准确原始 Artifact 与 eligibility | 依赖它的 Support 走明确未决保护；不伪造视觉验证 | eligibility/既有 Review |
 | 提取 schema/transport 失败 | 固定 target 与成功 sibling batch 输出 | 本页不以不完整提取覆盖提交新知识 | 失败工作；精确输出复用 |
-| 完整请求超容量 | 固定目标与成功阶段 | 按 Source × claim 分批，不截断成“完整” | 精确复用成功阶段；不可分证明才报告能力错误 |
+| 完整请求超容量 | 固定目标与成功阶段 | 按 Source × claim 分批，不截断成“完整” | 精确复用成功阶段；不可分材料或累计判断超能力才报告错误 |
 | 已识别语义不确定/分类矛盾 | 判断诊断与可表达的 Review | 不强行支持，不擅自破坏旧知识；无可表达提案时停止本 Unit | 单提案 Review 或明确未决失败，不自动语义重试 |
 | 事务锁冲突/可重试提交失败 | 准备结果；业务事务回滚 | 不留下半套 Memory/Support | 同一准备结果重试并重查 guards |
 | target/旧 Memory/Support 已改变 | 历史准备与审计 | 不使用过期判断提交 | 重新针对适用快照准备 |
@@ -424,7 +430,7 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 |---|---|---|---|
 | 1 Trigger/Worker | `admin_api` 的 Source sync 路由 → SyncService → SourceSyncWorker，已有 run/lease/coalescing | 无行为改造 | 只恢复失败工作；不新增调度器 |
 | 2 采集/快照 | `pipeline/sync.py`、SourceProjectionAdapter、不可变 revisions、raw/normalized/Artifact 存储 | 无基础重构；资格问题单独见下表 | provider 部分覆盖、删除证明、稳定 Unit 身份 |
-| 3 工作准备 | `source_derivation.py`、`pipeline/projection_context.py` 与 Fragment compiler 已有暂存、结构授权和索引 | **中**：统一完整请求预算、全文/delta 模式、适用基线和工作合同身份 | 首次导入、contested Support、超限不可截断、旧输出不可复用到新合同 |
+| 3 工作准备 | `source_derivation.py`、`pipeline/projection_context.py` 与 Fragment compiler 已有暂存、结构授权和索引 | **中**：统一完整请求预算、首次全文与增量 delta 模式、适用基线和工作合同身份 | 首次导入、contested Support、超限不可截断、旧输出不可复用到新合同 |
 | 4 L1 提取 | 已有结构目录与 Primary/Required selector；增量完整结构授权已实现 | **小到中**：消费统一输入模式；不放宽已实现的 Primary 授权 | 全文只是可读上下文；canonical 完整解析不等于全记录 Primary |
 | 5 L2 准入 | `candidate_ledger.py`，确定性去重与条件性模型选择 | **无必需改造** | 保留候选的容错不扩展到 Evidence/生命周期校验 |
 | 6 L3 支持评估 | `reconciler._audit_incumbent_support` 与 `engine._rebind_noop_evidence_to_current_revision` 目前分开调用；共享索引已有 | **大，主要改动**：合并支持判断及完整 Evidence 重构，允许 Required 数量变化，结果供后续复用 | 删除当前 40,000/100,000 字符截断；不能依靠旧位置匹配召回；false/不足/非法选择分别处理 |
@@ -440,7 +446,7 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 
 实际落点：
 
-- `RevisionAssessmentContext` 复用固定 revision 索引，为 L1/L3 选择完整全文或完整净差量。L1 只保留原授权 Primary；L3 按独立 Evidence Unit 评估固定旧 claim，并解析当前完整选择。
+- `RevisionAssessmentContext` 复用固定 revision 索引，为首次导入准备全文、为正常 L1/L3 更新准备完整净差量。L1 只保留原授权 Primary；L3 按独立 Evidence Unit 评估固定旧 claim，并解析当前完整选择。
 - `assess_claim_pairs` 在既有配对执行边界内合并 L4。一个候选的完整 Evidence 在同一组只传一次，各旧 claim 有独立 Support 结果与结果槽位。
 - MemoryEngine 将 L3/L4 结果交给原 reducer/Plan；已删除旧 NOOP 的第二次语义验证路径。L5/L6/L7、原子提交和 outbox 保持原职责。
 - 输入预算采用 LiteLLM 已知能力、显式部署 input/context/output 上限及 0.8 比例，同时预留本次输出、schema 和 correction。未知模型路由需要明确配置，不静默假设通用模型窗口。`MEMFORGE_LLM_MAX_INPUT_TOKENS`、`MEMFORGE_LLM_CONTEXT_WINDOW_TOKENS`、`MEMFORGE_LLM_MAX_OUTPUT_TOKENS`、`MEMFORGE_LLM_INPUT_BUDGET_FRACTION` 可调整；实际提取输出 allowance 同样进入恢复身份。
