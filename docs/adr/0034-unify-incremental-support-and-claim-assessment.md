@@ -76,6 +76,52 @@ Supplemental agentic reads remain the separate beta in
 
 ## Relationship to existing decisions
 
+### Support validation baseline ownership (2026-09-07)
+
+This ADR is the canonical owner of the following baseline contract. ADR 0030
+owns immutable Evidence representation; ADR 0009 owns asynchronous discovery.
+
+- Evidence References identify immutable Observation Revisions and exact ranges.
+  An Evidence Unit's original document revision and extraction run describe its
+  provenance, never the progress of later Support validation. Reusing an
+  unchanged Evidence Unit must not update its original extraction run. New
+  Evidence metadata must not duplicate these typed revision/run columns; existing
+  historical metadata is preserved as audit data.
+- A Support Assertion links to the last applied Lifecycle Plan that actually
+  established or successfully revalidated that exact Memory/Evidence Unit pair.
+  Its effective baseline is that Plan's target Source Unit revision. Do not
+  duplicate that revision or run on Support, or infer it from the latest Source
+  sync, Memory timestamp, Evidence creation version, or another Support's Plan.
+- Publish this association with the corresponding ATTACH_SUPPORT mutation in
+  the same transaction as the Plan and Source projection. Rollback and rejected
+  or stale Plans publish no progress. A removal, KEEP without a validation,
+  pending proposed mutation, or unrelated successful validation does not advance
+  this association. Existing causal and complete-coverage guards remain required.
+- A protected old Support retained pending a destructive lifecycle Review keeps
+  its last proven baseline. An asynchronous cross-source conflict Review does
+  not freeze independently validated Support on either Memory. Review presence
+  is not itself a validation result or a new baseline state.
+- Supports established at v3, v10 and v15 but each validated through v19 can
+  share v19-to-v20 assessment context. A Support still validated only through v3
+  requires v3-to-v20 context or a complete current-catalog proof. Unchanged
+  Observation Revisions may retain their exact References; changed Observations
+  require newly resolved current References, not edited historical anchors.
+
+Schema upgrade adds only the nullable successful-Plan association. Existing
+NULL associations mean unknown validation progress, not current validation.
+They can be established by a new complete-current assessment and normal Plan.
+Optional historical backfill requires an applied Plan's exact Support mutation,
+matching source/unit, complete target membership and authoritative stored
+Evidence; a Source-wide success or timestamp is insufficient. Backfill is a
+separately authorized, bounded recovery operation with exact-count dry-run and
+stale guards. It never rewrites Evidence, Plans, Reviews, or failed jobs and
+does not require source re-ingestion. If no reliable baseline exists and full
+current input does not fit, fail through the existing capacity contract rather
+than borrow a newer delta, silently truncate, or fabricate validation.
+
+Implementation and adapter acceptance of this amendment must be verified
+separately from the previously implemented L3/L4 assessment contract.
+
 This amends ADR 0030's one-selector-per-old-Required
 revalidation mechanics and the separate support/proof orchestration described
 in ADR 0012. Their immutable Evidence, authority, storage, and retry invariants
