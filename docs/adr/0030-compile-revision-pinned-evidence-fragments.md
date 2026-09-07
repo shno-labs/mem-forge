@@ -6,6 +6,10 @@ judgment. Its L3/L4 orchestration supersedes the earlier matching and separate-c
 mechanics below; preserved authority,
 coverage, representation and transaction invariants still apply.
 
+Support validation progress is owned exclusively by ADR 0034's baseline
+contract. Evidence creation revisions and extraction run identifiers are
+provenance, not mutable validation checkpoints.
+
 
 ## Status
 
