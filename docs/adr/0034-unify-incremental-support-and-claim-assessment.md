@@ -191,10 +191,13 @@ contract rather than source-specific classifiers.
 
 A fitting delta and claim group uses one model request. Larger deltas use the same
 cumulative assessment contract over stable Source batches. Each request receives
-the fixed claims, necessary prior Evidence, previous cumulative judgments,
+the fixed claims, necessary prior Evidence, previous brief judgments,
 current exact catalog, removed historical text and processed-range metadata.
-It preserves decision-relevant counterexamples, conditions, partial premises and
-unresolved dependencies. Batches describe one base/target pair, not intermediate
+The carried result contains only status, a short reason and selected Primary/Required
+refs. It does not maintain a fact inventory, context-reference collection or missing-
+context checklist. This supersedes the requirement to accumulate unresolved semantic
+dependencies: simplicity and efficiency take priority over lossless cross-batch context.
+Batches describe one base/target pair, not intermediate
 Source revisions. Unknown-baseline current-full assessment uses the same executor
 without assuming old Support validity.
 Here “old” means Evidence from the historical Source revision. Earlier batches
@@ -207,8 +210,9 @@ The application validates the final complete Evidence Unit from exact original
 refs; it does not require a final model request to reread all retained raw text.
 Cumulative explanations are inference state, not stored Evidence. This deliberately
 trades some joint-reading accuracy for bounded execution: complete range coverage
-cannot guarantee all cross-batch semantic relationships are preserved. Known
-unresolved dependencies remain unresolved; supplemental exploration stays #468.
+cannot guarantee all cross-batch semantic relationships are preserved. The final
+status remains the sole semantic result; removing a context checklist does not turn
+an explicit insufficient judgment into supported. Supplemental exploration stays #468.
 
 Claim batches may share Source input. When cumulative state grows, repartition only
 the unfinished claim work, retaining its processed prefix and parent results. A
