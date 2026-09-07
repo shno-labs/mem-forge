@@ -204,8 +204,13 @@ Here “old” means Evidence from the historical Source revision. Earlier batch
 of this same target revision remain valid assessment context in both modes;
 their selected refs do not expire when the next batch omits their raw text.
 
-Current selectors are limited to the current request and that Support's previously
-grounded state. Historical material never becomes selectable current Evidence.
+Current selectors are limited to the current catalog and the grounded refs in all
+previous states supplied in that same request. These refs form one shared candidate
+pool: a claim may select Evidence another claim previously selected. This supersedes
+the per-claim selector restriction; candidate availability is a request property,
+while judgments and complete Evidence Units remain independent per claim/Support.
+Refs omitted from the request, including other claim batches, are not selectable.
+Historical material never becomes selectable current Evidence.
 The application validates the final complete Evidence Unit from exact original
 refs; it does not require a final model request to reread all retained raw text.
 Cumulative explanations are inference state, not stored Evidence. This deliberately

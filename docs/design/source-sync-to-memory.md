@@ -204,6 +204,8 @@ offset 只在它所属的固定 Observation Revision 内用于定位或校验证
 
 L3 返回 `insufficient` 时，直接跳过该旧 Memory：本轮生成不带新 Evidence 的 NOOP / KEEP，不进入 L4 替换或删除判断，不新增 Review。任一独立 Support 材料不足时，整条旧 Memory 本轮保留。其他 Memory 和新候选继续处理，Source revision 可以正常提交。旧 Support、Evidence 与其验证基线均不推进；Plan 的 KEEP 决定只记录本次保留的准确旧 Support IDs，不能据此放行新附加的过期证据。新候选仍可通过全局身份匹配为该 Memory 增加独立 Support，不能借此撤掉被跳过的旧 Support。后续更新继续从实际有效基线比较。
 
+同一个 L3 请求共享本批 catalog 与本请求所有 `previous_state` 中的当前证据引用。例如 A 的先前状态引用了某条审批规则，B 也可选择这条已提供的原文引用；程序不能因为 B 上一批未选择它而拒绝。每个 claim 的结论、语义范围和最终独立 Support 仍分别判断。其他请求未提供的引用、未来批次引用和历史 revision 引用均不会因此获得准入。
+
 这是一次固定 claim 的支持评估，不能用 Required 隐式改变 claim。对于 changed Evidence，需要完整当前 Unit，但模型不必恢复作者的编辑历史，也不必把旧每个 Required 对应为恰好一个新 Required。
 
 程序将可证明沿用的部分和模型选择组合成完整当前 Evidence 候选。两个层面分别校验：LLM 判断语义；程序核对 revision、范围、digest、角色和资格。继承未显示证据是基于已有有效 Support 的增量推导，不能称为模型重新逐段验证了整套证据。
