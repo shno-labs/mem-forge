@@ -46,6 +46,10 @@ must be considered before classifying a conflict.
 
 ## Reviews and asynchronous conflicts
 
+Support validation baseline ownership is defined in
+[ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md#support-validation-baseline-ownership-2026-09-07).
+Pending Review alone neither proves nor prevents validation progress.
+
 Review is a case over an action or relationship, not a universal Memory status.
 A gated LifecycleReview can stage a hidden challenger and proposed mutations;
 its approval/rejection goes through the complete Plan. A cross-source conflict
