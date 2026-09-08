@@ -399,12 +399,15 @@ complete Required-only units. `plain-text` uses complete paragraphs. Canonical
 records are parsed completely but carry only changed registered field or nested
 text ranges as Primary authority, and binary Artifacts remain whole-Observation.
 
-One protected unit larger than the presentation budget returns the typed
-`structural_unit_too_large` planning outcome. It is not character-split or
-authority-widened. Multi-window discovery and adjudication for an oversized
-complete Fragment remains #365. This decision advances the compiler-backed
-authority policy from 4 to 5; legacy v8 retains policy 2 and its bounded
-character-window contract.
+Character counts in authority planning are soft grouping targets. A protected
+unit larger than that target occupies a group intact; it is neither rejected
+nor character-split. The actual request planner in ADR 0034 owns model capacity,
+including the catalog, claims, schema, images, output and correction allowance.
+This supersedes the earlier `structural_unit_too_large` character-limit outcome.
+A unit that cannot fit alone in the actual model request still reports a
+processing-capacity limitation there. Primary eligibility is unchanged: policy 5
+continues to authorize only the changed complete structures; legacy v8 retains
+policy 2 and its bounded character-window contract.
 
 The prompt presents `primary_candidates` and `required_only_candidates`
 separately. If a durable claim is stated only by Required-only historical
@@ -1211,10 +1214,12 @@ the effective base is the committed current revision even when the Projection
 delta itself has no previous revision.
 
 The deterministic evaluator maps this event to the
-`evidence_authority_planning` criterion. Presentation overflow is the typed
-`STRUCTURAL_UNIT_TOO_LARGE` planning result rather than an exception before
-staging. All-current reprocess authority requires an explicit source-sync
-operation identity and, for an existing revision, the same committed-base
+`evidence_authority_planning` criterion. Model capacity is checked after exact
+authority and complete structures are established, by the shared actual-request
+planner; a character grouping target cannot create an authority failure.
+Historical `STRUCTURAL_UNIT_TOO_LARGE` records remain preserved and ordinary
+recovery builds work under the corrected planner. All-current reprocess authority
+requires an explicit source-sync operation identity and, for an existing revision, the same committed-base
 validation as ordinary incremental work. Existing Evidence-Unit revalidation
 remains owned by the revision-pinned NOOP revalidation compiler; it is not
 recast as new-candidate extraction authority.
