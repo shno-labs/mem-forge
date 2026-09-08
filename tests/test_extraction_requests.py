@@ -1,11 +1,68 @@
 from dataclasses import replace
 
+import pytest
+
 from memforge.pipeline.extraction_requests import plan_fragment_requests
 from memforge.pipeline.memory_extractor import MemoryExtractor
 from memforge.pipeline.projection_fragments import compile_projection_fragment_catalog
 from memforge.pipeline.revision_assessment import RevisionAssessmentContext
 from tests.test_projection_fragments import _projection, _batch
 from tests.test_revision_work import Client
+
+
+@pytest.mark.parametrize("representation", ["markdown", "html"])
+def test_large_complete_table_reaches_actual_request_budget(representation):
+    from memforge.llm.structured import LiteLlmStructuredClient, StructuredLlmConfig, ProjectionFragmentMemoryExtractionResponse
+    from memforge.pipeline.projection_context import plan_projection_evidence_work
+    from memforge.pipeline.projection_fragments import SupportRevalidationLimitation, SupportRevalidationLimitationCode
+    from tests.test_projection_context import _confluence_projection
+
+    if representation == "markdown":
+        table = "| Rule | Sandbox | Small Box |\n| --- | --- | --- |\n" + "\n".join(
+            f"| Approval {row} | Yes | No |" for row in range(1_200))
+    else:
+        table = "<table><tr><th>Rule</th><th>Sandbox</th><th>Small Box</th></tr>" + "".join(
+            f"<tr><td>Approval {row}</td><td>Yes</td><td>No</td></tr>" for row in range(1_200)) + "</table>"
+    assert len(table) > 30_000
+    projection = _confluence_projection("Before the table.\n\n" + table + "\n\nAfter the table.")
+    batches = plan_projection_evidence_work(
+        projection, committed_base_snapshot=None, reprocess_all_current_observations=False,
+        extraction_contract_version="projection-extraction-v9")
+    assert isinstance(batches, tuple)
+    context = RevisionAssessmentContext(projection=projection, base=None, access_context_hash="scope")
+    primary_tables = []
+    for batch in batches:
+        catalog = compile_projection_fragment_catalog(projection, batch, access_context_hash="scope")
+        assert catalog.usable
+        primary_tables.extend(f for f in catalog.fragments if f.primary_eligible and "table" in f.fragment_type)
+    assert len(primary_tables) == 1
+    assert primary_tables[0].presentation_text == table
+
+    for window in (100_000, 8_000):
+        client = LiteLlmStructuredClient(StructuredLlmConfig(
+            model="bedrock/anthropic.claude-sonnet-4-6", base_url=None, api_key=None, timeout_s=1,
+            max_input_tokens=window, context_window_tokens=window, max_output_tokens=1024))
+        extractor = MemoryExtractor(model=client.config.model, structured_llm_client=client)
+        requests = []
+
+        def plan():
+            for batch in batches:
+                catalog = compile_projection_fragment_catalog(projection, batch, access_context_hash="scope")
+                requests.extend(plan_fragment_requests(batch, catalog, context=context, extractor=extractor,
+                                                      source_type="confluence", doc_type="document"))
+
+        if window == 8_000:
+            with pytest.raises(SupportRevalidationLimitation) as error:
+                plan()
+            assert error.value.code == SupportRevalidationLimitationCode.CAPACITY_EXCEEDED
+        else:
+            plan()
+            tables = [f for r in requests for f in r.prepared_catalog.fragments
+                      if f.primary_eligible and "table" in f.fragment_type]
+            assert [f.presentation_text for f in tables] == [table]
+            assert all(client.request_fits(r.prepared_prompt,
+                       response_format=ProjectionFragmentMemoryExtractionResponse,
+                       max_tokens=extractor.fragment_output_tokens(r.prepared_catalog)) for r in requests)
 
 
 def test_first_import_over_old_catalog_limit_batches_complete_requests_and_keeps_heading_refs():
