@@ -147,7 +147,7 @@ never repair an unknown identity by guessing, omit required coverage, or grant
 out-of-scope authority.
 
 `projection-extraction-v9` is an extraction contract selected by current v2
-Support capability; it is not the Evidence compiler version, currently 3.
+Support capability; it is not the Evidence compiler version, currently 4.
 Update the affected L3/L4 semantic work identities and any changed input-policy
 identity through existing descriptors/hashes. Do not bump the compiler unless
 fragment/coordinate semantics change, invent a Support migration, or rename an
@@ -157,8 +157,10 @@ and recovery boundaries.
 
 The input policy counts the prompt, response schema, actual supplied images and
 requested output allowance. Conservative configurable input/context/output
-operator caps are intersected with LiteLLM metadata; unknown aliases require
-explicit route capacity rather than a silent universal limit. The default fraction is
+operator caps are intersected with LiteLLM metadata. Known route aliases resolve
+to their corresponding SDK model (SAP Sonnet 4.6 uses Bedrock Sonnet 4.6 metadata
+and tokenizer); capacity numbers are not duplicated in an application registry.
+Unknown aliases still require explicit route capacity rather than a silent universal limit. The default fraction is
 0.8. Actual extractor model/output allowance and policy configuration participate
 in derivation identity. L4 shares one candidate/Evidence payload across its
 comparison group and sizes output to the existing pair workload. It does not
@@ -248,14 +250,35 @@ remains an explicit execution limitation, not a successful or semantic judgment.
 Source derivation. `support_finalize` is a program-generated completion receipt
 binding complete coverage and all assessment dependencies; it is not another LLM
 call. Existing atomic lifecycle/stale guards consume that receipt. Changed model
-work contracts invalidate their own reuse, without changing compiler 3, authority
-5, extraction v9, Support v2, or the catalog input policy merely for execution.
+work contracts invalidate their own reuse, without changing authority 5, extraction v9 or Support v2 merely for execution.
+Compiler 4 independently changes structural boundaries as described in ADR 0030.
 Legacy stage records remain immutable history. See ADR 0017 for storage ownership.
 
 First-import extraction separately batches its full authorized catalog. Incremental
 L1 uses authorized changed structures and required context; neither path widens
 Primary authority or requires a final full-document reread. L1 and L3 share catalog,
 budget and durable execution primitives, while retaining distinct semantic duties.
+
+## Local unresolved claim relationships
+
+L4 returns a relationship and conditional refinement proof, without a redundant
+`consistent_with_support` Boolean. UNRELATED is valid whether L3 supported the old
+claim or not. CONTRADICTS proceeds through the existing authority/Review action
+table; old support does not invalidate a contradictory relationship by itself.
+An equivalent supported challenger paired with an unsupported incumbent, a
+refinement entailment chain conflicting with L3, or insufficient applicable material
+is unresolved locally. L4 must also check its supplied accurate Evidence against
+the challenger, including table column associations; it cannot repair candidate text.
+
+For an unresolved pair, the reducer consumes the candidate and emits a bare skipped
+NOOP for the incumbent, preserving Support, Evidence and validation baseline.
+If either participates in other related pairs, preserve the related component
+together so a shared candidate cannot escape as ADD or drive another destructive
+operation. UNRELATED edges never spread this uncertainty. Exclude that component
+from conditional refinement work; independent candidates and incumbents continue.
+The existing skipped-Support proof and stale guards remain the only Plan mechanism,
+with no new Review state, semantic retry loop, or change to atomic commit ownership.
+
 
 ## References
 

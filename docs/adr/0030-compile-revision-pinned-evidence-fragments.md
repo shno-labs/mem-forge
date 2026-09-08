@@ -105,9 +105,11 @@ Source relation type, and it is not persisted as Source or lifecycle state.
 `EvidenceRepresentationProfile` carries an exact profile name, a separate
 positive integer version, a coordinate-space contract, and an optional typed
 representation-schema reference. The registry key is the pair
-`(name, version)`; the name never embeds a `-vN` suffix. A version bump is
-required only when Fragment boundaries or coordinate semantics change, not for
-an implementation fix that preserves identical catalog output. The schema
+`(name, version)`; the name never embeds a `-vN` suffix. The profile versions
+source syntax and coordinate semantics. Compiler contract identity versions
+Fragment boundaries and presentation policy independently: recompiling unchanged
+source bytes must invalidate cached catalogs when those boundaries change.
+This supersedes requiring a persisted profile bump for segmentation changes alone. The schema
 reference is required for `canonical-record` and forbidden for profiles that do
 not consume a record schema.
 Representation adapters and nested text parsing remain private implementation
@@ -133,7 +135,7 @@ The initial private adapter set is deliberately small:
   lists, tables, blockquotes, and code blocks. CommonMark `html_inline` tokens
   are validated and rendered through the private offset-preserving HTML seam but
   remain inside one claim-coherent Markdown paragraph. Raw-HTML blocks may yield
-  structural `li`, `tr`, `blockquote`, or `p` Fragments when exact non-overlapping
+  structural `table`, `ol`, `dl`, `figure`, `li`, `blockquote`, or `p` Fragments when exact non-overlapping
   child ranges are available; otherwise the exact CommonMark block is one
   intentionally atomic Fragment;
 - `canonical-record` compiles application-owned canonical JSON records into
@@ -318,8 +320,9 @@ profile field as equivalent only to an explicit null field; every other payload
 difference remains an immutable retry collision.
 
 Text Fragments use exact half-open ranges in the immutable Observation Revision.
-HTML list items, table rows, blockquotes, Markdown paragraphs, list items,
-table rows, and code blocks may therefore be independently selectable while
+HTML tables, ordered lists, definition lists, figures, list-item subtrees,
+blockquotes, Markdown paragraphs, complete tables, ordered lists, and code blocks
+may therefore be independently selectable while
 mapping back to exact source characters. `canonical-record` is parsed as a
 whole so exact JSON Pointer and escaped-string coordinates can be indexed, but
 the planner supplies only changed registered field or nested-text ranges as
@@ -1225,6 +1228,38 @@ introduced.
 This ADR defines design and acceptance semantics only. It does not authorize
 source re-ingestion, historical Memory rewriting, lifecycle repair, automatic
 reassessment of prior events, or deployment.
+
+## Complete structural units and bounded transport
+
+Compiler contract 4 supersedes row-level table references and whitespace-flattened
+HTML structure. An ordinary Markdown or HTML table is one selectable Fragment,
+including headers and every row. Ordered lists retain the complete ordered group;
+unordered items retain their child subtree. Code/configuration blocks preserve
+whitespace, definition lists retain terms with definitions, and explicit figures
+retain their image link with the caption. These guarantees also apply when a
+protected structure is nested inside a list item or blockquote. Normalization
+retains HTML where Markdown would lose spans, definition or figure associations.
+A figure link alone never proves image pixels: visual claims still need supplied,
+revision-pinned Artifact Evidence. Artifact catalog metadata identifies its filename
+and parent Observation without inventing a new visual dependency graph.
+
+Complete structure is a reading and selection boundary, not whole-document Primary
+authority. Existing incremental authority determines which complete changed unit
+is eligible. Plain prose continues to use paragraph boundaries. Registered canonical
+JSON containers are not automatically indivisible: the Jira changelog schema binds
+concrete item fields, uses the same nested Markdown compiler for old/new description
+values, and carries the event time, field identity, and before/after path through
+current and removed delta inputs. JSON escape boundary maps still locate exact raw
+Evidence; historical Evidence and committed Plans are never rewritten.
+
+L1 and L3 pack complete units into budgeted requests. A unit that does not fit the
+current request moves intact to another request. Requests count actual instructions,
+schema, images, correction reserve and output; L1 output reservation scales with
+its authorized content and respects the model's output/context capability. A single
+protected unit that exceeds the real capability even alone requires a larger
+window; adding batches cannot make that unit fit. No table splitting, semantic
+unitizer, scan/reduce/finalize model chain or additional lifecycle state is introduced.
+
 
 ## References
 
