@@ -10,8 +10,8 @@ from tests.test_projection_fragments import _projection, _batch
 from tests.test_revision_work import Client
 
 
-@pytest.mark.parametrize("representation", ["markdown", "html"])
-def test_large_complete_table_reaches_actual_request_budget(representation):
+@pytest.mark.parametrize(("representation", "rows"), [("markdown", 1_200), ("html", 1_200), ("html", 3_000)])
+def test_large_complete_table_reaches_actual_request_budget(representation, rows):
     from memforge.llm.structured import LiteLlmStructuredClient, StructuredLlmConfig, ProjectionFragmentMemoryExtractionResponse
     from memforge.pipeline.projection_context import plan_projection_evidence_work
     from memforge.pipeline.projection_fragments import SupportRevalidationLimitation, SupportRevalidationLimitationCode
@@ -19,10 +19,10 @@ def test_large_complete_table_reaches_actual_request_budget(representation):
 
     if representation == "markdown":
         table = "| Rule | Sandbox | Small Box |\n| --- | --- | --- |\n" + "\n".join(
-            f"| Approval {row} | Yes | No |" for row in range(1_200))
+            f"| Approval {row} | Yes | No |" for row in range(rows))
     else:
         table = "<table><tr><th>Rule</th><th>Sandbox</th><th>Small Box</th></tr>" + "".join(
-            f"<tr><td>Approval {row}</td><td>Yes</td><td>No</td></tr>" for row in range(1_200)) + "</table>"
+            f"<tr><td>Approval {row}</td><td>Yes</td><td>No</td></tr>" for row in range(rows)) + "</table>"
     assert len(table) > 30_000
     projection = _confluence_projection("Before the table.\n\n" + table + "\n\nAfter the table.")
     batches = plan_projection_evidence_work(
@@ -30,9 +30,17 @@ def test_large_complete_table_reaches_actual_request_budget(representation):
         extraction_contract_version="projection-extraction-v9")
     assert isinstance(batches, tuple)
     context = RevisionAssessmentContext(projection=projection, base=None, access_context_hash="scope")
+
+    def compile_batch(batch):
+        # Use the same index-sized catalog budget as normal source sync.
+        return compile_projection_fragment_catalog(
+            projection, batch, access_context_hash="scope",
+            max_fragments=len(context.full_fragments),
+            max_presentation_chars=sum(len(f.presentation_text) for f in context.full_fragments))
+
     primary_tables = []
     for batch in batches:
-        catalog = compile_projection_fragment_catalog(projection, batch, access_context_hash="scope")
+        catalog = compile_batch(batch)
         assert catalog.usable
         primary_tables.extend(f for f in catalog.fragments if f.primary_eligible and "table" in f.fragment_type)
     assert len(primary_tables) == 1
@@ -47,7 +55,7 @@ def test_large_complete_table_reaches_actual_request_budget(representation):
 
         def plan():
             for batch in batches:
-                catalog = compile_projection_fragment_catalog(projection, batch, access_context_hash="scope")
+                catalog = compile_batch(batch)
                 requests.extend(plan_fragment_requests(batch, catalog, context=context, extractor=extractor,
                                                       source_type="confluence", doc_type="document"))
 
