@@ -114,9 +114,11 @@ matching source/unit, complete target membership and authoritative stored
 Evidence; a Source-wide success or timestamp is insufficient. Backfill is a
 separately authorized, bounded recovery operation with exact-count dry-run and
 stale guards. It never rewrites Evidence, Plans, Reviews, or failed jobs and
-does not require source re-ingestion. If no reliable baseline exists and full
-current input does not fit, fail through the existing capacity contract rather
-than borrow a newer delta, silently truncate, or fabricate validation.
+does not require source re-ingestion. Without a reliable baseline, assess the
+complete current catalog through the same budgeted batch executor. Full input
+means complete coverage, not one model request. Only necessary indivisible work
+that still exceeds the configured capability fails through the existing capacity
+contract; never borrow a newer delta, silently truncate, or fabricate validation.
 
 Implementation and adapter acceptance of this amendment must be verified
 separately from the previously implemented L3/L4 assessment contract.
