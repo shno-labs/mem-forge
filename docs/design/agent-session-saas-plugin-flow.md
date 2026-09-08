@@ -55,8 +55,9 @@ sequenceDiagram
   Plugin->>Plugin: classify trigger and parse identity
   Plugin->>Queue: update session_cursor if capture is due
   Plugin-->>Tool: return quickly
-  Plugin->>Worker: best-effort start
-  Worker->>Queue: claim pending session with lease_token
+  Plugin->>Worker: start with requesting session identity
+  Worker->>Worker: wait for the queue's single-flight lock
+  Worker->>Queue: claim requesting session first with lease_token
   Worker->>Plugin: count, slice, and canonicalize live event source
   Worker->>API: POST /api/agent-sessions/windows
   API->>API: validate, redact again, canonicalize again
@@ -140,6 +141,14 @@ matters because the transcript may grow between hook time and upload time.
 If the transcript disappeared while the session is pending, the worker keeps
 `capture_pending=1` and stores `last_error`; it does not silently mark the
 session complete.
+
+Each hook-started worker carries the client and session identity that requested
+the capture. It waits for the local queue's single-flight lock and gives that
+row first claim ahead of unrelated older backlog. This preserves the wakeup
+when another worker is already active and prevents a busy historical queue from
+delaying the window that triggered the hook. The same bounded claim may use its
+remaining capacity for older pending rows; scheduling does not change bookmark,
+lease, retry, or upload semantics.
 
 ### 4. Worker Uploads A Bounded Evidence Prefix
 
@@ -421,6 +430,12 @@ arrived while it was uploading.
 The queue opens in WAL mode with a short busy timeout. That is enough for
 overlapping hooks, a run-once worker, and a `RECOVER` pass without introducing a
 resident daemon.
+
+Hook-started workers serialize on one advisory file lock. They wait rather than
+discarding a wakeup when the lock is held, and then prioritize their requesting
+session within the existing bounded claim. Manual maintenance callers may keep
+non-waiting behavior. A crashed process releases the file lock; its durable
+SQLite lease and pending flag continue to govern retry eligibility.
 
 ## Service-Side Components
 
