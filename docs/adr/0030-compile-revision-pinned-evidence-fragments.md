@@ -429,7 +429,18 @@ Required. The transport schema accepts primitive selector strings, while the
 catalog resolver is the authoritative membership and role check. A malformed,
 unknown, stale, cross-catalog, inaccessible, or Primary-ineligible selector
 therefore rejects only its candidate; it is never normalized, mapped, or
-allowed to create Evidence. No dynamic per-catalog enum is required. The
+allowed to create Evidence. One optional LLM correction may propose replacement
+selectors for the rejected candidates together, using the same request catalog,
+context and supplied images. The correction response contains only candidate
+indices and selectors; application code preserves the original claims and all
+other candidate fields. Unknown or duplicate target indices cannot replace a
+candidate, and each proposed selection must pass the same Resolver. Successful
+original candidates never enter correction. Capacity exhaustion, a failed call,
+or an unresolved proposal leaves only the affected candidates rejected and does
+not fail the extraction batch. There is no recursive correction or separate
+lifecycle state. Existing client retry/deadline and token telemetry apply to
+this additional logical call; admission metadata records attempted and recovered
+candidate counts without persisting raw refs. No dynamic per-catalog enum is required. The
 presentation policy has a separate version in v9 Source Derivation input
 identity so a
 corrected same-revision batch is not silently reused. It does not change
