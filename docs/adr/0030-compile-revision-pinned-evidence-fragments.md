@@ -425,10 +425,13 @@ degraded normalization reason for operational visibility.
 
 Application code determines Primary capability without semantic LLM
 classification. The model determines which bounded Context is actually
-Required. Typed model refs make that capability structural in the schema;
-Resolver eligibility validation remains defense-in-depth and never repairs an
-invalid selector. No dynamic per-catalog enum is required. The presentation
-policy has a separate version in v9 Source Derivation input identity so a
+Required. The transport schema accepts primitive selector strings, while the
+catalog resolver is the authoritative membership and role check. A malformed,
+unknown, stale, cross-catalog, inaccessible, or Primary-ineligible selector
+therefore rejects only its candidate; it is never normalized, mapped, or
+allowed to create Evidence. No dynamic per-catalog enum is required. The
+presentation policy has a separate version in v9 Source Derivation input
+identity so a
 corrected same-revision batch is not silently reused. It does not change
 Fragment coordinates, catalog digest, Evidence Unit identity, or lifecycle
 state. Legacy v8 derivation identity remains unchanged.
