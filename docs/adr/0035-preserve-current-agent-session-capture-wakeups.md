@@ -1,54 +1,65 @@
-# Preserve current Agent Session capture wakeups
+# Coalesce Agent Session capture under one on-demand owner
 
-Status: Accepted (2026-09-08)
+Status: Accepted (2026-09-09)
 
 ## Context
 
-Agent hooks durably mark a session pending and start a detached run-once worker.
-The worker processes a bounded number of rows under one host-local single-flight
-lock. A non-blocking worker start could lose the only wakeup for a newly pending
-session when another worker held that lock. Ordering every claim only by age
-could also leave the session that triggered the hook behind unrelated historical
-backlog.
-
-The pending flag made the window retryable, but did not guarantee a timely pass
-after the current hook. This was a scheduling violation at the local queue
-boundary; bookmark advancement, upload idempotency, and service-side Agent
-Session processing remained correct.
+Stop, PreCompact, and SessionStart recovery must preserve new capture requests
+while a worker uploads or exits. A pending content flag alone cannot distinguish
+a fresh wake from historical backlog. One waiting process per hook serializes
+uploads but allows unbounded process accumulation and repeated failed attempts.
 
 ## Decision
 
-Every hook-started worker carries the requesting `(client, session_id)`, waits
-for the queue's existing advisory single-flight lock, and gives that exact row
-first position in its bounded claim when the row is pending and lease-eligible.
-Remaining claim capacity continues to use the existing age order. Workers that
-are invoked directly without a requesting identity keep age order, and direct
-callers may retain non-waiting lock behavior.
+All capture hooks use one scheduling entry. Each request persists a
+`wake_requested_at` on the existing session cursor, preserving its first waiting
+time. A claim consumes that wake atomically with its lease and request sequence.
+New requests during upload set a new wake; stale results cannot clear it. A
+successful bounded prefix rearms its remaining tail. Workspace pinning, upload
+idempotency, and bookmark/lease guards remain unchanged.
 
-The worker still materializes the live transcript range only after it owns the
-row's random lease token. Upload success advances the bookmark under that token
-and the captured `request_seq`; failure releases the claim while preserving the
-pending row. A newer hook request during upload therefore remains pending for a
-later pass. A process crash releases the advisory file lock, while the durable
-SQLite lease prevents another worker from claiming the row until that lease is
-eligible again.
+The hook reserves the queue's POSIX advisory file lock non-blockingly before
+spawning. It transfers the same locked open file description through `pass_fds`
+and closes its own copy without unlocking. Hooks that find an owner enqueue
+without spawning waiting processes. The owner consumes rounds of at most five
+sessions, prioritizing fresh wakes over historical pending rows. Historical
+recovery has a total budget of five sessions per activation. Continuous fresh
+work can delay history; there is no historical completion deadline.
+
+Enqueue commits before the producer ensures ownership. The ownership probe uses
+a short SQLite write transaction. The exiting owner rechecks eligible work under
+`BEGIN IMMEDIATE`, releases its file lock while that transaction is still held,
+then commits and exits without doing further queue work. If enqueue wins, the
+owner sees it; if exit wins, the producer can acquire ownership. Network requests
+and transcript scans run outside these write transactions.
+
+Failures preserve the pending bookmark and record completion time. Eligibility
+requires at least 60 seconds since failure completion; a failed identity is also
+excluded for the rest of that activation. A worker with no eligible work exits
+without polling or scheduling a timer. Later hooks or explicit recovery retry
+eligible pending work. SessionStart promotes its current already-pending row as
+well as rearming an idle row whose transcript grew. Pending promotion precedes
+the idle check: either its new sequence protects the in-flight result, or the
+idle check observes the completed row and rearms its tail.
 
 ## Consequences
 
-The current hook window is no longer stranded merely because an older worker
-was active or the queue contained more rows than one claim. Concurrent workers
-remain serialized, and the existing `max_sessions` limit remains a transport
-and computation bound. This decision adds no business state, lifecycle state,
-queue table, daemon, or server contract, and it does not weaken fail-open hook
-behavior or fail-closed workspace selection.
+This supersedes the earlier per-hook waiting worker and process-local requesting
+identity priority. Process ownership is bounded and normal shutdown cannot lose
+a durable wake. The scheduler adds only a nullable local cursor field, defaulting
+to NULL for existing rows; it adds no service, business, or lifecycle state.
 
-Waiting detached workers may briefly accumulate during overlapping hooks. Each
-exits after one bounded pass, and OS process exit releases the advisory lock.
-The normal `RECOVER` path remains the durable recovery mechanism for expired
-leases or interrupted processes.
+Spawn failure or process death preserves pending work and releases OS ownership.
+An in-flight lease still delays recovery until expiry. No later hook means no
+automatic crash recovery. Missing POSIX locking fails closed with a diagnostic;
+macOS and Linux use real process/lock tests. During upgrades, stop old client
+sessions and allow old workers to exit before restarting both clients on the new
+artifact: mixed old waiting workers do not provide the new process-count bound.
 
 ## References
 
 - [Agent Session SaaS Plugin Flow](../design/agent-session-saas-plugin-flow.md)
-- [ADR 0021: Select workspaces at the v1 request boundary](0021-select-workspaces-at-the-v1-request-boundary.md)
-- [Python `fcntl.flock` documentation](https://docs.python.org/3/library/fcntl.html#fcntl.flock)
+- [ADR 0021: Workspace selection](0021-select-workspaces-at-the-v1-request-boundary.md)
+- [SQLite write transactions](https://www.sqlite.org/lang_transaction.html)
+- [Python descriptor inheritance](https://docs.python.org/3/library/subprocess.html#subprocess.Popen)
+- [POSIX flock ownership](https://man7.org/linux/man-pages/man2/flock.2.html)
