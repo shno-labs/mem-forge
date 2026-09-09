@@ -8,6 +8,8 @@ provider-neutral retryability across the pipeline and durable worker seam;
 2026-09-02 to terminalize jobs invalidated by a Source Activity epoch fence;
 2026-09-03 to distinguish durable retry waiting from execution and bind manual
 retry to the displayed execution record.
+Amended: 2026-09-09 to bind each durable server-run attempt to the Source
+activity that fences its writes.
 
 Local collection jobs, server processing runs, and lifecycle-maintenance jobs keep their independent durable lifecycles because they have different owners, leases, retries, and storage transactions. The Sources UI consumes one Source Sync Activity read model projected from those records, rather than introducing a cross-store master operation or extending one execution record to own the others.
 
@@ -140,6 +142,27 @@ Non-durable CLI or maintenance callers use the same atomic result interface
 rather than issuing separate state and history writes. SQLite owns this shared
 contract; Cloud implements the same transaction in its HANA adapter without a
 source-type or route-level branch.
+
+The durable run lease and Source activity lease remain separate domain
+records, but a durable server-run attempt owns both through one storage
+protocol. Claim creates the Source activity in the same transaction as the run
+lease, using the run ID as activity ID, `sync` as kind, and the decimal run
+lease-attempt count as its capability. Both leases receive the same deadline.
+Any other live Source activity makes the run temporarily ineligible without
+incrementing its attempt or recovery counters. Heartbeat renews both deadlines
+atomically only while both authorities are current and unexpired; an expired
+attempt cannot be resurrected.
+
+Every authoritative Source mutation performed by the attempt validates the
+full activity identity, capability, epoch, and expiry inside its transaction.
+Progress and terminal result writes validate the matching run owner and attempt
+as well. Success, retryable failure, terminal failure, and exhausted-attempt
+failure release only that exact activity capability in the same transaction as
+the run transition. A superseded worker therefore cannot commit or release its
+successor's authority. Non-durable sync keeps its independently acquired Source
+activity. Legacy random-ID activities are not adopted by a durable run and are
+allowed to expire before a new attempt is admitted. No combined lease table or
+additional execution state machine is introduced.
 
 A Gene may report a typed Source Configuration Error when the same configured
 scope cannot succeed on another execution attempt. The pipeline preserves that
