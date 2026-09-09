@@ -45,7 +45,7 @@ sequenceDiagram
   participant Tool as "Codex or Claude Code"
   participant Plugin as "MemForge plugin"
   participant Queue as "Local queue.sqlite"
-  participant Worker as "Run-once worker"
+  participant Worker as "On-demand owner"
   participant API as "MemForge API"
   participant LLM as "Stage 1 package LLM"
   participant Source as "Agent Session source"
@@ -53,10 +53,11 @@ sequenceDiagram
 
   Tool->>Plugin: Hook payload
   Plugin->>Plugin: classify trigger and parse identity
-  Plugin->>Queue: update session_cursor if capture is due
+  Plugin->>Queue: persist capture request and coalesced wake
+  Plugin->>Plugin: reserve owner lock non-blockingly
+  Plugin->>Worker: only if reserved, transfer locked descriptor
   Plugin-->>Tool: return quickly
-  Plugin->>Worker: best-effort start
-  Worker->>Queue: claim pending session with lease_token
+  Worker->>Queue: claim fresh wakes first with lease_token
   Worker->>Plugin: count, slice, and canonicalize live event source
   Worker->>API: POST /api/agent-sessions/windows
   API->>API: validate, redact again, canonicalize again
@@ -140,6 +141,18 @@ matters because the transcript may grow between hook time and upload time.
 If the transcript disappeared while the session is pending, the worker keeps
 `capture_pending=1` and stores `last_error`; it does not silently mark the
 session complete.
+
+Stop, PreCompact, and SessionStart use one capture scheduler. Fresh durable
+wakes are claimed before historical pending rows in each round of at most five.
+One activation can process at most five historical rows, while new wakes and
+successful bounded prefixes can continue into further rounds. A claimed round
+is not preempted by a later hook.
+
+Failure keeps the bookmark and starts a 60-second cooldown at failure completion.
+The same identity is not retried within that worker activation. With no eligible
+work the owner exits; later hooks or explicit recovery retry pending work.
+SessionStart wakes its current already-pending row, or rearms its idle row if
+the transcript grew. It never changes the pinned workspace to wake a session.
 
 ### 4. Worker Uploads A Bounded Evidence Prefix
 
@@ -408,6 +421,8 @@ CREATE TABLE session_cursor (
   lease_token      TEXT,
   request_seq      INTEGER NOT NULL DEFAULT 0,
   last_error       TEXT,
+  last_attempt_at  TEXT,
+  wake_requested_at TEXT,
   updated_at       TEXT NOT NULL,
   PRIMARY KEY (client, session_id)
 );
@@ -418,9 +433,26 @@ finish the row only while the row still contains its token. `request_seq`
 increments on every capture request so a worker can detect that a newer request
 arrived while it was uploading.
 
-The queue opens in WAL mode with a short busy timeout. That is enough for
-overlapping hooks, a run-once worker, and a `RECOVER` pass without introducing a
-resident daemon.
+`wake_requested_at` records unclaimed demand, preserving the earliest request
+time. It is consumed in the lease transaction; later hooks can set it again.
+It is distinct from `capture_pending`, which also includes historical failures.
+
+The queue opens in WAL mode with a bounded busy timeout. A hook persists its
+request before ensuring an owner. It reserves the advisory lock non-blockingly
+before spawning, transfers the locked descriptor, and closes its copy without
+unlocking. Other hooks leave their wakes for that owner and spawn no waiter.
+
+Before exit, the owner rechecks eligible work under a SQLite write transaction.
+It releases the advisory lock inside that transaction, then commits and exits.
+This serializes enqueue with the final check/unlock so a concurrent wake belongs
+to the existing owner or a newly spawned owner. No network I/O or transcript scan
+runs inside a queue write transaction.
+
+Crashes preserve pending work and release OS ownership; leases must expire before
+retry. There is no timer or idle polling, so recovery needs a later hook. POSIX
+locking is required. Upgrade both clients and let old workers exit before relying
+on the single-owner process bound. See [ADR 0035](../adr/0035-preserve-current-agent-session-capture-wakeups.md)
+for the ownership and recovery contract.
 
 ## Service-Side Components
 
