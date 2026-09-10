@@ -356,13 +356,17 @@ with one discriminated candidate whose Evidence selection is:
 
 The selected catalog entry carries the `text` or `artifact` discriminator; the
 model never returns Observation ids, offsets, Evidence text, hashes, profile
-names, or lifecycle actions. `primary_ref` is required and singular.
-Its structured schema accepts only `pNNNNNN`. `required_refs` is an ordered,
-duplicate-free list accepting `pNNNNNN` or `rNNNNNN`, and may mix text and Artifact
-entries with the Primary when all entries belong to the same offered catalog,
-Configured Source, Source Unit Revision, and access context. The resolver sorts
-the durable Required set by canonical Fragment order before hashing, so model
-array order is not business identity.
+names, or lifecycle actions. `primary_ref` is required and singular. Its
+provider-visible field description directs the model to copy exactly one ref
+from `primary_candidates` and never from `required_only_candidates`.
+`required_refs` is an ordered, duplicate-free list accepting `pNNNNNN` or
+`rNNNNNN`, and may mix text and Artifact entries with the Primary when all
+entries belong to the same offered catalog, Configured Source, Source Unit
+Revision, and access context. Both fields retain primitive string transport
+types so one invalid candidate does not invalidate unrelated candidates in the
+same response; the catalog resolver remains the authoritative membership and
+role check. It sorts the durable Required set by canonical Fragment order before
+hashing, so model array order is not business identity.
 
 Extraction version selection is capability-driven rather than inferred from a
 numeric suffix. One registry describes every readable historical contract and
@@ -431,8 +435,9 @@ degraded normalization reason for operational visibility.
 
 Application code determines Primary capability without semantic LLM
 classification. The model determines which bounded Context is actually
-Required. The transport schema accepts primitive selector strings, while the
-catalog resolver is the authoritative membership and role check. A malformed,
+Required. Provider-visible selector descriptions repeat the catalog role
+contract, while the transport schema accepts primitive selector strings and the
+catalog resolver remains the authoritative membership and role check. A malformed,
 unknown, stale, cross-catalog, inaccessible, or Primary-ineligible selector
 therefore rejects only its candidate; it is never normalized, mapped, or
 allowed to create Evidence. One optional LLM correction may propose replacement
