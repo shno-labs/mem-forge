@@ -652,3 +652,10 @@ operation/input/model/schema identity. The lifecycle application contract accept
 completed claim work alongside `support_finalize` receipts and rejects missing
 or incomplete required work in the same transaction. This adds no lifecycle state
 or partial-application path; failed executions and prior work remain history.
+
+Claim contract v6 work completeness means all requested candidate rows and valid
+explicit sparse edges under the full catalog manifest, not an enumerated pair
+matrix. Omitted edges are not backfilled with synthetic judgments. Identity
+binds the complete ordered catalogs, Support snapshot and sparse schema; v5
+results cannot be reused as v6 discovery. See ADR 0034 for the accepted semantic
+recall tradeoff. Persistence and final transaction ownership are unchanged.

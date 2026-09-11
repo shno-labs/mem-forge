@@ -338,26 +338,53 @@ reducer action. Correct Support, relation and preservation fields alone do not
 prove an eligible UPDATE. Frozen failed results remain evidence even when a later
 prompt/schema version corrects them.
 
-## Complete claim work with compact judgments and recoverable execution
+## Sparse claim discovery over complete input catalogs
 
-L4 retains the complete challenger–incumbent matrix. Delta catalogs reduce L1/L3
-Source input; they do not prove that a new claim cannot replace an unchanged
-incumbent. Neither top-k selection nor an unchanged anchor removes a mandatory
-pair. Pair packing and the logical request deadline remain execution details.
+Claim contract v6 supersedes the v5 requirement for one explicit response per
+challenger–incumbent pair. The product accepts semantic false negatives in
+relationship discovery: omitted pairs propose no relationship action and are
+not persisted or reconstructed as proven UNRELATED. This may retain duplicate
+or conflicting claims or miss a competing replacement proposal. Explicit proof,
+Source Authority/Review, stale and atomic guards remain mandatory; they do not
+prove that a model discovered every semantic relationship.
 
-The claim transport expresses one relation per pair, including directional
-refinement and explicit insufficiency, with one brief explanation. Only a
-contradiction carries its overlapping-scope/incompatible-assertions proof; only
-challenger-to-incumbent refinement carries its revision assessment. The client
-validates these applicable proofs and expands the compact response into the
-existing relation ledger. This removes redundant status/direction fields and
-repeated explanations without changing the reducer or treating missing slots as
-UNRELATED. Every request still requires exact pair coverage.
+L4 receives separate candidate, incumbent and current Evidence catalogs, linked
+by application-issued IDs. Evidence text and each claim occur once per request;
+Primary/Required role, observation/revision identity and validity remain explicit.
+Incumbents carry their already completed current Support assessment. Historical
+support is not misrepresented as current evidence, and missing audit evidence
+references must not be fabricated. No retrieval top-k prunes incumbent input.
+
+Each requested candidate returns exactly one row with evidence entailment status,
+only discovered equivalent/contradictory/directional-refinement edges, and explicit
+uncertain incumbent references. Empty edge arrays are valid. Equivalence is kept
+because it prevents duplicate admission. A candidate lacking complete entailing
+Evidence cannot escape as independent ADD. Explicit uncertainty preserves the
+connected component under the existing reducer semantics. Only contradictions
+and forward refinements carry their applicable proofs. IDs, uniqueness, all
+candidate rows and applicable proof structure are validated before persistence.
+Missing rows, unknown IDs, duplicate edges, truncation, refusal and technical
+failures are never interpreted as empty discoveries.
+
+One complete catalog is attempted first. Existing capacity subdivision partitions
+catalog rectangles only when actual input/image capacity requires it, preserving
+all candidate/incumbent inputs. There is no pair-count packing limit, arbitrary
+edge cap, or new automatic LLM recheck of destructive proposals. The existing
+conditional comparison of multiple discovered refiners remains unchanged.
+Independent full incumbent Support assessment, the deterministic reducer and
+atomic lifecycle commit still apply even when no relationship is emitted.
+
+Acceptance separates false-negative relationships from incorrect lifecycle
+mutations. It covers omitted equivalence, omitted competing replacements,
+explicit ambiguity, scope narrowing, valid empty results, and incomplete transport.
+Response size is a measurement of representation, not a claim of semantic recall
+or live-provider latency. Budget/output ceilings and logical deadlines retain
+their existing meanings.
 
 Completed `claim_assess` results belong to the existing Source derivation, just
 like support work. Their identity binds the lifecycle operation input (including
-Support snapshot), ordered pair identities, prompt and schema hashes, model,
-budget and claim contract. Only a fully validated complete response is reusable.
+Support snapshot), ordered catalog identities, prompt and schema hashes, model,
+budget and claim contract. Only a fully validated response with all requested candidate rows is reusable.
 A retry reads completed work and computes unfinished requests; changed inputs
 cannot borrow old judgments. A process loss before a successful result is stored
 may repeat inference, so this is not an exactly-once provider-call guarantee.
@@ -366,7 +393,7 @@ This supersedes transient-only L4 result ownership. SQLite and HANA require ever
 referenced claim result to be completed before applying the existing atomic
 Source projection/Lifecycle Plan. Independent successful work may survive a peer
 failure, but no subset of its mutations or new Support is published. The existing
-stale guards and destructive-coverage proof remain authoritative.
+stale guards and complete incumbent Support coverage remain authoritative.
 
 Structured failures carry content-free diagnostics from their own logical call
 through the reconciliation failure to its terminal runtime event. Field paths,
