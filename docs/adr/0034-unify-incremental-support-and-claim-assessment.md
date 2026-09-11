@@ -400,3 +400,34 @@ through the reconciliation failure to its terminal runtime event. Field paths,
 validation rules, transport, response fingerprint and provider usage are safe
 metadata; raw responses and source text are not telemetry. Concurrent sibling
 signals must never be guessed into the failing call by error-code matching.
+
+## Complete Support requests and model-facing identifiers
+
+Support assessment first attempts the complete delta range and complete fixed-claim
+cohort for one validation baseline. Only a measured input, image, or mandatory
+response-row capacity failure invokes the existing cumulative transport partitioning.
+This supersedes selecting a packing by score before trying the complete request.
+Delta-first still means changed material plus the current matches for prior Support
+and necessary structural ancestors, not rereading the whole source by default.
+
+The response remains one independent judgment per work item with only its selected
+Primary/Required refs. A hypothetical claim-by-every-fragment response is an output
+allowance estimate, not a required output shape. That allowance saturates at the
+route's generation capacity; the minimum serialized row coverage must also fit.
+No Evidence list is silently shortened to satisfy this budget. Provider truncation,
+refusal, invalid refs and incomplete task coverage cannot complete work, even when
+the response text is syntactically valid JSON. Successful parsing alone is not
+successful execution. The existing bounded correction and fail-closed lifecycle
+boundary remain authoritative; no new semantic states or scheduler are introduced.
+
+Support requests expose stable typed aliases: WRK for assessment tasks, PRM for
+Primary-eligible current Evidence, REQ for Required-only current Evidence and HIS
+for historical material. PRM Evidence may also be selected as Required. Prefixes
+identify namespaces, not relationships between matching numeric suffixes. Numbers
+use a minimum four digits and expand without truncation. Aliases remain stable
+across every partition and cumulative state in the same assessment. Encoding and
+decoding affect only identifier fields; source text and reasons are never rewritten.
+Canonical Evidence coordinates and stored work results retain their internal IDs.
+The support work contract is `support-delta-assessment-v2` and the input policy is
+`revision-input-v4`; old completed work is not reinterpreted as new-wire output.
+Evidence compiler and lifecycle semantics are unchanged.
