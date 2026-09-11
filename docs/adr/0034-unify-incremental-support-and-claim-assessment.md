@@ -337,3 +337,39 @@ Acceptance must evaluate the complete revision conjunction and the resulting
 reducer action. Correct Support, relation and preservation fields alone do not
 prove an eligible UPDATE. Frozen failed results remain evidence even when a later
 prompt/schema version corrects them.
+
+## Complete claim work with compact judgments and recoverable execution
+
+L4 retains the complete challenger–incumbent matrix. Delta catalogs reduce L1/L3
+Source input; they do not prove that a new claim cannot replace an unchanged
+incumbent. Neither top-k selection nor an unchanged anchor removes a mandatory
+pair. Pair packing and the logical request deadline remain execution details.
+
+The claim transport expresses one relation per pair, including directional
+refinement and explicit insufficiency, with one brief explanation. Only a
+contradiction carries its overlapping-scope/incompatible-assertions proof; only
+challenger-to-incumbent refinement carries its revision assessment. The client
+validates these applicable proofs and expands the compact response into the
+existing relation ledger. This removes redundant status/direction fields and
+repeated explanations without changing the reducer or treating missing slots as
+UNRELATED. Every request still requires exact pair coverage.
+
+Completed `claim_assess` results belong to the existing Source derivation, just
+like support work. Their identity binds the lifecycle operation input (including
+Support snapshot), ordered pair identities, prompt and schema hashes, model,
+budget and claim contract. Only a fully validated complete response is reusable.
+A retry reads completed work and computes unfinished requests; changed inputs
+cannot borrow old judgments. A process loss before a successful result is stored
+may repeat inference, so this is not an exactly-once provider-call guarantee.
+
+This supersedes transient-only L4 result ownership. SQLite and HANA require every
+referenced claim result to be completed before applying the existing atomic
+Source projection/Lifecycle Plan. Independent successful work may survive a peer
+failure, but no subset of its mutations or new Support is published. The existing
+stale guards and destructive-coverage proof remain authoritative.
+
+Structured failures carry content-free diagnostics from their own logical call
+through the reconciliation failure to its terminal runtime event. Field paths,
+validation rules, transport, response fingerprint and provider usage are safe
+metadata; raw responses and source text are not telemetry. Concurrent sibling
+signals must never be guessed into the failing call by error-code matching.

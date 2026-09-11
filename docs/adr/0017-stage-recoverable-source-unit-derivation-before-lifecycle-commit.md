@@ -642,3 +642,13 @@ Stage writes do not acquire Source locks after the derivation lock; final commit
 retains its established Source/derivation lock order. No model calls or stage writes
 occur inside the Memory lifecycle transaction. Source or claim changes can leave
 staged results as history but cannot authorize a stale commit.
+
+### Claim assessment work before atomic application
+
+The derivation also owns complete `claim_assess` responses as specified by
+[ADR 0034](0034-unify-incremental-support-and-claim-assessment.md). A successful
+request is retained independently of later claim-request failure, under its exact
+operation/input/model/schema identity. The lifecycle application contract accepts
+completed claim work alongside `support_finalize` receipts and rejects missing
+or incomplete required work in the same transaction. This adds no lifecycle state
+or partial-application path; failed executions and prior work remain history.
