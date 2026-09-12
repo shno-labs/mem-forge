@@ -457,3 +457,26 @@ Anthropic's [latency guidance](https://platform.claude.com/docs/en/test-and-eval
 recommends reducing unnecessary output. Output reduction is measured separately from
 end-to-end latency; input processing and provider waiting prevent proportional latency
 claims from output token counts alone.
+
+
+### Sufficient selected Support
+
+A supported judgment is grounded in the union of its selected Primary and Required
+Evidence, not in unselected passages elsewhere in the request. Primary identifies
+the main fragment; it need not independently entail the entire claim. Required
+contains complementary facts and scope necessary for that same independent Support.
+The model selects one sufficient set without redundant corroboration or enumeration
+of alternative proofs. No arbitrary reference-count cap may remove necessary Evidence.
+This clarifies the existing Evidence Unit contract without changing its wire schema,
+lifecycle semantics or introducing a second semantic model call. Prompt hashes already
+isolate completed derivation work when these instructions change.
+
+Reference validity and complete result-row coverage are deterministic runtime checks;
+semantic sufficiency and unnecessary references require separately labeled evaluation.
+A passing reference check is not a guarantee of entailment. Evaluate missing and extra
+Evidence together, including complete-current and baseline-aware delta scenarios;
+full-mode absence alone does not establish a destructive delta decision.
+
+The instruction follows [Anthropic's explicit-output guidance](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/be-clear-and-direct).
+That guidance is a prompting technique, not evidence that semantic selection is
+reliable. Provider evaluations must establish the effect on the intended workload.
