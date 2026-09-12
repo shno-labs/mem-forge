@@ -400,3 +400,60 @@ through the reconciliation failure to its terminal runtime event. Field paths,
 validation rules, transport, response fingerprint and provider usage are safe
 metadata; raw responses and source text are not telemetry. Concurrent sibling
 signals must never be guessed into the failing call by error-code matching.
+
+## Complete Support requests and model-facing identifiers
+
+Support assessment first attempts the complete delta range and complete fixed-claim
+cohort for one validation baseline. Only a measured input, image, or mandatory
+response-row capacity failure invokes the existing cumulative transport partitioning.
+This supersedes selecting a packing by score before trying the complete request.
+Delta-first still means changed material plus the current matches for prior Support
+and necessary structural ancestors, not rereading the whole source by default.
+
+The response remains one independent judgment per work item with only its selected
+Primary/Required refs. A hypothetical claim-by-every-fragment response is an output
+allowance estimate, not a required output shape. That allowance saturates at the
+route's generation capacity; the minimum serialized row coverage must also fit.
+No Evidence list is silently shortened to satisfy this budget. Provider truncation,
+refusal, invalid refs and incomplete task coverage cannot complete work, even when
+the response text is syntactically valid JSON. Successful parsing alone is not
+successful execution. The existing bounded correction and fail-closed lifecycle
+boundary remain authoritative; no new semantic states or scheduler are introduced.
+
+Support requests expose stable typed aliases: WRK for assessment tasks, PRM for
+Primary-eligible current Evidence, REQ for Required-only current Evidence and HIS
+for historical material. PRM Evidence may also be selected as Required. Prefixes
+identify namespaces, not relationships between matching numeric suffixes. Numbers
+use a minimum four digits and expand without truncation. Aliases remain stable
+across every partition and cumulative state in the same assessment. Encoding and
+decoding affect only identifier fields; source text and reasons are never rewritten.
+Canonical Evidence coordinates and stored work results retain their internal IDs.
+The support work contract is `support-delta-assessment-v2` and the input policy is
+`revision-input-v4`; old completed work is not reinterpreted as new-wire output.
+Evidence compiler and lifecycle semantics are unchanged.
+
+
+### Compact Support judgments
+
+Successful Support judgments carry the work ID, status and complete selected
+Primary/Required references on the model wire. They do not carry generated prose.
+Negative and uncertain judgments retain a bounded explanation of the decisive basis.
+This supersedes the assumption that every successful item needs a generated reason.
+The canonical stored result retains a deterministic success explanation; downstream
+lifecycle decisions continue to use status and resolved Evidence, never that sentence
+as additional authority. Cumulative assessment carries selected Evidence and diagnostic
+negative judgments, not an unbounded narrative of unrelated facts.
+
+Every requested work item must still be returned. Omission is not approval, unchanged
+Support or coverage. Reference lists are never truncated to meet an output target.
+The wire schema is distinct from the canonical stored result; cached canonical results
+are validated without decoding aliases again. `support-delta-assessment-v3` and
+`revision-input-v5` isolate the changed prompt/schema semantics from historical work.
+Validation diagnostics identify the work, attempt, rule and expected item count without
+logging source text or provider response bodies. A correction remains bounded and
+complete; partial-result repair is not introduced by this decision.
+
+Anthropic's [latency guidance](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/reduce-latency)
+recommends reducing unnecessary output. Output reduction is measured separately from
+end-to-end latency; input processing and provider waiting prevent proportional latency
+claims from output token counts alone.
