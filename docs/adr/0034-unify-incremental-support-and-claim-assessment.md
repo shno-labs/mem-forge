@@ -431,3 +431,29 @@ Canonical Evidence coordinates and stored work results retain their internal IDs
 The support work contract is `support-delta-assessment-v2` and the input policy is
 `revision-input-v4`; old completed work is not reinterpreted as new-wire output.
 Evidence compiler and lifecycle semantics are unchanged.
+
+
+### Compact Support judgments
+
+Successful Support judgments carry the work ID, status and complete selected
+Primary/Required references on the model wire. They do not carry generated prose.
+Negative and uncertain judgments retain a bounded explanation of the decisive basis.
+This supersedes the assumption that every successful item needs a generated reason.
+The canonical stored result retains a deterministic success explanation; downstream
+lifecycle decisions continue to use status and resolved Evidence, never that sentence
+as additional authority. Cumulative assessment carries selected Evidence and diagnostic
+negative judgments, not an unbounded narrative of unrelated facts.
+
+Every requested work item must still be returned. Omission is not approval, unchanged
+Support or coverage. Reference lists are never truncated to meet an output target.
+The wire schema is distinct from the canonical stored result; cached canonical results
+are validated without decoding aliases again. `support-delta-assessment-v3` and
+`revision-input-v5` isolate the changed prompt/schema semantics from historical work.
+Validation diagnostics identify the work, attempt, rule and expected item count without
+logging source text or provider response bodies. A correction remains bounded and
+complete; partial-result repair is not introduced by this decision.
+
+Anthropic's [latency guidance](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/reduce-latency)
+recommends reducing unnecessary output. Output reduction is measured separately from
+end-to-end latency; input processing and provider waiting prevent proportional latency
+claims from output token counts alone.
