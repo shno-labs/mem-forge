@@ -1077,3 +1077,17 @@ Offline acceptance additionally includes these falsifiable cases:
 - [Langfuse dataset versioning](https://langfuse.com/docs/evaluation/experiments/datasets#versioning)
 - [Issue #258 terminal-outcome research](../research/2026-08-17-terminal-agent-outcome-evaluation.md)
 - [Issue #258 efficient offline-evaluation research](../research/2026-08-17-efficient-offline-agent-evaluation-scope.md)
+
+
+## Diagnostic construction cannot change inference outcomes
+
+Validation-path producers and event consumers share a bounded diagnostic-coordinate
+format. Ordinary field/index paths remain readable; unsafe or oversized segments
+are opaque placeholders and complete paths are length-bounded. Raw dictionary keys,
+branch descriptions and exception text must not be copied into fallback warnings.
+
+Structured-call diagnostics are observational: construction or reporting failures
+must not replace a successful recovered response, cancellation, or original inference
+error. Record a content-free warning if diagnostics cannot be emitted. This boundary
+does not suppress response schema validation, Evidence validation, persistence errors,
+or lifecycle safety gates. Diagnostic loss is not a successful evaluation result.
