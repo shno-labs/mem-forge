@@ -469,6 +469,35 @@ workspace, owner, visibility, and source-retention boundaries as retrieval.
 Content capture requires a separately authorized workflow with its own access,
 encryption, retention, and audit policy.
 
+An explicitly authorized development deployment may enable
+`MEMFORGE_LLM_FAILURE_CAPTURE_ENABLED`. This is disabled by default and must be
+disabled before production. A shared failure-capture boundary retains the
+effective provider request, schema, original provider response, and validation
+details through both schema parsing and catalog/coverage validation. Requests
+exclude transport credentials. Timeout diagnostics distinguish an absent
+response from an invalid response. Normal successful calls create no content
+artifacts; failed attempts remain available when fallback or correction recovers.
+
+Complete diagnostic JSON is persisted through an injected artifact sink, with
+local protected files for OSS and workspace-scoped object storage for Cloud.
+Ordinary logs contain only correlation identities and the artifact handle,
+avoiding log-line truncation of large prompts and replies. Async caller contexts
+bind document, Source Unit revision, derivation/work and runtime execution
+identities; diagnostics do not introduce domain facts or change lifecycle
+ordering, coverage, retry decisions, or fail-closed validation. Capture and sink
+failures never replace the original call outcome. Artifact access remains an
+operator-authorized development workflow through existing storage access; no
+public content endpoint or external trace export is enabled by this switch.
+
+Schema descriptions must state which conditional proof fields apply. An
+equivalent relationship has null contradiction and revision-assessment proofs;
+revision assessment applies only to challenger-to-candidate refinement, and
+contradiction proof applies only to contradiction. Descriptions guide generation;
+the runtime validator remains authoritative. This follows the structured-output
+boundary documented by [Anthropic](https://platform.claude.com/docs/en/build-with-claude/structured-outputs):
+schema-conformant generation still requires application validation of constraints
+outside the provider-supported schema.
+
 ### Separate three sampling policies
 
 - Product audit records every bounded high-value runtime fact; it is not trace
