@@ -1,10 +1,10 @@
 # 单篇文档从 Sync 到 Memory 的完整设计
 
-日期：2026-09-07。本文描述共享代码的 Sync→Memory 合同；紧凑 catalog 与可恢复分批的发布、部署及运行验收由 [Cloud #473](https://github.com/dodoman-sun/memforge-cloud/issues/473) 跟踪。
+日期：2026-09-07，输入策略更新：2026-09-20。本文描述共享代码的 Sync→Memory 合同；紧凑 catalog 与可恢复分批的发布、部署及运行验收由 [Cloud #473](https://github.com/dodoman-sun/memforge-cloud/issues/473) 跟踪。
 
 本文以一篇 Confluence 页面为主线，覆盖首次导入和后续更新。Jira、Markdown 和带附件的文档复用相同领域流程，差异集中在源解析与表示方式。实施前评审基线为 OSS main `abdbdf18a3c1100289051c289046c0c07092fa76`：基线核对的相关路径与固定复核工作树 `3b8b1fc4` 一致。Cloud 对照基线为 `11338e0235ab23df3199b8024a05c1b17ed71d10`。这里不宣称线上 Cloud 已部署目标设计。
 
-**阅读约定：**“已有”表示沿用的职责；“改造”表示此次替换的职责。第 18 节保留实施前差异评审并列出实际落点。L1–L7 是目标设计的模型职责编号，不是保证每篇文档恰好调用七次。L4 在同一次调用中完成关系分类与条件性的修订判断。没有触发条件的阶段不调用模型，同一职责也可能按既有执行合同有多个请求。
+**阅读约定：**正文描述当前共享代码合同；第 18 节明确保留实施前差异评审并列出实际落点。L1–L7 是模型职责编号，不是保证每篇文档恰好调用七次。L4 在同一次调用中完成关系分类与条件性的修订判断。没有触发条件的阶段不调用模型，同一职责也可能按既有执行合同有多个请求。
 
 ## 文档职责与阅读入口
 
@@ -112,7 +112,7 @@ Worker 领取租约并续约，使用固定的 Source 配置与访问范围执�
 
 原始文件、规范化文件及准确 Artifact 可提前保存。此时只有“数据已抓取并保存”，不等于目标已成为当前投影，更不等于 Memory 已更新。访问变化、tombstone、Partial Projection 与 Artifact eligibility 必须作为确定性事实处理。
 
-## 6. 步骤三：暂存目标、准备工作【已有框架，输入准备需改造，无 LLM】
+## 6. 步骤三：暂存目标、准备工作【已实现，无 LLM】
 
 在 source_derivation_attempts/source_derivation_batches 中记录固定目标、base、上下文身份、工作输入 hash、提取合同版本及成功输出。未完成的工作可以恢复，完成输出只能在输入与合同完全匹配时复用。
 
@@ -130,18 +130,56 @@ Representation 为需要的固定 revision 构建一次索引；相同 base/targ
 ### 6.2 输入范围与请求预算
 
 首次导入：L1 使用全文的授权 catalog，超限时按合法结构分批提取候选。
-正常更新：L1 使用新增、修改的授权结构及必要上下文；L3 使用适用 Support
-基线到目标的完整 delta、固定旧 claim 与必要旧 Evidence。删除前内容、修改后
-内容和必要标题/表头都在同一通用输入合同内，不按语义 case 增加专用流程。
-程序仍可解析完整快照以计算准确 delta；这不代表把全文交给模型。
+正常更新：统一 RevisionInputPlanner 先构造两个完整候选。delta 候选包括新增、
+修改结构、对应阅读分组、delta 产生的完整删除/替换结构历史与旧 Support Evidence；
+不会先用语义规则裁掉旧材料。current-full 候选包括完整有效当前投影，不携带非当前
+oldhistory。两者按实际请求格式对 prompt、schema、图片、输出预留、跨请求重复内容、
+初始状态与已有累计状态
+预留作确定性成本预测；未来模型选出的累计状态只能在运行时知道，因此每个实际
+请求仍须重新通过容量准入。选择预测成本较低且满足完整覆盖的方案，相同成本选
+delta。不使用改动比例、文档大小比例或 Source 类型阈值。程序可解析完整快照以
+计算准确 delta；这本身不授权全文。
+
+L1 首次导入仍可把获授权 Primary 结构分成多个请求，每个请求只带自身的局部阅读
+上下文。普通更新中的 L1 current-full 只有在完整当前阅读范围能放入一个请求时才
+可选；L1 没有跨请求语义状态，不能用额外 context-only 请求冒充联合阅读。它不合
+容量时由 delta 方案继续按获授权 Primary 工作分批。L3 有固定 claim 与累计判断
+合同，因此 current-full 可以沿用既有累计分批执行完整覆盖。
+
+模式只决定模型阅读范围，不改变 L1 的新候选 Primary 授权。即使选择 full，
+只有本次新增、修改的准确完整结构或字段可以成为新提取的 Primary；上下文仍为
+Required-only。L3 检查固定旧 claim 时可以使用 catalog 中本来合法的当前 Primary。
+
+阅读分组由 representation 决定，不由 source_type 决定。Markdown 与可准确定位的
+HTML 通过标题范围带入所属标题及标题后第一个完整段落；一个 Markdown/HTML 列表
+作为完整阅读组，带入可证明的紧邻引导段。无序列表各顶层项仍保留各自准确
+Evidence anchor，
+整组可读不等于整组获得 Primary。注册 canonical JSON 只带 schema 声明的上下文
+字段，注册的嵌套 Markdown/HTML 字符串再复用相同规则；Teams `/content` 走这条
+canonical 路径。Agent Session 上传先投影为 `session_summary` Markdown，再使用
+Markdown 规则，不让 selector 猜测任意原始 JSON。新增上下文不会递归拉入无关组。
+无标题文档、plain text、表格与 binary Artifact 不增加猜测性的阅读分组；表格和
+Artifact 继续使用已有原子表示。reading index 不负责预算或分批，扩展后由请求策略
+按实际 route 容量决定是否可执行。
 
 基线是这组 Support 最后可靠验证的快照，不是 Evidence 的创建版本或最近一次
-Source sync。相同基线的 delta 计算一次。缺失可靠基线时才使用当前全文重判，
-且不能继承未经证明的旧支持。正常更新不再因为全文装得下就优先发送全文。
+Source sync。完全没有已验证基线时，L3 可在目标覆盖充分时通过 current-full
+重新证明；记录声称存在命名基线但快照丢失、身份不符、损坏、不可访问或覆盖不全
+属于技术合同失败，不能改写成 full、`insufficient` 或成功空结果。L1 声明为
+incremental 而缺少所需基线时也不能静默变成首次导入。
+
+这里的 full 是完整读取当前有效 Source Projection，不是重新抓取 provider 历史或
+修复上游覆盖缺口。Partial Projection 明确保留的旧 Observation 仍属于有效当前
+投影；覆盖不权威时未返回的对象不能因为选择 full 就当作删除。
 
 LiteLLM 提供模型能力与 token 估算；应用统一预算指令、schema、Source、claims、
-必要历史、累计状态、图片、输出和纠错余量。输入与输出超限均通过传输分批处理，
-不能截断为成功结果。初始 80% 余量是可调执行策略，不是准确率保证。
+delta 的完整历史材料、累计状态、图片、输出和纠错余量。有效 input/context/output
+上限取 LiteLLM 元数据与显式 operator cap 的较小值；未知 route 必须显式配置三种
+上限。
+单次请求可用输入为 `min(input, context - output) * fraction - correction reserve`，
+默认 fraction 为 0.8、纠错预留为 1,024 tokens，输出预留不超过 output 上限和
+context 的四分之一。输入与输出超限均通过既有传输分批处理，不能截断为成功
+结果；这些数值是容量规则，不是语义准确率或 full/delta 选择比例。
 
 ### 6.3 紧凑 catalog 与 L3 分批执行
 
@@ -149,8 +187,8 @@ LiteLLM 提供模型能力与 token 估算；应用统一预算指令、schema�
 元数据在映射中出现一次。标题、表头等仍是普通可引用 Evidence，内部 anchor、
 类型、hash 与权限不变。模型不需要回传这些程序可查回的元数据。
 
-L3 只有一个语义职责：根据变化判断固定旧 claim，并调整其 Evidence。
-完整请求能装下时，一次调用可以判断多条 claim。大 delta 使用同一合同分批，
+L3 只有一个语义职责：根据所选完整输入判断固定旧 claim，并调整其 Evidence。
+完整请求能装下时，一次调用可以判断多条 claim。较大的选定输入使用同一合同分批，
 批间只携带判断、简短理由和已选 Primary/Required 引用，不累积事实清单、
 上下文引用或 `needs_context`。最终以判断状态为准，没有额外的上下文清单门槛。
 最后一批后，由程序检查完整覆盖、当前 Evidence 与原子提交条件。
@@ -165,7 +203,7 @@ L3 只有一个语义职责：根据变化判断固定旧 claim，并调整其 E
 已处理范围及阶段结果。二者复用现有 derivation、恢复与提交门禁，不新增业务状态。
 存储语义见 ADR 0017，输入与推理决策见 ADR 0034。
 
-## 7. 步骤四：提取新候选 L1【已有，输入合同需改造】
+## 7. 步骤四：提取新候选 L1【已实现】
 
 **触发：**首次导入有获授权内容，或普通更新存在获授权的新增/修改结构。仅删除且无当前 Primary 授权时可跳过。
 
@@ -187,7 +225,7 @@ L3 只有一个语义职责：根据变化判断固定旧 claim，并调整其 E
 
 通过本阶段不表示立即 CREATE_MEMORY。候选还要经过第 10 节同 Unit reconciliation 和第 11 节跨文档身份匹配；跨文档冲突/细化关系由第 14 节的关系工作处理。跨文档完整路径集中说明如下。
 
-## 9. 步骤六：旧 claim 的支持与证据评估 L3【核心改造】
+## 9. 步骤六：旧 claim 的支持与证据评估 L3【已实现】
 
 首先用这篇文档的稳定 SourceUnit ID，查询当前有哪些 Memory 通过本 Unit 的完整 EvidenceUnit 获得支持，并读取这些 Support。这个查询依据已有身份和关联，不靠文本相似度或 offset。首次导入若没有这种已有 Memory，就跳过本阶段；其他文档已存在的等价 Memory 仍由后面的身份匹配处理。
 
@@ -195,7 +233,10 @@ offset 只在它所属的固定 Observation Revision 内用于定位或校验证
 
 只有程序能依据完整变化事实确定本次变化不影响该支持时，才可明确保留而跳过语义调用。仅发现旧证据正文没改，或其位置附近没有 diff，不足以排除文档其他位置新增的例外。
 
-**输入：**固定旧 claim、本次允许读取范围和完整 delta 材料（仅缺失可靠基线时用当前全文），以及判断受影响部分所需的旧证据。未变部分可由程序继承；输入必须说明旧内容是历史材料、新内容属于哪个固定 revision。
+**输入：**固定旧 claim，以及 planner 选择的完整 delta＋阅读分组＋delta 产生的
+完整删除/替换结构历史和旧 Support Evidence，或完整有效当前投影。delta 中未变部分可由程序继承；输入必须说明旧内容是历史
+材料、新内容属于哪个固定 revision。current-full 从当前材料重新证明，不继承
+未证明的旧支持，也不需要为了说明编辑过程而携带 oldhistory。
 
 **LLM 输出两个相互对应的结果：**
 
@@ -422,12 +463,19 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 | 当前标识 | 实际职责 | 本次升级原则 |
 |---|---|---|
 | `projection-extraction-v9` | L1 的提取合同，使用 Fragment catalog 与模型 selector；当前 Evidence Unit v2 能力选择它，legacy Reference v1 路径仍对应 v8 | 保持现有 L1 selector/授权语义时不因 L3/L4 合并而自动命名 v10；若提取合同含义确实改变，再显式注册新提取合同 |
-| `COMPILER_CONTRACT_VERSION = 3` | 表示编译、片段边界、坐标和 catalog 身份合同 | 本阶段复用 compiler；仅当这些语义改变才升级，不为模型编排变化重编译历史 Evidence |
-| authority policy / presentation policy（当前分别 5 / 2） | 增量结构授权及模型目录呈现规则 | 只有对应规划/呈现语义改变才调整，变化必须进入工作输入身份 |
+| `COMPILER_CONTRACT_VERSION = 4` | 表示编译、片段边界、坐标和 catalog 身份合同 | 完整表格、列表、HTML 等结构语义已经由 compiler 4 固定；输入模式变化不重编译历史 Evidence |
+| authority policy / presentation policy（当前分别 5 / 4） | 增量结构授权及模型目录呈现规则 | 只有对应规划/呈现语义改变才调整，变化必须进入工作输入身份 |
 | L3/L4 的语义工作合同及输入身份 | 决定结果是否可复用 | **必须显式更新**：新输入模式、支持判断、可变 Required 与合并关系/修订响应不能复用旧合同结果；沿用现有 descriptor/hash/staging 机制，不新建版本账本 |
 | Source revision / Evidence Unit v2 | 前者是采集内容版本，后者是 Support 数据模型能力 | 都不因模型调用合并自动变化；本阶段没有新 Support schema 或历史内容迁移要求 |
 
-现有 `source_derivation.py` 将 extraction contract、base/target、权限、inference 能力及 authority/presentation 规则纳入可复用身份。L3/L4 的输出并非都已持久缓存；实施时应在真实复用边界绑定新语义身份，而非假设改 compiler 常量就能失效所有旧结果。未完成 derivation 按现有合同变更流程失效/重建，已提交 Memory 和历史 Evidence 不被批量改写。本实现保持 L1 v9、compiler 3、authority policy 5 和 presentation policy 2；语义合同为 revision-support-v2 / claim-revision-v3，共享关系分类为 memory-relation-v3，输入策略为 revision-input-v1。这些身份对应方向性蕴含与重叠作用域判断，并进入实际工作复用边界。
+现有 `source_derivation.py` 将 extraction contract、base/target、权限、inference
+能力及 authority/presentation 规则纳入可复用身份。未完成 derivation 按现有
+合同变更流程失效/重建，已提交 Memory 和历史 Evidence 不被批量改写。当前实现
+保持 `projection-extraction-v9`、compiler 4、authority policy 5、presentation
+policy 4、`revision-support-v2`、`claim-revision-v6-sparse` 和
+`memory-relation-v3`；统一阅读范围与成本选择使用 `revision-input-v6`，并进入
+inference capability hash 与 source-derivation `semantic_input_policy`。改变这些
+输入不能复用旧结果，也不能通过改 compiler 常量代替正确的工作身份失效。
 
 ## 18. 逐步实现评审与改动规模
 
@@ -453,11 +501,17 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 
 实际落点：
 
-- `RevisionAssessmentContext` 复用固定 revision 索引，为首次导入准备全文、为正常 L1/L3 更新准备完整净差量。L1 只保留原授权 Primary；L3 按独立 Evidence Unit 评估固定旧 claim，并解析当前完整选择。
+- `RevisionAssessmentContext` 复用固定 revision 索引；`RevisionInputPlanner`
+  通过相同 representation reading index 构造 delta/current-full 候选并按请求格式
+  预测成本选择。L1 始终保留原授权 Primary；L3 按独立 Evidence Unit 评估固定旧
+  claim，并解析当前完整选择。
 - `assess_claim_pairs` 在既有配对执行边界内合并 L4。一个候选的完整 Evidence 在同一组只传一次，各旧 claim 有独立 Support 结果与结果槽位。
 - MemoryEngine 将 L3/L4 结果交给原 reducer/Plan；已删除旧 NOOP 的第二次语义验证路径。L5/L6/L7、原子提交和 outbox 保持原职责。
 - 输入预算采用 LiteLLM 已知能力、显式部署 input/context/output 上限及 0.8 比例，同时预留本次输出、schema 和 correction。未知模型路由需要明确配置，不静默假设通用模型窗口。`MEMFORGE_LLM_MAX_INPUT_TOKENS`、`MEMFORGE_LLM_CONTEXT_WINDOW_TOKENS`、`MEMFORGE_LLM_MAX_OUTPUT_TOKENS`、`MEMFORGE_LLM_INPUT_BUDGET_FRACTION` 可调整；实际提取输出 allowance 同样进入恢复身份。
-- 完整上下文可能需要图片时先取得既有图片执行配额；按最终目录加载准确 bytes，并统计实际供应。容量不足可以选择完整 delta，不能丢弃其必需图片；摘要、长度或资格错误不会触发整篇文档重试。
+- 完整上下文可能需要图片时先取得既有图片执行配额；lower bound 可以不加载图片，
+  最终参与比较和执行的方案必须按最终目录加载准确 bytes，并把图片 token 计入请求。
+  容量不足不能通过丢弃必需图片变成可执行；摘要、长度或资格错误不会触发整篇
+  文档重试。
 
 主要代码入口见第 20 节；上表不是新执行 backlog。此次目标集中在输入准备、L3、L4 和它们与 reducer/Plan 的接线，不是重写整套 Sync。
 

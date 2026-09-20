@@ -1262,13 +1262,58 @@ values, and carries the event time, field identity, and before/after path throug
 current and removed delta inputs. JSON escape boundary maps still locate exact raw
 Evidence; historical Evidence and committed Plans are never rewritten.
 
-L1 and L3 pack complete units into budgeted requests. A unit that does not fit the
-current request moves intact to another request. Requests count actual instructions,
-schema, images, correction reserve and output; L1 output reservation scales with
-its authorized content and respects the model's output/context capability. A single
-protected unit that exceeds the real capability even alone requires a larger
-window; adding batches cannot make that unit fit. No table splitting, semantic
-unitizer, scan/reduce/finalize model chain or additional lifecycle state is introduced.
+The representation layer also exposes an operation-local reading index over those
+same compiler-4 Fragments. Reading-group presentation is versioned by model
+presentation policy 4; it does not change compiler coordinates or catalog
+identity. A reading group widens what the model receives together; it never widens
+which Fragment may be Primary or replaces exact Anchors with a section/list
+Evidence object. Expansion is one directional step from the caller's original
+selection, so context added by one group does not recursively pull in unrelated
+groups.
+
+- Markdown and exact raw HTML headings create section groups through the next
+  heading at the same or higher level. Selecting material in the section adds the
+  owning heading and, when present, the first complete paragraph immediately
+  below that heading. It does not add later direct prose, every sibling subsection
+  or the rest of a parent document. Plain text and documents without headings do
+  not gain a guessed semantic section.
+- One Markdown or HTML list container is read as a complete group, with its
+  immediate prose lead-in when exact structure proves that relationship. For an
+  unordered list this means all peer items are readable together, while each item
+  and nested subtree remains its existing exact Fragment and may be selected
+  separately as Primary or Required. Ordered lists follow the same reading rule;
+  their selectable structure remains the complete ordered-list Fragment defined
+  above.
+- A registered `canonical-record` adds only schema-declared contextual fields for
+  a selected field, using the same parent/root rules as the canonical schema. A
+  registered nested `markdown-structural` string gets the same Markdown/raw-HTML
+  section and list groups through its decoded-to-raw boundary map. Arbitrary JSON
+  receives no inferred reading structure.
+- Teams messages inherit that registered canonical-record behavior for `/content`
+  and declared context; the normal Gene's HTML-to-Markdown projection and legacy
+  declared nested HTML both remain representation concerns. Agent Session intake
+  projects its `session_summary` as `markdown-structural`, so it inherits the same
+  rules rather than exposing arbitrary upload JSON or client-specific grouping.
+
+Tables and binary Artifacts retain their existing atomic representation and gain
+no additional group. The reading index owns neither request budgets nor batching;
+the revision-input request policy applies actual route capacity after expansion.
+
+Reading groups are request metadata only. They do not merge Evidence Units,
+alternative Supports, claims or lifecycle work; do not change Fragment catalog
+identity; and do not claim complete semantic recall across sections.
+
+L1 initial/delta work packs authorized complete units with their local reading
+context into budgeted requests. Normal-update L1 current-full is eligible only
+when the complete read scope fits one request; context-only continuation requests
+cannot simulate joint extraction reading. L3 may use its cumulative fixed-claim
+assessment contract across requests. A protected unit always moves intact, and
+each request counts actual instructions, schema, images, correction reserve and
+output. L1 output reservation scales with its authorized content and respects the
+model's output/context capability. A single protected unit that exceeds the real
+capability even alone requires a larger window; adding batches cannot make that
+unit fit. No table splitting, semantic unitizer, scan/reduce/finalize model chain
+or additional lifecycle state is introduced.
 
 
 ## References

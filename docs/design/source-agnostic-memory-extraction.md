@@ -25,9 +25,10 @@ provider payload
   -> SourceProjectionAdapter
   -> complete current Source Projection + Revision Delta
   -> committed base + staged target ProjectionEvidenceWorkPlanner
-  -> exact batch-local authorized ranges + bounded Context
+  -> exact authorized ranges + complete representation index
   -> representation-aware Evidence Fragment Compiler
-  -> immutable candidate catalog + display-only Context
+  -> RevisionInputPlanner expands reading groups and compares delta/current-full cost
+  -> immutable request catalog + display-only Context
   -> LLM returns Memory content + primary_ref + required_refs
   -> deterministic Evidence Resolver
   -> one revision-pinned Evidence Unit
@@ -96,6 +97,33 @@ This Boolean is transient catalog policy, not a persistent Source, Fragment, or
 lifecycle state. Durable Evidence stores only the resolved role, exact Revision
 and Anchor, content or Artifact digest, and access scope.
 
+### RevisionInputPlanner
+
+The planner receives an extraction task with its already-authorized current
+ranges, or a Support task with fixed claims and their existing Support. It asks
+the representation-owned reading index to expand the selected structures, then
+builds complete delta and current-full request candidates when a valid baseline
+permits both. The task-specific request policy materializes actual requests and
+forecasts prompt/schema tokens, images, output reservation, repeated request
+data, initial state and the existing cumulative-state reserve. Future
+model-selected state remains subject to actual per-request admission. A safe
+image-free lower bound may prove full cannot beat an already materialized delta;
+otherwise full is materialized before comparison. The planner chooses the lower
+forecast token cost; delta wins an exact tie. Request and image counts/bytes
+remain diagnostics. It uses no source-type branch or percentage threshold. A
+normal-update L1 current-full candidate must fit its complete reading scope in
+one request. Initial extraction and L1 delta may still partition authorized
+Primary work with local reading context; L3 may use its existing cumulative
+Support-assessment state across requests.
+
+The result records mode, exact catalog, reading groups, removed historical
+material, selection reason, estimated complete cost and materialized transport.
+These values are derivation input, not persistent Source, Evidence, Support or
+lifecycle state. Current-full affects reading only: it preserves the extraction
+task's exact Primary bits. Support assessment may retain legitimate current
+Primary capability because it evaluates a fixed claim rather than authorizing a
+new one.
+
 ## Deterministic Primary Eligibility
 
 The application answers only one static authority question before extraction:
@@ -129,9 +157,30 @@ permission for every decoded field.
 
 ## Bounded Context and Required Selection
 
-The planner deterministically finds bounded current Context through structural
-ownership, immediate sequence neighbors, root information, and Source
-relations. Budgets bound the material actually presented to the model.
+The planner deterministically finds bounded current Context through the
+representation's operation-local reading index. Markdown and exact raw HTML use
+heading scopes plus the first complete paragraph immediately under the heading,
+and complete list containers plus an immediate prose lead-in. Documents without
+headings and `plain-text` do not receive a guessed semantic section. Registered
+canonical records add only contextual fields declared by the schema; a registered
+nested Markdown string reuses the same section/list rules through its decoded-to-raw
+coordinate map. Teams message content therefore follows its canonical schema and
+nested text contract. Agent
+Session `session_summary` content follows `markdown-structural`; neither path asks
+the selector to infer structure from arbitrary JSON. Source relations may supply
+additional exact Context under their existing contract. Budgets bound the
+material actually presented to the model.
+
+Tables and binary Artifacts retain their existing atomic representation and get
+no additional reading group. The reading index does not budget or batch requests;
+the revision request policy enforces actual route capacity after expansion.
+
+Reading expansion starts from the caller's selected Fragments and runs once;
+newly added Context does not recursively trigger unrelated groups. A complete
+unordered list is read together, including nested items and a proven lead-in,
+but each top-level item keeps its own exact Anchor and Evidence role. Whole-list
+reading therefore does not turn the list into one Evidence Unit or authorize
+unchanged peer items as new Primary Evidence.
 
 The planner does not decide which Context is semantically necessary. Every
 exact, current, access-compatible Context Fragment admitted to the candidate
@@ -245,6 +294,21 @@ complete representation-owned structures before packing. Each authorized
 structure has one Primary batch owner; there is no overlapping Primary window.
 Primary eligibility remains local to each exact range, and Context cannot widen
 it to the whole Observation.
+
+For a valid base/target pair, `RevisionInputPlanner` forecasts complete delta and
+current-full transports and chooses the lower forecast token cost, with delta
+winning ties. Delta includes the complete removed/replaced structural history
+emitted by the delta and, for Support tasks, prior Support Evidence; it does not
+semantically prune old material before assessment. Current-full reads the
+complete eligible effective current Source Projection and omits non-current
+history. Partial Projection carry-forward remains current, and full does not turn
+an uncovered upstream omission into a deletion. Full reading does not promote
+Context to Primary. Normal-update L1 full reading must fit one request; L3
+current-full may use cumulative batching. If no verified Support baseline is
+recorded, L3 may use current-full when complete-current proof is allowed; a named
+baseline that is missing or does
+not match fails as a technical contract violation. Ordinary incremental L1 never
+uses that failure as initial-import authority.
 
 For compiler-backed v9, `canonical-record` and whole-Artifact coordinate
 profiles are different representation contracts, not Source-type exceptions.

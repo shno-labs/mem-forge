@@ -7,7 +7,7 @@ Date: 2026-09-04
 Canonical decision: [ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md)
 
 Document scope: the representation-specific authority algorithm. For the full
-sync lifecycle and pending Support assessment changes, use
+sync lifecycle, unified Support assessment and revision-input policy, use
 [Source sync to Memory](source-sync-to-memory.md). This algorithm continues to
 govern new-candidate Primary eligibility in both full-context and delta modes.
 
@@ -33,10 +33,12 @@ provider payload
      owns identity, topology, edit/delete facts, relations and coverage
   -> immutable base + staged target Source Projection
   -> ProjectionEvidenceWorkPlanner
-     owns current-work authority and bounded Context planning
+     owns exact current-work authority
   -> EvidenceCandidateRange(primary_eligible=true|false)
   -> Evidence Fragment Compiler
      owns representation parsing and exact Fragment boundaries
+  -> RevisionInputPlanner + representation reading index
+     own bounded read-scope expansion and delta/current-full selection
   -> Fragment Catalog
   -> LLM selects primary_ref + required_refs
   -> Resolver, Evidence Unit and existing lifecycle pipeline
@@ -181,18 +183,20 @@ ProjectionEvidenceWorkPlan(
 )
 ```
 
-This is one deep-module facade. Private representation mapping, bounded Context
-selection, and presentation packing do not leak source-specific concepts to
-callers.
+This is one deep-module authority facade. Private representation mapping and
+exact initial Context candidates do not leak source-specific concepts to callers.
+The downstream reading index may add Required-only Context without changing any
+Primary bit in this result.
 
 ### 4.2 Responsibility split
 
 | Module | Owns | Must not own |
 | --- | --- | --- |
 | `SourceProjectionAdapter` | provider identity, stable Unit/Observation topology, immutable revisions, provider semantic/location/membership/access change facts, relations, coverage, representation profile and deterministic canonical provider shape | Primary/Required roles, schema comparison values, or Memory lifecycle actions |
-| `ProjectionEvidenceWorkPlanner` | transition validation, representation-scoped changed authority, bounded current Context, access/source-activity/model-capability binding and stable plan digest | provider API semantics, model judgments, Memory actions |
+| `ProjectionEvidenceWorkPlanner` | transition validation, representation-scoped changed authority, initial exact Context candidates, access/source-activity/model-capability binding and stable plan digest | request-mode selection, provider API semantics, model judgments, Memory actions |
 | private representation adapter / `RepresentationIndex` | one implementation of base/target structural or field mapping and exact target coordinates | Source type branches or lifecycle policy |
 | Evidence Fragment Compiler | exact structural/field Fragment compilation inside supplied ranges | widening authority or inferring change |
+| `RevisionInputPlanner` / reading index | one-step representation-owned reading expansion, complete delta/current-full candidates, request-format cost forecasting and selection | changing supplied Primary authority, semantic dependency inference, lifecycle grouping |
 | LLM | claim content and selection among offered refs | offsets, IDs, change detection, eligibility, lifecycle action |
 | Resolver / lifecycle | exact ref validation, Evidence Unit, Support and lifecycle safety | repairing or guessing an invalid authority plan |
 
@@ -202,12 +206,13 @@ confirmed content change into Evidence authority using the Revision's declared
 representation. This keeps provider facts at the projection seam and Evidence
 authority at the Evidence seam.
 
-`ProjectionEvidenceWorkPlanner` replaces the authority selection, Context
-ownership and authority digest responsibilities currently embedded in
-`plan_projection_extraction_batches()`. Presentation batching either stays
-private to this module or becomes a pure packer that consumes already authorized
-ranges. The old changed-Observation/whole-authority path is removed for active
-fragment-catalog contracts; it cannot remain as a parallel entrypoint.
+`ProjectionEvidenceWorkPlanner` replaces the authority selection and authority
+digest responsibilities formerly embedded in `plan_projection_extraction_batches()`.
+`RevisionInputPlanner` then expands representation-proven reading groups and
+selects one complete request mode before the existing pure transport packer
+consumes already authorized ranges. The old changed-Observation/whole-authority
+path is removed for active fragment-catalog contracts; it cannot remain as a
+parallel entrypoint.
 
 ## 5. Representation algorithms
 
@@ -228,10 +233,11 @@ For `INCREMENTAL` work:
 7. use bounded accessible neighbors, parents and related Observations only as
    Required-only or display Context.
 
-Examples of complete structures are a paragraph, list item, table row or whole
-table when row isolation is unsafe, blockquote, code block, and CommonMark raw
-HTML block. A one-character edit is not exposed as one-character Evidence. The
-existing Markdown/private raw-HTML compiler seam owns structural boundaries.
+Examples of complete structures are a paragraph, a top-level unordered-list item
+with its nested subtree, a complete ordered list, a whole Markdown or HTML table,
+a blockquote, code block, and CommonMark raw HTML block. A one-character edit is
+not exposed as one-character Evidence. The existing Markdown/private raw-HTML
+compiler seam owns structural boundaries.
 
 A block moved without content or structural-ancestry change remains unchanged
 and is not reauthorized. Moving content under a different heading/list/table

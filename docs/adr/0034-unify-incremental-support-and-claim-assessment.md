@@ -23,13 +23,20 @@ protocol, or the complete lifecycle description.
 ## Decision
 
 1. Reuse one operation-scoped representation index and staged base/target
-   snapshots. Normal updates assess the complete structural net delta, necessary
-   prior claim/Evidence and deterministic context, even when the full document
-   fits. The baseline belongs to the evaluated Support, not its Evidence birth
-   revision or the latest Source sync. Only an unavailable reliable baseline
-   requires current-full assessment. Initial import uses the full authorized
-   catalog for extraction. Oversized requests batch Source and claims under
-   one complete request budget; they never silently truncate coverage.
+   snapshots. A source-neutral revision-input planner constructs both feasible
+   reading plans for normal updates: complete structural delta with bounded
+   current context and complete removed/replaced structural history, plus prior
+   Support Evidence for Support tasks; and complete current input without
+   non-current history. It forecasts both in the actual request format and
+   chooses the lower forecast token cost; delta wins an exact tie.
+   There is no changed-content percentage threshold. The baseline belongs to the
+   evaluated Support, not its Evidence birth revision or the latest Source sync.
+   Initial import partitions its full authorized Primary work with local reading
+   context. L3 may cumulatively batch complete Support input. A normal-update L1
+   current-full candidate is eligible only when its complete read scope fits one
+   request, because L1 has no semantic state that could make context-only follow-up
+   calls equivalent to joint reading. Oversized work never silently truncates
+   coverage.
 2. Keep read scope separate from new-claim Primary authority. Ordinary extraction
    still requires authorized added/changed complete structures or canonical
    fields, even when unchanged context is readable. Existing-claim validation
@@ -66,8 +73,10 @@ protocol, or the complete lifecycle description.
    with the lifecycle transaction, retain auditable failure/retry, and never give
    discovery authority to retire another source's knowledge.
 
-The delta mode deliberately accepts occasional semantic false acceptance when
-unchanged remote context is missing and the model does not recognize the gap.
+Bounded structural reading groups deliberately accept occasional semantic false
+acceptance when a dependency outside the supplied group is missing and the model
+does not recognize the gap. Choosing current-full eliminates that particular
+omission for a fitting current snapshot, but does not claim semantic recall.
 Recognized uncertainty, illegal provenance, incomplete delta, visibility errors,
 and destructive authority violations are not covered by that tradeoff.
 Supplemental agentic reads remain the separate beta in
@@ -107,18 +116,29 @@ owns immutable Evidence representation; ADR 0009 owns asynchronous discovery.
   require newly resolved current References, not edited historical anchors.
 
 Schema upgrade adds only the nullable successful-Plan association. Existing
-NULL associations mean unknown validation progress, not current validation.
-They can be established by a new complete-current assessment and normal Plan.
+NULL associations mean that no verified validation baseline is recorded, not
+current validation. L3 may establish one through a new complete-current
+assessment and normal Plan when the current target provides complete authorized
+coverage. This absent-baseline case is distinct from a recorded baseline whose
+named snapshot is missing, mismatched, corrupt, inaccessible, or incomplete.
+The latter is a technical contract failure and must not be converted into
+current-full, semantic `insufficient`, or a successful empty result. L1 likewise
+must not turn an incremental request with an unavailable required base into an
+initial full extraction.
+
 Optional historical backfill requires an applied Plan's exact Support mutation,
 matching source/unit, complete target membership and authoritative stored
 Evidence; a Source-wide success or timestamp is insufficient. Backfill is a
 separately authorized, bounded recovery operation with exact-count dry-run and
 stale guards. It never rewrites Evidence, Plans, Reviews, or failed jobs and
-does not require source re-ingestion. Without a reliable baseline, assess the
-complete current catalog through the same budgeted batch executor. Full input
-means complete coverage, not one model request. Only necessary indivisible work
-that still exceeds the configured capability fails through the existing capacity
-contract; never borrow a newer delta, silently truncate, or fabricate validation.
+does not require source re-ingestion. When no verified baseline exists and the
+task contract permits current-full proof, assess the complete current catalog
+through the same budgeted batch executor. In this L3 path, full input means
+complete current coverage, not one model request and not access to unrecorded
+historical content.
+Only necessary indivisible work that still exceeds the configured capability
+fails through the existing capacity contract; never borrow a newer delta,
+silently truncate, or fabricate validation.
 
 Implementation and adapter acceptance of this amendment must be verified
 separately from the previously implemented L3/L4 assessment contract.
@@ -157,19 +177,22 @@ unchanged L1 contract solely because downstream calls were combined. Already
 committed history is not rewritten; incomplete work obeys existing invalidation
 and recovery boundaries.
 
-The input policy counts the prompt, response schema, actual supplied images and
-requested output allowance. Conservative configurable input/context/output
-operator caps are intersected with LiteLLM metadata. Known route aliases resolve
-to their corresponding SDK model (SAP Sonnet 4.6 uses Bedrock Sonnet 4.6 metadata
-and tokenizer); capacity numbers are not duplicated in an application registry.
-Unknown aliases still require explicit route capacity rather than a silent universal limit. The default fraction is
-0.8. Actual extractor model/output allowance and policy configuration participate
-in derivation identity. L4 shares one candidate/Evidence payload across its
-comparison group and sizes output to the existing pair workload. It does not
-change pair coverage; oversized pair requests subdivide within that complete
-workload. Image-capable context reserves
-existing multimodal admission before loading bytes; image integrity errors are
-terminal, while unavailable storage remains a recoverable read failure.
+The input policy counts the exact fallback prompt with its response schema,
+actual supplied images and requested output allowance. Configured input,
+context-window and output caps are intersected with LiteLLM metadata. Known route
+aliases resolve to their corresponding SDK model (SAP Sonnet 4.6 uses Bedrock
+Sonnet 4.6 metadata and tokenizer); capacity numbers are not duplicated in an
+application registry. Unknown aliases require all three explicit route caps rather
+than a silent universal limit. The default input fraction is 0.8; the shared
+request budget also applies its versioned output and bounded-correction reserves.
+These are transport-capacity limits, not an edit-percentage mode threshold or an
+accuracy guarantee. Actual extractor model, output allowance and policy
+configuration participate in derivation identity.
+L4 shares one candidate/Evidence payload across its comparison group and sizes
+output to the existing pair workload. It does not change pair coverage; oversized
+pair requests subdivide within that complete workload. Image-capable context
+reserves existing multimodal admission before loading bytes; image integrity
+errors are terminal, while unavailable storage remains a recoverable read failure.
 
 ## Consequences
 
@@ -178,20 +201,59 @@ integration. Entity resolution stays a bounded retrieval helper, not a truth or
 identity authority. No new scheduler, persistent Fragment model, MemoryRevision
 entity, or historical-document browser is required.
 
+Reading groups and request partitions are transient presentation boundaries.
+They do not merge list-item Evidence, combine independent Evidence Units or
+Supports, regroup incumbents, create intermediate lifecycle states, or change
+the complete atomic Lifecycle Plan. Resolver and lifecycle identity continue to
+use exact Fragment and Evidence-Unit membership.
+
 Fewer logical calls do not prove lower total cost: L4 now receives complete
 candidate Evidence, and complete same-Unit comparisons remain required. Validate
 accuracy, input/call cost, unresolved outcomes and latency on a fixed cohort;
 record request coverage and capability failures rather than silently truncating.
 
-## Direct delta assessment and bounded execution
+## Unified revision input planning and bounded execution
 
-The delta-first decision supersedes full-first cost selection and the large-input
-scan/reduce/final inference chain. L3 has one model responsibility: assess the
-fixed claim and update its current Support evidence in light of the supplied
-changes. A rule remaining in force is distinct from execution compliance; missing
-results or unfinished examples do not by themselves revoke a normative obligation.
-Deletion, rewrite, heading/scope change, and Required split/merge use that same
-contract rather than source-specific classifiers.
+The revision-input planner supersedes both full-first fallback and unconditional
+delta-first selection. It is source-neutral: representation profiles supply exact
+structures and reading groups; the planner does not branch on Confluence, Jira,
+Teams, GitHub, local files, or agent clients. L3 has one model responsibility:
+assess the fixed claim and update its current Support evidence in light of the
+selected complete input. A rule remaining in force is distinct from execution
+compliance; missing results or unfinished examples do not by themselves revoke a
+normative obligation. Deletion, rewrite, heading/scope change, and Required
+split/merge use that same contract rather than source-specific classifiers.
+
+For a valid base/target pair, the planner constructs a delta candidate and a
+current-full candidate before choosing. Delta contains all changed current
+structures, bounded current reading groups, the complete removed/replaced
+structural history emitted by the delta and, for Support tasks, prior Support
+Evidence. It does not semantically prune old material before assessment.
+Current-full contains the complete eligible effective current snapshot and omits
+non-current `oldhistory`. “Full” means coverage of that current Source Projection,
+not provider version
+history, deleted upstream data, a repair for incomplete collection, or a grant of
+new extraction authority. Partial Projection carry-forward remains current input;
+an upstream omission without authoritative coverage still cannot prove deletion.
+
+Each candidate receives a deterministic request-format forecast across all
+requests needed for the logical assessment, including prompt/schema transport,
+repeated per-request material, initial state, the existing cumulative-state
+reserve, output reserve and supplied images. Future model-selected cumulative
+state is unknowable during mode selection, so every emitted request still passes
+actual admission before execution. After materializing delta, the planner may use
+a safe image-free full lower bound to stop when full cannot win; otherwise it
+materializes full before choosing. A plan is eligible only when it preserves
+required coverage and every indivisible reading group fits the effective route
+capacity. Normal-update L1 additionally requires the complete current-full read
+scope in one request; L3 can use its existing cumulative executor. The lower
+forecast token cost wins and delta wins a tie; request and image counts/bytes
+remain diagnostics while image token cost is part of the
+request token count. The planner does not use an edit ratio, document-size
+percentage, Fragment count percentage, or source-type preference. Mode selection
+is execution policy only: L1 still limits Primary to authorized current work,
+while L3 may select any legitimately eligible current Evidence offered for the
+fixed claim.
 
 A fitting delta and claim group uses one model request. Larger deltas use the same
 cumulative assessment contract over stable Source batches. Each request receives
@@ -201,9 +263,11 @@ The carried result contains only status, a short reason and selected Primary/Req
 refs. It does not maintain a fact inventory, context-reference collection or missing-
 context checklist. This supersedes the requirement to accumulate unresolved semantic
 dependencies: simplicity and efficiency take priority over lossless cross-batch context.
-Batches describe one base/target pair, not intermediate
-Source revisions. Unknown-baseline current-full assessment uses the same executor
-without assuming old Support validity.
+Batches describe one base/target pair, not intermediate Source revisions. When
+L3 has no recorded verified baseline and complete-current proof is permitted,
+current-full uses the same executor without assuming old Support validity. A
+named but unavailable or mismatched baseline is not this case and fails before
+semantic assessment.
 Here “old” means Evidence from the historical Source revision. Earlier batches
 of this same target revision remain valid assessment context in both modes;
 their selected refs do not expire when the next batch omits their raw text.
@@ -257,9 +321,11 @@ Compiler 4 independently changes structural boundaries as described in ADR 0030.
 Legacy stage records remain immutable history. See ADR 0017 for storage ownership.
 
 First-import extraction separately batches its full authorized catalog. Incremental
-L1 uses authorized changed structures and required context; neither path widens
-Primary authority or requires a final full-document reread. L1 and L3 share catalog,
-budget and durable execution primitives, while retaining distinct semantic duties.
+L1 Primary remains limited to authorized changed structures; its selected read
+scope is either delta with local context or a fitting one-request current-full
+catalog. Neither mode widens Primary authority or adds a final reread after the
+selected plan. L1 and L3 share catalog, budget and durable execution primitives,
+while retaining distinct semantic duties.
 
 ## Local unresolved claim relationships
 
@@ -403,12 +469,16 @@ signals must never be guessed into the failing call by error-code matching.
 
 ## Complete Support requests and model-facing identifiers
 
-Support assessment first attempts the complete delta range and complete fixed-claim
-cohort for one validation baseline. Only a measured input, image, or mandatory
-response-row capacity failure invokes the existing cumulative transport partitioning.
-This supersedes selecting a packing by score before trying the complete request.
-Delta-first still means changed material plus the current matches for prior Support
-and necessary structural ancestors, not rereading the whole source by default.
+Support assessment first plans the complete delta and current-full alternatives
+for the complete fixed-claim cohort under one validation baseline, then attempts
+the lower-cost eligible mode. Only a measured input, image, mandatory response-row,
+or cumulative-state capacity failure invokes the existing transport partitioning.
+This supersedes both selecting a packing by score before trying complete coverage
+and choosing a mode merely because one request fits. Delta includes changed
+material, the current matches for prior Support, representation-owned reading
+groups, and complete removed/replaced structural history. Current-full reads the
+eligible effective current projection without carrying non-current history or
+changing its provider coverage meaning.
 
 The response remains one independent judgment per work item with only its selected
 Primary/Required refs. A hypothetical claim-by-every-fragment response is an output
@@ -457,3 +527,12 @@ Anthropic's [latency guidance](https://platform.claude.com/docs/en/test-and-eval
 recommends reducing unnecessary output. Output reduction is measured separately from
 end-to-end latency; input processing and provider waiting prevent proportional latency
 claims from output token counts alone.
+
+The source-neutral reading and cost-selection amendment uses
+`revision-input-v6`. That identity is included directly in the inference
+capability hash and the Source derivation's `semantic_input_policy`; completed
+v4/v5 work is not reinterpreted. The extraction contract remains
+`projection-extraction-v9`, Support remains `revision-support-v2`, compiler
+contract remains 4, authority policy remains 5, and the model presentation policy
+is 4. The planner amendment changes request scope and presentation identity only;
+it does not migrate stored Evidence or create a lifecycle version.
