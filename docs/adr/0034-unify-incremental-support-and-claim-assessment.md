@@ -173,6 +173,14 @@ terminal, while unavailable storage remains a recoverable read failure.
 
 ## Consequences
 
+Same-Unit sparse claim assessment uses the shared request catalog and completion
+validator described in ADR 0009. Challenger/incumbent references are `NEW`/`MEM`;
+Evidence catalog references are `PRM`/`REQ`, each followed by four digits. The
+claim work identity includes the changed contract and schema, so older completed
+work cannot be reused against a different catalog. This does not change current
+Evidence entailment, complete incumbent support auditing, conditional exact
+comparisons between competing refiners, or destructive revision proof.
+
 The material changes concentrate in input preparation, L3, L4, and reducer/Plan
 integration. Entity resolution stays a bounded retrieval helper, not a truth or
 identity authority. No new scheduler, persistent Fragment model, MemoryRevision

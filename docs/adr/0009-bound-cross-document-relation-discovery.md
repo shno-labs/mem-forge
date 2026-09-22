@@ -89,6 +89,40 @@ RelationRun identity, which includes the selected candidate snapshot.
 This supersedes the assumption that a truncated cross-document discovery page
 is an incomplete mandatory lifecycle ledger.
 
+### Sparse catalog completion
+
+Identity recall and cross-document discovery share request-local catalogs and
+coverage validation with same-Unit claim assessment. A request contains each
+challenger and selected incumbent once, plus the allowed incumbent IDs for each
+challenger. Role references use three uppercase letters and four digits, such as
+`NEW-0001` and `MEM-0001`; they are not durable Memory identities. Conflicting
+snapshots cannot share a catalog key, and reference overflow is a capacity failure.
+
+The model returns exactly one completion row per challenger and only explicitly
+discovered equivalent, directional refinement, or contradiction edges. Empty
+edge arrays are valid. Omission means no relationship proposed, never proven
+independence. Missing or duplicate completion rows, duplicate edges, unknown or
+out-of-set references, and unfinished provider responses fail closed. Existing
+structured transport correction, capacity planning and retry remain the execution
+boundary; fitting catalogs have no fixed pair-count subdivision.
+
+Identity completion snapshots retain all checked candidates and optional edges
+in the existing preclassified work payload. A null relationship records no
+proposed edge; it must not become `UNRELATED` or a negative semantic proof.
+Discovery may reuse that completed inspection only with unchanged challenger
+and candidate content, current Support, access context, and classifier contract.
+Stale snapshots are reclassified. Discovery still revalidates its entire selected
+candidate universe before fenced completion, including candidates without edges.
+The work JSON contract changes without adding a table, migration, lifecycle
+state, scheduler, or mutation authority. SQLite and Cloud use the same serializer.
+
+This supersedes the complete per-pair output requirement for these two bounded,
+non-destructive discovery responsibilities. Complete destructive incumbent
+coverage and conditional exact comparisons between competing same-Unit refiners
+remain mandatory under ADR 0034. The common module owns catalog interning and
+reference/coverage validation only; business proof, retrieval, Evidence, access,
+transaction and lifecycle gates retain their existing owners.
+
 The product explicitly accepts the interval between a supported Memory's commit
 and discovery of its cross-document conflicts. Readability is not gated on a
 completed conflict scan; queue failure or bounded recall can prolong or leave
@@ -130,3 +164,4 @@ blocking and filtered nearest-neighbor retrieval patterns.
 - [Filtered Vector Search: State of the Art and Research Opportunities](https://research.google/pubs/filtered-vector-search-state-of-the-art-and-research-opportunities/)
 - [OWASP Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
 - [Microsoft background job security guidance](https://learn.microsoft.com/en-us/azure/architecture/best-practices/background-jobs)
+- [JSON Schema string patterns](https://json-schema.org/understanding-json-schema/reference/string#regular-expressions)
