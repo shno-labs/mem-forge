@@ -2,9 +2,7 @@
 
 ## Status
 
-Accepted as target design on 2026-09-21. Implementation is deferred. TypeSafe/Jev
-production eligibility remains conditional on operation-specific evaluation;
-this ADR does not declare Jev a drop-in replacement for every existing LLM call.
+Accepted as target design on 2026-09-21; amended on 2026-09-22 to make classification model-neutral, remove confidence-based fallback, admit complete same-Unit pair classification and add Change Impact Classification. Implementation is deferred.
 
 ## Context
 
@@ -29,92 +27,39 @@ differences into callers or silently weaken existing contracts.
 
 ## Decision
 
-1. Domain planners return an immutable backend-neutral `ContextBundle` plus
-   either `GenerationWork` or `JudgmentWork`. They do not return provider prompt
-   strings. Context is ordered by semantic role and stability: versioned
-   contract, revision-static state, cohort work, ReadingGroup, carried state and
-   attempt-only diagnostics. Authority, selectability, exact references, access
-   identity and complete work manifests remain application-owned.
-2. Introduce two narrow interfaces. `GenerationExecutor` handles work that
-   creates open-vocabulary text or one dependent multi-field structured proposal,
-   including a complete Support Assessment with status, Primary, Required and
-   carried witness state. `JudgmentExecutor` handles independent
-   application-defined Choice, Boolean or Score work. A Structured LLM adapter
-   may implement both; a Jev adapter implements only eligible judgment work.
-   Capability admission rejects unsupported modality, option count, dependency
-   or output shape before a provider call.
-3. The Structured LLM adapter uses a deterministic contract-declared cache
-   layout. Revision-first places a repeated ReadingGroup before changing claim
-   cohorts; cohort-first places fixed claims before changing ReadingGroups, as in
-   streamed Support Assessment. Each work contract declares its layout and
-   retries preserve it; no runtime optimizer chooses between layouts. The
-   adapter may request provider prompt caching at the largest repeated prefix
-   supported by the configured route. It never pads, duplicates or enlarges
-   semantic work for a cache hit. Cache hits, misses, TTLs and provider cache
-   keys never affect work identity, correctness, recovery or stale guards.
-   Telemetry records reported cache creation/read tokens, uncached input and
-   latency.
-4. Cache-aware dispatch reuses the existing bounded collector and global
-   Structured LLM semaphore. Stateful dependency lanes remain sequential and
-   naturally warm their later requests; independent lanes remain concurrent.
-   Same-prefix independent requests are contiguous, but version one adds no
-   warm-up call, cache registry, persistent cache key or non-streaming leader
-   barrier. A response-start single-flight gate is a future transport
-   optimization requiring measured evidence, not part of this decision.
-5. The Jev adapter renders one structured `state` and independent Choice, Noul
-   or Score questions. Raw probabilities are diagnostic input to a calibrated,
-   versioned application policy. Low confidence or incomplete answers produce an
-   unresolved result and may invoke an explicitly configured fallback. They
-   never directly authorize lifecycle mutation.
-6. Configuration separates the generation executor from the judgment profile.
-   User-selectable judgment profiles may use Structured LLM only, Jev with an
-   LLM fallback, or Jev without hidden fallback for registered eligible work.
-   Executor, model, question/output contract and context digest participate in
-   durable work identity; changing configuration does not itself reprocess an
-   unchanged Source.
-7. Jev begins in sampled shadow evaluation. Eligibility is granted separately
-   for candidate admission, single-proposition source support, entity
-   adjudication, relation adjudication over an already bounded pair set,
-   reranking, offline judging and agent-session authority. Jev does not discover
-   sparse relations from complete Candidate and Memory catalogs and never expands
-   them into `N × M` questions. Complete Support Assessment is explicitly ineligible:
-   its status, Primary, multiple Required selections and carried witness state
-   are one dependent Evidence-plan proposal and remain on the Structured LLM
-   path. Claim and managed-patch generation also remain generative work. Making
-   complete Support Assessment Jev-eligible requires a later ADR; shadow mode or
-   fallback configuration cannot widen this boundary.
-8. Provider results remain proposals. Existing exact selector validation,
-   complete coverage, automatic destructive validation, Source authority,
-   lifecycle reduction and atomic stale-guarded commit remain unchanged.
+1. Domain planners return an immutable backend-neutral `ContextBundle` plus either `GenerationWork` or `JudgmentWork`. Authority, selectability, exact references, access identity and complete manifests remain application-owned.
+2. `GenerationExecutor` handles open-vocabulary output and dependent multi-field proposals. Claim Extraction and complete Support Assessment use it. `JudgmentExecutor` handles complete-input, closed-label, independent classification or ranking. Its configured classifier model may be TypeSafe/Jev or a small-parameter LLM that satisfies the same application contract.
+3. Classifier eligibility is granted for an entire task contract from a fixed evaluation suite. Runtime probabilities are diagnostic only. There is no per-item confidence fallback, hidden LLM substitution or provider cascade. Missing/incomplete output is a typed work failure and retries with the same configured backend and work identity.
+4. Change Impact Classification is eligible judgment work. It receives one fixed claim and one capacity-safe `ChangeBundle`, and returns `AFFECTED` or `UNAFFECTED`. Multiple groups should share one bundle when they fit; multiple bundles are OR-reduced by code. `MODIFIED`, `REMOVED` and `AMBIGUOUS` Evidence bypass this classifier and enter Support Assessment; `UNKNOWN` is deterministically `insufficient` and KEEP.
+5. Same-Unit Claim Reconciliation consumes deterministic exact matches, then classifies the complete remaining Candidate × Active-incumbent pair manifest. Catalog bodies are shared state; every pair returns one of `EQUIVALENT`, `REFINES`, `CONTRADICTS`, `UNRELATED`, `INSUFFICIENT`. Token-aware partitioning and bounded concurrency are computation details and cannot alter coverage, atomicity or business state. Cross-document relation discovery remains bounded retrieval followed by classification over `K` pairs.
+6. Complete Support Assessment remains compound `GenerationWork`. `EvidenceFragment`, `ReadingGroup`, `AssessmentContext` and `AssessmentScope` are distinct. Its discriminated wire result requires selectors only for `SUPPORTED`; `UNSUPPORTED` and `INSUFFICIENT` forbid them. The planner sends old exact excerpt only for `MODIFIED`, `REMOVED` and `AMBIGUOUS`; `EXACT_UNCHANGED` and `CONTAINER_CHANGED` use current material, while `UNKNOWN` does not invoke the model.
+7. `REBIND_SUPPORT` preserves Memory identity and claim, materializes or reuses target-Revision Evidence, and atomically attaches the new Support assertion while marking the replaced assertion inactive. Prior Support rows, Evidence and lifecycle history remain immutable and auditable.
+8. Structured LLM prompt caching supports two deterministic layouts. `REVISION_FIRST` evidence-fixed work places the current catalog before changing Memory cohorts; `COHORT_FIRST` cohort-fixed streaming places fixed unresolved claims before changing AssessmentContexts. The selected work plan declares one layout and retries preserve it. Cache identity and retention never affect correctness.
+9. Classifier adapters render shared state plus independent closed-label questions. Jev gains efficiency from shared in-request state and parallel questions; no cross-request Jev prompt cache is assumed. A small-model LLM adapter must return the identical application schema.
+10. Provider results remain proposals. Exact selector validation, complete coverage, Source authority, destructive validation, lifecycle reduction and atomic stale-guarded commit remain application-owned.
 
-The complete interface, current-call classification, cache layout and rollout
-contract are documented in
+The complete interface, task inventory, cache layouts and rollout contract are in
 [Semantic judgment execution and context reuse](../design/semantic-judgment-execution.md).
-The parser, TypeSafe API and prompt-cache research supporting the decision is
-recorded in
-[Structure-preserving parsers, Jev judgments, and repeated-context caching](../research/2026-09-21-structure-parsers-jev-prompt-cache.md).
-The batch concurrency and cache-visibility decision is supported by
+The parser, classifier and prompt-cache evidence is recorded in
+[Structure-preserving parsers, Jev judgments, and repeated-context caching](../research/2026-09-21-structure-parsers-jev-prompt-cache.md)
+and
 [Prompt-cache-aware batch scheduling](../research/2026-09-21-prompt-cache-aware-batch-scheduling.md).
 
 ## Consequences
 
-- LLM and Jev adapters can share domain context without making callers understand
-  provider request formats.
-- Stable revision context can be reused by provider prompt caches or Jev
-  multi-question state without becoming duplicated lifecycle state.
-- A model that cannot satisfy one work contract fails at capability admission
-  rather than triggering source-specific fallback behavior.
-- Existing provider wrappers are migrated by semantic responsibility. Obsolete
-  L3/L4-era wrappers do not each receive a parallel Jev implementation.
-- Jev probabilities enable measured confidence policies, but add model/version
-  calibration and telemetry requirements.
+- The domain names a classifier role rather than a Jev stage; Jev and a small-model LLM are replaceable adapters at one seam.
+- Same-Unit relation work trades sparse LLM discovery for explicit complete pair coverage with cheap parallel classifiers.
+- Change Impact avoids sending every exact-rebound claim to compound Support Assessment while preserving a complete claim manifest over every changed bundle.
+- Complete Support Assessment remains one implementation and one validator; classifier outputs do not recreate a second Support engine.
+- Stable revision context can be reused by provider prompt caches or classifier shared state without becoming lifecycle state.
+- Model/backend changes participate in work identity and require task-specific evaluation.
 
 ## Non-goals
 
 - no one-size-fits-all inference interface;
-- no Jev claim generation, image understanding or semantic Evidence search;
-- no Jev shadow, fallback or production path for complete Support Assessment;
-- no Jev expansion of Candidate and Memory catalogs into a dense pair product;
+- no per-item confidence fallback or hidden model substitution;
+- no classifier claim generation, image understanding or complete Support Assessment;
+- no semantic retrieval pruning of mandatory same-Unit relation pairs;
 - no correctness dependency on prompt-cache retention;
 - no model-owned Source authority, lifecycle verbs or selector membership;
 - no human confirmation stage for ordinary source reconciliation;

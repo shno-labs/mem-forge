@@ -33,6 +33,20 @@ candidate/incumbent pair. It does not add a lifecycle state, semantic Evidence
 search, human confirmation step, candidate-to-candidate deduplication pass, or
 cross-Source-Unit destructive rebind.
 
+The relationship-output clause in the preceding paragraph was itself superseded
+by the 2026-09-22 amendment below; the current normative same-Unit contract is one
+explicit label per exact-excluded pair.
+
+### Classifier and Support-contract amendment (2026-09-22)
+
+This amendment supersedes the earlier sparse same-Unit Claim Reconciliation and confidence-fallback assumptions. A **classifier model** is an executor role implemented by TypeSafe/Jev or a small-parameter LLM. Eligibility is decided for a complete task contract from a fixed evaluation set; runtime confidence is telemetry, not a per-item route to another model.
+
+After deterministic exact consumption, same-Unit Claim Reconciliation classifies the complete remaining Candidate × Active-incumbent pair manifest. Every pair returns one relation enum. Cross-document discovery retains bounded retrieval followed by classification over `K` pairs.
+
+Exact prior Evidence is classified as `EXACT_UNCHANGED`, `CONTAINER_CHANGED`, `MODIFIED`, `REMOVED`, `AMBIGUOUS` or `UNKNOWN`. Old exact excerpt is supplied only for `MODIFIED`, `REMOVED` and `AMBIGUOUS`; `UNKNOWN` is deterministic `insufficient` and KEEP. Exact-rebound claims are checked against capacity-safe ChangeBundles by a classifier model returning `AFFECTED` or `UNAFFECTED`; affected claims and directly changed Evidence enter complete Structured-LLM Support Assessment.
+
+`AssessmentScope` is the logical DELTA or FULL_CURRENT_REVISION coverage. `AssessmentContext` is one call's one-or-more ReadingGroups. A ReadingGroup may contain several selectable EvidenceFragments. Full therefore means that all current Catalog contexts are eventually processed, not that raw full text appears in one request. Final Support output is a discriminated union: `SUPPORTED` requires one Primary and zero or more Required refs; `UNSUPPORTED` and `INSUFFICIENT` forbid selectors. `REBIND_SUPPORT` atomically attaches target-Revision Support and marks the replaced assertion inactive without altering Memory identity or rewriting historical rows.
+
 ### Domain vocabulary
 
 The durable design uses responsibility names rather than model-stage numbers:
@@ -41,7 +55,7 @@ The durable design uses responsibility names rather than model-stage numbers:
 | --- | --- |
 | Claim Extraction | extract new claims from authorized current change |
 | Support Assessment | test one fixed existing claim and rebuild its complete current Evidence Unit |
-| Claim Reconciliation | discover material relations between admitted candidates and existing Memories |
+| Claim Reconciliation | classify every mandatory same-Unit Candidate/Memory pair after deterministic exact consumption |
 | Lifecycle Reconciliation | reduce current Support and relation results into guarded domain mutations |
 
 Historical implementation notes may retain L1/L3/L4 labels, but public types,
@@ -57,11 +71,12 @@ Structured LLM adapter to use provider prompt-prefix caching without making
 cache retention part of correctness, and permits an eligible classifier adapter
 to evaluate the same state without reconstructing revision context.
 
-Open-vocabulary Claim Extraction remains `GenerationWork`. Closed-set semantic
-decisions are `JudgmentWork`; Structured LLM and TypeSafe/Jev may both implement
-the judgment interface only where their capabilities satisfy the complete
-contract. Jev is not assumed to generate claims, consume images, discover
-arbitrary Evidence or directly reproduce compound Support Assessment. Executor,
+Open-vocabulary Claim Extraction remains `GenerationWork`. Closed-set semantic decisions are `JudgmentWork`; a classifier model backed by
+TypeSafe/Jev or a small-parameter LLM implements the judgment interface only where
+its task-specific evaluation satisfies the complete contract. Runtime confidence
+does not switch individual items to another backend. Classifier models do not
+generate claims, discover arbitrary Evidence or reproduce compound Support
+Assessment. Executor,
 model, contract and context digest participate in work identity. Exact selector
 validation, complete manifests, lifecycle reduction and destructive validation
 remain application-owned for every executor.
@@ -106,93 +121,38 @@ The planner deterministically classifies every part of prior Support Evidence:
 
 | Status | Meaning | Input consequence |
 | --- | --- | --- |
-| `EXACT_UNIQUE` | same Observation, one exact digest match, compatible role and structural authority | supply the current Evidence candidate and compact metadata |
-| `CHANGED` | the provider object remains but text, digest, role or governing structure changed | supply current reading context and one bounded exact historical excerpt |
-| `REMOVED` | authoritative coverage proves the old object or Fragment absent | supply a removed Anchor and one bounded exact historical excerpt |
-| `AMBIGUOUS` | multiple exact matches or structural correspondence is not unique | supply the exact candidates and one bounded exact historical excerpt |
-| `UNKNOWN` | partial coverage cannot prove presence or absence | preserve the existing Support and forbid destructive action |
+| `EXACT_UNCHANGED` | one compatible exact fragment and unchanged container | current ref; direct REBIND if no changed groups |
+| `CONTAINER_CHANGED` | exact fragment survives inside a changed ReadingGroup/container | current exact fragment + ChangeBundle; no old excerpt |
+| `MODIFIED` | object/structure remains but fragment text changed | old exact excerpt + current corresponding ReadingGroup |
+| `REMOVED` | authoritative complete coverage proves the old fragment absent | old exact excerpt + current-full scope |
+| `AMBIGUOUS` | exact/structural correspondence is not unique | old exact excerpt + all candidate ReadingGroups |
+| `UNKNOWN` | partial coverage cannot prove presence or absence | deterministic `insufficient`, KEEP, no model call |
 
-Provider identity locates an Observation; it does not establish semantic
-equivalence or stable Fragment coordinates. `EXACT_UNIQUE` is a current Evidence
-candidate, not a semantic KEEP decision. Support Assessment still reads every
-changed ReadingGroup in scope because a distant changed structure may add an
-exception or revoke a rule whose original wording remains unchanged. The
-planner never performs semantic Evidence search after exact correspondence
-fails.
+`EXACT_UNCHANGED` proves survival of the original fragment, not absence of a distant exception. All added/modified ReadingGroups are grouped into capacity-safe ChangeBundles. A classifier model evaluates every exact-rebound fixed claim against each bundle as `AFFECTED` or `UNAFFECTED`; code OR-reduces multiple bundles. Only all-`UNAFFECTED` work completes KEEP+REBIND. There is no per-item confidence fallback.
 
-The application always retains Memory, Support and Evidence IDs, Observation and
-Revision identity, exact digests, coverage and source provenance. It does not
-send all historical Evidence text by default. Only `CHANGED`, `REMOVED` and
-`AMBIGUOUS` work receives the relevant historical body, as a bounded immutable
-excerpt with revision, digest and historical reference. This excerpt is supplied
-once per independent work stream and can never be selected as current Evidence.
+The application retains Memory, Support and Evidence IDs, Observation/Revision identity, exact digests, coverage and provenance outside model input. Historical excerpt transfer is exhaustive and exclusive: `MODIFIED`, `REMOVED` and `AMBIGUOUS` receive it once; no other status does. The excerpt is immutable, non-selectable historical material.
 
 ### Delta and current-full input
 
-Delta cost is:
+`ReadingGroup` is a coherent current structure containing one or more selectable EvidenceFragments. `AssessmentContext` is one call's one-or-more ReadingGroups and prompt-local Evidence Catalog. `AssessmentScope` is the complete logical DELTA or FULL_CURRENT_REVISION work.
 
-```text
-all changed ReadingGroups
-+ fixed claims and compact Support metadata
-+ current context for affected or ambiguous Evidence
-+ necessary bounded historical excerpts
-```
+Delta contains all changed ReadingGroups, fixed claims/compact Support metadata, current context for directly affected Evidence, and historical excerpts exactly for `MODIFIED`, `REMOVED` and `AMBIGUOUS`. Evidence distribution alone does not approach Full. Removed or unresolved Support requires current-full when Delta cannot establish complete current Support. If both scopes satisfy the same correctness requirement, the planner may select the lower total serialized-token forecast; cost cannot downgrade required Full work to Delta.
 
-Evidence merely being distributed throughout a large document does not make
-Delta approach Full. Unchanged, exactly corresponding Evidence contributes a
-current reference and compact state rather than repeated body text. Delta
-approaches Full only when changed/removed/ambiguous Evidence and the deduplicated
-union of its ReadingGroups cover most of the effective current Projection.
+Current-full means all eligible effective-current Catalog contexts are processed. A small document may fit one AssessmentContext; a large one streams several contexts under one manifest and grounded previous state. Only complete context coverage plus authoritative provider coverage may produce `unsupported`; Full never upgrades a partial Projection.
 
-Claim Extraction and Support Assessment choose Delta or current-full
-independently. Mode selection is performed over the complete logical work before
-transport partitioning. Current-full means that the model work reads the complete
-effective current Source Projection; it never upgrades provider `PARTIAL`
-coverage or grants destructive authority. Both modes may stream representation-
-safe ReadingGroups and persist execution receipts. Partitioning is a transport
-detail: no partial group may publish a Memory, Support or lifecycle mutation.
+`REVISION_FIRST` evidence-fixed batching and `COHORT_FIRST` cohort-fixed streaming are separate deterministic cache layouts. The first puts current Catalog before changing claim cohorts; the second puts fixed unresolved claims before changing AssessmentContexts. Previous state remains in the changing suffix. Cache behavior cannot alter scope, work identity or result.
 
 ### Cumulative Support witness state
 
-Support Assessment works at `(memory_id, independent_support_id)` granularity.
-Every independent Evidence Unit remains exactly one Primary plus zero or more
-Required references; different Supports and sources are never combined to make
-one Support appear sufficient.
+Support Assessment works at `(memory_id, independent_support_id)` granularity. An Evidence Unit remains one Primary plus zero or more Required refs, possibly selected from several fragments or ReadingGroups in the current AssessmentContext.
 
-Cumulative state records semantic witnesses rather than only the most recent
-status:
+The final wire result is a discriminated union: `SUPPORTED(work_id, primary_ref, required_refs[])`, `UNSUPPORTED(work_id)`, or `INSUFFICIENT(work_id)`. Only `SUPPORTED` admits selectors. Its selectable current pool is the current AssessmentContext catalog plus current refs grounded by earlier contexts in previous state; historical refs are never selectable. Streamed previous state carries grounded supporting refs, opposing refs, cumulative status and uncertainty; it is execution data, not lifecycle state. Final status is computed only after the selected AssessmentScope manifest completes, and order/partition disagreement yields `insufficient` and KEEP.
 
-```json
-{
-  "work_id": "WRK-0001",
-  "support_refs": ["PRM-0012"],
-  "opposing_refs": ["PRM-0041"],
-  "uncertain": false
-}
-```
+### Complete same-Unit Claim Reconciliation
 
-Each ReadingGroup adds grounded supporting, opposing or uncertain witnesses.
-The final status is derived only after the work manifest proves that all changed
-ReadingGroups were processed. A later unrelated group cannot erase an earlier
-global revocation or exception. Different legal ReadingGroup orders and
-partitions must reduce to the same lifecycle proposal; disagreement yields
-`insufficient`, preserves the Support and does not advance its validation
-baseline. Witness state is execution data within the existing recoverable work,
-not a new business or lifecycle state.
+Same-Unit Claim Reconciliation consumes deterministic exact matches, then creates the complete remaining Candidate × Active-incumbent pair manifest. A classifier model (Jev or small-parameter LLM) returns exactly one `EQUIVALENT`, `REFINES`, `CONTRADICTS`, `UNRELATED` or `INSUFFICIENT` label per pair. Catalog bodies are shared state; pair questions carry application IDs.
 
-### Sparse Claim Reconciliation
-
-Claim Reconciliation receives complete candidate, existing-Memory and current
-Evidence catalogs, with each claim and Evidence body encoded once per request.
-It returns one row per requested candidate and only material discovered
-equivalent, refining or contradictory relations. Omitted candidate/incumbent
-pairs are not persisted or reconstructed as proven `UNRELATED`. A missed
-relation may temporarily retain duplicate or conflicting Memory, which is an
-accepted false-negative tradeoff; it cannot authorize removal or retirement.
-
-The design does not add candidate-to-candidate semantic deduplication. Exact
-admission normalization remains deterministic, and rare same-run semantic
-duplicates are accepted rather than adding another model pass or state system.
+Capacity partitioning preserves the full manifest and runs under bounded concurrency. Missing/duplicate pairs, unknown IDs, truncation and provider failure cannot become `UNRELATED`. Partitions create no lifecycle state and publish no partial mutations. Relation labels are proposals and cannot authorize REMOVE or RETIRE. Cross-document discovery keeps bounded hybrid retrieval followed by classification over K pairs, where non-destructive recall loss remains accepted. Candidate-to-candidate semantic deduplication remains out of scope.
 
 ### Automated destructive validation
 
@@ -251,13 +211,13 @@ identity continuity, or partial lifecycle commits.
 ## Decision
 
 1. Reuse one operation-scoped representation index and staged base/target
-   snapshots. A source-neutral revision-input planner constructs both feasible
-   reading plans for normal updates: complete changed ReadingGroups with compact
-   Support metadata, current context for affected/ambiguous Evidence and bounded
-   exact history only for changed, removed or ambiguous Evidence; and complete
-   current input without non-current history. It forecasts both in the actual
-   request format and chooses the lower forecast token cost; delta wins an exact
-   tie.
+   snapshots. A source-neutral revision-input planner first determines the minimum
+   safe scope, then constructs every eligible reading plan: complete changed
+   ReadingGroups with compact Support metadata, current context for affected or
+   ambiguous Evidence and bounded exact history only for `MODIFIED`, `REMOVED` and
+   `AMBIGUOUS`; and complete current input without non-current history. When both
+   plans satisfy the same correctness requirement, it forecasts their actual
+   request formats and chooses the lower token cost; delta wins an exact tie.
    There is no changed-content percentage threshold. The baseline belongs to the
    evaluated Support, not its Evidence birth revision or the latest Source sync.
    Initial import partitions its full authorized Primary work with local reading
@@ -268,24 +228,23 @@ identity continuity, or partial lifecycle commits.
    still requires authorized added/changed complete structures or canonical
    fields, even when unchanged context is readable. Existing-claim validation
    can use current unchanged Evidence without authorizing duplicate extraction.
-3. One Support Assessment returns the fixed claim's support result and necessary
-   current Evidence reconstruction. The application can retain proven unchanged
-   parts and resolves a complete Evidence Unit; Required membership can split,
-   merge, grow, or shrink. An old offset locates only its own revision. Semantic
-   selection of current supplied fragments does not require reconstructing the
-   author's unique edit history. Stored provenance remains exact and immutable.
-4. Claim Reconciliation combines relation classification and conditional revision
-   assessment over complete candidate, incumbent and current-Evidence catalogs.
-   Its relationship vocabulary is EQUIVALENT, directional REFINES and
-   CONTRADICTS. Only material discovered edges are returned; omission is accepted
-   as a semantic false negative and is never reconstructed as proven UNRELATED or
-   used to authorize a destructive action. Insufficient input is an unresolved
-   assessment, not a relationship or a new persisted state. Only a new-to-old
-   refinement with the same knowledge identity, all old meaning and scope
-   preserved, a self-contained new claim, and complete current supporting
-   Evidence may propose revision. Non-applicable revision assessment is explicit
-   in a fixed result contract. The reducer validates completeness and consistency
-   with the same-input Support Assessment result before proposing actions.
+3. One Support Assessment returns a discriminated result for the fixed claim.
+   `SUPPORTED` carries one current Primary and zero or more Required refs;
+   `UNSUPPORTED` and `INSUFFICIENT` carry no selectors. The application resolves
+   complete current Evidence Units, and Required membership may split, merge,
+   grow or shrink. An old offset locates only its own revision. Semantic selection
+   of supplied current fragments does not reconstruct the author's edit history.
+   Stored provenance remains exact and immutable.
+4. Same-Unit Claim Reconciliation consumes deterministic exact matches, then
+   classifies the complete remaining Candidate × Active-incumbent pair manifest.
+   Every pair returns exactly one EQUIVALENT, directional REFINES, CONTRADICTS,
+   UNRELATED or INSUFFICIENT label. Omission, duplicate output, unknown IDs and
+   truncation are technical failures, not relationship labels. `REFINES` denotes
+   the same knowledge item with a compatible directional change; the label alone
+   still cannot replace a broader incumbent with a narrower rule. The reducer
+   combines the complete relation manifest with Candidate admission, Support
+   Assessment, source authority and scope facts before proposing actions. Relation
+   labels never directly authorize destructive mutation.
 5. Keep existing Lifecycle Plan, complete incumbent coverage, Source Authority,
    Review, causal stale guards, and atomic commit. Model output never directly
    creates or retires Memory. Unknown selectors and malformed or incomplete
@@ -459,7 +418,7 @@ For a valid base/target pair, the planner constructs a delta candidate and a
 current-full candidate before choosing. Delta contains all changed current
 structures, bounded current reading groups, compact prior-Support metadata,
 current candidates for exact unchanged Evidence, and bounded exact historical
-excerpts only for changed, removed or ambiguous Evidence. It does not repeatedly
+excerpts only for `MODIFIED`, `REMOVED` or `AMBIGUOUS` Evidence. It does not repeatedly
 transport unchanged historical Support bodies or semantically search for current
 Evidence after exact correspondence fails.
 Current-full contains the complete eligible effective current snapshot and omits
@@ -526,8 +485,10 @@ revision may commit; this supersedes stopping the Unit on L3 insufficiency. No
 Review or additional model call is required. The existing Plan records the exact
 preserved Support IDs on its KEEP decision under the usual Support-set stale guard.
 This exception cannot validate a new attachment or authorize destructive mutation.
-Skipped incumbents bypass L4 but remain eligible for ordinary candidate identity
-matching and independent corroboration. A later assessment still uses each
+Skipped incumbents remain in the complete same-Unit relation manifest, but their
+preserved Support prevents those relation labels from authorizing a destructive
+action. They also remain eligible for ordinary candidate identity matching and
+independent corroboration. A later assessment still uses each
 Support's actual validation baseline, not the last Source sync revision.
 
 SQLite and HANA apply the same support-preserving invariant in both Support
@@ -561,14 +522,15 @@ while retaining distinct semantic duties.
 
 ## Local unresolved claim relationships
 
-L4 returns a relationship and conditional refinement proof, without a redundant
-`consistent_with_support` Boolean. UNRELATED is valid whether L3 supported the old
-claim or not. CONTRADICTS proceeds through the existing authority/Review action
-table; old support does not invalidate a contradictory relationship by itself.
-An equivalent supported challenger paired with an unsupported incumbent, a
-refinement entailment chain conflicting with L3, or insufficient applicable material
-is unresolved locally. L4 must also check its supplied accurate Evidence against
-the challenger, including table column associations; it cannot repair candidate text.
+Claim Reconciliation returns one relation label per mandatory pair and does not
+repeat Support or Evidence selectors. UNRELATED is valid whether Support Assessment
+supported the incumbent or not. CONTRADICTS proceeds through the existing
+authority/Review action table; old support does not invalidate a contradictory
+relationship by itself. An equivalent admitted challenger paired with an
+unsupported incumbent, a refinement relation that conflicts with the Support
+result, or `INSUFFICIENT` pair material is unresolved locally. Candidate admission
+already owns whether supplied current Evidence entails the challenger, including
+table column associations; relation classification cannot repair candidate text.
 
 For an unresolved pair, the reducer consumes the candidate and emits a bare skipped
 NOOP for the incumbent, preserving Support, Evidence and validation baseline.
@@ -622,84 +584,29 @@ requirement can preserve the knowledge item's identity while making the current
 proposition stronger. Complete replacement text must already state the old meaning
 and the refinement; adding information does not itself make that text incomplete.
 
-The former L4 fields named `candidate_*` were ambiguous because the shared pair
-input calls the incumbent “candidate,” while the lifecycle reducer calls new
-extractions candidates. The model-facing revision response now names the current
-challenger explicitly and describes each condition in its schema. This changes the
-L4 work contract to v3, with an explicit mapping into the existing reducer proof;
-compiler, storage, L3 and historical Evidence contracts are unaffected. Unsupported
-old claims need not be negated: loss of universal coverage alone does not establish
-contradiction with a compatible subset rule.
+The target relation contract names the newly admitted claim `challenger` and the
+active Memory `incumbent`; it does not reuse the former ambiguous `candidate_*`
+revision-proof fields. `REFINES(challenger, incumbent)` means the same knowledge
+item is stated more specifically in that direction. Lifecycle policy still rejects
+whole-incumbent replacement when the challenger narrows population, time or scope
+and therefore cannot preserve the incumbent's complete truth conditions.
+Unsupported old claims need not be negated: loss of universal coverage alone does
+not establish contradiction with a compatible subset rule.
 
 Acceptance must evaluate the complete revision conjunction and the resulting
 reducer action. Correct Support, relation and preservation fields alone do not
 prove an eligible UPDATE. Frozen failed results remain evidence even when a later
 prompt/schema version corrects them.
 
-## Sparse Claim Reconciliation over complete input catalogs
+## Complete same-Unit pair classification
 
-Claim contract v6 supersedes the v5 requirement for one explicit response per
-challenger–incumbent pair. The product accepts semantic false negatives in
-relationship discovery: omitted pairs propose no relationship action and are
-not persisted or reconstructed as proven UNRELATED. This may retain duplicate
-or conflicting claims or miss a competing replacement proposal. Explicit proof,
-Source Authority/Review, stale and atomic guards remain mandatory; they do not
-prove that a model discovered every semantic relationship.
+The earlier sparse-output contract is superseded for same-Unit work. Claim Reconciliation now classifies the complete exact-excluded Candidate × Active-incumbent pair manifest with a task-admitted classifier model. Every pair has one explicit relation label; omission is a technical failure, not “no edge.” Catalog text is encoded as shared state and token-aware request rectangles carry pair IDs, so model input does not duplicate both claim bodies for every pair.
 
-Claim Reconciliation receives separate candidate, incumbent and current Evidence catalogs, linked
-by application-issued IDs. Evidence text and each claim occur once per request;
-Primary/Required role, observation/revision identity and validity remain explicit.
-Incumbents carry their already completed current Support assessment. Historical
-support is not misrepresented as current evidence, and missing audit evidence
-references must not be fabricated. No retrieval top-k prunes incumbent input.
+The logical product may be large, but batching remains a computation detail. It cannot cap pairs, change atomicity, add business states or weaken same-source incumbent coverage. Existing Source Authority, Support Assessment, DestructiveValidation, stale guards and atomic commit remain mandatory; even `CONTRADICTS` is not a lifecycle action.
 
-Each requested candidate returns exactly one row with evidence entailment status,
-only discovered equivalent/contradictory/directional-refinement edges, and explicit
-uncertain incumbent references. Empty edge arrays are valid. Equivalence is kept
-because it prevents duplicate admission. A candidate lacking complete entailing
-Evidence cannot escape as independent ADD. Explicit uncertainty preserves the
-connected component under the existing reducer semantics. Only contradictions
-and forward refinements carry their applicable proofs. IDs, uniqueness, all
-candidate rows and applicable proof structure are validated before persistence.
-Missing rows, unknown IDs, duplicate edges, truncation, refusal and technical
-failures are never interpreted as empty discoveries.
+Cross-document relation discovery remains a different contract: existing access-filtered hybrid retrieval generates bounded K pairs and the same classifier labels them. Full-workspace N × M is not required, and a missed cross-document relation cannot authorize destructive mutation.
 
-One complete catalog is attempted first. Existing capacity subdivision partitions
-catalog work only when actual input/image capacity requires it, preserving all
-candidate/incumbent inputs. There is no pair-count packing limit or arbitrary
-edge cap. Claim Reconciliation does not add candidate-to-candidate semantic
-deduplication. Automated DestructiveValidation is separate fixed-claim Support
-work and never treats a missing relation edge as proof of absence. The existing
-conditional comparison of multiple discovered refiners remains unchanged.
-Independent full incumbent Support assessment, the deterministic reducer and
-atomic lifecycle commit still apply even when no relationship is emitted.
-
-Acceptance separates false-negative relationships from incorrect lifecycle
-mutations. It covers omitted equivalence, omitted competing replacements,
-explicit ambiguity, scope narrowing, valid empty results, and incomplete transport.
-Response size is a measurement of representation, not a claim of semantic recall
-or live-provider latency. Budget/output ceilings and logical deadlines retain
-their existing meanings.
-
-Completed `claim_assess` results belong to the existing Source derivation, just
-like support work. Their identity binds the lifecycle operation input (including
-Support snapshot), ordered catalog identities, prompt and schema hashes, model,
-budget and claim contract. Only a fully validated response with all requested candidate rows is reusable.
-A retry reads completed work and computes unfinished requests; changed inputs
-cannot borrow old judgments. A process loss before a successful result is stored
-may repeat inference, so this is not an exactly-once provider-call guarantee.
-
-This supersedes transient-only L4 result ownership. SQLite and HANA require every
-referenced claim result to be completed before applying the existing atomic
-Source projection/Lifecycle Plan. Independent successful work may survive a peer
-failure, but no subset of its mutations or new Support is published. The existing
-stale guards and complete incumbent Support coverage remain authoritative.
-
-Structured failures carry content-free diagnostics from their own logical call
-through the reconciliation failure to its terminal runtime event. Field paths,
-validation rules, transport, response fingerprint and provider usage are safe
-metadata; raw responses and source text are not telemetry. Concurrent sibling
-signals must never be guessed into the failing call by error-code matching.
+Completed classifier work binds exact pair manifest, catalog/context digests, executor/model/contract identity and budget. Retries compute unfinished transport partitions but cannot reuse judgments under changed input. SQLite and HANA still require complete work before applying the Source projection/Lifecycle Plan.
 
 ## Complete Support requests and model-facing identifiers
 
@@ -710,8 +617,8 @@ or cumulative-state capacity failure invokes the existing transport partitioning
 This supersedes both selecting a packing by score before trying complete coverage
 and choosing a mode merely because one request fits. Delta includes changed
 material, exact current candidates for prior Support, representation-owned
-reading groups, and bounded historical excerpts only for changed, removed or
-ambiguous Evidence. Current-full reads the
+reading groups, and bounded historical excerpts only for `MODIFIED`, `REMOVED` or
+`AMBIGUOUS` Evidence. Current-full reads the
 eligible effective current projection without carrying non-current history or
 changing its provider coverage meaning.
 
@@ -740,13 +647,14 @@ Evidence compiler and lifecycle semantics are unchanged.
 
 ### Compact Support judgments
 
-Final successful Support judgments carry the work ID, status and complete selected
-Primary/Required references on the model wire. They do not carry generated prose.
-During streamed assessment, compact witness state carries selected supporting refs,
-decisive opposing refs and an uncertainty marker. Negative and uncertain judgments
-retain a bounded explanation of the decisive basis.
-This supersedes the assumption that every successful item needs a generated reason.
-The canonical stored result retains a deterministic success explanation; downstream
+Final Support judgments use discriminated variants. `SUPPORTED` carries work ID,
+status and complete Primary/Required refs; `UNSUPPORTED` and `INSUFFICIENT` carry
+only work ID and status and cannot carry selectors. The final model wire result does
+not carry generated prose. During streamed assessment, compact witness state carries
+selected supporting refs, decisive opposing refs, cumulative status and an uncertainty
+marker. Application diagnostics may retain a bounded decisive basis outside the final
+wire result. This supersedes the assumption that every successful item needs a
+generated reason. The canonical stored result retains a deterministic success explanation; downstream
 lifecycle decisions continue to use status and resolved Evidence, never that sentence
 as additional authority. Cumulative assessment carries grounded Evidence witnesses,
 not an unbounded narrative of unrelated facts. Final status cannot overwrite or forget

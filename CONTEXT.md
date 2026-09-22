@@ -72,6 +72,10 @@
 ## Memory evidence
 
 - **Evidence Fragment** — An application-owned structural region of one current Source Observation Revision that may be offered for extraction under an immutable catalog. Its extraction-time reference is transient and never becomes cross-revision identity. _Avoid_: Source Item, stable Atom, LLM quote
+- **Reading Group** — A revision-scoped coherent reading unit containing one or more Evidence Fragments plus the minimum structural context needed to interpret them. It is not one Evidence Unit, one model request, or durable lifecycle state.
+- **Assessment Context** — The one-or-more Reading Groups supplied in one Support Assessment call, together with their prompt-local current Evidence catalog. It is a transport slice of an Assessment Scope, not the full logical work by definition.
+- **Assessment Scope** — The complete logical current-revision coverage required for one Support work item: either its admitted Delta or the full effective current revision. A full scope may be delivered through many Assessment Contexts.
+- **Change Bundle** — One capacity-safe set of added or modified Reading Groups jointly classified against fixed old claims for semantic impact. It is classifier input, not an Evidence Unit or lifecycle state.
 - **Evidence Candidate Range** — An application-owned exact current-revision Source Anchor offered in one extraction catalog with a transient `primary_eligible` value. Every candidate may be Required, but only current authorized work may be Primary. _Avoid_: Evidence Authority Range, role surface, model-chosen authority
 - **Evidence Representation Profile** — The typed, versioned description of how one Source Observation Revision exposes selectable Evidence, independent of its provider Source Type. _Avoid_: Source-specific compiler, inferred MIME switch
 - **Evidence Reference** — A revision-pinned link to a Source Observation and optional Source Anchor. A Primary or Required reference belongs to one Evidence Unit; a Context reference belongs to the current Context projection. _Avoid_: Source URL, unversioned citation, Evidence Fragment reference
