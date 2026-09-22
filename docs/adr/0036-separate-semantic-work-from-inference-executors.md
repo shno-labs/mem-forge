@@ -74,8 +74,10 @@ differences into callers or silently weaken existing contracts.
    unchanged Source.
 7. Jev begins in sampled shadow evaluation. Eligibility is granted separately
    for candidate admission, single-proposition source support, entity
-   adjudication, relation classification, reranking, offline judging and
-   agent-session authority. Complete Support Assessment is explicitly ineligible:
+   adjudication, relation adjudication over an already bounded pair set,
+   reranking, offline judging and agent-session authority. Jev does not discover
+   sparse relations from complete Candidate and Memory catalogs and never expands
+   them into `N × M` questions. Complete Support Assessment is explicitly ineligible:
    its status, Primary, multiple Required selections and carried witness state
    are one dependent Evidence-plan proposal and remain on the Structured LLM
    path. Claim and managed-patch generation also remain generative work. Making
@@ -112,6 +114,7 @@ The batch concurrency and cache-visibility decision is supported by
 - no one-size-fits-all inference interface;
 - no Jev claim generation, image understanding or semantic Evidence search;
 - no Jev shadow, fallback or production path for complete Support Assessment;
+- no Jev expansion of Candidate and Memory catalogs into a dense pair product;
 - no correctness dependency on prompt-cache retention;
 - no model-owned Source authority, lifecycle verbs or selector membership;
 - no human confirmation stage for ordinary source reconciliation;

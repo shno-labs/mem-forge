@@ -146,6 +146,8 @@ Support Assessment 的 work key 是 `(memory_id, independent_support_id)`。不�
 
 请求输入是完整 Candidate、Existing Memory 和 current Evidence 目录，每份 claim/Evidence 正文在一个请求中只编码一次。输出每个 Candidate 一行，并仅列出发现的 material relation：equivalent、refines 或 contradicts。未输出的 Candidate/Memory pair 不是已证明 unrelated，也不能授权 REMOVE 或 RETIRE。
 
+这里的 `N + M` 描述的是目录传输规模，不是对模型内部计算复杂度的证明。TypeSafe/Jev 不承担从完整目录发现稀疏关系；逐 pair 提问会重新产生 `N × M` questions。只有程序、bounded retrieval 或前一语义阶段已经给出有限 `K` 对时，Jev 才可以对这 `K` 对做 relation adjudication。无法安全形成 bounded pair set 时，本阶段继续使用 Structured LLM 的稀疏输出合同。
+
 本方案不要求 `Candidate × Existing Memory` 的完整 pair 行，不新增 Candidate-to-Candidate 语义去重。确定性准入继续消除 exact duplicate；少量同轮语义重复属于接受的 false negative。
 
 ### 0.7 自动 DestructiveValidation

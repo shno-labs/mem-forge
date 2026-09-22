@@ -265,9 +265,9 @@ historical method name.
 | Candidate admission ledger | `select_memory_candidates` | KEEP/DROP choice over fixed candidates | strong candidate |
 | Source support | `verify_source_support` | supported/unsupported/insufficient judgment | strong candidate |
 | Entity adjudication | `validate_entity_match`, `validate_entity_batch` | choose candidate or no match | strong candidate within Choice limit |
-| Memory relation discovery | `classify_memory_relations` | equivalent/refines/contradicts/unrelated choice for supplied pairs | strong candidate |
+| Relation adjudication | `classify_memory_relations` | equivalent/refines/contradicts/unrelated choice for an already bounded pair set | Jev candidate only for supplied `K` pairs; it does not discover pairs from `N × M` |
 | Revision proof | `prove_revision_compositions` | several fixed boolean conditions | candidate as independent Nouls composed by code |
-| Claim Reconciliation | `assess_claim_revisions` | sparse relation plus conditional revision proof | candidate after decomposition; no full pair product |
+| Claim Reconciliation | `assess_claim_revisions` | discover sparse material edges from Candidate and Memory catalogs plus conditional revision proof | no direct Jev replacement; keep Structured LLM unless an upstream contract already supplies bounded pairs |
 | Retrieval rerank | `rerank_memories` | comparable relevance degree | strong Score candidate |
 | Offline semantic judge | `judge_offline_semantics` | fixed evaluation labels | strong candidate |
 | Agent-session authority | `classify_agent_session_evidence_authority` | per-candidate authority decision | strong candidate |
@@ -287,6 +287,22 @@ does not enter Jev shadow evaluation, fallback or production routing. A smaller,
 independently useful judgment such as whether one supplied excerpt supports one
 proposition may be registered separately, but it cannot stand in for the complete
 Evidence Unit assessment.
+
+Relation work has a second boundary. A Structured LLM can receive one Candidate
+catalog of size `N` and one Memory catalog of size `M`, encode each item once,
+and return `N` rows containing only `K` material edges. Its transport is roughly
+`N + M + K`; this does not prove that the model's internal semantic work is
+linear. Jev must not replace that sparse discovery by asking one question for
+every possible pair, which would create `N × M` questions. It may adjudicate the
+`K` pairs only when deterministic rules, bounded retrieval or a prior semantic
+stage already supplied them. If no safe bounded pair set exists, sparse Claim
+Reconciliation remains Structured LLM work.
+
+A single Jev Choice with all Memory IDs is not a general substitute: it selects
+only one result, cannot express multiple material edges, multiplies Memory IDs by
+relation types, and is subject to the provider's Choice-option limit. It remains
+appropriate for domains such as entity resolution where exactly one candidate or
+`no_match` is the declared contract.
 
 ## 6. User-selectable execution profiles
 
