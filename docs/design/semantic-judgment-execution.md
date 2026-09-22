@@ -115,10 +115,11 @@ REVISION_FIRST                         COHORT_FIRST
 
 `REVISION_FIRST` is used when one ReadingGroup is evaluated against several
 claim or candidate cohorts. `COHORT_FIRST` is used when one fixed cohort scans
-several ReadingGroups, as in streamed Support Assessment. The materialized work
-manifest selects the layout from the larger fan-out before the first call;
-retries preserve it. This changes serialization order only. Named segment
-content, the context digest, logical coverage and instructions remain the same.
+several ReadingGroups, as in streamed Support Assessment. Each work contract
+declares one layout; Support Assessment declares `COHORT_FIRST`. There is no
+runtime cache-layout optimizer. Retries preserve the declared layout. This
+changes serialization order only. Named segment content, the context digest,
+logical coverage and instructions remain the same.
 
 A provider cache breakpoint, if supported, is placed after the largest actually
 repeated prefix. Calls sharing that prefix should be adjacent while still
@@ -161,6 +162,32 @@ Dynamic request-specific selector enums remain suitable for a small correction
 request. Expanding hundreds of per-work enums in the main response schema can
 duplicate the catalog and destabilize the reusable prefix, so the ordinary
 request keeps one compact structural schema plus exact application validation.
+
+### Minimal cache-aware batch dispatch
+
+Prompt caching does not introduce another batch planner or queue. The existing
+logical planner still creates capacity-safe requests and dependency lanes; the
+existing bounded collector and Structured LLM semaphore remain the only
+concurrency controls.
+
+- A stateful lane, such as one Support cohort scanning several ReadingGroups,
+  remains sequential inside the lane. Its first real request can create the
+  cache entry and later requests naturally reuse the fixed cohort prefix.
+- Independent lanes run concurrently up to the existing configured limit.
+- Independent requests with the same rendered prefix are emitted contiguously.
+  The first active worker wave may be cold; requests dequeued after a response
+  has begun may hit the provider cache. No extra warm-up inference is sent.
+- The adapter may derive a content-free prefix digest from the actual serialized
+  prefix for telemetry and test assertions. It is not caller input, a provider
+  cache key, persisted state or a scheduling correctness dependency.
+
+Anthropic documents that a cache entry becomes available only after the first
+response begins. The current MemForge LiteLLM path is non-streaming, so it cannot
+observe that event without waiting for the complete response. Version one does
+not add a leader barrier that would hold independent work behind a long complete
+call. A future transport may release same-prefix followers on a provider
+`message_start` event, but only after measured latency/cost evidence justifies the
+extra single-flight mechanism. Leader failure must never strand followers.
 
 ## 4. Jev execution model
 
@@ -327,5 +354,8 @@ alone can never authorize REMOVE, SUPERSEDE or RETIRE.
 The parser survey, TypeSafe primitive/API review and provider cache evidence are
 captured in
 [Structure-preserving parsers, Jev judgments, and repeated-context caching](../research/2026-09-21-structure-parsers-jev-prompt-cache.md).
+The concurrency and cache-visibility comparison supporting the minimal batch
+dispatcher is captured in
+[Prompt-cache-aware batch scheduling](../research/2026-09-21-prompt-cache-aware-batch-scheduling.md).
 The research note is supporting evidence; this document and the corresponding
 ADRs remain the normative product contract.

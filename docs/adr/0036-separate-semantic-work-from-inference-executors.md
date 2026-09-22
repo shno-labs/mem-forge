@@ -46,25 +46,33 @@ differences into callers or silently weaken existing contracts.
 3. The Structured LLM adapter uses a deterministic contract-declared cache
    layout. Revision-first places a repeated ReadingGroup before changing claim
    cohorts; cohort-first places fixed claims before changing ReadingGroups, as in
-   streamed Support Assessment. Materialized fan-out selects the layout before
-   execution and retries preserve it. The adapter may request provider prompt
-   caching at the largest repeated prefix supported by the configured route. It
-   never pads, duplicates or enlarges semantic work for a cache hit. Cache hits,
-   misses, TTLs and provider cache keys never affect work identity, correctness,
-   recovery or stale guards. Telemetry records reported cache creation/read
-   tokens, uncached input and latency.
-4. The Jev adapter renders one structured `state` and independent Choice, Noul
+   streamed Support Assessment. Each work contract declares its layout and
+   retries preserve it; no runtime optimizer chooses between layouts. The
+   adapter may request provider prompt caching at the largest repeated prefix
+   supported by the configured route. It never pads, duplicates or enlarges
+   semantic work for a cache hit. Cache hits, misses, TTLs and provider cache
+   keys never affect work identity, correctness, recovery or stale guards.
+   Telemetry records reported cache creation/read tokens, uncached input and
+   latency.
+4. Cache-aware dispatch reuses the existing bounded collector and global
+   Structured LLM semaphore. Stateful dependency lanes remain sequential and
+   naturally warm their later requests; independent lanes remain concurrent.
+   Same-prefix independent requests are contiguous, but version one adds no
+   warm-up call, cache registry, persistent cache key or non-streaming leader
+   barrier. A response-start single-flight gate is a future transport
+   optimization requiring measured evidence, not part of this decision.
+5. The Jev adapter renders one structured `state` and independent Choice, Noul
    or Score questions. Raw probabilities are diagnostic input to a calibrated,
    versioned application policy. Low confidence or incomplete answers produce an
    unresolved result and may invoke an explicitly configured fallback. They
    never directly authorize lifecycle mutation.
-5. Configuration separates the generation executor from the judgment profile.
+6. Configuration separates the generation executor from the judgment profile.
    User-selectable judgment profiles may use Structured LLM only, Jev with an
    LLM fallback, or Jev without hidden fallback for registered eligible work.
    Executor, model, question/output contract and context digest participate in
    durable work identity; changing configuration does not itself reprocess an
    unchanged Source.
-6. Jev begins in sampled shadow evaluation. Eligibility is granted separately
+7. Jev begins in sampled shadow evaluation. Eligibility is granted separately
    for candidate admission, single-proposition source support, entity
    adjudication, relation classification, reranking, offline judging and
    agent-session authority. Complete Support Assessment is explicitly ineligible:
@@ -73,7 +81,7 @@ differences into callers or silently weaken existing contracts.
    path. Claim and managed-patch generation also remain generative work. Making
    complete Support Assessment Jev-eligible requires a later ADR; shadow mode or
    fallback configuration cannot widen this boundary.
-7. Provider results remain proposals. Existing exact selector validation,
+8. Provider results remain proposals. Existing exact selector validation,
    complete coverage, automatic destructive validation, Source authority,
    lifecycle reduction and atomic stale-guarded commit remain unchanged.
 
@@ -83,6 +91,8 @@ contract are documented in
 The parser, TypeSafe API and prompt-cache research supporting the decision is
 recorded in
 [Structure-preserving parsers, Jev judgments, and repeated-context caching](../research/2026-09-21-structure-parsers-jev-prompt-cache.md).
+The batch concurrency and cache-visibility decision is supported by
+[Prompt-cache-aware batch scheduling](../research/2026-09-21-prompt-cache-aware-batch-scheduling.md).
 
 ## Consequences
 
