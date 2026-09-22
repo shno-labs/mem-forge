@@ -116,7 +116,7 @@ Structured LLM adapter 将其渲染为稳定前缀在前的 prompt，并在实�
 | `MODIFIED` | 原 provider object/结构仍在，但 fragment 内容改变 | 旧 excerpt + 当前对应 ReadingGroup，直接进入 Support Assessment |
 | `REMOVED` | authoritative complete coverage 证明原 fragment 消失 | 旧 excerpt + current-full Assessment Scope，直接进入 Support Assessment |
 | `AMBIGUOUS` | 多个 exact/structural candidate 或对应不唯一 | 旧 excerpt + 全部候选 ReadingGroups，直接进入 Support Assessment |
-| `UNKNOWN` | Partial coverage 不能证明存在或删除 | 程序产生 `insufficient`，KEEP；不调用 Support LLM，不允许破坏性动作 |
+| `UNKNOWN` | Partial coverage 不能证明存在或删除 | 程序产生 `UNRESOLVED(partial_coverage)`，KEEP；不调用 Support LLM，不允许破坏性动作 |
 
 旧 excerpt 的发送规则没有可选分支：只对 `MODIFIED`、`REMOVED`、`AMBIGUOUS` 发送一次 immutable exact excerpt；`EXACT_UNCHANGED` 与 `CONTAINER_CHANGED` 不发送，因为 current fragment 已包含相同正文；`UNKNOWN` 不进入模型。历史 excerpt 永远只读且不可被选择为 current Evidence。
 
@@ -141,7 +141,9 @@ all changed ReadingGroups grouped into ChangeBundles
 + historical excerpts exactly for MODIFIED/REMOVED/AMBIGUOUS
 ```
 
-旧 Evidence 分散在全文不等于 Delta 接近 Full。`EXACT_UNCHANGED` 只贡献 current ref 和 compact state。`MODIFIED` 使用对应 current ReadingGroup；`AMBIGUOUS` 使用全部确定候选；`REMOVED` 或 Delta 无法为受影响 claim 建立完整 current Support 时，必须为该 unresolved work 选择 `FULL_CURRENT_REVISION`。当 Delta 与 Full 都具备同等正确性时，Planner 可按完整序列化请求的总 token 预测选择更便宜者；成本不能让本来需要 Full 的 work 降级为 Delta。
+旧 Evidence 分散在全文不等于 Delta 接近 Full。`EXACT_UNCHANGED` 只贡献 current ref 和 compact state。`MODIFIED` 使用对应 current ReadingGroup；`AMBIGUOUS` 使用全部确定候选。Planner 总是确定 Delta contexts 和其余 current-full continuation；它不让模型判断“负面 Delta 是否已经足够”。Delta 只能提前确认 `SUPPORTED`；Delta manifest 完成后仍不能组成完整 current Support，就产生内部控制结果 `NEEDS_FULL` 并继续读取其余 current contexts。只有完整 Full manifest 完成后才允许最终 `UNSUPPORTED`。
+
+当 Delta 已覆盖完整 Full manifest，或完整序列化后的 Full 计划不比“Delta + 可能的 Full continuation”更贵时，Planner 直接从 `FULL_CURRENT_REVISION` 开始。这样不会出现 `remaining_full_contexts=[]` 却仍等待另一次 Full 判断的状态。这个决定完全由 exact correspondence、CatalogDiff、coverage、manifest 与 token/capacity 估算生成，不调用分类器或 Structured LLM，也没有 `negative_conclusive` 一类模型字段。
 
 Full 表示逻辑上覆盖完整 effective current Projection，不表示一次把原始全文塞进模型。小文档可用一个 AssessmentContext；大文档将完整 current Catalog 划分成多个 AssessmentContexts，按 manifest 流式处理并携带 grounded previous state。只有所有 contexts 完成且 provider coverage 为 complete，才可产生 `unsupported`。Full 不能把 `PARTIAL_PROJECTION` 升级为完整快照。
 
@@ -153,31 +155,32 @@ Support 有两种确定的 cache 布局。一个固定 current Evidence Catalog 
 
 Support Assessment 的 work key 是 `(memory_id, independent_support_id)`。不同来源或不同 Evidence Unit 不能拼成一个 Support；一个 Evidence Unit 始终是一 Primary、零到多个 Required。一个 ReadingGroup 可以包含多条 EvidenceFragments，一个 AssessmentContext 也可以包含多个 ReadingGroups，因此“当前 ReadingGroup”与多 Evidence 并不冲突。
 
-完整 manifest 结束后的最终 Support wire result 是判别联合：
+Support 的最终语义结果只有：
 
 ```text
 SUPPORTED(work_id, primary_ref, required_refs[])
 UNSUPPORTED(work_id)
-INSUFFICIENT(work_id)
 ```
 
-只有 `SUPPORTED` 允许并要求 selector 字段；`UNSUPPORTED` 与 `INSUFFICIENT` 的 schema 禁止 `primary_ref` 和 `required_refs`，不再发送 `null` 与空数组。Primary/Required 必须来自当前 AssessmentContext 的 Evidence Candidate Catalog，或来自 `previous_state` 中已由更早 AssessmentContext grounding 的 current refs；历史 refs 永远不可选择。
+只有 `SUPPORTED` 允许并要求 selector 字段；`UNSUPPORTED` 的 schema 禁止 `primary_ref` 和 `required_refs`，不再发送 `null` 与空数组。Primary/Required 必须来自当前 AssessmentContext 的 Evidence Candidate Catalog，或来自 `previous_state` 中已由更早 AssessmentContext grounding、并在本次请求中重新提供正文的 current refs；历史 refs 永远不可选择。
 
-每个流式 `support_assess` step 另外输出下一步所需的 grounded witness state；其中 status 在 manifest 完成前只是累计判断，不是最终 lifecycle 结论：
+每个流式 `support_assess` step 只输出本次新增的 bounded grounded witnesses，不输出累计 `status`：
 
 ```json
 {
   "work_id": "WRK-0001",
-  "support_refs": ["PRM-0012"],
-  "opposing_refs": ["PRM-0041"],
-  "uncertain": false,
-  "status": "insufficient"
+  "witness_delta": {
+    "support_witness_refs": ["PRM-0012"],
+    "opposing_witness_refs": ["PRM-0041"]
+  }
 }
 ```
 
-例如 Full scope 分为两个 AssessmentContexts：第一组找到“HR 审批”并把 `PRM-0012` 放入 `support_refs`；第二组收到该 state，找到“Finance 审批”的 `REQ-0041`。只有第二组完成且 manifest 收齐后，`support_finalize` 才产出 `SUPPORTED(WRK-0001, PRM-0012, [REQ-0041])`。若第二组出现取消 Finance 审批的 current Evidence，则 ref 进入 `opposing_refs`，最终不能被第一组的局部支持覆盖。
+程序验证 `witness_delta` 的 membership 后，与此前 supporting/opposing sets 做单调 union；后一次模型输出不能通过省略删除早期 decisive witness。下一次调用必须同时收到这个程序持有的 union 中所有 current refs 的准确正文与 Primary 资格，形成 `carried_witness_catalog`；只传 ref 会让模型无法继续验证组合语义。例如 Full scope 分为两个 AssessmentContexts：第一组找到“HR 审批”并把 `PRM-0012` 加入 supporting set；第二组收到该 union 及 `PRM-0012` 的 current 正文，找到“Finance 审批”的 `REQ-0041`。最后一个 `support_assess` 返回 `SUPPORTED(WRK-0001, PRM-0012, [REQ-0041])`；`support_finalize` 验证 selectors、manifest 与 coverage 后产生 `COMPLETED(SUPPORTED)` 收据。若第二组出现取消 Finance 审批的 current Evidence，则 ref 被 union 到 opposing set，最终不能被第一组的局部支持覆盖。
 
-最终状态只在 work manifest 证明选定 AssessmentScope 的全部 contexts 已处理后计算。不同合法顺序或分包必须产生相同 lifecycle proposal；不一致时为 `insufficient`、KEEP 且不推进 Support baseline。完整 Support Assessment 是依赖多字段的 Evidence 计划，统一由 Structured LLM 完成，不拆成按 confidence 选择 backend 的 cascade。
+Delta manifest 完成后，Structured LLM 只能返回 `SUPPORTED(...)` 或内部过渡 `NEEDS_FULL(work_id, witness_delta)`。`NEEDS_FULL` 不是 Support/lifecycle 状态；程序先将 delta 单调合并到累计 witnesses，Full continuation 再只读取尚未处理的 contexts。Full manifest 与 authoritative coverage 均完成后，Structured LLM 才能返回 `SUPPORTED(...)` 或 `UNSUPPORTED(work_id)`。
+
+执行结果由程序另行包装为 `COMPLETED(SUPPORTED|UNSUPPORTED)` 或 `UNRESOLVED(reason)`。Partial coverage、缺失 context、容量/Provider/schema 失败、模型 abstain 或合法分包间不一致均为 `UNRESOLVED`：KEEP、不允许破坏性动作、不推进 Support baseline。完整 Support Assessment 是依赖多字段的 Evidence 计划，统一由 Structured LLM 完成，不拆成按 confidence 选择 backend 的 cascade。
 
 ### 0.6 Claim Reconciliation 使用完整同 Unit pair manifest
 
@@ -198,10 +201,10 @@ Catalog 正文作为共享 state 编码，pair questions 只引用 application-i
 1. affected object 有 authoritative coverage 或 explicit tombstone；
 2. Claim Extraction、Support Assessment 与 work manifest 完整且无技术失败；
 3. decisive current witnesses 可重新解析，Support set 与 revision 未 stale；
-4. Delta 不能证明当前无 Support 时，仅为 at-risk fixed claims 流式检查完整 current Projection；
+4. `UNSUPPORTED` proposal 是否绑定已完成、authoritative 的 Full receipt；
 5. 模拟 source-scoped removal 后，Memory 是否还有其他 Active Support。
 
-这一步没有人工确认。它是固定 claim 的自动验证，不是语义 Evidence retrieval。找到 current Support 时自动 KEEP 或替换 Evidence；UNKNOWN、`insufficient`、capacity failure 和 stale input 均自动 KEEP。只有最后一个 Active Support 被合法移除时才可 retire Memory。
+这一步没有人工确认，也不会再次扫描 current Projection。Delta→Full 语义覆盖只由 Support Planning/Assessment 执行一次；DestructiveValidation 只验证完成收据、coverage、witnesses、Support count 与 stale guards。UNKNOWN coverage、`UNRESOLVED`、capacity failure 和 stale input 均自动 KEEP。只有最后一个 Active Support 被合法移除时才可 retire Memory。
 
 ### 0.8 Source Unit identity 改变
 
@@ -231,7 +234,7 @@ B 新增
 | 同页移动和同义改写 | changed group 被提取；旧 fixed claim 获得 current Evidence；等价 Candidate 被消费 |
 | 累计 Meeting Minutes 只追加 | 只传 changed groups、fixed claims 与 compact metadata；不因旧 Evidence 分散而 Full |
 | 末尾新增“废止此前所有规则” | opposing witness 对所有 scoped claims 保留到 finalize；不得被后续 group 覆盖 |
-| 旧句删除、未变远处仍有同义支持 | 自动 DestructiveValidation 找到 current Support并 KEEP/换 Evidence |
+| 旧句删除、未变远处仍有同义支持 | Support Assessment 的 Full continuation 找到 current Support并换 Evidence；DestructiveValidation 只验证完成收据 |
 | 近全文重写 | current-full ReadingGroups 流式完成；全部 work 完成后一次提交，超能力则整轮 fail closed |
 | Jira 完整删除 Comment | authoritative comments coverage 允许移除对应 Support |
 | Jira Partial pagination | 未返回 Comment 为 UNKNOWN，禁止 retire |
@@ -365,17 +368,19 @@ Representation 为需要的固定 revision 构建一次索引；相同 base/targ
 ### 6.2 输入范围与请求预算
 
 首次导入：L1 使用全文的授权 catalog，超限时按合法结构分批提取候选。
-正常更新：统一 RevisionContextPlanner 为每个 work 先确定最低安全 scope；仅在 Delta 与
-current-full 都满足相同覆盖要求时才构造两个完整候选并比较成本。delta 候选包括新增、
-修改结构、对应 ReadingGroups、compact Support metadata、旧 Evidence 的 current
-exact candidates，以及仅为 `MODIFIED`、`REMOVED`、`AMBIGUOUS` 工作提供的 bounded
-exact historical excerpts。`EXACT_UNCHANGED` 不重复传输旧正文。current-full 候选包括完整有效当前投影，不携带非当前
-history。两者按实际请求格式对 prompt、schema、图片、输出预留、跨请求重复内容、
-初始状态与已有累计状态
-预留作确定性成本预测；未来模型选出的累计状态只能在运行时知道，因此每个实际
-请求仍须重新通过容量准入。选择预测成本较低且满足完整覆盖的方案，相同成本选
-delta。不使用改动比例、文档大小比例或 Source 类型阈值。程序可解析完整快照以
-计算准确 delta；这本身不授权全文。
+正常更新：统一 RevisionContextPlanner 用 exact correspondence、CatalogDiff、coverage
+和完整 current manifest 建立 delta contexts 与尚未处理的 full continuation。delta
+包括新增/修改结构、对应 ReadingGroups、compact Support metadata、旧 Evidence 的
+current exact candidates，以及仅为 `MODIFIED`、`REMOVED`、`AMBIGUOUS` 工作提供的
+bounded exact historical excerpts。`EXACT_UNCHANGED` 不重复传输旧正文；current-full
+也不携带非当前 history。
+
+对 Support Assessment，Delta 只能提前确认 `SUPPORTED`；未找到完整 Support 就继续
+已经规划好的 Full remainder，不能把局部未命中当作 `UNSUPPORTED`。Planner 可在完整
+Full 的实际序列化成本低于“Delta + continuation”时直接从 Full 开始。这个判断不调用
+分类器或 Structured LLM，不使用改动比例、文档大小比例或 Source 类型阈值。对 Claim
+Extraction，scope 仍由新增/修改 Primary 授权与容量决定。程序可解析完整快照以计算
+准确 delta；这本身不授权全文。
 
 Claim Extraction 与 Support Assessment 都可将选定的 Delta 或 current-full 按
 representation-safe ReadingGroups 流式传输。Claim Extraction 仅从每组获授权
@@ -401,7 +406,8 @@ Artifact 继续使用已有原子表示。reading index 不负责预算或分批
 基线是这组 Support 最后可靠验证的快照，不是 Evidence 的创建版本或最近一次
 Source sync。完全没有已验证基线时，L3 可在目标覆盖充分时通过 current-full
 重新证明；记录声称存在命名基线但快照丢失、身份不符、损坏、不可访问或覆盖不全
-属于技术合同失败，不能改写成 full、`insufficient` 或成功空结果。L1 声明为
+属于 `UNRESOLVED(missing_or_invalid_baseline)` 技术结果，不能改写成 full、
+`unsupported` 或成功空结果。L1 声明为
 incremental 而缺少所需基线时也不能静默变成首次导入。
 
 这里的 full 是完整读取当前有效 Source Projection，不是重新抓取 provider 历史或
@@ -421,11 +427,11 @@ context 的四分之一。输入与输出超限均通过既有传输分批处理
 
 普通文本模型输入只采用 prompt-local ref、结构标题和准确原文；重复 Observation/Revision metadata、digest、offset、内部 ID 与权限映射由程序持有，不进入 LLM。一个 ReadingGroup 可包含多个可选择 EvidenceFragments；一个 AssessmentContext 可包含一个或多个 ReadingGroups。
 
-Support Assessment 的逻辑输入由 AssessmentScope 定义，物理输入由一个或多个 AssessmentContexts 供应。完整请求能装下时一次判断多条 fixed claims；大输入按 context 与 cohort 分片，批间只携带 grounded support refs、opposing refs 和 uncertainty。最终状态只在程序验证完整 manifest、current Evidence 和原子提交条件后产生。
+Support Assessment 的逻辑输入由 AssessmentScope 定义，物理输入由一个或多个 AssessmentContexts 供应。完整请求能装下时一次判断多条 fixed claims；大输入按 context 与 cohort 分片，批间携带程序单调累计的 grounded supporting/opposing refs，并在下一次请求中重新提供其 current 正文。最终状态只在程序验证完整 manifest、current Evidence 和原子提交条件后产生。
 
 Evidence-fixed、多 Memory cohorts 使用 `REVISION_FIRST` cache layout；cohort-fixed、多 contexts streaming 使用 `COHORT_FIRST` cache layout。稳定 Evidence Catalog 或 fixed claims 必须确定排序和序列化；`previous_state` 与纠错诊断始终在可缓存前缀之后。缓存命中只优化成本和延迟，不参与 work identity、正确性或恢复。
 
-`support_assess` 保存模型阶段；`support_finalize` 仅是程序完成收据。分批 witness 不成为 Evidence 或 lifecycle state；不同合法顺序必须归约为相同 proposal，否则 `insufficient` 并 KEEP。
+`support_assess` 保存模型阶段；`support_finalize` 仅是程序完成收据。分批 witness 不成为 Evidence 或 lifecycle state；不同合法顺序必须归约为相同 proposal，否则执行结果为 `UNRESOLVED(order_disagreement)` 并 KEEP。
 
 ## 7. 步骤四：Claim Extraction【早期合同已实现；第 0 节优化待验收】
 
@@ -453,24 +459,37 @@ Evidence-fixed、多 Memory cohorts 使用 `REVISION_FIRST` cache layout；cohor
 
 首先按稳定 SourceUnit ID 读取通过本 Unit 的独立 Evidence Units 获得支持的 Active Memories。首次导入没有同 Unit old Support 时跳过。
 
-程序使用 fragment/container digest、结构 locator 与 coverage 将 prior Evidence 分类为 `EXACT_UNCHANGED`、`CONTAINER_CHANGED`、`MODIFIED`、`REMOVED`、`AMBIGUOUS` 或 `UNKNOWN`。`UNKNOWN` 由程序直接产生 `insufficient` 并 KEEP。`MODIFIED`、`REMOVED`、`AMBIGUOUS` 固定携带一次 old exact excerpt；其他状态禁止携带 old excerpt。
+程序使用 fragment/container digest、结构 locator 与 coverage 将 prior Evidence 分类为 `EXACT_UNCHANGED`、`CONTAINER_CHANGED`、`MODIFIED`、`REMOVED`、`AMBIGUOUS` 或 `UNKNOWN`。`UNKNOWN` 由程序直接产生 `UNRESOLVED(partial_coverage)` 并 KEEP。`MODIFIED`、`REMOVED`、`AMBIGUOUS` 固定携带一次 old exact excerpt；其他状态禁止携带 old excerpt。
 
 `EXACT_UNCHANGED` 的 fixed claims 仍与合并后的 ChangeBundles 做 Change Impact Classification。该任务统一交给分类器模型（Jev 或小参数 LLM），每个 claim 对每个 capacity-safe bundle 输出 `AFFECTED` 或 `UNAFFECTED`；程序对多个 bundles 做 OR。没有 confidence fallback。`UNAFFECTED` 完成 KEEP+REBIND；`AFFECTED` 与所有直接受影响状态进入 Structured LLM Support Assessment。
 
-Support Assessment 输入：
+程序先生成 Support 计划；这个决定不调用模型：
+
+```json
+{
+  "work_manifest": ["WRK-0001"],
+  "initial_scope": "DELTA",
+  "delta_contexts": ["CTX-0001"],
+  "remaining_full_contexts": ["CTX-0002", "CTX-0003"],
+  "provider_coverage": "COMPLETE"
+}
+```
+
+每个 Structured LLM `support_assess` 输入：
 
 ```text
-fixed old claim
+phase: delta_scan | full_scan
++ fixed old claim
 + old excerpt exactly for MODIFIED/REMOVED/AMBIGUOUS
 + current AssessmentContext(s)
-+ current Evidence Candidate Catalog
-+ DELTA or FULL_CURRENT_REVISION AssessmentScope
-+ previous grounded witness state
++ current Evidence Candidate Catalog: ref + exact text + primary_eligible
++ previous_state: support_witness_refs + opposing_witness_refs
++ carried_witness_catalog: prior selected current refs + exact text + primary_eligible
 ```
 
 `ReadingGroup` 是可理解结构，内部可有多条 EvidenceFragments；`AssessmentContext` 是一次调用实际读取的一个或多个 ReadingGroups；`AssessmentScope` 是整个 work 的逻辑覆盖。Full 对大文档按 contexts 流式覆盖完整 current Catalog，而不是一次传原始全文。
 
-Structured LLM 输出判别联合：`SUPPORTED` 必须带一 Primary 和零到多个 Required；`UNSUPPORTED` 与 `INSUFFICIENT` 禁止 selector 字段。返回 `INSUFFICIENT` 时保留原 Support 且不推进 baseline。返回 `UNSUPPORTED` 只提出 source-scoped Support removal，最终是否 supersede/retire 仍由 Lifecycle Planner 检查完整 coverage、其他 Active Supports 和 stale guards。
+非最后一步只输出 `witness_delta` 中本次观察到的 supporting/opposing current refs；程序校验后与已有 state 单调 union。Delta 最后一步输出 `SUPPORTED(primary_ref, required_refs[])` 或内部 `NEEDS_FULL(witness_delta)`；Delta 不能输出 `UNSUPPORTED`。Full 最后一步才输出最终判别联合：`SUPPORTED` 必须带一 Primary 和零到多个 Required；`UNSUPPORTED` 禁止 selector 字段。技术或覆盖失败由程序包装为 `UNRESOLVED(reason)`，不是模型的第三个语义状态。`UNSUPPORTED` 只提出 source-scoped Support removal，最终是否 supersede/retire 仍由 Lifecycle Planner 检查完整 coverage、其他 Active Supports 和 stale guards。
 
 程序解析选择并构造完整 current Evidence Unit；模型判断语义，程序验证 revision、selector membership、角色、digest 与 authority。`REBIND_SUPPORT` 在同一事务中附加 target-Revision Evidence 的新 Support assertion，并将被替换的旧 assertion 标为 inactive；Memory/claim 不变，旧行与历史不改写。
 
@@ -586,7 +605,8 @@ SourceSyncRun/SyncState 汇总页面处理结果，报告成功、局部失败�
 | Claim Extraction | 有获授权 Primary 工作 | current ReadingGroups、授权、解释上下文、实际图片 | Candidate + 当前 Evidence selection | 否 |
 | Candidate Admission | 多个候选需判断准入 | 本次候选集合 | 选择与拒绝理由 | 否 |
 | Change Impact Classification | exact-rebound claims 遇到新增/修改结构 | fixed claims + capacity-safe ChangeBundle | 每 claim 的 `AFFECTED` / `UNAFFECTED`；分类器模型（Jev 或小参数 LLM） | 否 |
-| Support Assessment | `AFFECTED` 或 Evidence 为 modified/removed/ambiguous | fixed claim、明确 old excerpt 规则、AssessmentContext、Evidence Catalog、scope、previous state | 判别联合：supported+selectors / unsupported / insufficient；Structured LLM | 否 |
+| Support Scope Planning | Support work 已建立 | exact correspondence、CatalogDiff、coverage、完整 current manifest、token/capacity 估算 | initial Delta/Full、delta contexts、remaining full contexts；程序 | 否 |
+| Support Assessment | `AFFECTED` 或 Evidence 为 modified/removed/ambiguous | fixed claim、明确 old excerpt 规则、AssessmentContext、current Evidence Catalog、previous witness state | Delta：supported / needs_full；Full：supported / unsupported；Structured LLM | 否 |
 | Claim Reconciliation | 存在 admitted Candidates 与同 Unit incumbents | 共享 Candidate/Memory catalog + 完整 pair manifest | 每 pair 一个 Relation enum；分类器模型（Jev 或小参数 LLM） | 否 |
 | Entity Resolution | 精确名称/别名不足以确定 | mention、实体候选、必要局部语境 | 匹配/不匹配 | 否；实体字典可准备写入 |
 | Cross-document Identity | 精确 claim 未命中且召回候选 | 新旧 claim 与范围 | 等价目标或无目标 | 否 |
@@ -626,7 +646,7 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧
 | Artifact 不适合当前推理 | 准确原始 Artifact 与 eligibility | 依赖它的 Support 走明确未决保护；不伪造视觉验证 | eligibility/既有 Review |
 | 提取 schema/transport 失败 | 固定 target 与成功 sibling batch 输出 | 本页不以不完整提取覆盖提交新知识 | 失败工作；精确输出复用 |
 | 完整请求超容量 | 固定目标与成功阶段 | 按 Source × claim 分批，不截断成“完整” | 精确复用成功阶段；不可分材料或累计判断超能力才报告错误 |
-| Support Assessment 材料不足 (`insufficient`) | 原 Memory、Support、Evidence、验证基线 | 本轮 NOOP，其他处理和 Source 提交继续 | KEEP 记录准确旧 Support IDs，不新增人工确认 |
+| Support execution 未完成 (`UNRESOLVED`) | 原 Memory、Support、Evidence、验证基线 | 本轮 NOOP，其他处理和 Source 提交继续 | KEEP；记录 partial coverage、manifest、capacity、provider/schema、abstention 等 typed reason，不新增人工确认 |
 | Claim Reconciliation 语义不确定/分类矛盾 | 判断诊断与未完成 pair manifest | 不强行支持，不擅自破坏旧知识；缺失 pair 不是 `UNRELATED` | 明确未决失败或既有 authority Review；不自动换模型重试 |
 | 事务锁冲突/可重试提交失败 | 准备结果；业务事务回滚 | 不留下半套 Memory/Support | 同一准备结果重试并重查 guards |
 | target/旧 Memory/Support 已改变 | 历史准备与审计 | 不使用过期判断提交 | 重新针对适用快照准备 |
@@ -648,7 +668,8 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧
 | 语义相同但 Evidence 被拆分/合并、移动或改写 | 接受合法当前片段构成的新完整 Unit；不要求旧/新 offset 接近或 Required 数量相同 |
 | 静态格式有效但当前 workset selector 无效 | 沿现有边界最多一次局部纠正，保持相同输入与 allowed refs；耗尽后产生明确错误，不让外层重跑 extraction、关系分类或同目标整个文档 |
 | revision/access/Primary 资格错误、缺失必需决策、捏造引用或不完整 Support | 保留硬约束，不能默认为有效、无关或独立 ADD；局部修复不可行则明确终止当前工作 |
-| 内容真的存在冲突或无法判断 | Support Assessment `insufficient` 保留旧 Memory并继续；其他语义冲突按既有 authority Review 或明确未决失败处理，不自动重跑期待模型改口 |
+| 完整 current-full 后没有任何 Support | Support Assessment 返回 `UNSUPPORTED`；程序仍需通过 DestructiveValidation、其他 Active Supports 和 stale guards 才能移除/退休 |
+| 覆盖不完整、模型 abstain 或执行失败 | `UNRESOLVED(reason)` 保留旧 Memory；其他语义冲突按既有 authority Review 或明确未决失败处理，不自动换模型期待改口 |
 
 不同职责的容错有不同语义：Candidate Admission 保留原候选是既有准入容错，不能复制成 Support Assessment 或 Claim Reconciliation 的“失败也直接新增”。反过来，后两者的引用硬约束也不能用来取消已批准的非破坏性准入容错。保留已有日志/指标，分别统计确定性规范化、局部纠正、语义 Review、能力失败及实际外层重试；不能只看最终 partial sync 数量。
 

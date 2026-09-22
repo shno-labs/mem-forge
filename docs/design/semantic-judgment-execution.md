@@ -208,15 +208,140 @@ SameUnitRelationClassifier
   -> EQUIVALENT | REFINES | CONTRADICTS | UNRELATED | INSUFFICIENT
 ```
 
-ChangeBundles contain all changed ReadingGroups that fit one shared state. Three groups plus 300 fixed claims therefore produce 300 questions, not 900. If capacity requires several bundles, application code OR-reduces each claim's labels: any `AFFECTED` routes that claim to complete Support Assessment. Evidence already classified `MODIFIED`, `REMOVED` or `AMBIGUOUS` bypasses Change Impact and enters Support Assessment directly; `UNKNOWN` is deterministically `insufficient` and KEEP.
+ChangeBundles contain all changed ReadingGroups that fit one shared state. Three groups plus 300 fixed claims therefore produce 300 questions, not 900. If capacity requires several bundles, application code OR-reduces each claim's labels: any `AFFECTED` routes that claim to complete Support Assessment. Evidence already classified `MODIFIED`, `REMOVED` or `AMBIGUOUS` bypasses Change Impact and enters Support Assessment directly; `UNKNOWN` is an application-owned unresolved coverage result and KEEP. It is not a semantic classifier label.
 
 Same-Unit Relation consumes deterministic exact matches first, then constructs the complete remaining `N × M` pair manifest. Catalog bodies occur once in shared state and questions carry IDs. Requests are packed by estimated input capacity and run with bounded concurrency. Every pair must return exactly one label before reduction; partitioning cannot weaken coverage, introduce lifecycle state or publish partial results. Whole-workspace relation discovery remains retrieve-then-classify over bounded `K` because its Cartesian product is unbounded and non-destructive discovery accepts recall loss.
 
 TypeSafe/Jev evaluates independent Choice, Noul or Score questions over shared text state. A small-model LLM adapter emits the same application-owned result schema. Jev's current 64k request limit, text-only input and Choice option limit are adapter capabilities, not domain semantics. Jev has no documented cross-request prompt cache; its efficiency comes from many questions sharing one state. See [Models](https://docs.typesafe.ai/models), [System One](https://docs.typesafe.ai/concepts/system-one.md) and [Parallel questions](https://docs.typesafe.ai/cookbooks/parallel_questions.md).
 
-Complete Support Assessment remains `GenerationWork`, even though its top-level status is an enum. Status, one Primary, zero or more Required refs, opposing witnesses and streamed previous state form one dependent Evidence-plan proposal. Splitting them into independent classifier questions would recreate a second Support engine in application code. Its wire schema is a discriminated union: `SUPPORTED` requires selectors; `UNSUPPORTED` and `INSUFFICIENT` forbid them.
+Complete Support Assessment remains `GenerationWork`, even though its final semantic result is a small union. One Primary, zero or more Required refs, opposing witnesses and streamed previous state form one dependent Evidence-plan proposal. Splitting them into independent classifier questions would recreate a second Support engine in application code.
 
 Missing answers, unknown IDs, incomplete manifests, unsupported modality, capacity failure or provider failure are technical work failures. They never become labels and do not trigger a hidden backend fallback. Retry uses the configured backend and exact work identity; changing backend is an explicit operation policy/configuration change.
+
+### Support planning and execution contract
+
+The boundary is task-shaped rather than confidence-shaped:
+
+| Step | Owner | Input | Output |
+| --- | --- | --- | --- |
+| Exact Evidence correspondence | application code | prior Evidence metadata + current Fragment catalog + provider coverage | `EXACT_UNCHANGED / CONTAINER_CHANGED / MODIFIED / REMOVED / AMBIGUOUS / UNKNOWN` |
+| Support context planning | application code | correspondence + CatalogDiff + ReadingGroups + complete current manifest + capacity forecast | Delta contexts + remaining Full contexts + coverage receipt |
+| Change Impact | classifier model (Jev or small-parameter LLM) | fixed claims + one shared capacity-safe ChangeBundle | exactly one `AFFECTED / UNAFFECTED` per claim |
+| Delta/Full semantic scan | Structured LLM | fixed claims + current AssessmentContext catalog + rule-governed historical excerpt + carried current witnesses | next witness state; at phase end `SUPPORTED / NEEDS_FULL / UNSUPPORTED` as allowed below |
+| Final validation and lifecycle reduction | application code | model proposal + complete manifest + allowed refs + current Support set + stale guards | `COMPLETED` or `UNRESOLVED`; guarded KEEP/REBIND/REMOVE proposal |
+
+The classifier is used only for an independent closed-label question whose full
+input is already supplied: “can this changed bundle affect this fixed claim?” It
+does not search for or compose Evidence. The Structured LLM is used where several
+current fragments may jointly support a claim and one Primary plus Required refs
+must be selected as a coherent unit.
+
+`RevisionContextPlanner` is deterministic application code. It uses exact
+Fragment correspondence, CatalogDiff, provider coverage, capacity estimates and
+the current-revision manifest to produce this conceptual plan:
+
+```json
+{
+  "work_manifest": ["WRK-0001"],
+  "initial_scope": "DELTA",
+  "delta_contexts": ["CTX-0001"],
+  "remaining_full_contexts": ["CTX-0002", "CTX-0003"],
+  "provider_coverage": "COMPLETE",
+  "current_ref_catalog": ["PRM-0001", "REQ-0002"]
+}
+```
+
+The planner starts at `FULL_CURRENT_REVISION` when Delta already covers the
+complete Full manifest, or when the complete serialized Full plan is no more
+expensive than Delta followed by its continuation. It does not ask a
+model whether a negative Delta is conclusive, and the plan has no
+`negative_conclusive` field. Delta may finalize only a positive `SUPPORTED`
+result. A Delta scan that cannot build complete current Support transitions to
+the already-planned Full continuation. Only a completed Full manifest under
+authoritative coverage may finalize `UNSUPPORTED`.
+
+Each non-final Structured-LLM scan call receives only semantic material:
+
+```json
+{
+  "phase": "delta_scan",
+  "context": {
+    "context_id": "CTX-0001",
+    "reading_groups": [{"heading": "Approval", "text": "..."}],
+    "evidence_catalog": [
+      {"ref": "PRM-0001", "text": "...", "primary_eligible": true}
+    ]
+  },
+  "works": [{
+    "work_id": "WRK-0001",
+    "fixed_claim": "Payroll release requires two approvals.",
+    "historical_excerpt": "...",
+    "previous_state": {
+      "support_witness_refs": [],
+      "opposing_witness_refs": []
+    },
+    "carried_witness_catalog": []
+  }],
+  "is_last_context_in_phase": true
+}
+```
+
+`historical_excerpt` is present exactly for `MODIFIED`, `REMOVED` and
+`AMBIGUOUS`; it is absent for every other Evidence state. The application
+rehydrates every carried current witness as `{ref, text, primary_eligible}` in
+`carried_witness_catalog`; refs alone are not enough for the next call to reason
+about their meaning. Digests, offsets, durable IDs, coverage proofs and
+lifecycle history remain outside model input.
+
+A non-final call returns only bounded current-revision witness additions:
+
+```json
+{
+  "work_id": "WRK-0001",
+  "witness_delta": {
+    "support_witness_refs": ["PRM-0001"],
+    "opposing_witness_refs": []
+  }
+}
+```
+
+Every returned ref must occur in the call's current catalog or carried current
+witness catalog. Historical refs are never selectable. Application code
+monotonically union-merges validated `witness_delta` refs into the prior
+supporting/opposing sets; a later model call cannot delete an earlier decisive
+witness by omission. The model does not emit a cumulative `status`; the
+application knows whether the manifest is complete and rehydrates its owned
+union into the next `carried_witness_catalog`.
+
+After the Delta manifest completes, the Structured LLM returns one of:
+
+```text
+SUPPORTED(work_id, primary_ref, required_refs[])
+NEEDS_FULL(work_id, witness_delta)
+```
+
+`NEEDS_FULL` is an internal execution transition, not a lifecycle or Support
+status. Application code first merges its `witness_delta`, then the Full
+continuation consumes the remaining current contexts and the accumulated
+witnesses instead of restarting. After the Full manifest completes,
+the only semantic results are:
+
+```text
+SUPPORTED(work_id, primary_ref, required_refs[])
+UNSUPPORTED(work_id)
+```
+
+The application wraps execution separately:
+
+```text
+COMPLETED(SUPPORTED | UNSUPPORTED)
+UNRESOLVED(reason)
+```
+
+`UNRESOLVED` covers partial provider coverage, incomplete manifest, capacity or
+provider failure, invalid schema, and model abstention. It causes KEEP, blocks
+destructive action and does not advance the Support baseline. It is execution
+state, not a third semantic assessment result.
 
 ## 5. Current semantic-call inventory
 

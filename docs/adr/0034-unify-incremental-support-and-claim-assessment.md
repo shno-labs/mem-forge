@@ -43,9 +43,9 @@ This amendment supersedes the earlier sparse same-Unit Claim Reconciliation and 
 
 After deterministic exact consumption, same-Unit Claim Reconciliation classifies the complete remaining Candidate × Active-incumbent pair manifest. Every pair returns one relation enum. Cross-document discovery retains bounded retrieval followed by classification over `K` pairs.
 
-Exact prior Evidence is classified as `EXACT_UNCHANGED`, `CONTAINER_CHANGED`, `MODIFIED`, `REMOVED`, `AMBIGUOUS` or `UNKNOWN`. Old exact excerpt is supplied only for `MODIFIED`, `REMOVED` and `AMBIGUOUS`; `UNKNOWN` is deterministic `insufficient` and KEEP. Exact-rebound claims are checked against capacity-safe ChangeBundles by a classifier model returning `AFFECTED` or `UNAFFECTED`; affected claims and directly changed Evidence enter complete Structured-LLM Support Assessment.
+Exact prior Evidence is classified as `EXACT_UNCHANGED`, `CONTAINER_CHANGED`, `MODIFIED`, `REMOVED`, `AMBIGUOUS` or `UNKNOWN`. Old exact excerpt is supplied only for `MODIFIED`, `REMOVED` and `AMBIGUOUS`; `UNKNOWN` is application-owned `UNRESOLVED(partial_coverage)` and KEEP. Exact-rebound claims are checked against capacity-safe ChangeBundles by a classifier model returning `AFFECTED` or `UNAFFECTED`; affected claims and directly changed Evidence enter complete Structured-LLM Support Assessment.
 
-`AssessmentScope` is the logical DELTA or FULL_CURRENT_REVISION coverage. `AssessmentContext` is one call's one-or-more ReadingGroups. A ReadingGroup may contain several selectable EvidenceFragments. Full therefore means that all current Catalog contexts are eventually processed, not that raw full text appears in one request. Final Support output is a discriminated union: `SUPPORTED` requires one Primary and zero or more Required refs; `UNSUPPORTED` and `INSUFFICIENT` forbid selectors. `REBIND_SUPPORT` atomically attaches target-Revision Support and marks the replaced assertion inactive without altering Memory identity or rewriting historical rows.
+`AssessmentScope` is the logical DELTA or FULL_CURRENT_REVISION coverage. `AssessmentContext` is one call's one-or-more ReadingGroups. A ReadingGroup may contain several selectable EvidenceFragments. Full therefore means that all current Catalog contexts are eventually processed, not that raw full text appears in one request. The deterministic planner builds Delta plus its remaining Full continuation. Delta can finalize only `SUPPORTED`; otherwise it emits internal `NEEDS_FULL`. Completed Full produces the final semantic union `SUPPORTED(primary_ref, required_refs[]) | UNSUPPORTED`; incomplete coverage/execution is separately `UNRESOLVED(reason)` and KEEP. `REBIND_SUPPORT` atomically attaches target-Revision Support and marks the replaced assertion inactive without altering Memory identity or rewriting historical rows.
 
 ### Domain vocabulary
 
@@ -126,7 +126,7 @@ The planner deterministically classifies every part of prior Support Evidence:
 | `MODIFIED` | object/structure remains but fragment text changed | old exact excerpt + current corresponding ReadingGroup |
 | `REMOVED` | authoritative complete coverage proves the old fragment absent | old exact excerpt + current-full scope |
 | `AMBIGUOUS` | exact/structural correspondence is not unique | old exact excerpt + all candidate ReadingGroups |
-| `UNKNOWN` | partial coverage cannot prove presence or absence | deterministic `insufficient`, KEEP, no model call |
+| `UNKNOWN` | partial coverage cannot prove presence or absence | deterministic `UNRESOLVED(partial_coverage)`, KEEP, no model call |
 
 `EXACT_UNCHANGED` proves survival of the original fragment, not absence of a distant exception. All added/modified ReadingGroups are grouped into capacity-safe ChangeBundles. A classifier model evaluates every exact-rebound fixed claim against each bundle as `AFFECTED` or `UNAFFECTED`; code OR-reduces multiple bundles. Only all-`UNAFFECTED` work completes KEEP+REBIND. There is no per-item confidence fallback.
 
@@ -136,7 +136,7 @@ The application retains Memory, Support and Evidence IDs, Observation/Revision i
 
 `ReadingGroup` is a coherent current structure containing one or more selectable EvidenceFragments. `AssessmentContext` is one call's one-or-more ReadingGroups and prompt-local Evidence Catalog. `AssessmentScope` is the complete logical DELTA or FULL_CURRENT_REVISION work.
 
-Delta contains all changed ReadingGroups, fixed claims/compact Support metadata, current context for directly affected Evidence, and historical excerpts exactly for `MODIFIED`, `REMOVED` and `AMBIGUOUS`. Evidence distribution alone does not approach Full. Removed or unresolved Support requires current-full when Delta cannot establish complete current Support. If both scopes satisfy the same correctness requirement, the planner may select the lower total serialized-token forecast; cost cannot downgrade required Full work to Delta.
+Delta contains all changed ReadingGroups, fixed claims/compact Support metadata, current context for directly affected Evidence, and historical excerpts exactly for `MODIFIED`, `REMOVED` and `AMBIGUOUS`. Evidence distribution alone does not approach Full. The planner deterministically produces Delta contexts and the remaining current-full continuation from exact correspondence, CatalogDiff, coverage, manifest and capacity. It never asks a model whether a negative Delta is conclusive. Delta can complete only a positive `SUPPORTED` result; otherwise work continues through the remaining Full contexts. The planner starts Full directly when Delta already covers the complete Full manifest, or when the complete serialized Full forecast is no more expensive than Delta plus continuation.
 
 Current-full means all eligible effective-current Catalog contexts are processed. A small document may fit one AssessmentContext; a large one streams several contexts under one manifest and grounded previous state. Only complete context coverage plus authoritative provider coverage may produce `unsupported`; Full never upgrades a partial Projection.
 
@@ -146,7 +146,7 @@ Current-full means all eligible effective-current Catalog contexts are processed
 
 Support Assessment works at `(memory_id, independent_support_id)` granularity. An Evidence Unit remains one Primary plus zero or more Required refs, possibly selected from several fragments or ReadingGroups in the current AssessmentContext.
 
-The final wire result is a discriminated union: `SUPPORTED(work_id, primary_ref, required_refs[])`, `UNSUPPORTED(work_id)`, or `INSUFFICIENT(work_id)`. Only `SUPPORTED` admits selectors. Its selectable current pool is the current AssessmentContext catalog plus current refs grounded by earlier contexts in previous state; historical refs are never selectable. Streamed previous state carries grounded supporting refs, opposing refs, cumulative status and uncertainty; it is execution data, not lifecycle state. Final status is computed only after the selected AssessmentScope manifest completes, and order/partition disagreement yields `insufficient` and KEEP.
+The final semantic wire result is `SUPPORTED(work_id, primary_ref, required_refs[]) | UNSUPPORTED(work_id)`. Only `SUPPORTED` admits selectors. Its selectable current pool is the current AssessmentContext catalog plus current refs grounded by earlier contexts and rehydrated with exact current text in `carried_witness_catalog`; historical refs are never selectable. Streamed model output carries only `witness_delta` additions. Application code validates and monotonically union-merges them into grounded supporting/opposing sets, so omission cannot erase an earlier witness; no cumulative status is model-owned. Delta completion returns `SUPPORTED` or internal `NEEDS_FULL(witness_delta)`; completed Full returns `SUPPORTED` or `UNSUPPORTED`. Partial coverage, incomplete manifests, capacity/provider/schema failure, model abstention or order disagreement become application-owned `UNRESOLVED(reason)` and KEEP.
 
 ### Complete same-Unit Claim Reconciliation
 
@@ -164,15 +164,14 @@ an automatic `DestructiveValidation` over the affected fixed claims. It verifies
 2. complete Claim Extraction and Support Assessment manifests with no technical
    failure or unresolved independent Support;
 3. resolvable decisive current witnesses and non-stale Support-set hashes;
-4. whether the complete effective current Projection still supports the fixed
-   claim when Delta alone cannot establish absence; and
+4. every `UNSUPPORTED` proposal binds a completed authoritative Full receipt;
 5. the aggregate active-Support count after simulating source-scoped removals.
 
-The validator may stream the complete effective current Projection for only the
-at-risk fixed claims. This is fixed-claim validation, not semantic Evidence
-retrieval. Finding current Support changes the proposal to KEEP or Evidence
-replacement. Unknown coverage, model uncertainty, capacity failure or stale
-input also yields KEEP and leaves the validation baseline unchanged. Only zero
+The validator does not run another semantic scan. Support Planning/Assessment
+owns the single Delta-to-Full continuation; DestructiveValidation verifies its
+receipt, manifests, witnesses, Support count and stale guards. Unknown coverage,
+unresolved execution, capacity failure or stale input yields KEEP and leaves the
+validation baseline unchanged. Only zero
 remaining active Supports may retire a Memory. Another source's active Support
 always prevents retirement by the current source.
 
@@ -228,9 +227,12 @@ identity continuity, or partial lifecycle commits.
    still requires authorized added/changed complete structures or canonical
    fields, even when unchanged context is readable. Existing-claim validation
    can use current unchanged Evidence without authorizing duplicate extraction.
-3. One Support Assessment returns a discriminated result for the fixed claim.
-   `SUPPORTED` carries one current Primary and zero or more Required refs;
-   `UNSUPPORTED` and `INSUFFICIENT` carry no selectors. The application resolves
+3. One completed Support Assessment returns a discriminated semantic result for
+   the fixed claim. `SUPPORTED` carries one current Primary and zero or more
+   Required refs; `UNSUPPORTED` carries no selectors. Delta may only finalize
+   `SUPPORTED`; otherwise internal `NEEDS_FULL` continues through the remaining
+   Full manifest. Incomplete coverage or execution returns application-owned
+   `UNRESOLVED(reason)` and KEEP. The application resolves
    complete current Evidence Units, and Required membership may split, merge,
    grow or shrink. An old offset locates only its own revision. Semantic selection
    of supplied current fragments does not reconstruct the author's edit history.
@@ -265,10 +267,12 @@ identity continuity, or partial lifecycle commits.
 
 Bounded structural reading groups deliberately accept occasional semantic false
 acceptance when a dependency outside the supplied group is missing and the model
-does not recognize the gap. Choosing current-full eliminates that particular
-omission for a fitting current snapshot, but does not claim semantic recall.
-Recognized uncertainty, illegal provenance, incomplete delta, visibility errors,
-and destructive authority violations are not covered by that tradeoff.
+does not recognize the gap. Current-full eliminates that particular omission for
+a fitting current snapshot, but does not claim semantic recall. A completed Delta
+that cannot establish Support normally transitions through `NEEDS_FULL`; it is
+not an error. Illegal provenance, incomplete planned execution or provider
+coverage, visibility errors, model abstention and destructive-authority
+violations instead produce typed unresolved/fail-closed outcomes.
 Supplemental agentic reads remain the separate beta in
 [Cloud issue #468](https://github.com/dodoman-sun/memforge-cloud/issues/468).
 
@@ -311,8 +315,8 @@ current validation. L3 may establish one through a new complete-current
 assessment and normal Plan when the current target provides complete authorized
 coverage. This absent-baseline case is distinct from a recorded baseline whose
 named snapshot is missing, mismatched, corrupt, inaccessible, or incomplete.
-The latter is a technical contract failure and must not be converted into
-current-full, semantic `insufficient`, or a successful empty result. L1 likewise
+The latter is `UNRESOLVED(missing_or_invalid_baseline)` and must not be converted
+into current-full, semantic `unsupported`, or a successful empty result. L1 likewise
 must not turn an incremental request with an unavailable required base into an
 initial full extraction.
 
@@ -404,8 +408,8 @@ record request coverage and capability failures rather than silently truncating.
 
 ## Unified revision input planning and bounded execution
 
-The revision-input planner supersedes both full-first fallback and unconditional
-delta-first selection. It is source-neutral: representation profiles supply exact
+The revision-input planner supersedes both blind full-first execution and a
+negative conclusion from Delta alone. It is source-neutral: representation profiles supply exact
 structures and reading groups; the planner does not branch on Confluence, Jira,
 Teams, GitHub, local files, or agent clients. Support Assessment has one model responsibility:
 assess the fixed claim and update its current Support evidence in light of the
@@ -414,8 +418,8 @@ compliance; missing results or unfinished examples do not by themselves revoke a
 normative obligation. Deletion, rewrite, heading/scope change, and Required
 split/merge use that same contract rather than source-specific classifiers.
 
-For a valid base/target pair, the planner constructs a delta candidate and a
-current-full candidate before choosing. Delta contains all changed current
+For a valid base/target pair, the planner constructs Delta contexts plus the
+ordered remaining current-full continuation. Delta contains all changed current
 structures, bounded current reading groups, compact prior-Support metadata,
 current candidates for exact unchanged Evidence, and bounded exact historical
 excerpts only for `MODIFIED`, `REMOVED` or `AMBIGUOUS` Evidence. It does not repeatedly
@@ -428,33 +432,31 @@ history, deleted upstream data, a repair for incomplete collection, or a grant o
 new extraction authority. Partial Projection carry-forward remains current input;
 an upstream omission without authoritative coverage still cannot prove deletion.
 
-Each candidate receives a deterministic request-format forecast across all
-requests needed for the logical assessment, including prompt/schema transport,
-repeated per-request material, initial state, the existing cumulative-state
-reserve, output reserve and supplied images. Future model-selected cumulative
-state is unknowable during mode selection, so every emitted request still passes
-actual admission before execution. After materializing delta, the planner may use
-a safe image-free full lower bound to stop when full cannot win; otherwise it
-materializes full before choosing. A plan is eligible only when it preserves
-required coverage and every indivisible reading group fits the effective route
-capacity. Claim Extraction and Support Assessment may both stream exact,
-representation-safe ReadingGroups under one complete work manifest. The lower
-forecast token cost wins and delta wins a tie; request and image counts/bytes
-remain diagnostics while image token cost is part of the
-request token count. The planner does not use an edit ratio, document-size
-percentage, Fragment count percentage, or source-type preference. Mode selection
-is execution policy only: Claim Extraction still limits Primary to authorized current work,
-while Support Assessment may select any legitimately eligible current Evidence offered for the
-fixed claim.
+The plan receives a deterministic request-format forecast across all requests,
+including prompt/schema transport, repeated material, initial/carried-state
+reserve, output reserve and images. Every emitted request still passes actual
+capacity admission. A plan is eligible only when every indivisible ReadingGroup
+fits the route. Support starts with Delta unless Delta already covers the complete
+Full manifest, or the complete serialized Full plan is no more expensive than
+Delta plus its possible continuation. Delta can finalize
+only `SUPPORTED`; otherwise internal `NEEDS_FULL` consumes the planned remainder.
+Only completed current-full may finalize `UNSUPPORTED`. Claim Extraction and
+Support Assessment may both stream exact ReadingGroups under complete manifests,
+but Claim Extraction still limits Primary to authorized current work. The planner
+does not use edit ratio, document-size percentage, Fragment-count percentage or
+source-type preference, and it never asks a model whether a negative Delta is
+conclusive.
 
 A fitting delta and claim group uses one model request. Larger deltas use the same
 cumulative assessment contract over stable Source batches. Each request receives
 the fixed claims, compact Support metadata, current exact catalog, the affected
-bounded historical excerpts and processed-group metadata. Cumulative state keeps
-selected supporting refs, decisive opposing refs and an uncertainty marker. It
-does not carry an unbounded prose narrative. Final status is derived only after
-the complete group manifest is satisfied; an unrelated later group cannot erase
-an earlier revocation or exception.
+bounded historical excerpts and processed-group metadata. Cumulative state is
+application-owned: code validates and monotonically union-merges each model
+`witness_delta` into supporting/opposing current refs; the next request rehydrates
+that union with exact current text and Primary eligibility. It does not
+carry an unbounded prose narrative or cumulative Support status. Final status is
+derived only after the complete group manifest is satisfied; an unrelated later
+group cannot erase an earlier revocation or exception.
 Batches describe one base/target pair, not intermediate Source revisions. When
 Support Assessment has no recorded verified baseline and complete-current proof is permitted,
 current-full uses the same executor without assuming old Support validity. A
@@ -462,7 +464,8 @@ named but unavailable or mismatched baseline is not this case and fails before
 semantic assessment.
 Here “old” means Evidence from the historical Source revision. Earlier batches
 of this same target revision remain valid assessment context in both modes;
-their selected refs do not expire when the next batch omits their raw text.
+their selected current refs remain grounded because the next batch supplies the
+corresponding exact text through `carried_witness_catalog`.
 
 Current selectors are limited to the current catalog and grounded current refs in
 the cumulative witness state supplied in that request. These refs form one shared
@@ -476,15 +479,15 @@ refs; it does not require a final model request to reread all retained raw text.
 Cumulative witnesses are inference state, not stored Evidence. Bounded execution
 still accepts model semantic misses, but complete range coverage, decisive-witness
 retention and order-invariant reduction prevent transport partitioning from silently
-forgetting an earlier judgment. An `insufficient` Support Assessment result skips
-that incumbent for this revision: the program emits a bare NOOP / KEEP, preserves
-its existing Support and Evidence, and does not advance its validation baseline.
-If any independent Support is insufficient, the whole incumbent is skipped for
-this round. Other incumbents and extraction candidates continue, and the Source
-revision may commit; this supersedes stopping the Unit on L3 insufficiency. No
-Review or additional model call is required. The existing Plan records the exact
-preserved Support IDs on its KEEP decision under the usual Support-set stale guard.
-This exception cannot validate a new attachment or authorize destructive mutation.
+forgetting an earlier judgment. A Support Assessment that cannot complete produces
+`UNRESOLVED(reason)`: the program emits a bare NOOP / KEEP, preserves its existing
+Support and Evidence, and does not advance its validation baseline. If any
+independent Support is unresolved, the whole incumbent is skipped for this round.
+Other incumbents and extraction candidates continue, and the Source revision may
+commit. No Review or hidden model substitution is required. The existing Plan
+records the exact preserved Support IDs on its KEEP decision under the usual
+Support-set stale guard. This exception cannot validate a new attachment or
+authorize destructive mutation.
 Skipped incumbents remain in the complete same-Unit relation manifest, but their
 preserved Support prevents those relation labels from authorizing a destructive
 action. They also remain eligible for ordinary candidate identity matching and
@@ -610,9 +613,11 @@ Completed classifier work binds exact pair manifest, catalog/context digests, ex
 
 ## Complete Support requests and model-facing identifiers
 
-Support Assessment first plans the complete delta and current-full alternatives
-for the complete fixed-claim cohort under one validation baseline, then attempts
-the lower-cost eligible mode. Only a measured input, image, mandatory response-row,
+Support Assessment plans Delta contexts and the remaining current-full continuation
+for the complete fixed-claim cohort under one validation baseline. It starts Full
+when Delta already covers the complete Full manifest, or when the complete
+serialized Full plan is no more expensive than Delta plus its possible
+continuation. Only a measured input, image, mandatory response-row,
 or cumulative-state capacity failure invokes the existing transport partitioning.
 This supersedes both selecting a packing by score before trying complete coverage
 and choosing a mode merely because one request fits. Delta includes changed
@@ -622,7 +627,9 @@ reading groups, and bounded historical excerpts only for `MODIFIED`, `REMOVED` o
 eligible effective current projection without carrying non-current history or
 changing its provider coverage meaning.
 
-The response remains one independent judgment per work item with only its selected
+Delta response is `SUPPORTED(...)` or internal `NEEDS_FULL(witness_delta)`; Full
+response is final `SUPPORTED(...) | UNSUPPORTED`. The response remains one
+independent judgment per work item with only its selected
 Primary/Required refs. A hypothetical claim-by-every-fragment response is an output
 allowance estimate, not a required output shape. That allowance saturates at the
 route's generation capacity; the minimum serialized row coverage must also fit.
@@ -640,20 +647,25 @@ use a minimum four digits and expand without truncation. Aliases remain stable
 across every partition and cumulative state in the same assessment. Encoding and
 decoding affect only identifier fields; source text and reasons are never rewritten.
 Canonical Evidence coordinates and stored work results retain their internal IDs.
-The support work contract is `support-delta-assessment-v2` and the input policy is
-`revision-input-v4`; old completed work is not reinterpreted as new-wire output.
-Evidence compiler and lifecycle semantics are unchanged.
+Implementation must allocate successor Support-work and revision-input contract
+identities for the Delta/Full continuation and witness schemas; old completed work
+is never reinterpreted as new-wire output. Evidence compiler and lifecycle
+semantics are unchanged.
 
 
 ### Compact Support judgments
 
 Final Support judgments use discriminated variants. `SUPPORTED` carries work ID,
-status and complete Primary/Required refs; `UNSUPPORTED` and `INSUFFICIENT` carry
-only work ID and status and cannot carry selectors. The final model wire result does
-not carry generated prose. During streamed assessment, compact witness state carries
-selected supporting refs, decisive opposing refs, cumulative status and an uncertainty
-marker. Application diagnostics may retain a bounded decisive basis outside the final
-wire result. This supersedes the assumption that every successful item needs a
+status and complete Primary/Required refs; `UNSUPPORTED` carries only work ID and
+status and cannot carry selectors. The final model wire result does not carry
+generated prose. During streamed assessment, the model returns only current
+`witness_delta` additions; application code validates and monotonically unions
+them into supporting/opposing sets. Each next call rehydrates that union with exact
+current text and Primary eligibility. Delta may return internal
+`NEEDS_FULL(witness_delta)`; incomplete execution is application-owned
+`UNRESOLVED(reason)`, not a semantic model status. Application diagnostics may retain
+a bounded decisive basis outside the final wire result. This supersedes the
+assumption that every successful item needs a
 generated reason. The canonical stored result retains a deterministic success explanation; downstream
 lifecycle decisions continue to use status and resolved Evidence, never that sentence
 as additional authority. Cumulative assessment carries grounded Evidence witnesses,
