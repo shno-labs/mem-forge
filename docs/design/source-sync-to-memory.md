@@ -243,7 +243,41 @@ B 新增
 | Page A identity 消失、Page B 新增 | Complete 时允许 delete-and-recreate；Partial 时保留 A；不保证 Memory ID |
 | Memory 另有 Jira Support | Confluence Support 删除后 Memory 仍 Active，不能由 Confluence retire |
 
-### 0.11 明确不做
+### 0.11 Support 稳定性合同
+
+正常 revision 不应因为旧 Memory 数量增长而更容易变成 `UNSUPPORTED`。每个
+independent Support 按自己的 prior Evidence 状态路由；Memory 数量只影响可并行的
+work 数量和成本，不改变单条 Support 的语义结果：
+
+| prior Evidence 情况 | 稳定路径 | 允许的负面结果 |
+| --- | --- | --- |
+| 唯一 exact fragment 与 container 未变 | current ref + Change Impact；全部 `UNAFFECTED` 时直接 REBIND | 分类器 `AFFECTED` 只增加 Support Assessment 成本，不能直接移除 Support |
+| exact fragment 保留但 container/heading 改变 | current exact ref + changed ReadingGroups | Delta 未建立完整 Support 时 `NEEDS_FULL` |
+| 原 fragment 修改或同义改写 | old exact excerpt + 对应 current ReadingGroup + 全部 changed ReadingGroups | Delta 未命中继续 Full；只有 completed authoritative Full 才能 `UNSUPPORTED` |
+| 原 fragment 删除 | old exact excerpt + changed ReadingGroups | Full continuation 仍会寻找其他未改位置的 current Support |
+| 多个 exact candidate | old exact excerpt + 全部候选 ReadingGroups | 不能任取一个；无法完成时 `UNRESOLVED` |
+| Provider coverage 为 Partial/Unknown | 不把未返回对象当删除 | `UNRESOLVED(partial_coverage)` + KEEP，禁止 `UNSUPPORTED` |
+
+Confluence Page 使用稳定 page ID 与 page-body Observation；普通局部编辑仅改变相关
+Markdown structures。未改 Evidence 走 exact rebind，标点或句子改写进入对应
+ReadingGroup，移动到新 heading 的 exact 内容进入 container-changed 路径，近全文重写
+才可能使多数 Supports 进入 Full。页面大小和已有 Memory 数量本身不能触发 Full。
+
+Jira Issue 使用 immutable numeric issue ID；core、每个 comment 和每个 changelog
+history 是独立 Observation。Core 由注册 canonical fields 比较，description/comment
+正文再按 Markdown structures 比较。新增 comment/changelog 不使其他 Observation 的
+Evidence 失效；comment edit 只重评该 comment 的 Supports。Comments 或 changelog
+分页不完整时 Projection 必须为 Partial，未返回的旧 Evidence 保留，不能退休。
+
+这些规则不能证明模型语义召回。上线前必须在不执行 lifecycle mutation 的固定
+revision-pair cohort 上 shadow 运行，并按 source type 与 Evidence 状态记录：direct
+rebind、classifier `AFFECTED`、Delta `SUPPORTED`、`NEEDS_FULL`、Full `SUPPORTED`、
+Full `UNSUPPORTED` 与 `UNRESOLVED`。固定回归集要求零 false destructive proposal；
+Partial coverage 必须零 `UNSUPPORTED`；同一逻辑 work 在合法分包/顺序下必须得到同一
+结果。模型/Prompt/representation contract 变化后重新执行该门禁。Fixture client
+测试只证明 manifest、引用和传输合同，不能作为语义稳定率证据。
+
+### 0.12 明确不做
 
 - 不把阶段编号写入方法、类型或状态名；
 - 不引入人工 confirmation；
