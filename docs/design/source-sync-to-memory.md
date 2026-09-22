@@ -1,10 +1,10 @@
 # 单篇文档从 Sync 到 Memory 的完整设计
 
-日期：2026-09-07，输入策略更新：2026-09-20。本文描述共享代码的 Sync→Memory 合同；紧凑 catalog 与可恢复分批的发布、部署及运行验收由 [Cloud #473](https://github.com/dodoman-sun/memforge-cloud/issues/473) 跟踪。
+日期：2026-09-07，目标输入策略更新：2026-09-21。本文描述共享代码的 Sync→Memory 合同；上一版紧凑 catalog 与可恢复分批的验收记录在已关闭的 [Cloud #473](https://github.com/dodoman-sun/memforge-cloud/issues/473)，第 0 节优化的实现与部署由 [Cloud #505](https://github.com/dodoman-sun/memforge-cloud/issues/505) 跟踪。
 
 本文以一篇 Confluence 页面为主线，覆盖首次导入和后续更新。Jira、Markdown 和带附件的文档复用相同领域流程，差异集中在源解析与表示方式。实施前评审基线为 OSS main `abdbdf18a3c1100289051c289046c0c07092fa76`：基线核对的相关路径与固定复核工作树 `3b8b1fc4` 一致。Cloud 对照基线为 `11338e0235ab23df3199b8024a05c1b17ed71d10`。这里不宣称线上 Cloud 已部署目标设计。
 
-**阅读约定：**正文描述当前共享代码合同；第 18 节明确保留实施前差异评审并列出实际落点。L1–L7 是模型职责编号，不是保证每篇文档恰好调用七次。L4 在同一次调用中完成关系分类与条件性的修订判断。没有触发条件的阶段不调用模型，同一职责也可能按既有执行合同有多个请求。
+**阅读约定：**第 0 节是 2026-09-21 接受的目标合同，尚未据此宣称实现或部署完成；第 18 节继续记录实现差异。后文历史段落中的 L1–L7 只是旧模型职责编号，不能进入新的类型、方法或状态名称。新设计统一使用 Claim Extraction、Support Assessment、Claim Reconciliation 和 Lifecycle Reconciliation。若旧段落与第 0 节冲突，以第 0 节和 [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md#context-planning-optimization-amendment-2026-09-21) 为准。
 
 ## 文档职责与阅读入口
 
@@ -16,6 +16,170 @@
 - [大文档恢复分析](large-document-reconciliation-recovery.md) 是历史问题与未批准选项的记录，不是另一份当前主流程或执行 backlog。
 
 全文/delta 选择用于文档语义材料的供应，不是对所有 LLM 步骤一律传全文：L2 看候选，L4 看知识对和候选 Evidence，L5 看名称语境，L6/L7 看知识对及范围。直接用户创建/纠正、managed agent commands 有各自的授权入口，复用后段 Evidence/Lifecycle，但不强制绕回 provider Sync。
+
+## 0. 目标优化方案：少传历史正文，完整覆盖变化，自动保护删除
+
+### 0.1 目标与取舍
+
+本方案优先保证两件事：当前 Memory 拥有完整、可解析的当前 Evidence；系统不会因模型漏判、Partial 采集或输入分组而错误删除仍然有效的知识。产品接受少量语义关系漏判、临时重复 Memory、陈旧 Support 暂时保留，以及跨 Source Unit 后 Memory ID 不延续。它不为这些可接受误差增加语义 Evidence 搜索、人工确认、新生命周期状态或全量 pair 输出。
+
+目标流程是：
+
+```mermaid
+flowchart TD
+    A[Provider payload] --> B[Source Adapter\nidentity + coverage + change facts]
+    B --> C[immutable base + staged target Projection]
+    C --> D[RevisionContextPlanner]
+    D --> E[Claim Extraction\n只从获授权 current change 提取]
+    D --> F[Support Assessment\n固定旧 claim + changed ReadingGroups]
+    E --> G[deterministic Candidate admission]
+    G --> H[Claim Reconciliation\n完整目录输入 + 稀疏关系输出]
+    F --> H
+    H --> I[Lifecycle Reconciliation\nKEEP / REPLACE / REMOVE proposal]
+    I --> J{破坏性动作?}
+    J -- 否 --> L[聚合全部 Active Supports]
+    J -- 是 --> K[自动 DestructiveValidation\n无人工确认]
+    K --> L
+    L --> M[stale-guarded atomic commit]
+```
+
+### 0.2 `RevisionContextPlanner` 是唯一对外上下文接口
+
+调用方只需要：
+
+```python
+plan_revision_context(
+    base_projection,
+    target_projection,
+    change_set,
+    existing_supports,
+    coverage,
+) -> RevisionContextPlan | TypedPlanningFailure
+```
+
+内部的 Markdown/HTML、纯文本、canonical JSON、Jira 和 Teams 表示 adapter 负责生成统一 ReadingGroup：
+
+```text
+scope / container / before / target / after
++ authority / selectable refs / exact coordinates
+```
+
+`target` 可以是 current Fragment，也可以是 `RemovedAnchor`。因此纯删除不需要伪造空 current Fragment。ReadingGroup 只扩大阅读范围，不扩大 Primary 权限；Context 和历史 excerpt 不能被选为当前 Evidence。
+
+### 0.3 旧 Evidence 的确定性对应
+
+程序始终持有 Memory、Support、Evidence、Observation、Revision、digest、coverage 和 source provenance。它只判断可证明的对应关系，不判断自然语言语义：
+
+| 对应状态 | 判定 | 发送给 Support Assessment |
+| --- | --- | --- |
+| `EXACT_UNIQUE` | 同一 Observation，唯一 digest，角色与结构权限兼容 | current Evidence ref + compact state |
+| `CHANGED` | 内容、digest、角色或 governing structure 改变 | current ReadingGroup + 一次 bounded exact historical excerpt |
+| `REMOVED` | authoritative coverage 证明消失 | RemovedAnchor + 一次 bounded exact historical excerpt |
+| `AMBIGUOUS` | 多个 exact match 或映射不唯一 | exact candidates + 一次 bounded exact historical excerpt |
+| `UNKNOWN` | Partial 无法证明存在或删除 | KEEP；禁止破坏性动作 |
+
+`EXACT_UNIQUE` 只是 current Evidence candidate。Support Assessment 仍需读完本次所有 changed ReadingGroups，因为远处可能新增例外或“此前规则全部废止”。没有 exact match 时不做语义 Evidence 搜索。历史 excerpt 必须是不可变 revision 上的原始准确摘录，不是模型生成摘要，并且永远不可选择为 current Evidence。
+
+### 0.4 Delta、current-full 与大文档
+
+Delta 的逻辑输入为：
+
+```text
+全部 changed ReadingGroups
++ fixed Claims
++ compact Support metadata
++ 仅 affected / ambiguous Evidence 的 current context
++ 必要的 bounded historical excerpts
+```
+
+旧 Evidence 分散在全文不等于 Delta 接近 Full。`EXACT_UNIQUE` 的未变 Evidence 只贡献 current ref 和 compact state。只有大量 Evidence 被修改、删除或映射歧义，而且相关 ReadingGroups 的去重并集覆盖大部分当前 Projection，Delta 才接近 current-full。
+
+Claim Extraction 和 Support Assessment 分别选择 Delta 或 current-full。模式先按完整逻辑 work 选择，之后才按 ReadingGroup 和 claim cohort 流式传输。每个 `(claim cohort, ReadingGroup)` 至多处理一次；分组不产生业务状态，也不能部分提交。current-full 只表示读取完整的 effective current Projection，不会把 Provider 的 `PARTIAL_PROJECTION` 变成完整快照。
+
+单个超大 Observation 只能由 representation adapter 拆成有 exact authority coverage 的结构，例如 table header+row、list lead-in+item subtree、heading+paragraph。跨结构 claim 使用一个 Primary 和必要 Required。仍不可分且超限时返回 typed capacity failure，KEEP 受影响 Support，不推进验证 baseline，不从部分结果创建 Memory。
+
+### 0.5 Support witness 累积
+
+Support Assessment 的 work key 是 `(memory_id, independent_support_id)`。不同来源或不同 Evidence Unit 不能拼成一个 Support；每个 Evidence Unit 始终是一 Primary、零到多个 Required。
+
+流式状态保存 grounded witness，不让后一个无关 group 覆盖前面的废止或例外：
+
+```json
+{
+  "work_id": "WRK-0001",
+  "support_refs": ["PRM-0012"],
+  "opposing_refs": ["PRM-0041"],
+  "uncertain": false
+}
+```
+
+最终状态只在 work manifest 证明全部 changed ReadingGroups 已处理后计算。不同合法顺序或分包必须产生相同 lifecycle proposal；不一致时结果为 `insufficient`，自动 KEEP，不推进该 Support baseline。该状态属于现有可恢复 execution work，不是新业务状态。
+
+### 0.6 Claim Reconciliation 使用稀疏输出
+
+请求输入是完整 Candidate、Existing Memory 和 current Evidence 目录，每份 claim/Evidence 正文在一个请求中只编码一次。输出每个 Candidate 一行，并仅列出发现的 material relation：equivalent、refines 或 contradicts。未输出的 Candidate/Memory pair 不是已证明 unrelated，也不能授权 REMOVE 或 RETIRE。
+
+本方案不要求 `Candidate × Existing Memory` 的完整 pair 行，不新增 Candidate-to-Candidate 语义去重。确定性准入继续消除 exact duplicate；少量同轮语义重复属于接受的 false negative。
+
+### 0.7 自动 DestructiveValidation
+
+普通 KEEP、Evidence replacement 和非破坏性 ADD 不增加额外检查。准备 `REMOVE_SUPPORT`、`SUPERSEDE` 或 `RETIRE_MEMORY` 时，程序自动验证：
+
+1. affected object 有 authoritative coverage 或 explicit tombstone；
+2. Claim Extraction、Support Assessment 与 work manifest 完整且无技术失败；
+3. decisive current witnesses 可重新解析，Support set 与 revision 未 stale；
+4. Delta 不能证明当前无 Support 时，仅为 at-risk fixed claims 流式检查完整 current Projection；
+5. 模拟 source-scoped removal 后，Memory 是否还有其他 Active Support。
+
+这一步没有人工确认。它是固定 claim 的自动验证，不是语义 Evidence retrieval。找到 current Support 时自动 KEEP 或替换 Evidence；UNKNOWN、`insufficient`、capacity failure 和 stale input 均自动 KEEP。只有最后一个 Active Support 被合法移除时才可 retire Memory。
+
+### 0.8 Source Unit identity 改变
+
+Provider Page ID、Teams window identity 等发生变化时，系统按旧 Unit 删除＋新 Unit 创建处理，不跨 Unit 做破坏性语义 rebind，也不保证 Memory ID 连续：
+
+```text
+COMPLETE_SNAPSHOT 证明 A 消失
+  → 移除 A-scoped Supports
+  → 无其他 Active Support 时 retire
+
+B 新增
+  → 正常提取 Candidate
+  → 创建 Memory，或通过既有非破坏性身份匹配附加到 Active Memory
+```
+
+`PARTIAL_PROJECTION` 中 A 未返回只代表 UNKNOWN，必须保留 A Support。删除和创建可以先后提交并短暂出现空档或并存，但必须幂等并最终收敛。Provider 明确的 move/reply/quote/corrects mapping 可以扩大确定比较范围；文本相似度不能。
+
+### 0.9 Source adapter 前置合同
+
+统一流程依赖 Adapter 提供：稳定 Unit/Observation identity、coherent provider checkpoint、细粒度 coverage、Added/Changed/Removed/Tombstoned facts、结构/顺序/回复关系和 exact selectable ranges。Jira 应分别表达 core/comments/changelog coverage 并完成分页；Teams 应提供稳定 thread/window membership、reply pagination 和明确 edit/delete/tombstone。Adapter 无法证明时降级为 Partial，流程仍可处理 positive changes，但不会从缺失推断删除。
+
+### 0.10 验收案例
+
+| 案例 | 预期 |
+| --- | --- |
+| 标点变化 | 旧 Evidence `CHANGED`；重新评估并替换为 current Evidence，Memory ID 保留 |
+| 同页移动和同义改写 | changed group 被提取；旧 fixed claim 获得 current Evidence；等价 Candidate 被消费 |
+| 累计 Meeting Minutes 只追加 | 只传 changed groups、fixed claims 与 compact metadata；不因旧 Evidence 分散而 Full |
+| 末尾新增“废止此前所有规则” | opposing witness 对所有 scoped claims 保留到 finalize；不得被后续 group 覆盖 |
+| 旧句删除、未变远处仍有同义支持 | 自动 DestructiveValidation 找到 current Support并 KEEP/换 Evidence |
+| 近全文重写 | current-full ReadingGroups 流式完成；全部 work 完成后一次提交，超能力则整轮 fail closed |
+| Jira 完整删除 Comment | authoritative comments coverage 允许移除对应 Support |
+| Jira Partial pagination | 未返回 Comment 为 UNKNOWN，禁止 retire |
+| Teams 同 window edit/delete | stable message ID + current revision/tombstone 驱动正常 Support 变更 |
+| Teams 跨 window correction | 不自动破坏旧 window Memory；只走普通新增与非破坏性身份/关系路径 |
+| Page A identity 消失、Page B 新增 | Complete 时允许 delete-and-recreate；Partial 时保留 A；不保证 Memory ID |
+| Memory 另有 Jira Support | Confluence Support 删除后 Memory 仍 Active，不能由 Confluence retire |
+
+### 0.11 明确不做
+
+- 不把阶段编号写入方法、类型或状态名；
+- 不引入人工 confirmation；
+- 不做语义 Evidence 搜索；
+- 不新增 Candidate-to-Candidate 语义去重；
+- 不要求完整 `Candidate × Memory` 输出；
+- 不新增永久 Fragment 表、MemoryRevision 或第二套 lifecycle；
+- 不保证跨 Source Unit 的 Memory ID 连续；
+- 不用截断、缩小业务覆盖或部分提交来规避模型容量。
 
 ## 1. 整个周期由谁负责
 
@@ -40,10 +204,10 @@ flowchart TD
     C --> D[固定 SourceUnit / Observation revisions / target Projection]
     D --> F[构建片段索引、完整 delta、工作授权与输入预算]
     F --> E[保存原始文件与 SourceDerivationAttempt 工作清单]
-    E --> G[L1 新候选 Extraction]
-    G --> H[L2 候选准入：条件性 LLM]
-    H --> I[L3 旧 claim 支持与 Evidence 判断：条件性 LLM]
-    I --> J[L4 新旧关系与修订判断：合并调用]
+    E --> G[Claim Extraction：新候选]
+    G --> H[Candidate Admission：确定性与条件性判断]
+    H --> I[Support Assessment：旧 claim 与当前 Evidence]
+    I --> J[Claim Reconciliation：稀疏关系与修订判断]
     J --> K[统一 reconciliation：候选消费与动作草案]
     K --> L[L5 实体解析 / L6 跨文档身份匹配：条件性 LLM]
     L --> M[Evidence Resolver + Lifecycle Planner：程序]
@@ -54,7 +218,7 @@ flowchart TD
     P --> R[Memory 可通过相应索引检索]
 ```
 
-这是推荐的职责顺序。L3 的目标是合并旧 claim 的支持判断与必要证据重构判断，避免先判 supported、后面对相同输入再独立重判一次。现有调用基础和需要修改的位置见第 18 节。
+这是推荐的职责顺序。Support Assessment 合并旧 claim 的支持判断与必要证据重构判断，避免先判 supported、后面对相同输入再独立重判一次。现有调用基础和需要修改的位置见第 18 节。
 
 ## 3. 进入系统后有哪些实体
 
@@ -131,8 +295,9 @@ Representation 为需要的固定 revision 构建一次索引；相同 base/targ
 
 首次导入：L1 使用全文的授权 catalog，超限时按合法结构分批提取候选。
 正常更新：统一 RevisionInputPlanner 先构造两个完整候选。delta 候选包括新增、
-修改结构、对应阅读分组、delta 产生的完整删除/替换结构历史与旧 Support Evidence；
-不会先用语义规则裁掉旧材料。current-full 候选包括完整有效当前投影，不携带非当前
+修改结构、对应 ReadingGroups、compact Support metadata、旧 Evidence 的 current
+exact candidates，以及仅为 `CHANGED`、`REMOVED`、`AMBIGUOUS` 工作提供的 bounded
+exact historical excerpts。`EXACT_UNIQUE` 不重复传输旧正文。current-full 候选包括完整有效当前投影，不携带非当前
 oldhistory。两者按实际请求格式对 prompt、schema、图片、输出预留、跨请求重复内容、
 初始状态与已有累计状态
 预留作确定性成本预测；未来模型选出的累计状态只能在运行时知道，因此每个实际
@@ -140,11 +305,10 @@ oldhistory。两者按实际请求格式对 prompt、schema、图片、输出预
 delta。不使用改动比例、文档大小比例或 Source 类型阈值。程序可解析完整快照以
 计算准确 delta；这本身不授权全文。
 
-L1 首次导入仍可把获授权 Primary 结构分成多个请求，每个请求只带自身的局部阅读
-上下文。普通更新中的 L1 current-full 只有在完整当前阅读范围能放入一个请求时才
-可选；L1 没有跨请求语义状态，不能用额外 context-only 请求冒充联合阅读。它不合
-容量时由 delta 方案继续按获授权 Primary 工作分批。L3 有固定 claim 与累计判断
-合同，因此 current-full 可以沿用既有累计分批执行完整覆盖。
+Claim Extraction 与 Support Assessment 都可将选定的 Delta 或 current-full 按
+representation-safe ReadingGroups 流式传输。Claim Extraction 仅从每组获授权
+current structures 产生候选；Context-only group 不能授权 Primary。工作清单与完成
+收据保证所有 ReadingGroups 处理完毕后才进入原子提交，分包本身不形成业务状态。
 
 模式只决定模型阅读范围，不改变 L1 的新候选 Primary 授权。即使选择 full，
 只有本次新增、修改的准确完整结构或字段可以成为新提取的 Primary；上下文仍为
@@ -181,21 +345,21 @@ delta 的完整历史材料、累计状态、图片、输出和纠错余量。�
 context 的四分之一。输入与输出超限均通过既有传输分批处理，不能截断为成功
 结果；这些数值是容量规则，不是语义准确率或 full/delta 选择比例。
 
-### 6.3 紧凑 catalog 与 L3 分批执行
+### 6.3 紧凑 catalog 与 Support Assessment 流式执行
 
 普通文本采用 `[ref, 准确原文]`；角色资格显式区分，重复 Observation/Revision
 元数据在映射中出现一次。标题、表头等仍是普通可引用 Evidence，内部 anchor、
 类型、hash 与权限不变。模型不需要回传这些程序可查回的元数据。
 
-L3 只有一个语义职责：根据所选完整输入判断固定旧 claim，并调整其 Evidence。
+Support Assessment 只有一个语义职责：根据所选完整输入判断固定旧 claim，并调整其 Evidence。
 完整请求能装下时，一次调用可以判断多条 claim。较大的选定输入使用同一合同分批，
-批间只携带判断、简短理由和已选 Primary/Required 引用，不累积事实清单、
-上下文引用或 `needs_context`。最终以判断状态为准，没有额外的上下文清单门槛。
-最后一批后，由程序检查完整覆盖、当前 Evidence 与原子提交条件。
+批间携带 grounded support refs、opposing refs 和 uncertainty 标记，不携带无界叙述。
+最终状态只在程序验证全部 ReadingGroup manifest、当前 Evidence 和原子提交条件后产生。
+后一个无关 group 不能覆盖早先发现的全局废止或例外。
 
 不再强制 scan → reduce → finalize 三段模型调用，也不在末尾重新聚合全文。
-分批的中间结论是判断过程，不会存成 Evidence；明确接受一定的跨批上下文损失，
-优先保持简洁和效率。它不保证多处条件、解释和例外都被完整记住。
+分批 witness 是判断过程，不会存成 Evidence 或新生命周期状态。不同合法顺序与
+分包必须归约为相同 lifecycle proposal；不一致时 `insufficient` 并 KEEP。
 累计状态增长时，可以拆开尚未处理的 claim 分组，保留已完成前缀，不重跑历史。
 无法解析的材料或单个必需结构/累计状态超出能力，仍如实报告无法完成。
 
@@ -203,7 +367,7 @@ L3 只有一个语义职责：根据所选完整输入判断固定旧 claim，�
 已处理范围及阶段结果。二者复用现有 derivation、恢复与提交门禁，不新增业务状态。
 存储语义见 ADR 0017，输入与推理决策见 ADR 0034。
 
-## 7. 步骤四：提取新候选 L1【已实现】
+## 7. 步骤四：Claim Extraction【早期合同已实现；第 0 节优化待验收】
 
 **触发：**首次导入有获授权内容，或普通更新存在获授权的新增/修改结构。仅删除且无当前 Primary 授权时可跳过。
 
@@ -225,7 +389,7 @@ L3 只有一个语义职责：根据所选完整输入判断固定旧 claim，�
 
 通过本阶段不表示立即 CREATE_MEMORY。候选还要经过第 10 节同 Unit reconciliation 和第 11 节跨文档身份匹配；跨文档冲突/细化关系由第 14 节的关系工作处理。跨文档完整路径集中说明如下。
 
-## 9. 步骤六：旧 claim 的支持与证据评估 L3【已实现】
+## 9. 步骤六：Support Assessment【早期合同已实现；第 0 节优化待验收】
 
 首先用这篇文档的稳定 SourceUnit ID，查询当前有哪些 Memory 通过本 Unit 的完整 EvidenceUnit 获得支持，并读取这些 Support。这个查询依据已有身份和关联，不靠文本相似度或 offset。首次导入若没有这种已有 Memory，就跳过本阶段；其他文档已存在的等价 Memory 仍由后面的身份匹配处理。
 
@@ -233,8 +397,9 @@ offset 只在它所属的固定 Observation Revision 内用于定位或校验证
 
 只有程序能依据完整变化事实确定本次变化不影响该支持时，才可明确保留而跳过语义调用。仅发现旧证据正文没改，或其位置附近没有 diff，不足以排除文档其他位置新增的例外。
 
-**输入：**固定旧 claim，以及 planner 选择的完整 delta＋阅读分组＋delta 产生的
-完整删除/替换结构历史和旧 Support Evidence，或完整有效当前投影。delta 中未变部分可由程序继承；输入必须说明旧内容是历史
+**输入：**固定旧 claim，以及 planner 选择的完整 changed ReadingGroups、compact
+Support metadata、current exact candidates，以及仅对 changed/removed/ambiguous
+Evidence 提供的 bounded exact historical excerpts；或者完整有效当前投影。delta 中未变部分可由程序继承；输入必须说明旧内容是历史
 材料、新内容属于哪个固定 revision。current-full 从当前材料重新证明，不继承
 未证明的旧支持，也不需要为了说明编辑过程而携带 oldhistory。
 
@@ -243,23 +408,23 @@ offset 只在它所属的固定 Observation Revision 内用于定位或校验证
 - 原 claim 仍被当前 Source 支持 / 当前 Source 不再支持 / 所给材料不足。
 - 成立时，受影响 Evidence 应选用哪些当前片段；可以新增、删除或拆分 Required。程序可沿用的未变部分不要求模型重复输出正文。
 
-L3 返回 `insufficient` 时，直接跳过该旧 Memory：本轮生成不带新 Evidence 的 NOOP / KEEP，不进入 L4 替换或删除判断，不新增 Review。任一独立 Support 材料不足时，整条旧 Memory 本轮保留。其他 Memory 和新候选继续处理，Source revision 可以正常提交。旧 Support、Evidence 与其验证基线均不推进；Plan 的 KEEP 决定只记录本次保留的准确旧 Support IDs，不能据此放行新附加的过期证据。新候选仍可通过全局身份匹配为该 Memory 增加独立 Support，不能借此撤掉被跳过的旧 Support。后续更新继续从实际有效基线比较。
+Support Assessment 返回 `insufficient` 时，直接跳过该旧 Memory：本轮生成不带新 Evidence 的 NOOP / KEEP，不进入 Claim Reconciliation 的替换或删除判断，不新增人工确认。任一独立 Support 材料不足时，整条旧 Memory 本轮保留。其他 Memory 和新候选继续处理，Source revision 可以正常提交。旧 Support、Evidence 与其验证基线均不推进；Plan 的 KEEP 决定只记录本次保留的准确旧 Support IDs，不能据此放行新附加的过期证据。新候选仍可通过全局身份匹配为该 Memory 增加独立 Support，不能借此撤掉被跳过的旧 Support。后续更新继续从实际有效基线比较。
 
-同一个 L3 请求共享本批 catalog 与本请求所有 `previous_state` 中的当前证据引用。例如 A 的先前状态引用了某条审批规则，B 也可选择这条已提供的原文引用；程序不能因为 B 上一批未选择它而拒绝。每个 claim 的结论、语义范围和最终独立 Support 仍分别判断。其他请求未提供的引用、未来批次引用和历史 revision 引用均不会因此获得准入。
+同一个 Support Assessment 请求共享本批 catalog 与累计 witness state 中的当前证据引用。例如 A 的先前状态引用了某条审批规则，B 也可选择这条已提供的原文引用；程序不能因为 B 上一批未选择它而拒绝。每个 claim 的 supporting/opposing refs、语义范围和最终独立 Support 仍分别判断。其他请求未提供的引用、未来批次引用和历史 revision 引用均不会因此获得准入。
 
 这是一次固定 claim 的支持评估，不能用 Required 隐式改变 claim。对于 changed Evidence，需要完整当前 Unit，但模型不必恢复作者的编辑历史，也不必把旧每个 Required 对应为恰好一个新 Required。
 
 程序将可证明沿用的部分和模型选择组合成完整当前 Evidence 候选。两个层面分别校验：LLM 判断语义；程序核对 revision、范围、digest、角色和资格。继承未显示证据是基于已有有效 Support 的增量推导，不能称为模型重新逐段验证了整套证据。
 
-**实现边界：**L3 已替代此前分开的 support audit 和 NOOP rebind validation。固定 claim 的判断及当前证据重构结果供后续直接复用，同输入不再独立重复判定。
+**实现边界：**早期 Support Assessment 已替代此前分开的 support audit 和 NOOP rebind validation。第 0 节进一步要求 exact correspondence、witness accumulation 与 automated DestructiveValidation；这些目标能力必须单独验收，不能从早期合并调用推断已实现。
 
-L3 不能只筛选“直接编辑旧 Evidence”的 delta；其他位置新增的例外同样可能影响旧 claim。缺少远处未变解释造成的语义误判属于用户接受的第一阶段风险。
+Support Assessment 不能只筛选“直接编辑旧 Evidence”的 delta；其他位置新增的例外同样可能影响旧 claim。若准备破坏性动作而 Delta 无法排除未变远处仍有 Support，自动 DestructiveValidation 必须流式检查 effective current Projection；非破坏性关系漏判仍是接受的产品取舍。
 
-## 10. 步骤七：新旧知识关系与修订判断 L4【合并调用，复用 L3】
+## 10. 步骤七：Claim Reconciliation【稀疏输出，复用 Support Assessment】
 
-本阶段连接 L1 的新候选与 L3 的旧知识支持结果：判断两条知识是什么关系，以及新候选能否作为旧知识的完整修订。关系分类和条件性的修订证明在同一次 LLM 调用内完成，不在判为细化后再追加一次独立修订判断请求。此处“一次”指合并这两种判断，不承诺整个 Source Unit 的全部比较只用一个请求，也不引入新的 batching。
+本阶段连接 Claim Extraction 的新候选与 Support Assessment 的旧知识结果。模型接收完整 Candidate、Existing Memory 与 current Evidence 目录，但只输出发现的 material relation，以及适用的条件性修订证明。它不为每个 `Candidate × Memory` pair 生成结果，也不在判为细化后再追加一次独立修订判断请求。
 
-**输入边界：**旧 claim、新候选 claim、两者的主体/范围/时间/要求强度、新候选的完整当前 Evidence（Primary 与必要 Required），以及同一目标 revision、旧 claim 与 Support 输入下的 L3 支持结果。只提供新增细节或 Required 数量不足以证明完整修订。不要求再次读取整篇文档或全部 delta；文档变化是否影响旧 claim 由 L3 负责。本阶段复用该结果并检查一致性，不重复执行旧支持验证，也不扩展新候选的 Primary 授权。
+**输入边界：**旧 claim、新候选 claim、两者的主体/范围/时间/要求强度、新候选的完整当前 Evidence（Primary 与必要 Required），以及同一目标 revision、旧 claim 与 Support 输入下的 Support Assessment 结果。只提供新增细节或 Required 数量不足以证明完整修订。不要求再次读取整篇文档或全部 delta；文档变化是否影响旧 claim 由 Support Assessment 负责。本阶段复用该结果并检查一致性，不重复执行旧支持验证，也不扩展新候选的 Primary 授权。
 
 **关系类型：**Source 类型不改变定义；关系标签不是数据库动作。
 
@@ -268,13 +433,13 @@ L3 不能只筛选“直接编辑旧 Evidence”的 delta；其他位置新增�
 | EQUIVALENT | 主张含义一致，主体、适用范围、时间与要求强度等实质条件一致 | 表面相似或多一个实质条件都不等于等价 |
 | REFINES | 一条比另一条更具体，增加相容要求或限定适用范围 | 必须明确新细化旧或旧细化新；范围缩小不能自动整体替代旧知识 |
 | CONTRADICTS | 在重叠的主体、适用范围和时间内，两条主张不兼容 | 不同国家、不同有效期或仅主题相近不能自动算冲突；标签本身不证明替代权限 |
-| UNRELATED | 已有材料足以判断不存在上述关系 | 不表示两条知识一定没有共同主题，也不能拿它代替“材料不足” |
+| 无输出 edge | 没有发现 material relation | 不构成已证明 `UNRELATED`，不能授权删除或退休 |
 
 **条件性的修订判断：**仅当新候选细化旧 claim 时，检查四个条件：同一知识身份、保留全部旧含义及适用范围、新 claim 可独立表达完整知识、当前 Evidence 完整支持新 claim。四项全部有依据才可提出修订。已确定有条件不成立时，表示不能整体替代；缺少依据时，表示尚不能确定，两者不能混为一个通过结果。反方向细化及其他关系不适用此项判断。
 
-**统一结果合同：**每次返回同一种结果结构，包含被比较的知识身份、关系及方向、条件性修订判断、与 L3 的一致性和简短依据。修订不适用时明确为空，不改变顶层结构。材料不足（INSUFFICIENT）是判断未完成的状态，不是第五种已成立的知识关系，也不是新增 Memory 状态。程序先沿既有规则规范化无歧义冗余，再检查适用字段、完整覆盖、已有引用及修订条件；语义不确定或与 L3 矛盾必须保持未决，只有能由现有单提案 Review 完整表达的结果才转换为 Review；否则按明确合同失败停止本 Unit，不能假定设置 flag_for_review 就足够。规范化或有界局部纠正后仍存在的格式错误、缺失应答和非法引用按技术失败处理。不能把任何一种失败降为 UNRELATED 后继续新增。
+**统一结果合同：**每个 requested Candidate 返回一行自身 Evidence entailment，以及零到多个 discovered edges；未发现关系时 edges 为空。每条 edge 包含 existing Memory ID、关系及方向、适用的条件性修订判断和简短依据。材料不足引用明确列出，不能伪装成空 edges。程序先沿既有规则规范化无歧义冗余，再检查所有 Candidate 行、已有引用及适用证明；未知 ID、缺少 Candidate 行、非法引用和截断按技术失败处理。遗漏某条语义 edge 是接受的 false negative，但任何失败或空 edges 都不能授权破坏性动作。
 
-例如 L3 判旧 claim 不再受支持，模型却认为有当前充分支持的等价候选，应报告两项结果不一致；不能同时执行“删除旧知识”和“另建等价知识”。
+例如 Support Assessment 判旧 claim 不再受支持，模型却认为有当前充分支持的等价候选，应报告两项结果不一致；不能同时执行“删除旧知识”和“另建等价知识”。
 
 **场景与处理方向。** 下表旧 claim 统一为“所有美国常规薪资发布需要两名审批人”；例子均假设比较的是相应当前生效规则。
 
@@ -285,11 +450,11 @@ L3 不能只筛选“直接编辑旧 Evidence”的 delta；其他位置新增�
 | “美国紧急常规薪资发布需要两名来自不同团队的审批人” | 仍支持；新细化旧，但范围只覆盖紧急场景 | 保留旧 claim，新候选独立处理，不能丢失非紧急场景的旧知识 |
 | 新候选比旧 claim 更宽泛 | 仍支持；旧细化新 | 不以更宽泛表述覆盖旧细节；候选按既有准入与身份匹配继续处理 |
 | “现改为只需一名审批人，两人要求取消” | 不再支持；唯一且明确的同范围冲突/替代 | 提出替代，由 Lifecycle 的权限与其他 Support 决定执行或 Review |
-| “审批记录保存七年” | 仍支持；UNRELATED | 保留旧 claim，新候选独立处理 |
+| “审批记录保存七年” | 仍支持；没有 material edge | 保留旧 claim，新候选独立处理 |
 | 旧规则被取消，未提取出替代规则 | 不再支持；无替代候选 | 无需模型比较空候选；提出移除本来源 Support，是否退休另行检查 |
 | 缺少判断关系或修订所需材料，或与 L3 结果矛盾 | 判断未决 | 能完整表达则交单提案 Review，否则明确停止本 Unit；不强行替代或因未决关系生成重复知识 |
 
-“独立处理”不表示立即创建 Memory；候选仍要经过后面的身份匹配、证据检查和 Lifecycle。多个候选同时匹配或冲突时，程序必须综合相关结果，不能凭单对判断猜一个唯一后继。存在新候选时，本 Unit 旧 Memory 的 reconciliation 覆盖保持完整；不能因为旧 Evidence 在别的段落就不比较。
+“独立处理”不表示立即创建 Memory；候选仍要经过后面的身份匹配、证据检查和 Lifecycle。多个候选同时匹配或冲突时，程序必须综合已发现结果，不能凭单条 edge 猜一个唯一后继。完整 incumbent 目录仍进入请求；不能因为旧 Evidence 在别的段落就从目录中删除。模型未输出 edge 是接受的漏判，不代表程序证明该 pair 无关。
 
 现有多候选互斥 refiners 仍可能触发 non_unique_refinement_conflict。合并模型调用不取消这项检查，也不证明多条分别合格的修订能同时采用。本阶段不新增候选两两全扫描或多选提案 Review/UI；已有单提案无法表达的竞争保持 fail-closed。
 
@@ -382,21 +547,21 @@ L7 复用有效分类，否则使用实体图、语义向量与内容 BM25 的�
 
 SourceSyncRun/SyncState 汇总页面处理结果，报告成功、局部失败或失败。文档 lifecycle 已提交、vector delivery 是否 pending、relation work 是否完成是可独立查询的进度；不得将它们折叠成“所有工作一定同时完成”。局部失败只恢复需要处理的文档/工作，不默认重跑整个 Source。
 
-## 15. LLM 调用总表
+## 15. 模型职责总表
 
-| 编号 | 职责 | 何时发生 | 主要输入 | 输出 | 是否直接改变正式 Memory |
-|---|---|---|---|---|---|
-| L1 | 新候选提取 | 有获授权 Primary 工作 | 当前片段目录、授权、解释上下文、实际图片 | Candidate + 当前 Evidence selection | 否 |
-| L2 | 候选准入 | 多个候选需判断重复/价值 | 本次候选集合 | 选择与拒绝理由 | 否 |
-| L3 | 旧 claim 支持与 Evidence 重构 | 存在需要语义判断的旧 Support | 旧 claim、完整 delta、必要旧证据及累计判断 | 支持判断 + Evidence 计划 | 否 |
-| L4 | 同 Unit 新旧关系与条件性修订判断 | 存在待比较候选与旧 Memory | claim 对与适用条件、完整候选当前 Evidence、L3 结果 | 关系及方向、条件性修订判断、一致性或未决结果 | 否 |
-| L5 | 实体消歧 | 精确名称/别名不足以确定 | mention、实体候选、必要局部语境 | 匹配/不匹配 | 否；实体字典可准备写入 |
-| L6 | 跨文档身份判断 | 精确 claim 未命中且召回候选 | 新旧 claim 与范围 | 等价目标或无目标 | 否 |
-| L7 | 提交后关系发现 | 有关系候选且没有有效已分类结果 | 已提交 Memory 对及范围 | 关系/冲突判定 | 否；通过既有关系/Review提交 |
+| 领域职责 | 何时发生 | 主要输入 | 输出 | 是否直接改变正式 Memory |
+|---|---|---|---|---|
+| Claim Extraction | 有获授权 Primary 工作 | current ReadingGroups、授权、解释上下文、实际图片 | Candidate + 当前 Evidence selection | 否 |
+| Candidate Admission | 多个候选需判断准入 | 本次候选集合 | 选择与拒绝理由 | 否 |
+| Support Assessment | 存在需要语义判断的旧 Support | 固定旧 claim、changed ReadingGroups、compact metadata、必要历史 excerpt、witness state | 支持判断 + 完整当前 Evidence 计划 | 否 |
+| Claim Reconciliation | 存在待比较候选与旧 Memory | Candidate/Memory/current Evidence 目录、Support Assessment 结果 | 每 Candidate 一行 + 稀疏 material edges | 否 |
+| Entity Resolution | 精确名称/别名不足以确定 | mention、实体候选、必要局部语境 | 匹配/不匹配 | 否；实体字典可准备写入 |
+| Cross-document Identity | 精确 claim 未命中且召回候选 | 新旧 claim 与范围 | 等价目标或无目标 | 否 |
+| Post-commit Relation Discovery | 有关系候选且没有有效已分类结果 | 已提交 Memory 对及范围 | 关系/冲突判定 | 否；通过既有关系/Review提交 |
 
 程序归约、资格检查、delta 计算、Evidence Resolver、Lifecycle Planner、数据库提交不新增语义 LLM。Embedding、token counting、provider API 单独计量，不混算为“revalidation 调用”。可选 Artifact 摘要复用提取响应，不额外规定一个必需的摘要模型阶段。
 
-首次导入没有 L3/L4 的旧 Memory 工作；精确身份匹配可跳过 L6；没有关系候选跳过 L7。一套通用流程不等于一次 LLM 调用。具体调用数量由实际候选/旧 Memory 数量、既有工作合同、歧义及有限重试决定。
+首次导入没有旧 Memory 的 Support Assessment 或 Claim Reconciliation；精确身份匹配可跳过 Cross-document Identity；没有关系候选跳过 Post-commit Relation Discovery。一套通用流程不等于一次 LLM 调用。具体调用数量由实际候选/旧 Memory 数量、既有工作合同、歧义及有限重试决定。
 
 ## 16. 用一篇页面展示首次导入与三种更新
 
@@ -404,21 +569,21 @@ SourceSyncRun/SyncState 汇总页面处理结果，报告成功、局部失败�
 
 页面 P v1：“所有美国常规薪资发布均需两名审批人”。没有同 Unit 旧 Memory。
 
-L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/reconciliation 工作 → 实体与全局身份匹配 → 若没有等价已存 Memory，Plan 创建 M1、EU1、Support(M1, EU1) → 提交 → 索引与关系工作。
+Claim Extraction 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/reconciliation 工作 → 实体与全局身份匹配 → 若没有等价已存 Memory，Plan 创建 M1、EU1、Support(M1, EU1) → 提交 → 索引与关系工作。
 
 若 Jira 已有等价 M0，则最后是 Support(M0, EU1)，不创建独立 M1。
 
 ### v2-A：只重组表达
 
-“Cedar 需两名审批人；Cedar 指所有美国常规薪资发布”。L1 可以产生等价候选；L3 判原 claim 成立；L4 判等价。新 Primary 与定义 Required 组成 EU2，Plan 保留 M1 并切换本范围的 Support。等价候选已消费，不另行 ADD。
+“Cedar 需两名审批人；Cedar 指所有美国常规薪资发布”。Claim Extraction 可以产生等价候选；Support Assessment 判原 claim 成立；Claim Reconciliation 发现等价 edge。新 Primary 与定义 Required 组成 EU2，Plan 保留 M1 并切换本范围的 Support。等价候选已消费，不另行 ADD。
 
 ### v2-B：规则替代
 
-“从即日起，仅超过 100 万元的美国常规薪资发布要求双人审批，其余不再要求”。L1 产生带金额条件的 C2；L3 判旧普遍要求不再受支持；L4 识别同范围的明确替代/冲突。Planner 检查权限及其他 Support 后执行替代，或保存 Review。不得只给 M1 加一个 Required 隐藏金额条件。
+“从即日起，仅超过 100 万元的美国常规薪资发布要求双人审批，其余不再要求”。Claim Extraction 产生带金额条件的 C2；Support Assessment 判旧普遍要求不再受支持；Claim Reconciliation 识别同范围的明确替代/冲突。Lifecycle Reconciliation 自动执行 DestructiveValidation，再根据权限及其他 Support 执行替代或现有 authority gate。不得只给 M1 加一个 Required 隐藏金额条件。
 
 ### v2-C：增加实质要求
 
-“所有美国常规薪资发布均需两名来自不同团队的审批人”。L1 产生完整 C3；L3 判原两人要求仍成立；合并后的 L4 在同次响应中判定新细化旧，并确认同一规则无损增加要求且当前 Evidence 完整。通过并满足 gate 时做知识修订；若已确定不能完整替代，则保留旧知识、独立处理候选；若材料不足或判断矛盾，则走未决/Review。UPDATE 的物理新记录与新增独立事实应分别统计。范围缩小及其他边界例子见第 10 节。
+“所有美国常规薪资发布均需两名来自不同团队的审批人”。Claim Extraction 产生完整 C3；Support Assessment 判原两人要求仍成立；Claim Reconciliation 发现新细化旧，并确认同一规则无损增加要求且当前 Evidence 完整。通过并满足 gate 时做知识修订；若已确定不能完整替代，则保留旧知识、独立处理候选；若材料不足或判断矛盾，则自动 KEEP。UPDATE 的物理新记录与新增独立事实应分别统计。范围缩小及其他边界例子见第 10 节。
 
 ## 17. 失败、重试与版本推进
 
@@ -428,8 +593,8 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 | Artifact 不适合当前推理 | 准确原始 Artifact 与 eligibility | 依赖它的 Support 走明确未决保护；不伪造视觉验证 | eligibility/既有 Review |
 | 提取 schema/transport 失败 | 固定 target 与成功 sibling batch 输出 | 本页不以不完整提取覆盖提交新知识 | 失败工作；精确输出复用 |
 | 完整请求超容量 | 固定目标与成功阶段 | 按 Source × claim 分批，不截断成“完整” | 精确复用成功阶段；不可分材料或累计判断超能力才报告错误 |
-| L3 材料不足 (`insufficient`) | 原 Memory、Support、Evidence、验证基线 | 本轮 NOOP，其他处理和 Source 提交继续 | KEEP 记录准确旧 Support IDs，不新增 Review或补读 |
-| L4 语义不确定/分类矛盾 | 判断诊断与可表达的 Review | 不强行支持，不擅自破坏旧知识；无可表达提案时停止本 Unit | 单提案 Review 或明确未决失败，不自动语义重试 |
+| Support Assessment 材料不足 (`insufficient`) | 原 Memory、Support、Evidence、验证基线 | 本轮 NOOP，其他处理和 Source 提交继续 | KEEP 记录准确旧 Support IDs，不新增人工确认 |
+| Claim Reconciliation 语义不确定/分类矛盾 | 判断诊断 | 不强行支持，不擅自破坏旧知识；空 edge 不是 unrelated 证明 | 明确未决失败或既有 authority Review；不自动语义重试 |
 | 事务锁冲突/可重试提交失败 | 准备结果；业务事务回滚 | 不留下半套 Memory/Support | 同一准备结果重试并重查 guards |
 | target/旧 Memory/Support 已改变 | 历史准备与审计 | 不使用过期判断提交 | 重新针对适用快照准备 |
 | 进程在 commit 前崩溃 | 持久 extraction staging 保留；部分生命周期准备仍可能只是内存 | 不保证所有生命周期模型结果都免重跑 | 已有恢复合同 |
@@ -445,14 +610,14 @@ L1 得到候选 C1 → 程序验证证据 → 准入 → 跳过旧 Support/recon
 | 输入或结果情况 | 处理原则 |
 |---|---|
 | 提取 Required 中重复相同 ref，或重复列出 Primary | 保留现有 admission 的确定性去重，再交严格 Resolver；不重新调用整轮模型。此规则不等于跨版本 quote rematching |
-| 关系响应重复已绑定 pair slot | 保留现有 first-decision 规范化与完整 ID 集合检查；不能仅因响应总数变化就失败，也不能据此允许遗漏或越界 |
+| 关系响应重复同一 discovered edge | 确定性去重完全相同的 edge；每个 Candidate 行、现有 ID 与适用 proof 仍须完整合法 |
 | 某类关系不需要修订判断；或 supported=false | 只检查该结果适用的字段，不强求无意义的 proof/current Evidence。能由判断项确定的最终资格由程序归约，避免让模型重复输出可互相冲突的派生结论 |
 | 语义相同但 Evidence 被拆分/合并、移动或改写 | 接受合法当前片段构成的新完整 Unit；不要求旧/新 offset 接近或 Required 数量相同 |
 | 静态格式有效但当前 workset selector 无效 | 沿现有边界最多一次局部纠正，保持相同输入与 allowed refs；耗尽后产生明确错误，不让外层重跑 extraction、关系分类或同目标整个文档 |
 | revision/access/Primary 资格错误、缺失必需决策、捏造引用或不完整 Support | 保留硬约束，不能默认为有效、无关或独立 ADD；局部修复不可行则明确终止当前工作 |
-| 内容真的存在冲突或无法判断 | L3 `insufficient` 保留旧 Memory 并继续提交；其他语义冲突按既有 Review 或明确未决失败处理，不自动重跑期待模型改口 |
+| 内容真的存在冲突或无法判断 | Support Assessment `insufficient` 保留旧 Memory并继续；其他语义冲突按既有 authority Review 或明确未决失败处理，不自动重跑期待模型改口 |
 
-不同阶段的容错有不同语义：L2 保留原候选是既有准入容错，不能复制成 L3/L4 的“失败也直接新增”。反过来，L3/L4 的引用硬约束也不能用来取消 L2 已批准的非破坏性容错。保留已有日志/指标，分别统计确定性规范化、局部纠正、语义 Review、能力失败及实际外层重试；不能只看最终 partial sync 数量。
+不同职责的容错有不同语义：Candidate Admission 保留原候选是既有准入容错，不能复制成 Support Assessment 或 Claim Reconciliation 的“失败也直接新增”。反过来，后两者的引用硬约束也不能用来取消已批准的非破坏性准入容错。保留已有日志/指标，分别统计确定性规范化、局部纠正、语义 Review、能力失败及实际外层重试；不能只看最终 partial sync 数量。
 
 实施验收必须回放此前修复的边界样例：角色 ref 兼容、重复 Required、固定 slot 重复、非适用字段、完整选择纠正、纠正耗尽不重放外层工作，以及文档其他 Unit 继续完成。支持的输入不应因新模型 schema 更严而退化为 partial sync；真正无法证明的状态仍不能假报成功。
 
@@ -488,8 +653,8 @@ inference capability hash 与 source-derivation `semantic_input_policy`。改变
 | 3 工作准备 | `source_derivation.py`、`pipeline/projection_context.py` 与 Fragment compiler 已有暂存、结构授权和索引 | **中**：统一完整请求预算、首次全文与增量 delta 模式、适用基线和工作合同身份 | 首次导入、contested Support、超限不可截断、旧输出不可复用到新合同 |
 | 4 L1 提取 | 已有结构目录与 Primary/Required selector；增量完整结构授权已实现 | **小到中**：消费统一输入模式；不放宽已实现的 Primary 授权 | 全文只是可读上下文；canonical 完整解析不等于全记录 Primary |
 | 5 L2 准入 | `candidate_ledger.py`，确定性去重与条件性模型选择 | **无必需改造** | 保留候选的容错不扩展到 Evidence/生命周期校验 |
-| 6 L3 支持评估 | `reconciler._audit_incumbent_support` 与 `engine._rebind_noop_evidence_to_current_revision` 目前分开调用；共享索引已有 | **大，主要改动**：合并支持判断及完整 Evidence 重构，允许 Required 数量变化，结果供后续复用 | 删除当前 40,000/100,000 字符截断；不能依靠旧位置匹配召回；false/不足/非法选择分别处理 |
-| 7 L4 新旧关系/修订 | `reconcile_memories` 先分类、再 audit、再条件性独立 proof；proof 目前只有 Primary 摘录及 Required 数量 | **中到大**：L3 先供结果；一个模型结果完成关系和条件性证明，输入完整候选 Evidence | 完整 pair/incumbent 覆盖；双向细化；缺失响应不是 UNRELATED；新证据载荷需预算验证 |
+| 6 Support Assessment | 早期合并判断与 current Evidence 解析可复用 | **大，主要改动**：接入 exact correspondence、changed-only history、ReadingGroup streaming、witness state 和 automated DestructiveValidation | 不依靠旧 offset 或语义 Evidence 搜索；顺序不变量；false/不足/非法选择分别处理 |
+| 7 Claim Reconciliation | 现有关系与 revision proof 类型可复用 | **中**：完整目录输入、每 Candidate 一行、仅 material edges；复用 Support Assessment | 不输出完整 pair product；空 edges 不是 UNRELATED 或删除证明；完整 Candidate 行与 ID 仍须验证 |
 | 7 程序归约/未决 | `reduce_relation_ledger` 与现有单提案 Review 可复用；proof 技术失败目前可退回 KEEP+ADD，多互斥 refiner 会抛错 | **中到大**：禁止把合并响应失败当独立新增；明确单提案可表达范围和失败出口 | ADD/NOOP 不因 flag 自动产生 Review；多候选竞争不自动选后继；不顺带实现多选提案 UI |
 | 8 L5 实体解析 | `entity_resolver.resolve_many` 已有名称/别名、Embedding、条件性消歧、作用域与指标 | **无必需改造** | 它是辅助召回，不是事实依据；现有语境为文档前缀，非精准语境 |
 | 8 L6 身份匹配 | `identity_resolver.py` 与 `memory/store.py` 的 exact + bounded semantic/entity 召回 | **无业务重构**；若复用 L4 分类，适配新结果为小改动 | 只复用确证等价且访问兼容目标；并发创建/召回遗漏不保证全消重 |
@@ -501,12 +666,15 @@ inference capability hash 与 source-derivation `semantic_input_policy`。改变
 
 实际落点：
 
-- `RevisionAssessmentContext` 复用固定 revision 索引；`RevisionInputPlanner`
-  通过相同 representation reading index 构造 delta/current-full 候选并按请求格式
-  预测成本选择。L1 始终保留原授权 Primary；L3 按独立 Evidence Unit 评估固定旧
-  claim，并解析当前完整选择。
-- `assess_claim_pairs` 在既有配对执行边界内合并 L4。一个候选的完整 Evidence 在同一组只传一次，各旧 claim 有独立 Support 结果与结果槽位。
-- MemoryEngine 将 L3/L4 结果交给原 reducer/Plan；已删除旧 NOOP 的第二次语义验证路径。L5/L6/L7、原子提交和 outbox 保持原职责。
+- `RevisionContextPlanner` 复用固定 revision index，内部完成 exact correspondence、
+  removed-anchor context、ReadingGroups、delta/current-full 成本选择和 work manifests。
+  Claim Extraction 始终保留原授权 Primary；Support Assessment 按独立 Evidence Unit
+  评估固定旧 claim，并解析当前完整选择。
+- Claim Reconciliation 复用一个候选的完整 Evidence，输入完整 Candidate/Memory 目录，
+  输出每 Candidate 一行和稀疏 material edges，不生成 Candidate-to-Candidate 比较。
+- MemoryEngine 将 Support Assessment 与 Claim Reconciliation 交给原 reducer/Plan；
+  自动 DestructiveValidation 只保护拟执行的破坏性动作。后续身份匹配、原子提交和
+  outbox 保持原职责。
 - 输入预算采用 LiteLLM 已知能力、显式部署 input/context/output 上限及 0.8 比例，同时预留本次输出、schema 和 correction。未知模型路由需要明确配置，不静默假设通用模型窗口。`MEMFORGE_LLM_MAX_INPUT_TOKENS`、`MEMFORGE_LLM_CONTEXT_WINDOW_TOKENS`、`MEMFORGE_LLM_MAX_OUTPUT_TOKENS`、`MEMFORGE_LLM_INPUT_BUDGET_FRACTION` 可调整；实际提取输出 allowance 同样进入恢复身份。
 - 完整上下文可能需要图片时先取得既有图片执行配额；lower bound 可以不加载图片，
   最终参与比较和执行的方案必须按最终目录加载准确 bytes，并把图片 token 计入请求。
@@ -527,7 +695,10 @@ inference capability hash 与 source-derivation `semantic_input_policy`。改变
 
 保留已有 Source Projection、Evidence Unit/Support、Lifecycle Plan、outbox/work 和 Review；不新增通用 agent 框架、永久 Fragment 表、语义 checkpoint 账本、独立 MemoryRevision、全库冲突扫描或历史文档浏览器。一次操作复用表示索引与证据准备，只减少重复计算，不扩展成第二套业务状态。
 
-L4 合并减少逻辑调用次数，但完整候选 Evidence 会增加关系请求体积，不能宣称总 token 或延迟必然下降。继续完整比较本 Unit 的既有知识；配对全集不变，完整请求超限时拆分其传输批次，不截断候选。L5 的收益用已有指标评估，本次不扩充实体框架。
+Claim Reconciliation 输入完整目录，但只输出 material edges，不构造或传输完整 pair
+product。遗漏 edge 是接受的 false negative，不能授权删除。系统不增加
+Candidate-to-Candidate 语义去重；确定性 exact duplicate 规范化继续保留。自动
+DestructiveValidation 独立保护 REMOVE/SUPERSEDE/RETIRE，不把关系发现变成全量证明。
 
 未实现的 agentic 补读仅由 [Cloud Issue #468](https://github.com/dodoman-sun/memforge-cloud/issues/468) 跟踪；未识别的远处背景缺失可能造成少量误判，属于已接受的第一阶段取舍。多选提案 Review 是历史分析中的未批准选项，不纳入本阶段，不据此新增框架。
 
@@ -538,7 +709,7 @@ L4 合并减少逻辑调用次数，但完整候选 Evidence 会增加关系请�
 
 - 小文档全文和大文档 delta 只改变供应内容，不能改变同一变化的新知识授权。
 - 三个例子分别得到证据更新、替代、无损修订；任何新增条件不能藏在 Required 中而保留错误 claim。
-- L4 同次响应完成关系与条件性修订判断；覆盖等价、细化双向、同范围新增要求、仅缩小范围、冲突、无关及材料不足。修订不适用时结果结构保持一致；缺证、与 L3 矛盾、非法引用或多候选竞争均不能被静默当作通过或无关。
+- Claim Reconciliation 同次响应完成 material relation 与条件性修订判断；覆盖等价、细化双向、同范围新增要求、仅缩小范围、冲突、空 edges 及材料不足。缺证、与 Support Assessment 矛盾、非法引用或缺少 Candidate 行均不能被静默当作通过或无关。
 - 等价候选不重复 ADD；跨来源等价可追加 Support；跨来源冲突不自动退休其他来源。
 - Required 拆分/合并、移动+改写、重复原文、新增远处例外都进入同一个合同测试。
 - 每个 incumbent 有明确结果；模型未判到的事实风险与程序丢失完整输入/非法引用分开评价。

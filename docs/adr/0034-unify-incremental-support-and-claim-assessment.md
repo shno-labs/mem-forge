@@ -2,9 +2,12 @@
 
 ## Status
 
-Accepted and implemented (2026-09-06). Release and deployment acceptance are
-tracked in [Cloud issue #470](https://github.com/dodoman-sun/memforge-cloud/issues/470);
-a source change alone does not prove a deployed Cloud runtime.
+Accepted. The original unified assessment contract was implemented on
+2026-09-06. The context-planning optimization accepted on 2026-09-21 is the
+target shared contract; its implementation and deployment require separate
+acceptance tracked by [Cloud issue #505](https://github.com/dodoman-sun/memforge-cloud/issues/505).
+Release and deployment evidence remains external to this ADR, and a source
+change alone does not prove a deployed Cloud runtime.
 
 ## Context
 
@@ -20,49 +23,254 @@ The end-to-end explanation and implementation comparison live in
 only the decision; it does not replace the representation compiler, storage
 protocol, or the complete lifecycle description.
 
+## Context-planning optimization amendment (2026-09-21)
+
+This amendment supersedes the earlier assumptions that incremental Support
+assessment should repeatedly transport all prior Support text, that cumulative
+state can be reduced to the latest status, that current-full extraction must be
+one model request, and that relationship discovery needs one explicit result per
+candidate/incumbent pair. It does not add a lifecycle state, semantic Evidence
+search, human confirmation step, candidate-to-candidate deduplication pass, or
+cross-Source-Unit destructive rebind.
+
+### Domain vocabulary
+
+The durable design uses responsibility names rather than model-stage numbers:
+
+| Responsibility | Meaning |
+| --- | --- |
+| Claim Extraction | extract new claims from authorized current change |
+| Support Assessment | test one fixed existing claim and rebuild its complete current Evidence Unit |
+| Claim Reconciliation | discover material relations between admitted candidates and existing Memories |
+| Lifecycle Reconciliation | reduce current Support and relation results into guarded domain mutations |
+
+Historical implementation notes may retain L1/L3/L4 labels, but public types,
+methods, result states and new documentation must use the domain names above.
+
+### One deep context-planning module
+
+Callers use one source-neutral interface:
+
+```python
+plan_revision_context(
+    base_projection,
+    target_projection,
+    change_set,
+    existing_supports,
+    coverage,
+) -> RevisionContextPlan | TypedPlanningFailure
+```
+
+`RevisionContextPlanner` owns exact Evidence correspondence, removed-anchor
+context, representation reading groups, Delta/Full cost planning, historical
+excerpt selection and work-coverage manifests. Those are private collaborators,
+not additional public orchestration stages. Representation adapters for
+Markdown/HTML structure, plain text, canonical records such as Jira, and message
+graphs such as Teams all emit the same `ReadingGroup` contract:
+
+```text
+scope + container + before + target + after
++ authority/selectability metadata + exact fragment references
+```
+
+The change target is a sum type: either a current Fragment or a removed Anchor.
+A pure deletion therefore has a valid reading group even though no current
+target Fragment exists. Historical content is explicitly non-selectable.
+
+### Exact current Evidence correspondence
+
+The planner deterministically classifies every part of prior Support Evidence:
+
+| Status | Meaning | Input consequence |
+| --- | --- | --- |
+| `EXACT_UNIQUE` | same Observation, one exact digest match, compatible role and structural authority | supply the current Evidence candidate and compact metadata |
+| `CHANGED` | the provider object remains but text, digest, role or governing structure changed | supply current reading context and one bounded exact historical excerpt |
+| `REMOVED` | authoritative coverage proves the old object or Fragment absent | supply a removed Anchor and one bounded exact historical excerpt |
+| `AMBIGUOUS` | multiple exact matches or structural correspondence is not unique | supply the exact candidates and one bounded exact historical excerpt |
+| `UNKNOWN` | partial coverage cannot prove presence or absence | preserve the existing Support and forbid destructive action |
+
+Provider identity locates an Observation; it does not establish semantic
+equivalence or stable Fragment coordinates. `EXACT_UNIQUE` is a current Evidence
+candidate, not a semantic KEEP decision. Support Assessment still reads every
+changed ReadingGroup in scope because a distant changed structure may add an
+exception or revoke a rule whose original wording remains unchanged. The
+planner never performs semantic Evidence search after exact correspondence
+fails.
+
+The application always retains Memory, Support and Evidence IDs, Observation and
+Revision identity, exact digests, coverage and source provenance. It does not
+send all historical Evidence text by default. Only `CHANGED`, `REMOVED` and
+`AMBIGUOUS` work receives the relevant historical body, as a bounded immutable
+excerpt with revision, digest and historical reference. This excerpt is supplied
+once per independent work stream and can never be selected as current Evidence.
+
+### Delta and current-full input
+
+Delta cost is:
+
+```text
+all changed ReadingGroups
++ fixed claims and compact Support metadata
++ current context for affected or ambiguous Evidence
++ necessary bounded historical excerpts
+```
+
+Evidence merely being distributed throughout a large document does not make
+Delta approach Full. Unchanged, exactly corresponding Evidence contributes a
+current reference and compact state rather than repeated body text. Delta
+approaches Full only when changed/removed/ambiguous Evidence and the deduplicated
+union of its ReadingGroups cover most of the effective current Projection.
+
+Claim Extraction and Support Assessment choose Delta or current-full
+independently. Mode selection is performed over the complete logical work before
+transport partitioning. Current-full means that the model work reads the complete
+effective current Source Projection; it never upgrades provider `PARTIAL`
+coverage or grants destructive authority. Both modes may stream representation-
+safe ReadingGroups and persist execution receipts. Partitioning is a transport
+detail: no partial group may publish a Memory, Support or lifecycle mutation.
+
+### Cumulative Support witness state
+
+Support Assessment works at `(memory_id, independent_support_id)` granularity.
+Every independent Evidence Unit remains exactly one Primary plus zero or more
+Required references; different Supports and sources are never combined to make
+one Support appear sufficient.
+
+Cumulative state records semantic witnesses rather than only the most recent
+status:
+
+```json
+{
+  "work_id": "WRK-0001",
+  "support_refs": ["PRM-0012"],
+  "opposing_refs": ["PRM-0041"],
+  "uncertain": false
+}
+```
+
+Each ReadingGroup adds grounded supporting, opposing or uncertain witnesses.
+The final status is derived only after the work manifest proves that all changed
+ReadingGroups were processed. A later unrelated group cannot erase an earlier
+global revocation or exception. Different legal ReadingGroup orders and
+partitions must reduce to the same lifecycle proposal; disagreement yields
+`insufficient`, preserves the Support and does not advance its validation
+baseline. Witness state is execution data within the existing recoverable work,
+not a new business or lifecycle state.
+
+### Sparse Claim Reconciliation
+
+Claim Reconciliation receives complete candidate, existing-Memory and current
+Evidence catalogs, with each claim and Evidence body encoded once per request.
+It returns one row per requested candidate and only material discovered
+equivalent, refining or contradictory relations. Omitted candidate/incumbent
+pairs are not persisted or reconstructed as proven `UNRELATED`. A missed
+relation may temporarily retain duplicate or conflicting Memory, which is an
+accepted false-negative tradeoff; it cannot authorize removal or retirement.
+
+The design does not add candidate-to-candidate semantic deduplication. Exact
+admission normalization remains deterministic, and rare same-run semantic
+duplicates are accepted rather than adding another model pass or state system.
+
+### Automated destructive validation
+
+There is no human confirmation step. Before applying a proposed
+`REMOVE_SUPPORT`, `SUPERSEDE` or `RETIRE_MEMORY`, Lifecycle Reconciliation runs
+an automatic `DestructiveValidation` over the affected fixed claims. It verifies:
+
+1. authoritative coverage or an explicit tombstone for every affected object;
+2. complete Claim Extraction and Support Assessment manifests with no technical
+   failure or unresolved independent Support;
+3. resolvable decisive current witnesses and non-stale Support-set hashes;
+4. whether the complete effective current Projection still supports the fixed
+   claim when Delta alone cannot establish absence; and
+5. the aggregate active-Support count after simulating source-scoped removals.
+
+The validator may stream the complete effective current Projection for only the
+at-risk fixed claims. This is fixed-claim validation, not semantic Evidence
+retrieval. Finding current Support changes the proposal to KEEP or Evidence
+replacement. Unknown coverage, model uncertainty, capacity failure or stale
+input also yields KEEP and leaves the validation baseline unchanged. Only zero
+remaining active Supports may retire a Memory. Another source's active Support
+always prevents retirement by the current source.
+
+### Source Unit identity and convergence
+
+Provider identity changes are Source Projection facts. If a Confluence Page,
+Teams window or other Unit loses its provider identity, authoritative inventory
+represents the event as old Unit deletion plus new Unit creation. The lifecycle
+may remove the old Unit's Supports and extract candidates from the new Unit; it
+does not promise Memory-ID continuity or perform cross-Unit destructive semantic
+rebind. Ordinary non-destructive identity matching may still attach a new
+equivalent Support to an active access-compatible Memory.
+
+Under `COMPLETE_SNAPSHOT`, disappearance may remove old Supports. Under
+`PARTIAL_PROJECTION`, absence is unknown and old Supports remain. Delete and
+create may commit in either order and temporarily expose a gap or overlap; the
+operations must be idempotent and converge. A provider-declared stable move,
+reply, quote or correction mapping may enlarge an explicit comparison scope,
+but text similarity alone never does so.
+
+### Capacity and non-goals
+
+Representation adapters may split one large Observation only into exact,
+claim-coherent authority ranges with a complete coverage manifest: for example,
+table header plus row, list lead-in plus item subtree, or heading plus paragraph.
+Cross-range claims use one Primary and the necessary Required references. An
+indivisible ReadingGroup that still exceeds route capability produces a typed
+capacity failure, preserves affected Supports and publishes no partial candidate
+or lifecycle mutation.
+
+This amendment deliberately does not add semantic Evidence retrieval, manual
+confirmation, candidate-to-candidate semantic deduplication, permanent Fragment
+rows, a MemoryRevision entity, a second lifecycle state machine, cross-Unit
+identity continuity, or partial lifecycle commits.
+
 ## Decision
 
 1. Reuse one operation-scoped representation index and staged base/target
    snapshots. A source-neutral revision-input planner constructs both feasible
-   reading plans for normal updates: complete structural delta with bounded
-   current context and complete removed/replaced structural history, plus prior
-   Support Evidence for Support tasks; and complete current input without
-   non-current history. It forecasts both in the actual request format and
-   chooses the lower forecast token cost; delta wins an exact tie.
+   reading plans for normal updates: complete changed ReadingGroups with compact
+   Support metadata, current context for affected/ambiguous Evidence and bounded
+   exact history only for changed, removed or ambiguous Evidence; and complete
+   current input without non-current history. It forecasts both in the actual
+   request format and chooses the lower forecast token cost; delta wins an exact
+   tie.
    There is no changed-content percentage threshold. The baseline belongs to the
    evaluated Support, not its Evidence birth revision or the latest Source sync.
    Initial import partitions its full authorized Primary work with local reading
-   context. L3 may cumulatively batch complete Support input. A normal-update L1
-   current-full candidate is eligible only when its complete read scope fits one
-   request, because L1 has no semantic state that could make context-only follow-up
-   calls equivalent to joint reading. Oversized work never silently truncates
-   coverage.
+   context. Claim Extraction and Support Assessment may stream exact ReadingGroups
+   under one complete work manifest. Oversized work never silently truncates
+   coverage or publishes a partial business result.
 2. Keep read scope separate from new-claim Primary authority. Ordinary extraction
    still requires authorized added/changed complete structures or canonical
    fields, even when unchanged context is readable. Existing-claim validation
    can use current unchanged Evidence without authorizing duplicate extraction.
-3. One L3 assessment returns the fixed claim's support result and necessary
+3. One Support Assessment returns the fixed claim's support result and necessary
    current Evidence reconstruction. The application can retain proven unchanged
    parts and resolves a complete Evidence Unit; Required membership can split,
    merge, grow, or shrink. An old offset locates only its own revision. Semantic
    selection of current supplied fragments does not require reconstructing the
    author's unique edit history. Stored provenance remains exact and immutable.
-4. One L4 call combines claim relation classification and conditional revision
-   assessment. Its relationship vocabulary is EQUIVALENT, directional REFINES,
-   CONTRADICTS, and UNRELATED. Insufficient input is an unresolved assessment,
-   not an unrelated pair or a new persisted relationship. Only a new-to-old
+4. Claim Reconciliation combines relation classification and conditional revision
+   assessment over complete candidate, incumbent and current-Evidence catalogs.
+   Its relationship vocabulary is EQUIVALENT, directional REFINES and
+   CONTRADICTS. Only material discovered edges are returned; omission is accepted
+   as a semantic false negative and is never reconstructed as proven UNRELATED or
+   used to authorize a destructive action. Insufficient input is an unresolved
+   assessment, not a relationship or a new persisted state. Only a new-to-old
    refinement with the same knowledge identity, all old meaning and scope
    preserved, a self-contained new claim, and complete current supporting
    Evidence may propose revision. Non-applicable revision assessment is explicit
    in a fixed result contract. The reducer validates completeness and consistency
-   with the same-input L3 result before proposing actions.
+   with the same-input Support Assessment result before proposing actions.
 5. Keep existing Lifecycle Plan, complete incumbent coverage, Source Authority,
    Review, causal stale guards, and atomic commit. Model output never directly
    creates or retires Memory. Unknown selectors and malformed or incomplete
    results remain execution failures with the existing bounded correction/retry
    contract; they cannot fall back to independent ADD. A semantic uncertainty
-   becomes Review only when an existing single proposal can express its complete
-   protected postcondition. Otherwise reject the Unit without a partial commit.
+   becomes Review only where an existing Source Authority contract already
+   requires it; Review is not an extra confirmation step for ordinary revision
+   processing. Otherwise reject the Unit without a partial commit.
    Competing incompatible refiners retain the existing fail-closed boundary;
    this decision does not introduce multi-option Review, all-candidate conflict
    scanning, or a separate Memory lifecycle state.
@@ -217,7 +425,7 @@ record request coverage and capability failures rather than silently truncating.
 The revision-input planner supersedes both full-first fallback and unconditional
 delta-first selection. It is source-neutral: representation profiles supply exact
 structures and reading groups; the planner does not branch on Confluence, Jira,
-Teams, GitHub, local files, or agent clients. L3 has one model responsibility:
+Teams, GitHub, local files, or agent clients. Support Assessment has one model responsibility:
 assess the fixed claim and update its current Support evidence in light of the
 selected complete input. A rule remaining in force is distinct from execution
 compliance; missing results or unfinished examples do not by themselves revoke a
@@ -226,9 +434,11 @@ split/merge use that same contract rather than source-specific classifiers.
 
 For a valid base/target pair, the planner constructs a delta candidate and a
 current-full candidate before choosing. Delta contains all changed current
-structures, bounded current reading groups, the complete removed/replaced
-structural history emitted by the delta and, for Support tasks, prior Support
-Evidence. It does not semantically prune old material before assessment.
+structures, bounded current reading groups, compact prior-Support metadata,
+current candidates for exact unchanged Evidence, and bounded exact historical
+excerpts only for changed, removed or ambiguous Evidence. It does not repeatedly
+transport unchanged historical Support bodies or semantically search for current
+Evidence after exact correspondence fails.
 Current-full contains the complete eligible effective current snapshot and omits
 non-current `oldhistory`. “Full” means coverage of that current Source Projection,
 not provider version
@@ -245,26 +455,26 @@ actual admission before execution. After materializing delta, the planner may us
 a safe image-free full lower bound to stop when full cannot win; otherwise it
 materializes full before choosing. A plan is eligible only when it preserves
 required coverage and every indivisible reading group fits the effective route
-capacity. Normal-update L1 additionally requires the complete current-full read
-scope in one request; L3 can use its existing cumulative executor. The lower
+capacity. Claim Extraction and Support Assessment may both stream exact,
+representation-safe ReadingGroups under one complete work manifest. The lower
 forecast token cost wins and delta wins a tie; request and image counts/bytes
 remain diagnostics while image token cost is part of the
 request token count. The planner does not use an edit ratio, document-size
 percentage, Fragment count percentage, or source-type preference. Mode selection
-is execution policy only: L1 still limits Primary to authorized current work,
-while L3 may select any legitimately eligible current Evidence offered for the
+is execution policy only: Claim Extraction still limits Primary to authorized current work,
+while Support Assessment may select any legitimately eligible current Evidence offered for the
 fixed claim.
 
 A fitting delta and claim group uses one model request. Larger deltas use the same
 cumulative assessment contract over stable Source batches. Each request receives
-the fixed claims, necessary prior Evidence, previous brief judgments,
-current exact catalog, removed historical text and processed-range metadata.
-The carried result contains only status, a short reason and selected Primary/Required
-refs. It does not maintain a fact inventory, context-reference collection or missing-
-context checklist. This supersedes the requirement to accumulate unresolved semantic
-dependencies: simplicity and efficiency take priority over lossless cross-batch context.
+the fixed claims, compact Support metadata, current exact catalog, the affected
+bounded historical excerpts and processed-group metadata. Cumulative state keeps
+selected supporting refs, decisive opposing refs and an uncertainty marker. It
+does not carry an unbounded prose narrative. Final status is derived only after
+the complete group manifest is satisfied; an unrelated later group cannot erase
+an earlier revocation or exception.
 Batches describe one base/target pair, not intermediate Source revisions. When
-L3 has no recorded verified baseline and complete-current proof is permitted,
+Support Assessment has no recorded verified baseline and complete-current proof is permitted,
 current-full uses the same executor without assuming old Support validity. A
 named but unavailable or mismatched baseline is not this case and fails before
 semantic assessment.
@@ -272,20 +482,19 @@ Here “old” means Evidence from the historical Source revision. Earlier batch
 of this same target revision remain valid assessment context in both modes;
 their selected refs do not expire when the next batch omits their raw text.
 
-Current selectors are limited to the current catalog and the grounded refs in all
-previous states supplied in that same request. These refs form one shared candidate
-pool: a claim may select Evidence another claim previously selected. This supersedes
-the per-claim selector restriction; candidate availability is a request property,
-while judgments and complete Evidence Units remain independent per claim/Support.
+Current selectors are limited to the current catalog and grounded current refs in
+the cumulative witness state supplied in that request. These refs form one shared
+candidate pool: a claim may select Evidence another claim previously selected.
+Candidate availability is a request property, while judgments and complete
+Evidence Units remain independent per claim/Support.
 Refs omitted from the request, including other claim batches, are not selectable.
 Historical material never becomes selectable current Evidence.
 The application validates the final complete Evidence Unit from exact original
 refs; it does not require a final model request to reread all retained raw text.
-Cumulative explanations are inference state, not stored Evidence. This deliberately
-trades some joint-reading accuracy for bounded execution: complete range coverage
-cannot guarantee all cross-batch semantic relationships are preserved. The final
-status remains the sole semantic result; removing a context checklist does not turn
-an explicit insufficient judgment into supported. An L3 `insufficient` result skips
+Cumulative witnesses are inference state, not stored Evidence. Bounded execution
+still accepts model semantic misses, but complete range coverage, decisive-witness
+retention and order-invariant reduction prevent transport partitioning from silently
+forgetting an earlier judgment. An `insufficient` Support Assessment result skips
 that incumbent for this revision: the program emits a bare NOOP / KEEP, preserves
 its existing Support and Evidence, and does not advance its validation baseline.
 If any independent Support is insufficient, the whole incumbent is skipped for
@@ -320,11 +529,11 @@ work contracts invalidate their own reuse, without changing authority 5, extract
 Compiler 4 independently changes structural boundaries as described in ADR 0030.
 Legacy stage records remain immutable history. See ADR 0017 for storage ownership.
 
-First-import extraction separately batches its full authorized catalog. Incremental
-L1 Primary remains limited to authorized changed structures; its selected read
-scope is either delta with local context or a fitting one-request current-full
-catalog. Neither mode widens Primary authority or adds a final reread after the
-selected plan. L1 and L3 share catalog, budget and durable execution primitives,
+First-import extraction separately streams its full authorized catalog. Incremental
+Claim Extraction Primary remains limited to authorized changed structures; its
+selected read scope is either delta with local context or current-full ReadingGroups.
+Neither mode widens Primary authority. Claim Extraction and Support Assessment
+share catalog, budget and durable execution primitives,
 while retaining distinct semantic duties.
 
 ## Local unresolved claim relationships
@@ -404,7 +613,7 @@ reducer action. Correct Support, relation and preservation fields alone do not
 prove an eligible UPDATE. Frozen failed results remain evidence even when a later
 prompt/schema version corrects them.
 
-## Sparse claim discovery over complete input catalogs
+## Sparse Claim Reconciliation over complete input catalogs
 
 Claim contract v6 supersedes the v5 requirement for one explicit response per
 challenger–incumbent pair. The product accepts semantic false negatives in
@@ -414,7 +623,7 @@ or conflicting claims or miss a competing replacement proposal. Explicit proof,
 Source Authority/Review, stale and atomic guards remain mandatory; they do not
 prove that a model discovered every semantic relationship.
 
-L4 receives separate candidate, incumbent and current Evidence catalogs, linked
+Claim Reconciliation receives separate candidate, incumbent and current Evidence catalogs, linked
 by application-issued IDs. Evidence text and each claim occur once per request;
 Primary/Required role, observation/revision identity and validity remain explicit.
 Incumbents carry their already completed current Support assessment. Historical
@@ -433,9 +642,11 @@ Missing rows, unknown IDs, duplicate edges, truncation, refusal and technical
 failures are never interpreted as empty discoveries.
 
 One complete catalog is attempted first. Existing capacity subdivision partitions
-catalog rectangles only when actual input/image capacity requires it, preserving
-all candidate/incumbent inputs. There is no pair-count packing limit, arbitrary
-edge cap, or new automatic LLM recheck of destructive proposals. The existing
+catalog work only when actual input/image capacity requires it, preserving all
+candidate/incumbent inputs. There is no pair-count packing limit or arbitrary
+edge cap. Claim Reconciliation does not add candidate-to-candidate semantic
+deduplication. Automated DestructiveValidation is separate fixed-claim Support
+work and never treats a missing relation edge as proof of absence. The existing
 conditional comparison of multiple discovered refiners remains unchanged.
 Independent full incumbent Support assessment, the deterministic reducer and
 atomic lifecycle commit still apply even when no relationship is emitted.
@@ -469,14 +680,15 @@ signals must never be guessed into the failing call by error-code matching.
 
 ## Complete Support requests and model-facing identifiers
 
-Support assessment first plans the complete delta and current-full alternatives
+Support Assessment first plans the complete delta and current-full alternatives
 for the complete fixed-claim cohort under one validation baseline, then attempts
 the lower-cost eligible mode. Only a measured input, image, mandatory response-row,
 or cumulative-state capacity failure invokes the existing transport partitioning.
 This supersedes both selecting a packing by score before trying complete coverage
 and choosing a mode merely because one request fits. Delta includes changed
-material, the current matches for prior Support, representation-owned reading
-groups, and complete removed/replaced structural history. Current-full reads the
+material, exact current candidates for prior Support, representation-owned
+reading groups, and bounded historical excerpts only for changed, removed or
+ambiguous Evidence. Current-full reads the
 eligible effective current projection without carrying non-current history or
 changing its provider coverage meaning.
 
@@ -505,14 +717,17 @@ Evidence compiler and lifecycle semantics are unchanged.
 
 ### Compact Support judgments
 
-Successful Support judgments carry the work ID, status and complete selected
+Final successful Support judgments carry the work ID, status and complete selected
 Primary/Required references on the model wire. They do not carry generated prose.
-Negative and uncertain judgments retain a bounded explanation of the decisive basis.
+During streamed assessment, compact witness state carries selected supporting refs,
+decisive opposing refs and an uncertainty marker. Negative and uncertain judgments
+retain a bounded explanation of the decisive basis.
 This supersedes the assumption that every successful item needs a generated reason.
 The canonical stored result retains a deterministic success explanation; downstream
 lifecycle decisions continue to use status and resolved Evidence, never that sentence
-as additional authority. Cumulative assessment carries selected Evidence and diagnostic
-negative judgments, not an unbounded narrative of unrelated facts.
+as additional authority. Cumulative assessment carries grounded Evidence witnesses,
+not an unbounded narrative of unrelated facts. Final status cannot overwrite or forget
+an unresolved earlier opposing witness.
 
 Every requested work item must still be returned. Omission is not approval, unchanged
 Support or coverage. Reference lists are never truncated to meet an output target.
@@ -528,7 +743,7 @@ recommends reducing unnecessary output. Output reduction is measured separately 
 end-to-end latency; input processing and provider waiting prevent proportional latency
 claims from output token counts alone.
 
-The source-neutral reading and cost-selection amendment uses
+The earlier source-neutral reading and cost-selection amendment uses
 `revision-input-v6`. That identity is included directly in the inference
 capability hash and the Source derivation's `semantic_input_policy`; completed
 v4/v5 work is not reinterpreted. The extraction contract remains
@@ -536,3 +751,11 @@ v4/v5 work is not reinterpreted. The extraction contract remains
 contract remains 4, authority policy remains 5, and the model presentation policy
 is 4. The planner amendment changes request scope and presentation identity only;
 it does not migrate stored Evidence or create a lifecycle version.
+
+Implementing the 2026-09-21 amendment must allocate successor semantic-work and
+input-policy identities for exact correspondence, witness state, streamed
+current-full extraction and DestructiveValidation. Existing completed v6 work
+must never be reinterpreted under the amended contract. Exact successor numbers
+are assigned with the implementation so they cannot collide with independently
+released work; no stored Evidence or lifecycle schema migration follows merely
+from this contract change.
