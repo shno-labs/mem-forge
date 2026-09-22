@@ -9,8 +9,14 @@ This document does not define a second lifecycle or conflict-discovery pipeline.
 This document expands the runtime design accepted by
 [ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md). MemForge
 keeps provider identity and structure at the Source Projection seam,
-representation parsing inside the Evidence Fragment Compiler, semantic Evidence
+representation parsing inside the Representation Compiler, semantic Evidence
 selection in the extraction model, and lifecycle authority in application code.
+The compiler and ReadingGroup index are one private `RepresentationCompiler`
+module; parser-specific ASTs and provider position types do not escape it.
+Inference transport and reusable context layout are defined separately by
+[Semantic judgment execution](semantic-judgment-execution.md), so changing an
+eligible judgment executor cannot change Evidence authority or document
+segmentation.
 
 The design is source-agnostic without pretending every source has one format.
 Jira comments, Teams messages, Markdown sections, HTML structures, canonical
@@ -26,7 +32,7 @@ provider payload
   -> complete current Source Projection + Revision Delta
   -> committed base + staged target ProjectionEvidenceWorkPlanner
   -> exact authorized ranges + complete representation index
-  -> representation-aware Evidence Fragment Compiler
+  -> RepresentationCompiler: exact Fragments + ReadingGroups
   -> RevisionInputPlanner expands reading groups and compares delta/current-full cost
   -> immutable request catalog + display-only Context
   -> LLM returns Memory content + primary_ref + required_refs
@@ -65,16 +71,26 @@ canonical records, plain text, and whole Artifacts use their registered,
 versioned representation contracts. A representation adapter may split or
 narrow exact structure, but it cannot widen the planner's authorized ranges.
 
-### Evidence Fragment Compiler
+### Representation Compiler
 
-The compiler has one external interface equivalent to:
+The compiler parses one immutable Revision once and exposes both exact Evidence
+Fragments and the ReadingGroups needed to interpret them. Its private interface
+is equivalent to:
 
 ```python
-compile_fragments(
+compile_representation(
     revision: SourceObservationRevision,
     candidate_ranges: tuple[EvidenceCandidateRange, ...],
-) -> EvidenceFragmentCatalog
+) -> CompiledRepresentation | TypedRepresentationFailure
 ```
+
+`CompiledRepresentation` contains one exact coordinate map, structural
+manifest, Fragment catalog and reading index. Markdown uses `markdown-it-py`
+plus a private raw-coordinate adapter; raw HTML and canonical JSON retain small
+private exact scanners because reviewed DOM/source-map packages do not satisfy
+the full coordinate and identity contract. All emitted ranges are verified
+against the immutable raw slice. Parser objects remain internal and no durable
+Fragment or ReadingGroup entity is introduced.
 
 Each candidate range carries one exact current-revision Anchor and one transient
 Boolean:

@@ -13,6 +13,7 @@
 - [Document Memory Lifecycle](document-memory-lifecycle.md) 只定义 Evidence/Support、动作与 Review 的领域约束，不再重复完整 Sync 流程。
 - [Source-Agnostic Memory Extraction](source-agnostic-memory-extraction.md) 负责当前提取、角色和 selector 合同；[增量 Primary authority](representation-scoped-incremental-primary-authority.md) 负责表示级差量算法。本文不另造 compiler 或授权规则。
 - [ADR 0009](../adr/0009-bound-cross-document-relation-discovery.md)、[0017](../adr/0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md)、[0030](../adr/0030-compile-revision-pinned-evidence-fragments.md) 分别拥有异步关系发现、可恢复推导、不可变 Evidence 的详细合同。
+- [Semantic judgment execution](semantic-judgment-execution.md) 说明生成与分类调用如何共享 ContextBundle、如何使用 prompt cache，以及哪些判断可以选择 Structured LLM 或 TypeSafe/Jev；[ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md) 记录该共享决策。
 - [大文档恢复分析](large-document-reconciliation-recovery.md) 是历史问题与未批准选项的记录，不是另一份当前主流程或执行 backlog。
 
 全文/delta 选择用于文档语义材料的供应，不是对所有模型职责一律传全文：Candidate Admission 看候选，Claim Reconciliation 看完整 claim/Evidence 目录，Entity Resolution 看名称语境，跨文档身份与关系发现只看知识及范围。直接用户创建/纠正、managed agent commands 有各自的授权入口，复用后段 Evidence/Lifecycle，但不强制绕回 provider Sync。
@@ -29,7 +30,8 @@
 flowchart TD
     A[Provider payload] --> B[Source Adapter\nidentity + coverage + change facts]
     B --> C[immutable base + staged target Projection]
-    C --> D[RevisionContextPlanner]
+    C --> R[RepresentationCompiler\nFragments + ReadingGroups + exact coordinates]
+    R --> D[RevisionContextPlanner]
     D --> E[Claim Extraction\n只从获授权 current change 提取]
     D --> F[Support Assessment\n固定旧 claim + changed ReadingGroups]
     E --> G[deterministic Candidate admission]
@@ -66,6 +68,31 @@ scope / container / before / target / after
 
 `target` 可以是 current Fragment，也可以是 `RemovedAnchor`。因此纯删除不需要伪造空 current Fragment。ReadingGroup 只扩大阅读范围，不扩大 Primary 权限；Context 和历史 excerpt 不能被选为当前 Evidence。
 
+#### `RepresentationCompiler` 只在 planner 内部暴露
+
+Fragment 和 ReadingGroup 是同一 immutable Revision 的两种视图，不能由 Extraction、Support 和 request packer 分别解析。`RevisionContextPlanner` 私有调用一个深的 `RepresentationCompiler`：
+
+```python
+compile_representation(
+    revision,
+    candidate_ranges,
+) -> CompiledRepresentation | TypedRepresentationFailure
+```
+
+`CompiledRepresentation` 同时包含 exact coordinate map、structure manifest、Fragment catalog 和只引用这些 Fragment 的 ReadingGroups。Markdown、HTML 和 canonical record 的 parser/AST 类型不会泄漏给 caller，也不新增持久化 Fragment/ReadingGroup 表。
+
+实现优先采用能表达所需结构的成熟开源 parser，并把它锁在 representation adapter 内。开源 parser 只给 line range 或 normalized tree 时，adapter 负责映射并验证 raw half-open offsets；无法精确映射就 typed failure，不能把 normalized text 当 Evidence。自研代码只允许补齐坐标映射或未被库覆盖的注册结构，不允许重新实现一套散落在各调用方的 Markdown/HTML/JSON parser。
+
+#### Context 与模型调用分开
+
+Planner 输出 backend-neutral `ContextBundle`，按稳定性排列：
+
+```text
+CONTRACT → REVISION_SHARED → COHORT → CARRIED_STATE → ATTEMPT
+```
+
+Structured LLM adapter 将其渲染为稳定前缀在前的 prompt，并在实际 route 支持时请求 prompt caching；Jev adapter 将同一判断上下文渲染为共享 `state` 和独立 Choice/Noul/Score questions。Claim Extraction 等开放式生成使用 `GenerationExecutor`；封闭分类/排序使用 `JudgmentExecutor`。executor 只负责推理调用，不能改变 ReadingGroups、selectable refs、work manifest 或 lifecycle authority。
+
 ### 0.3 旧 Evidence 的确定性对应
 
 程序始终持有 Memory、Support、Evidence、Observation、Revision、digest、coverage 和 source provenance。它只判断可证明的对应关系，不判断自然语言语义：
@@ -96,7 +123,7 @@ Delta 的逻辑输入为：
 
 Claim Extraction 和 Support Assessment 分别选择 Delta 或 current-full。模式先按完整逻辑 work 选择，之后才按 ReadingGroup 和 claim cohort 流式传输。每个 `(claim cohort, ReadingGroup)` 至多处理一次；分组不产生业务状态，也不能部分提交。current-full 只表示读取完整的 effective current Projection，不会把 Provider 的 `PARTIAL_PROJECTION` 变成完整快照。
 
-单个超大 Observation 只能由 representation adapter 拆成有 exact authority coverage 的结构，例如 table header+row、list lead-in+item subtree、heading+paragraph。跨结构 claim 使用一个 Primary 和必要 Required。仍不可分且超限时返回 typed capacity failure，KEEP 受影响 Support，不推进验证 baseline，不从部分结果创建 Memory。
+单个超大 Observation 只能按已注册 representation contract 拆成具有 exact authority coverage 的结构，例如 list lead-in+item subtree、heading+paragraph 或 canonical record field。当前 compiler-4 的普通 Markdown/HTML table 仍是完整原子 Fragment；是否改为 table header+row 必须先修改 ADR 0030 的结构合同和 Evidence 语义，不能由 request packer 临时切开。仍不可分且超限时返回 typed capacity failure，KEEP 受影响 Support，不推进验证 baseline，不从部分结果创建 Memory。
 
 ### 0.5 Support witness 累积
 

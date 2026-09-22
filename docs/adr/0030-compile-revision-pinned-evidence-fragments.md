@@ -13,7 +13,7 @@ provenance, not mutable validation checkpoints.
 
 ## Status
 
-Accepted (2026-08-27; amended 2026-09-05)
+Accepted (2026-08-27; amended 2026-09-05 and 2026-09-21)
 
 MemForge will replace provider-returned evidence text, single coarse Block
 selection, quote matching, and whole-Block fallback with application-owned
@@ -25,6 +25,70 @@ resolves every selection to exact current-revision Evidence and binds the
 result as one indivisible Evidence Unit. This preserves revision-pinned
 authority while removing format-sensitive quote copying and preventing a
 partially supported compound claim from entering lifecycle state.
+
+### Representation compilation amendment (2026-09-21)
+
+Fragment boundaries and ReadingGroups are two views of one parsed immutable
+Revision. They must be compiled behind one deep, operation-local
+`RepresentationCompiler` module rather than reconstructed separately by Claim
+Extraction, Support Assessment or request packing:
+
+```python
+compile_representation(
+    revision,
+    candidate_ranges,
+) -> CompiledRepresentation | TypedRepresentationFailure
+```
+
+The result contains the exact coordinate map, structural manifest, Evidence
+Fragments, authority roles and ReadingGroups whose members refer only to those
+Fragments. One parse/index may be reused internally by base/target authority
+comparison and target presentation, but parser objects and syntax-specific nodes
+do not escape the module. `RevisionContextPlanner` is the only external context
+planner and consumes this compiled result through a private dependency.
+
+`ReadingGroup` is not a Source Unit, Evidence object, batching state or durable
+row. It records which exact Fragments must be read together to interpret a
+target while leaving each Fragment's Primary/Required eligibility unchanged.
+Deleting this module would otherwise duplicate heading/list/record/reply context
+logic across extraction and support paths, so the seam is retained; no public
+per-format group builder is added.
+
+Representation adapters must prefer a mature, maintained parser that can expose
+the syntax needed by the registered profile. Exact source coordinates remain an
+application contract: when a library exposes only line ranges or a normalized
+tree, a small private coordinate adapter may derive and verify raw half-open
+ranges. If no library can reproduce exact raw ranges for a supported construct,
+the custom code is confined to that adapter and covered by conformance fixtures.
+Generic document chunkers, rendered DOM trees and normalized AST text cannot be
+used as Evidence coordinates merely because they are convenient for retrieval.
+
+The reviewed initial parser choices are deliberately conservative:
+
+- Markdown keeps `markdown-it-py` as its maintained CommonMark/GFM structural
+  parser. Its token map supplies block line ranges; the private adapter maps
+  those lines and supported inline structures back to verified Python-string
+  half-open ranges. Tree-sitter Markdown is not Evidence authority because its
+  upstream project explicitly documents correctness limitations.
+- Raw HTML keeps one private exact-offset event scanner for Evidence coordinates.
+  `html5lib`, Beautiful Soup or `lxml` may provide presentation or conformance
+  views, but repaired/synthesized DOM nodes and source-line-only positions cannot
+  become authoritative raw ranges.
+- Canonical JSON keeps one private strict scanner alongside standard-library
+  validation. It owns RFC 6901 path escaping, duplicate-key rejection, exact
+  field ranges and decoded-string-to-raw-source boundary maps. The reviewed
+  `json-source-map` and Tree-sitter JSON contracts do not provide that complete
+  authority contract.
+
+These are not three public parsing subsystems. They are private adapters behind
+the same `CompiledRepresentation` result and share one raw-slice validation
+invariant. The evidence and package review is recorded in
+[Structure-preserving parsers, Jev judgments, and repeated-context caching](../research/2026-09-21-structure-parsers-jev-prompt-cache.md).
+
+Parser package, grammar/profile, coordinate adapter and compiler contract
+versions participate in the compiled-work identity. Upgrading a parser cannot
+silently reuse an old catalog. Package output is never a durable Fragment ID,
+and introducing this module does not add a Fragment or ReadingGroup table.
 
 This decision supersedes the selection and fallback portions of
 [ADR 0007](0007-bind-extracted-evidence-to-the-current-projection.md). It keeps

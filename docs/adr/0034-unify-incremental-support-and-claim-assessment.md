@@ -47,6 +47,29 @@ The durable design uses responsibility names rather than model-stage numbers:
 Historical implementation notes may retain L1/L3/L4 labels, but public types,
 methods, result states and new documentation must use the domain names above.
 
+### Backend-neutral context and judgment execution
+
+`RevisionContextPlanner` returns application-owned context, authority and work
+manifests rather than a provider prompt. The selected plan is rendered as a
+backend-neutral `ContextBundle` whose stable contract and revision-shared
+material precede cohort, carried-state and attempt-only material. This permits a
+Structured LLM adapter to use provider prompt-prefix caching without making
+cache retention part of correctness, and permits an eligible classifier adapter
+to evaluate the same state without reconstructing revision context.
+
+Open-vocabulary Claim Extraction remains `GenerationWork`. Closed-set semantic
+decisions are `JudgmentWork`; Structured LLM and TypeSafe/Jev may both implement
+the judgment interface only where their capabilities satisfy the complete
+contract. Jev is not assumed to generate claims, consume images, discover
+arbitrary Evidence or directly reproduce compound Support Assessment. Executor,
+model, contract and context digest participate in work identity. Exact selector
+validation, complete manifests, lifecycle reduction and destructive validation
+remain application-owned for every executor.
+
+The complete decision, operation inventory, cache layout and evaluation gate are
+in [ADR 0036](0036-separate-semantic-work-from-inference-executors.md) and
+[Semantic judgment execution](../design/semantic-judgment-execution.md).
+
 ### One deep context-planning module
 
 Callers use one source-neutral interface:

@@ -11,6 +11,13 @@ sync lifecycle, unified Support assessment and revision-input policy, use
 [Source sync to Memory](source-sync-to-memory.md). This algorithm continues to
 govern new-candidate Primary eligibility in both full-context and delta modes.
 
+Target deepening accepted 2026-09-21: the private `RepresentationIndex`, Evidence
+Fragment Compiler and reading-index parsing are one operation-local
+`RepresentationCompiler` implementation behind `RevisionContextPlanner`. It
+produces exact structures, Fragments and ReadingGroups from one parsed Revision;
+format parsers and their ASTs do not become additional public interfaces. See
+[ADR 0030's representation compilation amendment](../adr/0030-compile-revision-pinned-evidence-fragments.md#representation-compilation-amendment-2026-09-21).
+
 ## 1. Decision
 
 MemForge will create one provider-neutral `ProjectionEvidenceWorkPlanner` for
