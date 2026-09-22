@@ -32,20 +32,27 @@ differences into callers or silently weaken existing contracts.
 1. Domain planners return an immutable backend-neutral `ContextBundle` plus
    either `GenerationWork` or `JudgmentWork`. They do not return provider prompt
    strings. Context is ordered by semantic role and stability: versioned
-   contract, revision-shared state, cohort work, carried state and attempt-only
-   diagnostics. Authority, selectability, exact references, access identity and
-   complete work manifests remain application-owned.
+   contract, revision-static state, cohort work, ReadingGroup, carried state and
+   attempt-only diagnostics. Authority, selectability, exact references, access
+   identity and complete work manifests remain application-owned.
 2. Introduce two narrow interfaces. `GenerationExecutor` handles work that
-   creates open-vocabulary text. `JudgmentExecutor` handles application-defined
-   Choice, Boolean or Score work. A Structured LLM adapter may implement both;
-   a Jev adapter implements only eligible judgment work. Capability admission
-   rejects unsupported modality, option count, dependency or output shape before
-   a provider call.
-3. The Structured LLM adapter renders stable context before variable context and
-   may request provider prompt caching at the largest reusable prefix supported
-   by the configured route. Cache hits, misses, TTLs and provider cache keys
-   never affect work identity, correctness, recovery or stale guards. Telemetry
-   records reported cache creation/read tokens and latency.
+   creates open-vocabulary text or one dependent multi-field structured proposal,
+   including a complete Support Assessment with status, Primary, Required and
+   carried witness state. `JudgmentExecutor` handles independent
+   application-defined Choice, Boolean or Score work. A Structured LLM adapter
+   may implement both; a Jev adapter implements only eligible judgment work.
+   Capability admission rejects unsupported modality, option count, dependency
+   or output shape before a provider call.
+3. The Structured LLM adapter uses a deterministic contract-declared cache
+   layout. Revision-first places a repeated ReadingGroup before changing claim
+   cohorts; cohort-first places fixed claims before changing ReadingGroups, as in
+   streamed Support Assessment. Materialized fan-out selects the layout before
+   execution and retries preserve it. The adapter may request provider prompt
+   caching at the largest repeated prefix supported by the configured route. It
+   never pads, duplicates or enlarges semantic work for a cache hit. Cache hits,
+   misses, TTLs and provider cache keys never affect work identity, correctness,
+   recovery or stale guards. Telemetry records reported cache creation/read
+   tokens, uncached input and latency.
 4. The Jev adapter renders one structured `state` and independent Choice, Noul
    or Score questions. Raw probabilities are diagnostic input to a calibrated,
    versioned application policy. Low confidence or incomplete answers produce an
@@ -58,11 +65,14 @@ differences into callers or silently weaken existing contracts.
    durable work identity; changing configuration does not itself reprocess an
    unchanged Source.
 6. Jev begins in sampled shadow evaluation. Eligibility is granted separately
-   for candidate admission, source support, entity adjudication, relation
-   classification, reranking, offline judging and agent-session authority.
-   Compound Support Assessment remains shadow-only until evaluation proves that
-   status, Primary and Required Evidence composition preserve the complete
-   current contract. Claim and managed-patch generation remain generative work.
+   for candidate admission, single-proposition source support, entity
+   adjudication, relation classification, reranking, offline judging and
+   agent-session authority. Complete Support Assessment is explicitly ineligible:
+   its status, Primary, multiple Required selections and carried witness state
+   are one dependent Evidence-plan proposal and remain on the Structured LLM
+   path. Claim and managed-patch generation also remain generative work. Making
+   complete Support Assessment Jev-eligible requires a later ADR; shadow mode or
+   fallback configuration cannot widen this boundary.
 7. Provider results remain proposals. Existing exact selector validation,
    complete coverage, automatic destructive validation, Source authority,
    lifecycle reduction and atomic stale-guarded commit remain unchanged.
@@ -91,6 +101,7 @@ recorded in
 
 - no one-size-fits-all inference interface;
 - no Jev claim generation, image understanding or semantic Evidence search;
+- no Jev shadow, fallback or production path for complete Support Assessment;
 - no correctness dependency on prompt-cache retention;
 - no model-owned Source authority, lifecycle verbs or selector membership;
 - no human confirmation stage for ordinary source reconciliation;

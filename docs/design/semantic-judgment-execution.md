@@ -36,11 +36,12 @@ class JudgmentExecutor(Protocol):
     async def judge(self, work: JudgmentWork) -> JudgmentResult: ...
 ```
 
-`GenerationWork` may create open-vocabulary text such as a new claim.
-`JudgmentWork` chooses, scores or verifies values already defined by application
-code. A Structured LLM may implement both interfaces. Jev implements only the
-second. This prevents a provider abstraction from hiding a real capability
-difference.
+`GenerationWork` may create open-vocabulary text such as a new claim or one
+dependent multi-field structured proposal such as a complete Support Assessment.
+`JudgmentWork` independently chooses, scores or verifies values already defined
+by application code. A Structured LLM may implement both interfaces. Jev
+implements only the second. This prevents a provider abstraction from hiding a
+real capability difference.
 
 The model never owns Source authority, exact offsets, allowed selectors,
 complete work coverage, lifecycle verbs, stale guards or atomic commit. Those
@@ -53,8 +54,9 @@ Each domain planner produces one immutable, backend-neutral `ContextBundle`:
 ```python
 ContextBundle(
     contract=ContextSegment(...),
-    revision_shared=ContextSegment(...),
+    revision_static=ContextSegment(...),
     cohort=ContextSegment(...),
+    reading_group=ContextSegment(...),
     carried_state=ContextSegment(...),
     attempt=ContextSegment(...),
     manifest=WorkManifest(...),
@@ -66,7 +68,8 @@ Every segment has:
 - a semantic role, exact content and content digest;
 - revision, access and work identity where applicable;
 - selectable versus read-only material;
-- one stability class: `CONTRACT`, `REVISION_SHARED`, `COHORT`, or `ATTEMPT`;
+- one stability class: `CONTRACT`, `REVISION_STATIC`, `COHORT`,
+  `READING_GROUP`, `CARRIED_STATE`, or `ATTEMPT`;
 - a deterministic order within its stability class.
 
 The bundle contains structured application state, not provider messages,
@@ -88,35 +91,46 @@ narrow the context.
 
 The application cannot manage a provider's raw KV cache. It can make prompt
 prefixes reusable and request prompt caching through a supported transport.
-For repeated calls over one revision, the Structured LLM adapter renders:
+For repeated calls over one revision, the Structured LLM adapter renders the
+same named segments using one of two contract-declared layouts:
 
 ```text
-1. CONTRACT
-   stable instructions + static output contract
+REVISION_FIRST                         COHORT_FIRST
 
-2. REVISION_SHARED
-   current ReadingGroup/catalog content shared by the request cohort
+1. CONTRACT                            1. CONTRACT
+   instructions/schema/tools              instructions/schema/tools
 
-3. COHORT
-   fixed claims, candidate pairs, per-work allowed references
+2. REVISION_STATIC                     2. COHORT
+   revision identity/catalog              fixed claims/candidates
 
-4. CARRIED_STATE
-   compact support/opposition witnesses or completed slots
+3. READING_GROUP                       3. REVISION_STATIC
+   current structure/context              revision identity/catalog
 
-5. ATTEMPT
-   bounded repair diagnostics; absent on the first attempt
+4. COHORT                              4. READING_GROUP
+   claims/pairs/allowed refs              current structure/context
+
+5. CARRIED_STATE                       5. CARRIED_STATE
+6. ATTEMPT                             6. ATTEMPT
 ```
 
-Stable material must precede variable material. A provider cache breakpoint, if
-supported, is placed after the largest reusable `REVISION_SHARED` prefix. A
-batch planner should keep calls for the same contract and revision prefix
-adjacent, while still respecting complete coverage, latency and concurrency
-limits. It must not enlarge semantic batches solely to chase a cache hit.
+`REVISION_FIRST` is used when one ReadingGroup is evaluated against several
+claim or candidate cohorts. `COHORT_FIRST` is used when one fixed cohort scans
+several ReadingGroups, as in streamed Support Assessment. The materialized work
+manifest selects the layout from the larger fan-out before the first call;
+retries preserve it. This changes serialization order only. Named segment
+content, the context digest, logical coverage and instructions remain the same.
+
+A provider cache breakpoint, if supported, is placed after the largest actually
+repeated prefix. Calls sharing that prefix should be adjacent while still
+respecting complete coverage, latency and concurrency limits. The planner must
+not pad input to meet a cache threshold, duplicate content, enlarge a semantic
+batch or reorder dependent work solely to chase a cache hit.
 
 For Anthropic-compatible routes, exact-prefix order is `tools`, then `system`,
 then `messages`. Stable tool/response definitions therefore come before the
-stable system contract and revision-shared message content; cohort work,
-carried state and repair diagnostics follow the final reusable breakpoint.
+stable system contract and the selected repeated message prefix; variable
+ReadingGroup or cohort work, carried state and repair diagnostics follow the
+final reusable breakpoint.
 Changing a tool or schema before that breakpoint invalidates the cumulative
 prefix. Other providers may expose different caching contracts, so the adapter
 must advertise and test the actual route capability instead of assuming this
@@ -130,6 +144,9 @@ Prompt caching is a cost and latency optimization only:
   input;
 - request telemetry records cache creation/read input tokens when the provider
   reports them;
+- telemetry compares cacheable-prefix tokens, cache reads/writes and uncached
+  input so the optimization is accepted only when the configured route shows a
+  material saving;
 - cached and uncached results use the same schema and application validators.
 
 Anthropic documents prefix caching, automatic or explicit `cache_control`
@@ -228,15 +245,21 @@ historical method name.
 | Offline semantic judge | `judge_offline_semantics` | fixed evaluation labels | strong candidate |
 | Agent-session authority | `classify_agent_session_evidence_authority` | per-candidate authority decision | strong candidate |
 | Selector correction | `correct_projection_fragment_selectors` | bounded closed-set selection | possible for small text-only catalogs; not first rollout |
-| Support Assessment | `evaluate_revision_work`, `assess_revision_support`, `validate_memory_support` | status plus complete Primary/Required Evidence Unit across streamed context | shadow/evaluation first; compound state and multi-select Evidence make direct replacement high risk |
+| Complete Support Assessment | `evaluate_revision_work`, `assess_revision_support`, `validate_memory_support` | one dependent proposal containing status, Primary, zero or more Required refs and carried witnesses across streamed context | no; keep on `GenerationExecutor` with Structured LLM |
 | Incumbent audit legacy path | `audit_incumbent_support` | fixed support judgment | classifier-shaped, but remove/delegate if ADR 0034 supersedes the call |
 
-Support Assessment illustrates why “LLM and Jev are both calls” is true only
-below the domain interface. Jev can ask a status Choice, one Primary Choice and
-independent Required-candidate Nouls, but code must still prove complete catalog
-coverage and a coherent Evidence Unit. Because the questions are independent,
-the design does not assume Jev has reproduced the current multi-step Support
-semantics until a representative evaluation demonstrates it.
+Complete Support Assessment illustrates why “LLM and Jev are both calls” is true
+only below the domain interface. Its status, Primary, Required refs and carried
+witnesses constrain one another. Splitting them into independent Jev questions
+can produce an internally inconsistent result such as `supported` without the
+Required Evidence that entails the complete claim. Recombining those answers
+would recreate a second Support-assessment engine in application code.
+
+Therefore complete Support Assessment is outside Jev capability admission. It
+does not enter Jev shadow evaluation, fallback or production routing. A smaller,
+independently useful judgment such as whether one supplied excerpt supports one
+proposition may be registered separately, but it cannot stand in for the complete
+Evidence Unit assessment.
 
 ## 6. User-selectable execution profiles
 
@@ -253,6 +276,10 @@ and calibrated acceptance policy permit it, then falls back on an unresolved
 result. `jev_only_eligible` never silently routes an eligible judgment to an LLM;
 unsupported generation work still uses the separately configured generation
 executor.
+
+Complete Support Assessment is always registered as generation/compound-proposal
+work and therefore always uses the configured Structured LLM executor. A user
+judgment profile cannot route it through Jev.
 
 The UI may present these as execution profiles, but the persisted contract is
 an operation-to-executor policy with explicit model and contract versions. A
@@ -277,10 +304,10 @@ executor remains authoritative while evaluation records:
 - lifecycle simulation, including false destructive proposals.
 
 Production eligibility is granted per semantic responsibility, model version,
-question contract and risk class. Relation/rerank/entity work may qualify before
-Support Assessment. A destructive lifecycle proposal still passes the same
-automatic `DestructiveValidation`; confidence alone can never authorize REMOVE,
-SUPERSEDE or RETIRE.
+question contract and risk class. Relation, rerank and entity work can qualify;
+complete Support Assessment is not part of this rollout. A destructive lifecycle
+proposal still passes the same automatic `DestructiveValidation`; confidence
+alone can never authorize REMOVE, SUPERSEDE or RETIRE.
 
 ## 8. Non-goals
 
@@ -292,6 +319,7 @@ SUPERSEDE or RETIRE.
 - no undocumented Jev prompt-cache assumption;
 - no human confirmation stage added to ordinary source lifecycle;
 - no Jev-only claim generation, image understanding or semantic Evidence search;
+- no Jev shadow, fallback or production path for complete Support Assessment;
 - no second lifecycle state machine or provider-specific domain branch.
 
 ## 9. Research basis
