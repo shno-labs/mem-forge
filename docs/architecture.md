@@ -845,19 +845,19 @@ different durable entity set.
 ```
 Query + explicit filters -> [Query Analyzer] -> extracts entities
                 |
-    +-----------+-----------+
-    |           |           |
-    v           v           v
- Vector    BM25/FTS5    Entity-Graph
- Search    Keyword      Traversal
-    |           |           |
-    +-----------+-----------+
+    +-----------+-----------+-----------+
+    |           |           |           |
+    v           v           v           v
+ Vector    Content      Metadata    Entity-Graph
+ Search    BM25/FTS5    Lexical     Traversal
+    |           |           |           |
+    +-----------+-----------+-----------+
                 |
     [Reciprocal Rank Fusion]
                 |
     [Relational source/date/visibility checks]
                 |
-    [Optional Reranker (top-20, only for ambiguous results)]
+    [Optional Reranker (baseline top-30 to final top-20)]
                 |
     Memory Cards (Level 0: ~60 tokens each)
          | source evidence needed
@@ -925,21 +925,26 @@ where k = 60 (standard constant)
 **Known tradeoff:** Memories found by only one channel (especially graph-only discoveries
 via 1-hop entity traversal) score ~3x lower than memories found by all channels. At small
 memory counts (< 1K) this rarely matters because result sets are small enough. At scale,
-cross-encoder reranking (below) addresses this.
+optional Memory reranking (below) can address this when the retrieved shortlist
+already contains the relevant Memory.
 
-### Cross-Encoder Reranking (Planned, Config-Gated)
+### Optional Memory Reranking (Implemented, Config-Gated)
 
-After RRF fusion, optionally rerank the top-N candidates using a cross-encoder model.
-This scores each (query, memory) pair independently, resolving the channel-count bias
-in RRF by evaluating actual query-memory relevance regardless of which channel found it.
+After RRF fusion, authoritative hard filtering, and baseline recency/affinity ranking,
+MemForge can optionally rerank a bounded shortlist. The current config-gated adapter uses
+a Structured LLM to return one listwise permutation. The accepted target contract adds a
+provider-neutral `MemoryReranker` seam so a classifier model can instead score independent
+query-Memory pairs.
 
 ```
-RRF top-30 candidates → Cross-encoder scores each (query, memory.content) → Final top-10
+Baseline top-30 candidates → optional MemoryReranker → Final top-20
 ```
 
-Implementation: Claude Haiku via existing Anthropic SDK (~200ms, ~$0.001/query).
-Alternative: dedicated reranker API (Cohere, Jina) at ~50ms if query volume grows.
-Config-gated via `retrieval.enable_reranking` (default: false). Enable at ~1K memories.
+The current implementation is disabled by default and falls back to the baseline order on
+provider or schema failure. Backend enablement depends on a fixed MemForge retrieval
+evaluation rather than corpus size. See
+[Query-time Memory reranking](design/query-time-memory-reranking.md) for the provider-neutral
+interface, first-page scope, failure semantics, and quality/latency/cost gates.
 
 ### Performance Targets
 
@@ -951,7 +956,7 @@ Config-gated via `retrieval.enable_reranking` (default: false). Enable at ~1K me
 | Graph traversal | < 30ms | 1-hop entity lookup + join |
 | RRF fusion | < 2ms | In-memory merge |
 | Total search (no reranking) | < 150ms | Parallel strategies + fusion |
-| Total search (with reranking) | < 500ms | Cross-encoder for top-20 |
+| Total search (with reranking) | < 500ms | Model-backed top-30 to top-20; release-gated by measured p95 |
 | get_memory | < 20ms | Single SQLite lookup + join |
 
 ### Caching
@@ -1484,9 +1489,12 @@ dedup_cosine_threshold = 0.08         # Below this cosine distance = duplicate
 
 [retrieval]
 default_top_k = 20
-rrf_k = 60                           # RRF constant
+rank_window_size = 50
+rrf_k = 20                           # Evaluated RRF damping constant
 recency_half_life_days = 90
 embedding_cache_size = 256
+enable_reranking = false
+rerank_candidates = 30
 
 [server]
 admin_api_port = 8765
@@ -1864,8 +1872,9 @@ Public implementation references:
 
 - **Graph database migration**: If memory count exceeds 50K and multi-hop traversal
   becomes a bottleneck, evaluate Neo4j/Kuzu as a replacement for SQLite graph queries.
-- **Cross-encoder reranking**: Stubbed in search.py, config-gated. Uses Claude Haiku to
-  rerank top-30 RRF candidates. Solves graph-only discovery ranking. Enable at ~1K memories.
+- **Memory reranking**: A config-gated listwise LLM implementation exists but is disabled by
+  default. The accepted target adds a provider-neutral pointwise/listwise seam and enables a
+  backend only after the fixed retrieval evaluation passes.
 - **Memory quality dashboard**: Surface extraction errors, stale memories, contradiction
   rates, retrieval-to-use ratios.
 - **Agent feedback loop**: When an agent fetches Level 1 detail but doesn't use the memory,
