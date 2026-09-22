@@ -15,7 +15,7 @@
 - [ADR 0009](../adr/0009-bound-cross-document-relation-discovery.md)、[0017](../adr/0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md)、[0030](../adr/0030-compile-revision-pinned-evidence-fragments.md) 分别拥有异步关系发现、可恢复推导、不可变 Evidence 的详细合同。
 - [大文档恢复分析](large-document-reconciliation-recovery.md) 是历史问题与未批准选项的记录，不是另一份当前主流程或执行 backlog。
 
-全文/delta 选择用于文档语义材料的供应，不是对所有 LLM 步骤一律传全文：L2 看候选，L4 看知识对和候选 Evidence，L5 看名称语境，L6/L7 看知识对及范围。直接用户创建/纠正、managed agent commands 有各自的授权入口，复用后段 Evidence/Lifecycle，但不强制绕回 provider Sync。
+全文/delta 选择用于文档语义材料的供应，不是对所有模型职责一律传全文：Candidate Admission 看候选，Claim Reconciliation 看完整 claim/Evidence 目录，Entity Resolution 看名称语境，跨文档身份与关系发现只看知识及范围。直接用户创建/纠正、managed agent commands 有各自的授权入口，复用后段 Evidence/Lifecycle，但不强制绕回 provider Sync。
 
 ## 0. 目标优化方案：少传历史正文，完整覆盖变化，自动保护删除
 
