@@ -153,8 +153,15 @@ This is a per-part result, not proof that a multi-part Evidence Unit survived.
 All Primary and Required parts must have valid current refs before deterministic
 REBIND can be proposed. If one part is modified, removed or ambiguous, retain
 the uniquely matched current parts as candidates and assess the fixed entire
-claim with a complete current Evidence Unit; never copy the missing old ref or
-promote one matching part to `SUPPORTED`. Missing legacy provenance cannot be
+claim with a complete current Evidence Unit. The assessment must account for
+every exact-matched prior part: its current ref is either selected in the final
+Primary/Required set or explicitly omitted as redundant/replaced under the
+fixed claim's current evidence. Omission from model output alone is not an
+instruction to drop it. The reducer rejects a supported result that leaves a
+matched part unaccounted for; it never silently replaces the entire old set
+with only the newly changed fragment. This is sparse accounting for omitted
+parts, not one model row per old/new Evidence pair. Never copy a missing old
+ref or promote one matching part to `SUPPORTED`. Missing legacy provenance cannot be
 treated as `EXACT_UNCHANGED` and follows the existing limited-Evidence gate.
 The status and current-ref map are operation-local derived data; the committed
 Support/Evidence and target Projection retain the durable proof and provenance.

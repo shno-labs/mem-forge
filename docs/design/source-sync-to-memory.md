@@ -136,7 +136,12 @@ Evidence rebind。`container` 指直接包含该片段的 ReadingGroup；整篇�
 状态按旧 Evidence **每个 part** 计算，再汇总到完整 Evidence Unit。只有一个 Primary
 和全部 Required 都有明确合法的 current refs，才能走确定性 rebind；若其中一项
 修改、删除或对应不唯一，已精确对应的 part 只是本次可选的当前证据，仍需核对
-整条固定 Claim 并重建完整 Evidence Unit。旧 excerpt 或旧 ref 不可补足缺口。
+整条固定 Claim 并重建完整 Evidence Unit。评估结果必须交代每条精确匹配的旧
+part：其 current ref 要么进入最终 Primary/Required 集合，要么由模型在固定
+Claim 的新版证据下明确说明冗余或被替换。**模型没输出某 ref 不等于允许丢弃**；
+程序拒绝未交代的 `supported` 结果，而不是用新 Delta 片段覆盖整组旧证据。
+仅对被排除的匹配 part 额外说明，不输出旧、新 Evidence 的笛卡尔积。
+旧 excerpt 或旧 ref 不可补足缺口。
 缺少足够准确旧 provenance 的 legacy Evidence 也不能伪装成 `EXACT_UNCHANGED`，
 沿用已有 limited-Evidence 门禁。分类与 ref map 是每次操作的派生结果，不新建
 持久状态；持久依据仍是旧 Support/Evidence、当前 Projection 与提交后的 Plan。
