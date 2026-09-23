@@ -109,6 +109,21 @@ Structured LLM adapter 将其渲染为稳定前缀在前的 prompt，并在实�
 
 程序始终持有 Memory、Support、Evidence、Observation、Revision、fragment/container digest、coverage 和 source provenance。digest、内部 ID、offset、trace 与 revision metadata 不进入模型输入；模型只收到本次语义判断所需的 prompt-local ref、结构标题和准确文本。程序将 prior Support Evidence 分类为：
 
+“未变”不是上次 Sync 保存的布尔状态，也不是 LLM 判断。每次处理固定 base/target
+时，Planner 从旧 Support 已持久化的 Observation 身份、固定 revision 的 Anchor、
+准确 excerpt/内容 digest 与 Primary/Required 角色出发，对照目标 Projection 的
+authoritative membership 和本次编译的 current Fragment catalog。若 Observation
+Revision 原样沿用，仍有效的准确 Anchor 可直接对应；若它产生新 revision，旧 offset
+和派生 Fragment ID 只能用来缩小查找，必须在**同一 Source Unit、同一 provider
+Observation** 下找到唯一兼容的当前片段，并核对准确内容或 presentation digest。
+直接容器的对应从该 Support 最后成功验证的 base Projection 和相同版本的编译器
+重建，不给 Evidence 加一个可变的“未变”字段；若旧结构无法可靠重建，就不能宣称
+`EXACT_UNCHANGED`。
+Provider `FragmentMapping` 也只提供候选对应，不代替正文相等证明。标点变化会
+改变准确匹配；同义改写更不能由 digest 自动视为未变。跨 Source Unit 不做自动
+Evidence rebind。`container` 指直接包含该片段的 ReadingGroup；整篇文档或远处
+上级内容改变，不应让所有片段都变成 `CONTAINER_CHANGED`。
+
 | 状态 | 确定性判定 | 后续处理 |
 | --- | --- | --- |
 | `EXACT_UNCHANGED` | 同一 Source Unit 中存在唯一兼容的 exact fragment，fragment 与 container digest 都未变 | 建立 current ref；若没有 changed groups，直接 `REBIND_SUPPORT` |
@@ -117,6 +132,14 @@ Structured LLM adapter 将其渲染为稳定前缀在前的 prompt，并在实�
 | `REMOVED` | authoritative complete coverage 证明原 fragment 消失 | 旧 excerpt + current-full Assessment Scope，直接进入 Support Assessment |
 | `AMBIGUOUS` | 多个 exact/structural candidate 或对应不唯一 | 旧 excerpt + 全部候选 ReadingGroups，直接进入 Support Assessment |
 | `UNKNOWN` | Partial coverage 不能证明存在或删除 | 程序产生 `UNRESOLVED(partial_coverage)`，KEEP；不调用 Support LLM，不允许破坏性动作 |
+
+状态按旧 Evidence **每个 part** 计算，再汇总到完整 Evidence Unit。只有一个 Primary
+和全部 Required 都有明确合法的 current refs，才能走确定性 rebind；若其中一项
+修改、删除或对应不唯一，已精确对应的 part 只是本次可选的当前证据，仍需核对
+整条固定 Claim 并重建完整 Evidence Unit。旧 excerpt 或旧 ref 不可补足缺口。
+缺少足够准确旧 provenance 的 legacy Evidence 也不能伪装成 `EXACT_UNCHANGED`，
+沿用已有 limited-Evidence 门禁。分类与 ref map 是每次操作的派生结果，不新建
+持久状态；持久依据仍是旧 Support/Evidence、当前 Projection 与提交后的 Plan。
 
 旧 excerpt 的发送规则没有可选分支：只对 `MODIFIED`、`REMOVED`、`AMBIGUOUS` 发送一次 immutable exact excerpt；`EXACT_UNCHANGED` 与 `CONTAINER_CHANGED` 不发送，因为 current fragment 已包含相同正文；`UNKNOWN` 不进入模型。历史 excerpt 永远只读且不可被选择为 current Evidence。
 

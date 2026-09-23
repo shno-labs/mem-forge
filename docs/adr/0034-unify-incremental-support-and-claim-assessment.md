@@ -119,6 +119,27 @@ target Fragment exists. Historical content is explicitly non-selectable.
 
 The planner deterministically classifies every part of prior Support Evidence:
 
+The classification is recomputed for each base/target revision pair; it is not
+a remembered `unchanged` flag or a model judgment. The old side comes from the
+applied Support's resolved Evidence part (Source Unit and Observation identity,
+revision-pinned Anchor, exact excerpt/raw-slice or Artifact digest, and role).
+The new side comes from the target Projection's authoritative membership and
+one operation-scoped compiled current Fragment catalog. A carried Observation
+Revision may retain its exact Anchor. Across Observation Revisions, an old
+offset or derived Fragment ID is only a locator hint: the planner must find
+exactly one compatible current Fragment in the same Source Unit and provider
+Observation, and compare the persisted exact content/presentation digest with
+the compiler's current exact representation. Direct-container correspondence
+is derived from the Support validation baseline's stored Projection and the
+same versioned compiler, rather than a new mutable Evidence field; unavailable
+or incompatible baseline structure cannot establish `EXACT_UNCHANGED`. The
+comparison does not ignore punctuation or paraphrases. Provider
+`FragmentMapping` can narrow candidates
+but cannot itself prove text equality or make an old ref current. An exact
+Fragment inside a changed direct ReadingGroup is `CONTAINER_CHANGED`; changes
+to unrelated ancestor or document-wide content do not by themselves relabel
+every descendant. A cross-Source-Unit match is never an automatic rebind.
+
 | Status | Meaning | Input consequence |
 | --- | --- | --- |
 | `EXACT_UNCHANGED` | one compatible exact fragment and unchanged container | current ref; direct REBIND if no changed groups |
@@ -127,6 +148,16 @@ The planner deterministically classifies every part of prior Support Evidence:
 | `REMOVED` | authoritative complete coverage proves the old fragment absent | old exact excerpt + current-full scope |
 | `AMBIGUOUS` | exact/structural correspondence is not unique | old exact excerpt + all candidate ReadingGroups |
 | `UNKNOWN` | partial coverage cannot prove presence or absence | deterministic `UNRESOLVED(partial_coverage)`, KEEP, no model call |
+
+This is a per-part result, not proof that a multi-part Evidence Unit survived.
+All Primary and Required parts must have valid current refs before deterministic
+REBIND can be proposed. If one part is modified, removed or ambiguous, retain
+the uniquely matched current parts as candidates and assess the fixed entire
+claim with a complete current Evidence Unit; never copy the missing old ref or
+promote one matching part to `SUPPORTED`. Missing legacy provenance cannot be
+treated as `EXACT_UNCHANGED` and follows the existing limited-Evidence gate.
+The status and current-ref map are operation-local derived data; the committed
+Support/Evidence and target Projection retain the durable proof and provenance.
 
 `EXACT_UNCHANGED` proves survival of the original fragment, not absence of a distant exception. All added/modified ReadingGroups are grouped into capacity-safe ChangeBundles. A classifier model evaluates every exact-rebound fixed claim against each bundle as `AFFECTED` or `UNAFFECTED`; code OR-reduces multiple bundles. Only all-`UNAFFECTED` work completes KEEP+REBIND. There is no per-item confidence fallback.
 
