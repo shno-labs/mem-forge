@@ -3,7 +3,9 @@
 Research date: 2026-09-21. This is an ADR input, not an implementation or a
 normative runtime contract. It considers only provider prompt caches; MemForge
 work identity, dependency order, validation and lifecycle commit remain
-unchanged.
+unchanged. Its v1 recommendation (bounded concurrency, no leader barrier) is
+adopted as a property of the LLM batch runner in
+[ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md).
 
 ## Recommendation
 
