@@ -50,16 +50,21 @@ Structured LLM]
 旧 Claim × ChangeBundle（含删除内容）
 AFFECTED / UNAFFECTED]
     Y -->|UNAFFECTED| RB
-    Y -->|AFFECTED 或执行失败| F[进 Support Assessment
-先读变化组（含删除内容）与旧 Evidence 所在组
-前半段读完后，找到完整支持即退出]
-    P -->|任一 MODIFIED / REMOVED / AMBIGUOUS| F
+    Y -->|AFFECTED 或执行失败| F1[Support Assessment 第一段
+先读变化组（含删除内容）与该 Claim 旧 Evidence 所在组
+整段读完后，找到完整支持即退出]
+    P -->|任一 MODIFIED / REMOVED / AMBIGUOUS| F1
+    F1 -->|第一段未找到支持| F2[Support Assessment 第二段
+按文档顺序续读其余 ReadingGroup
+找到完整支持即退出；全部读完仍无支持才判 UNSUPPORTED]
     P -->|任一 UNKNOWN| U[UNRESOLVED
 保留原状，不调用模型]
-    F -->|单条执行失败| U
+    F1 -->|单条执行失败| U
+    F2 -->|单条执行失败| U
     RB --> CO[SupportRelationCoordinator
 程序：组合表]
-    F -->|SUPPORTED / UNSUPPORTED| CO
+    F1 -->|SUPPORTED| CO
+    F2 -->|SUPPORTED / UNSUPPORTED| CO
     U --> CO
     H --> CO
     CO --> RC[定向复核
@@ -198,7 +203,7 @@ Change Impact 在分类器 backend（Jev 或小参数 LLM）通过 #506 的通�
 - `AssessmentContext` 是单次 Support 调用实际收到的一个或多个 ReadingGroups，以及由它们生成的 prompt-local Evidence Candidate Catalog；
 - `AssessmentScope` 是整个 Support work 必须覆盖的逻辑范围，即完整的有效当前 revision。
 
-读取顺序的前半段为：
+读取顺序的第一段为：
 
 ```text
 changed ReadingGroups (added, modified; removed ones as read-only old text)
@@ -207,9 +212,9 @@ changed ReadingGroups (added, modified; removed ones as read-only old text)
 + historical excerpts exactly for MODIFIED/REMOVED/AMBIGUOUS
 ```
 
-后半段是当前 revision 的其余 ReadingGroups。
+第二段是当前 revision 的其余 ReadingGroups。
 
-Support Assessment 只有一条规则：按固定顺序流式读取当前全部内容，变化的 ReadingGroup（新增、修改和删除的；删除的读其旧文本）和旧 Evidence 所在的 ReadingGroup 先读，其余在后；前半段还有未读的 ReadingGroup 时，Claim 不能退出；前半段读完后，每条 Claim 找到完整支持即退出，全部读完仍无支持才判 `UNSUPPORTED`。Delta 不是一种模式，只是读取顺序的前半段。Planner 只负责排读取顺序，不比较成本，不决定从哪里开始，也不让模型判断否定结果是否已经足够。`EXACT_UNCHANGED` 只贡献 current ref 和 compact state；`MODIFIED` 使用对应 current ReadingGroup；`AMBIGUOUS` 使用全部确定候选。
+Support Assessment 只有一条规则：按固定顺序流式读取当前全部内容，变化的 ReadingGroup（新增、修改和删除的；删除的读其旧文本）和旧 Evidence 所在的 ReadingGroup 先读，其余在后；第一段还有未读的 ReadingGroup 时，Claim 不能退出；第一段读完后，每条 Claim 找到完整支持即退出，全部读完仍无支持才判 `UNSUPPORTED`。Delta 不是一种模式，只是读取顺序的第一段。Planner 只负责排读取顺序，不比较成本，不决定从哪里开始，也不让模型判断否定结果是否已经足够。`EXACT_UNCHANGED` 只贡献 current ref 和 compact state；`MODIFIED` 使用对应 current ReadingGroup；`AMBIGUOUS` 使用全部确定候选。
 
 这条规则的前提是 Full 按 ReadingGroup 流式读取并允许中途退出。Full 表示逻辑上覆盖完整 effective current Projection，不表示一次把原始全文塞进模型。小文档可用一个 AssessmentContext；大文档将完整 current Catalog 划分成多个由完整 ReadingGroup 组成的 AssessmentContexts，按顺序处理并携带 grounded previous state；已找到完整支持的 Claim 不再进入后续请求。
 
@@ -250,7 +255,7 @@ UNSUPPORTED(work_id)
 
 程序验证 `witness_delta` 的 membership 后，与此前 supporting/opposing sets 做单调 union；后一次模型输出不能通过省略删除早期 decisive witness。下一次调用必须同时收到这个程序持有的 union 中所有 current refs 的准确正文与 Primary 资格，形成 `carried_witness_catalog`；只传 ref 会让模型无法继续验证组合语义。例如读取顺序分为两个 AssessmentContexts：第一组找到“HR 审批”并把 `PRM-0012` 加入 supporting set；第二组收到该 union 及 `PRM-0012` 的 current 正文，找到“Finance 审批”的 `REQ-0041`。最后一个 `support_assess` 返回 `SUPPORTED(WRK-0001, PRM-0012, [REQ-0041])`；`support_finalize` 验证 selectors、manifest 与 coverage 后产生 `COMPLETED(SUPPORTED)` 收据。若第二组出现取消 Finance 审批的 current Evidence，则 ref 被 union 到 opposing set，最终不能被第一组的局部支持覆盖。
 
-前半段还没读完时，每一步对每条 work 只返回 `witness_delta`；从读完前半段的那一步起，Structured LLM 对仍未退出的 work 返回 `SUPPORTED(...)`（该 work 退出，不再进入后续请求）或 `witness_delta`；程序先将 delta 单调合并到累计 witnesses，下一步只读取尚未处理的 contexts。读完顺序中最后一组的调用，对仍未退出的 work 返回 `SUPPORTED(...)` 或 `UNSUPPORTED(work_id)`；`UNSUPPORTED` 还要求受影响对象的覆盖是权威的。`SUPPORTED` 同时带“省略的已匹配 ref”列表（见第 0.3 节），只列 ref。
+第一段还没读完时，每一步对每条 work 只返回 `witness_delta`；从读完第一段的那一步起，Structured LLM 对仍未退出的 work 返回 `SUPPORTED(...)`（该 work 退出，不再进入后续请求）或 `witness_delta`；程序先将 delta 单调合并到累计 witnesses，下一步只读取尚未处理的 contexts。读完顺序中最后一组的调用，对仍未退出的 work 返回 `SUPPORTED(...)` 或 `UNSUPPORTED(work_id)`；`UNSUPPORTED` 还要求受影响对象的覆盖是权威的。`SUPPORTED` 同时带“省略的已匹配 ref”列表（见第 0.3 节），只列 ref。
 
 执行结果由程序另行包装为 `COMPLETED(SUPPORTED|UNSUPPORTED)` 或 `UNRESOLVED(reason)`。Partial coverage（`UNKNOWN`，不调用模型）、缺失 context、容量/Provider/schema 失败、拆到单条 work 与单个 ReadingGroup 后仍失败、模型 abstain 均为 `UNRESOLVED`：KEEP、不允许破坏性动作、不推进 Support baseline。完整 Support Assessment 是依赖多字段的 Evidence 计划，统一由 Structured LLM 完成，不拆成按 confidence 选择 backend 的 cascade。
 
@@ -369,9 +374,9 @@ COMPLETE_SNAPSHOT 证明 A 消失（B 提交之后）
 | --- | --- |
 | 标点变化 | 旧 Evidence `MODIFIED`；重新评估并替换为 current Evidence，Memory ID 保留 |
 | 同页移动和同义改写 | changed group 被提取；旧 fixed claim 获得 current Evidence；等价 Candidate 被消费 |
-| 累计 Meeting Minutes 只追加 | 旧 Claim 的 Evidence 全部 `EXACT_UNCHANGED`，经 Change Impact 判 `UNAFFECTED` 后直接换绑；`AFFECTED` 的 Claim 在读取顺序前半段找到支持，读完前半段即退出；不做成本比较 |
+| 累计 Meeting Minutes 只追加 | 旧 Claim 的 Evidence 全部 `EXACT_UNCHANGED`，经 Change Impact 判 `UNAFFECTED` 后直接换绑；`AFFECTED` 的 Claim 在读取顺序第一段找到支持，读完第一段即退出；不做成本比较 |
 | 末尾新增“废止此前所有规则” | opposing witness 对所有 scoped claims 保留到 finalize；不得被后续 group 覆盖 |
-| 旧句删除、未变远处仍有同义支持 | 前半段未命中不判 `UNSUPPORTED`；Support Assessment 在读取顺序后半段找到 current Support 并换 Evidence；DestructiveValidation 只验证完成收据 |
+| 旧句删除、未变远处仍有同义支持 | 第一段未命中不判 `UNSUPPORTED`；Support Assessment 在读取顺序第二段找到 current Support 并换 Evidence；DestructiveValidation 只验证完成收据 |
 | 近全文重写 | 当前全部 ReadingGroups 流式读完；全部 work 完成后一次提交；单条 work 超出能力时该 Support 为 `UNRESOLVED` 并 KEEP，其余照常提交 |
 | 全部 part 为 `EXACT_UNCHANGED`，本次无变化内容 | 直接 `REBIND_SUPPORT`，不调用模型 |
 | Change Impact 执行失败 | 相关 Claim 进入 Support Assessment；不记 `AFFECTED` 标签 |
@@ -396,8 +401,8 @@ work 数量和成本，不改变单条 Support 的语义结果：
 | prior Evidence 情况 | 稳定路径 | 允许的负面结果 |
 | --- | --- | --- |
 | 全部 part 唯一精确匹配（`EXACT_UNCHANGED`） | 无变化内容时直接 REBIND；有变化内容时经 Change Impact，`UNAFFECTED` 则 REBIND | `AFFECTED` 或 Change Impact 执行失败只增加 Support Assessment 成本，不能直接移除 Support |
-| 原 fragment 修改或同义改写 | old exact excerpt + 对应 current ReadingGroup + 全部 changed ReadingGroups | 前半段未命中继续读取其余部分；只有读完全部内容且受影响对象覆盖权威才能 `UNSUPPORTED` |
-| 原 fragment 删除 | old exact excerpt + changed ReadingGroups | 读取顺序后半段仍会寻找其他未改位置的 current Support |
+| 原 fragment 修改或同义改写 | old exact excerpt + 对应 current ReadingGroup + 全部 changed ReadingGroups | 第一段未命中继续读取其余部分；只有读完全部内容且受影响对象覆盖权威才能 `UNSUPPORTED` |
+| 原 fragment 删除 | old exact excerpt + changed ReadingGroups | 读取顺序第二段仍会寻找其他未改位置的 current Support |
 | 多个 exact candidate | old exact excerpt + 全部候选 ReadingGroups | 不能任取一个；无法完成时 `UNRESOLVED` |
 | 受影响对象的覆盖为 Partial/Unknown | 不把未返回对象当删除 | `UNRESOLVED(partial_coverage)` + KEEP，禁止 `UNSUPPORTED` |
 
@@ -415,7 +420,7 @@ Evidence 失效；comment edit 只重评该 comment 的 Supports。Comments 或 
 
 这些规则不能证明模型语义召回。上线前必须在不执行 lifecycle mutation 的固定
 revision-pair cohort 上 shadow 运行，并按 source type 与 Evidence 状态记录：direct
-rebind、Change Impact `AFFECTED` 与执行失败、读取顺序前半段内 `SUPPORTED`、后半段
+rebind、Change Impact `AFFECTED` 与执行失败、读取顺序第一段内 `SUPPORTED`、第二段
 `SUPPORTED`、`UNSUPPORTED`、`UNRESOLVED`、协调器复核与 Review 数。固定回归集要求零
 false destructive proposal；受影响对象覆盖不权威时必须零 `UNSUPPORTED`；同一逻辑 work 在不同合法分包与拆分点下，
 覆盖、work 身份、结果 schema 与 lifecycle 含义必须一致。模型/Prompt/representation contract 变化后重新执行该门禁。Fixture client
@@ -555,14 +560,14 @@ Representation 为需要的固定 revision 构建一次索引；相同 base/targ
 
 首次导入：L1 按 ReadingGroup 经 LLM batch runner 流式提取候选，不要求全文装进一次请求。
 正常更新：统一 RevisionContextPlanner 用 exact correspondence、CatalogDiff、coverage
-和完整 current manifest 确定 Support 的读取顺序。前半段包括新增、修改和删除的结构（删除的只读旧文本）、旧
+和完整 current manifest 确定 Support 的读取顺序。第一段包括新增、修改和删除的结构（删除的只读旧文本）、旧
 Evidence 所在的 ReadingGroups、compact Support metadata、旧 Evidence 的 current
 exact candidates，以及仅为 `MODIFIED`、`REMOVED`、`AMBIGUOUS` 工作提供的 bounded
-exact historical excerpts；后半段是当前 revision 的其余 ReadingGroups。
-`EXACT_UNCHANGED` 不重复传输旧正文；后半段也不携带非当前 history。
+exact historical excerpts；第二段是当前 revision 的其余 ReadingGroups。
+`EXACT_UNCHANGED` 不重复传输旧正文；第二段也不携带非当前 history。
 
-对 Support Assessment，前半段读完之前 Claim 不退出；读完前半段后，每条 Claim 找到完整
-支持即退出；前半段未找到完整 Support 就继续读取其余部分，不能把局部未命中当作
+对 Support Assessment，第一段读完之前 Claim 不退出；读完第一段后，每条 Claim 找到完整
+支持即退出；第一段未找到完整 Support 就继续读取其余部分，不能把局部未命中当作
 `UNSUPPORTED`。Planner 只排读取顺序，不比较成本，不调用分类器或 Structured LLM，不使用
 改动比例、文档大小比例或 Source 类型阈值。
 对 Claim Extraction，正常更新只读取变化的结构，并以其所在 ReadingGroup 作为上下文；
@@ -661,7 +666,7 @@ Evidence-fixed、多 Memory cohorts 可使用 `REVISION_FIRST` cache layout；co
 }
 ```
 
-`reading_order` 先排包含变化 ReadingGroup（含删除内容）与旧 Evidence 的 contexts，即前半段；其余在后。
+`reading_order` 先排包含变化 ReadingGroup（含删除内容）与旧 Evidence 的 contexts，即第一段；其余在后。
 
 每个 Structured LLM `support_assess` 输入：
 
@@ -676,7 +681,7 @@ fixed old claim
 
 `ReadingGroup` 是可理解结构，内部可有多条 EvidenceFragments；`AssessmentContext` 是一次调用实际读取的一个或多个 ReadingGroups；`AssessmentScope` 是整个 work 的逻辑覆盖。读取顺序对大文档按 contexts 流式覆盖完整 current Catalog，而不是一次传原始全文。
 
-前半段读完之前，每一步对每条 work 只输出 `witness_delta`；此后每一步对仍未退出的 work 输出 `SUPPORTED(primary_ref, required_refs[])`（该 work 退出）或 `witness_delta`。`witness_delta` 是本次观察到的 supporting/opposing current refs，程序校验后与已有 state 单调 union。读完最后一个 context 的调用，对仍未退出的 work 输出最终判别联合：`SUPPORTED` 必须带一 Primary 和零到多个 Required；`UNSUPPORTED` 禁止 selector 字段。`SUPPORTED` 附带省略的已匹配 ref 列表，只列 ref。技术或覆盖失败由程序包装为 `UNRESOLVED(reason)`，不是模型的第三个语义状态。`UNSUPPORTED` 只提出 source-scoped Support removal，最终是否 supersede/retire 仍由 Lifecycle Planner 检查完整 coverage、其他 Active Supports 和 stale guards。
+第一段读完之前，每一步对每条 work 只输出 `witness_delta`；此后每一步对仍未退出的 work 输出 `SUPPORTED(primary_ref, required_refs[])`（该 work 退出）或 `witness_delta`。`witness_delta` 是本次观察到的 supporting/opposing current refs，程序校验后与已有 state 单调 union。读完最后一个 context 的调用，对仍未退出的 work 输出最终判别联合：`SUPPORTED` 必须带一 Primary 和零到多个 Required；`UNSUPPORTED` 禁止 selector 字段。`SUPPORTED` 附带省略的已匹配 ref 列表，只列 ref。技术或覆盖失败由程序包装为 `UNRESOLVED(reason)`，不是模型的第三个语义状态。`UNSUPPORTED` 只提出 source-scoped Support removal，最终是否 supersede/retire 仍由 Lifecycle Planner 检查完整 coverage、其他 Active Supports 和 stale guards。
 
 程序解析选择并构造完整 current Evidence Unit；模型判断语义，程序验证 revision、selector membership、角色、digest 与 authority。`REBIND_SUPPORT` 在同一事务中附加 target-Revision Evidence 的新 Support assertion，并将被替换的旧 assertion 标为 inactive；Memory/claim 不变，旧行与历史不改写。
 
