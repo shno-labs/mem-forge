@@ -316,7 +316,7 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 
 已换绑的 `UNAFFECTED` 且无 contradicts 边，按 `SUPPORTED` 行处理；REFINES 与不确定关系沿用局部 unresolved 规则（reducer 与 revision proof 规则）。同一 Candidate 对不同旧 Memory 得到不同处理时，同样沿用局部 unresolved 的连通组件规则：整个相关组件在本轮被消费，不 ADD，也不做破坏性动作。`UNAFFECTED` × contradicts 补做的那次 Support 即该 Claim 唯一的一次复核，结果重新查表。
 
-已知限制：某条 Claim 的单个 ReadingGroup 单独就超出模型容量时，其 Support 为 `UNRESOLVED(capacity)`：旧 Memory 保持不变，诊断写明 Source Unit 和 ReadingGroup，revision 照常提交。相关 Candidate 在本轮被消费，不 ADD，也不做破坏性动作；因为更新时只提取变化的结构，这些新知识要等该结构再次变化才会重新提取。已记录的验证基线快照丢失或损坏（`missing_or_invalid_baseline`，见第 6.2 节）按同样方式处理。除局部 unresolved 关系规则外，这是 Candidate 未经判定就被消费的仅有两种情况。
+已知限制：某条 Claim 的单个 ReadingGroup 单独就超出模型容量时，其 Support 为 `UNRESOLVED(capacity)`：旧 Memory 保持不变，诊断写明 Source Unit 和 ReadingGroup，revision 照常提交。相关 Candidate 在本轮被消费，不 ADD，也不做破坏性动作；因为更新时只提取变化的结构，这些新知识要等该结构再次变化才会重新提取。除局部 unresolved 关系规则外，这是 Candidate 未经判定就被消费的唯一情况。
 
 冲突组的定向复核规则：
 
@@ -620,14 +620,13 @@ Artifact 继续使用已有原子表示。reading index 不负责预算或分批
 
 基线是这组 Support 最后可靠验证的快照，不是 Evidence 的创建版本或最近一次
 Source sync。完全没有已验证基线时，L3 可在目标覆盖充分时通过 current-full
-重新证明；记录声称存在命名基线但快照丢失、身份不符、损坏、不可访问或覆盖不全
-属于带类型的技术失败 `missing_or_invalid_baseline`，不是 Support 的 `UNRESOLVED`
-结果，不能改写成 full、
-`unsupported` 或成功空结果。重试修复不了这种故障，所以它不阻止提交：受影响的
-Support 保持原状、基线不前进，revision 照常提交，并记录诊断，写明是哪条 Support、
-缺的是哪个快照，方便修复。快照修复后，下一个 revision 会重新评估这条 Support。
-L1 声明为
-incremental 而缺少所需基线时也不能静默变成首次导入。
+重新证明。记录声称存在命名基线，但快照丢失、身份不符、损坏、不可访问或覆盖不全时，
+这条 Support 没有可用基线，程序无法知道这次对它来说改了什么：不做程序换绑，也不经过
+Change Impact，直接进入 Support Assessment，从头读完当前全文，不假定旧 Support
+仍然有效，与没有基线时相同。结果照常是 `SUPPORTED` 或 `UNSUPPORTED`（覆盖规则不变），
+成功后建立新的基线。同时记录诊断，写明是哪条 Support、哪个快照不可用，供排查数据问题；
+处理不等待修复。Claim Extraction 另有规则：声明为 incremental 而缺少所需基线时，
+不能静默变成首次导入。
 
 这里的 full 是完整读取当前有效 Source Projection，不是重新抓取 provider 历史或
 修复上游覆盖缺口。Partial Projection 明确保留的旧 Observation 仍属于有效当前

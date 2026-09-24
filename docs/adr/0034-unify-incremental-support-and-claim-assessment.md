@@ -475,10 +475,8 @@ alone exceeds the model's capacity for its Claim. The Memory stays unchanged, a
 diagnostic names the Source Unit and the ReadingGroup, and the revision commits.
 Its related Candidates are consumed this round with no ADD and no destructive
 action; because an update extracts only changed structures, their knowledge
-returns only when that structure changes again. A recorded validation baseline
-whose snapshot is missing or invalid (`missing_or_invalid_baseline`, see Support
-validation baseline ownership) is handled the same way. Apart from the local
-unresolved relationship rule, these are the only cases in which a Candidate is
+returns only when that structure changes again. Apart from the local
+unresolved relationship rule, this is the only case in which a Candidate is
 consumed without a decision.
 
 Cloud impact: the coordinator is shared OSS reducer code. It needs no HANA schema
@@ -778,14 +776,15 @@ current validation. L3 may establish one through a new complete-current
 assessment and normal Plan when the current target provides complete authorized
 coverage. This absent-baseline case is distinct from a recorded baseline whose
 named snapshot is missing, mismatched, corrupt, inaccessible, or incomplete.
-The latter is a typed technical failure, `missing_or_invalid_baseline`, not an
-`UNRESOLVED` Support result, and must not be converted into current-full,
-semantic `unsupported`, or a successful empty result. Retrying cannot repair it,
-so it does not block the revision: the affected Support stays unchanged with its
-baseline, the revision commits, and a diagnostic names the Support and the
-missing snapshot for repair. Once the snapshot is repaired, the next revision
-assesses that Support again. L1 likewise
-must not turn an incremental request with an unavailable required base into an
+Such a Support has no usable baseline, so the planner cannot tell what changed
+for it. It is not rebound by the program and does not go through Change Impact.
+It enters Support Assessment, and the whole current revision is read without
+assuming old Support validity, exactly as when no baseline is recorded. The
+outcome is an ordinary `SUPPORTED` or `UNSUPPORTED` under the usual coverage
+rules, and a successful result establishes a new baseline. A diagnostic names the
+Support and the unusable snapshot so the data defect can be investigated;
+processing does not wait for a repair. Claim Extraction keeps its own rule: an
+incremental request whose required base is unavailable must not turn into an
 initial full extraction.
 
 Optional historical backfill requires an applied Plan's exact Support mutation,
@@ -961,8 +960,8 @@ unrelated later group cannot erase an earlier revocation or exception.
 Batches describe one base/target pair, not intermediate Source revisions. When
 Support Assessment has no recorded verified baseline and complete-current proof is permitted,
 the whole order is read with the same executor without assuming old Support validity. A
-named but unavailable or mismatched baseline is not this case and fails before
-semantic assessment.
+named baseline whose snapshot is unavailable or mismatched is handled the same way,
+with a diagnostic (see Support validation baseline ownership).
 Here “old” means Evidence from the historical Source revision. Earlier batches
 of this same target revision remain valid assessment context;
 their selected current refs remain grounded because the next batch supplies the
