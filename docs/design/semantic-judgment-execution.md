@@ -286,7 +286,11 @@ class ItemFailure:
    from the same position with their own state, and a step holding a single Claim
    that spans several ReadingGroups first halves its ReadingGroups. A request
    holding one item, and in the chain form one ReadingGroup, that still fails
-   returns a typed `ItemFailure` with diagnostics.
+   returns a typed `ItemFailure` with diagnostics. The failure says whether that
+   item alone exceeds the route's input capacity (from the capacity fit,
+   `input_capacity_exceeded` or a provider 413) or failed otherwise, for example
+   with a provider error, a timeout, or a schema or ID failure after the one
+   correction.
 4. Bounded concurrency through the existing collector and Structured LLM
    semaphore.
 5. Complete coverage. Every submitted item ends with exactly one outcome, a
@@ -303,7 +307,7 @@ The business meaning of an `ItemFailure` belongs to the task:
 
 | Task | Outcome of an item failure |
 | --- | --- |
-| Support Assessment | `UNRESOLVED`, KEEP; the Support baseline does not advance |
+| Support Assessment and its targeted re-check | a ReadingGroup that alone exceeds capacity: `UNRESOLVED(capacity)`, KEEP, the Support baseline does not advance, and the diagnostic names the Source Unit and the ReadingGroup; any other failure: the Source Unit revision is not committed and the next sync retries it |
 | Change Impact | the Claim enters Support Assessment; no `AFFECTED` label is recorded |
 | Candidate admission | extraction-side failure: the Source Unit revision is not committed, so the Candidate is not added this round, and the next sync retries the revision |
 | Sparse Relation | extraction-side failure: the Source Unit revision is not committed and the next sync retries it; never read as "no relation proposed" |
@@ -521,12 +525,15 @@ COMPLETED(SUPPORTED | UNSUPPORTED)
 UNRESOLVED(reason)
 ```
 
-`UNRESOLVED` covers `UNKNOWN` exact correspondence under partial coverage (no
-model call), incomplete manifest, capacity or provider failure, a single item
-with a single ReadingGroup that still fails after the runner's splitting, invalid
-schema, and model abstention. It causes KEEP, blocks
-destructive action and does not advance the Support baseline. It is the third,
-application-owned Support result, not a model label.
+`UNRESOLVED` is the third, application-owned Support result, not a model label.
+It has two reasons: `partial_coverage`, an `UNKNOWN` exact correspondence under
+partial coverage (no model call), and `capacity`, a single ReadingGroup that
+alone exceeds the model's capacity for the work item. It causes KEEP, blocks
+automatic destructive action, does not advance the Support baseline, and commits
+with the revision. A provider error, a timeout, or a schema or ID failure that
+remains after the runner's splitting and the one correction is not
+`UNRESOLVED`: the Source Unit revision is not committed and the next sync
+retries it.
 
 ## 6. Current semantic-call inventory
 
