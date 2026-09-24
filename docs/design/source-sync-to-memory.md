@@ -26,7 +26,7 @@
 
 本方案优先保证两件事：当前 Memory 拥有完整、可解析的当前 Evidence；系统不会因 Partial 采集、输入分组或模型漏判而错误删除仍然有效的知识。产品接受跨 Source Unit 关系发现的少量漏判、临时重复 Memory、陈旧 Support 暂时保留，以及跨 Source Unit 后 Memory ID 不延续。同一 Source Unit 的 Candidate/Memory 关系不依赖语义 top-k：确定性 exact match 由程序处理，其余由 Sparse Relation 读取同 Unit 全部 Active 旧 Memory 的 Claim，每个 Candidate 输出一行，只列有意义的关系，省略表示“未提出关系”。
 
-目标流程是：
+目标流程是（带颜色图例的完整版见 [revision-update-flow.png](images/revision-update-flow.png)，源文件 [revision-update-flow.excalidraw](images/revision-update-flow.excalidraw)，可用 Excalidraw 打开编辑）：
 
 ```mermaid
 flowchart TD
