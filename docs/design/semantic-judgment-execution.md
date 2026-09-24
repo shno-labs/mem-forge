@@ -1,7 +1,6 @@
 # Semantic judgment execution and context reuse
 
-Date: 2026-09-21; classifier-boundary amendment: 2026-09-22; LLM batch runner and
-Relation amendment: 2026-09-24. This document is a target design. It does not claim
+Date: 2026-09-24. This document is a target design. It does not claim
 that TypeSafe/Jev, provider prompt caching, the LLM batch runner or the
 described executor interfaces are implemented or deployed. The LLM batch runner
 is the first step of
@@ -263,9 +262,11 @@ class ItemFailure:
   splits it, and the search caller passes its own deadline.
 - Ordered chain (`run_chain`): Support Assessment. The caller supplies a cohort
   of Claims, AssessmentContexts in reading order and the compact carried state
-  (the witness union) that is rehydrated in every request. Steps inside a lane run
-  in order. Once the first part of the order has been read, an item whose state
-  reports complete Support leaves the lane. Only an item that has read the whole
+  (the witness union) that is rehydrated in every request. The task carries a
+  first-part boundary per item, because each Claim's first part is all changed
+  ReadingGroups plus that Claim's own old-Evidence groups. Steps inside a lane run
+  in order. Once its first part has been read, an item for which the step
+  returned a validated `SUPPORTED` leaves the lane. Only an item that has read the whole
   order may end `UNSUPPORTED`. State merging stays in the caller's decoder.
 
 **What the runner owns**
@@ -435,8 +436,9 @@ manifest to produce this conceptual plan:
 
 Support Assessment follows one rule: stream the complete current content in a
 fixed order. The first part holds every changed ReadingGroup (added, modified,
-and removed ones as read-only old text) and the ReadingGroups that hold the
-Support's prior Evidence; the rest follows. An item cannot exit while any
+and removed ones as read-only old text) and the ReadingGroups that hold that
+Claim's own prior Evidence; the rest follows. The first part is therefore per
+Claim. An item cannot exit while any
 ReadingGroup of the first part is unread. After the first part, each item exits
 as soon as it has complete Support, and only an item that read the whole order
 without Support is `UNSUPPORTED`. The planner only orders reading. It compares no costs, makes no

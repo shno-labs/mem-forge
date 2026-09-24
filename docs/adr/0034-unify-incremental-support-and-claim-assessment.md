@@ -3,8 +3,8 @@
 ## Status
 
 Accepted. The original unified assessment contract was implemented on
-2026-09-06. The amendments accepted on 2026-09-21, 2026-09-22 and 2026-09-24 are
-the target shared contract and are not implemented. They are tracked by
+2026-09-06. The sections labelled "target" are the accepted shared contract and
+are not implemented. They are tracked by
 [Cloud issue #505](https://github.com/dodoman-sun/memforge-cloud/issues/505),
 whose first step delivers the LLM batch runner of
 [ADR 0036](0036-separate-semantic-work-from-inference-executors.md) and moves
@@ -56,7 +56,7 @@ pass, or cross-Source-Unit destructive rebind.
 
 ### Classifier and Support contract
 
-This contract supersedes the earlier confidence-fallback assumption. A **classifier model** is an executor role implemented by TypeSafe/Jev or a small-parameter LLM. Eligibility is decided for a complete task contract from a fixed evaluation set; runtime confidence is telemetry, not a per-item route to another model.
+A **classifier model** is an executor role implemented by TypeSafe/Jev or a small-parameter LLM. Eligibility is decided for a complete task contract from a fixed evaluation set; runtime confidence is telemetry, not a per-item route to another model.
 
 Cross-document discovery retains bounded retrieval followed by classification over `K` pairs.
 
@@ -64,17 +64,18 @@ Exact prior Evidence is classified as `EXACT_UNCHANGED`, `MODIFIED`, `REMOVED`, 
 
 `AssessmentScope` is the complete effective current revision. `AssessmentContext` is one call's one-or-more ReadingGroups. A ReadingGroup may contain several selectable EvidenceFragments. Support Assessment reads the scope in one fixed order with per-work-item early exit after the first part ([Ordered current-revision reading](#ordered-current-revision-reading)). The semantic result is `SUPPORTED(primary_ref, required_refs[]) | UNSUPPORTED`, and `UNSUPPORTED` exists only after the whole order has been read; incomplete coverage or execution is separately `UNRESOLVED(reason)` and KEEP. `REBIND_SUPPORT` atomically attaches target-Revision Support and marks the replaced assertion inactive without altering Memory identity or rewriting historical rows.
 
-### Support and Relation coordination amendment (2026-09-24)
+### Target contract overview
 
 Target contract, tracked by Cloud issue #505. Each item points to the section
 that owns the detail.
 
 - Support reads the complete current revision in one fixed order. The first
-  part holds every changed ReadingGroup (added, modified and removed) and the
-  ReadingGroups that contain the Claim's old Evidence; a Claim cannot exit while
-  any of them is unread. After the first part, a Claim exits as soon as it has
-  complete Support. Delta names only the first part of that order; it is not a
-  mode, and there is no Delta/Full cost comparison or start decision
+  part is per Claim: every changed ReadingGroup (added, modified and removed)
+  and the ReadingGroups that contain that Claim's own old Evidence; a Claim
+  cannot exit while any of them is unread. After the first part, a Claim exits
+  as soon as it has complete Support. Delta names only the first part of that
+  order; it is not a mode, and there is no Delta/Full cost comparison or start
+  decision
   ([Ordered current-revision reading](#ordered-current-revision-reading)).
 - The exact status set has no container state: a unique exact match is
   `EXACT_UNCHANGED` whether or not its surrounding ReadingGroup changed, and
@@ -110,9 +111,9 @@ that owns the detail.
 - `SupportRelationCoordinator` combines both results by one fixed table, with at
   most one targeted re-check per Claim per revision
   ([Support and Relation coordination](#support-and-relation-coordination)).
-  A coordinator Review has a deterministic ID, so one conflict has exactly one
-  Review, and it stores the contradicting Candidate as the existing
-  `pending_review` challenger Memory
+  A coordinator Review is the Lifecycle Plan's existing `CREATE_REVIEW`
+  record in `lifecycle_reviews`, with the Candidate in its staged evidence and a
+  deterministic ID, so one conflict has exactly one Review
   ([Pending coordinator Review](#pending-coordinator-review)).
 - Identity deduplication covers this Unit's kept old Memories and excludes those
   this round deletes, supersedes, updates or sends to Review
@@ -137,7 +138,9 @@ that owns the detail.
 
 Cloud impact: these are shared OSS contracts that Cloud consumes by upgrading its
 OSS pin. They add no configuration, no lifecycle state, no Review field and no
-SQLite or HANA migration.
+SQLite or HANA migration. The one store change is Plan apply for coordinator
+Reviews, which Cloud's HANA adapter makes together with the pin upgrade
+([Pending coordinator Review](#pending-coordinator-review)).
 
 ### Domain vocabulary
 
@@ -229,6 +232,14 @@ target Fragment exists. Historical content is explicitly non-selectable.
 
 The planner deterministically classifies every part of prior Support Evidence:
 
+| Status | Meaning | Input consequence |
+| --- | --- | --- |
+| `EXACT_UNCHANGED` | one compatible exact fragment | current ref |
+| `MODIFIED` | object/structure remains but fragment text changed | old exact excerpt + current corresponding ReadingGroup |
+| `REMOVED` | authoritative complete coverage proves the old fragment absent | old exact excerpt + the whole reading order |
+| `AMBIGUOUS` | exact/structural correspondence is not unique | old exact excerpt + all candidate ReadingGroups |
+| `UNKNOWN` | partial coverage cannot prove presence or absence | no model input |
+
 The classification is recomputed for each base/target revision pair; it is not
 a remembered `unchanged` flag or a model judgment. The old side comes from the
 applied Support's resolved Evidence part (Source Unit and Observation identity,
@@ -245,14 +256,6 @@ but cannot itself prove text equality or make an old ref current. A unique
 exact match is `EXACT_UNCHANGED` whether or not the ReadingGroup around it
 changed; changed surrounding content reaches the claim through the ChangeBundle.
 A cross-Source-Unit match is never an automatic rebind.
-
-| Status | Meaning | Input consequence |
-| --- | --- | --- |
-| `EXACT_UNCHANGED` | one compatible exact fragment | current ref |
-| `MODIFIED` | object/structure remains but fragment text changed | old exact excerpt + current corresponding ReadingGroup |
-| `REMOVED` | authoritative complete coverage proves the old fragment absent | old exact excerpt + the whole reading order |
-| `AMBIGUOUS` | exact/structural correspondence is not unique | old exact excerpt + all candidate ReadingGroups |
-| `UNKNOWN` | partial coverage cannot prove presence or absence | no model input |
 
 Routing is decided for the whole Support, not for each part, and the first
 matching route applies:
@@ -299,7 +302,7 @@ Target contract, tracked by Cloud issue #505.
 
 `ReadingGroup` is a coherent current structure containing one or more selectable EvidenceFragments. `AssessmentContext` is one call's one-or-more ReadingGroups and prompt-local Evidence Catalog. `AssessmentScope` is the complete effective current revision.
 
-Support Assessment follows one rule. It streams the complete current content in a fixed order: first every changed ReadingGroup (added, modified and removed) and the ReadingGroups that contain the Support's prior Evidence, then every remaining ReadingGroup. The first part carries the fixed claims, compact Support metadata and historical excerpts exactly for `MODIFIED`, `REMOVED` and `AMBIGUOUS`; "Delta" names only this first part of the order, not a mode. A work item cannot exit while any ReadingGroup of the first part is unread, because a later changed group may revoke or qualify the Support. After the first part has been read, each work item leaves the read as soon as it has complete Support. A work item becomes `UNSUPPORTED` only after the whole order has been read without complete Support. The planner derives the order deterministically from exact correspondence, CatalogDiff, coverage and manifest. It makes no Delta/Full cost comparison and no start decision, and it never asks a model whether a partial read is conclusive. The rule requires that the read streams per ReadingGroup (an AssessmentContext holds whole ReadingGroups) and permits a work item to exit between contexts once the first part is read.
+Support Assessment follows one rule. It streams the complete current content in a fixed order: first every changed ReadingGroup (added, modified and removed) and the ReadingGroups that contain that work item's own prior Evidence, then every remaining ReadingGroup. The first part is therefore per work item, and the LLM batch runner's chain task carries each item's first-part boundary. The first part carries the fixed claims, compact Support metadata and historical excerpts exactly for `MODIFIED`, `REMOVED` and `AMBIGUOUS`; "Delta" names only this first part of the order, not a mode. A work item cannot exit while any ReadingGroup of the first part is unread, because a later changed group may revoke or qualify the Support. After the first part has been read, each work item leaves the read as soon as it has complete Support. A work item becomes `UNSUPPORTED` only after the whole order has been read without complete Support. The planner derives the order deterministically from exact correspondence, CatalogDiff, coverage and manifest. It makes no Delta/Full cost comparison and no start decision, and it never asks a model whether a partial read is conclusive. The rule requires that the read streams per ReadingGroup (an AssessmentContext holds whole ReadingGroups) and permits a work item to exit between contexts once the first part is read.
 
 Reading the whole order means all eligible effective-current Catalog contexts are processed. A small document may fit one AssessmentContext; a large one streams several contexts under one manifest and grounded previous state. `UNSUPPORTED` additionally requires authoritative coverage of every object the Support's Evidence belongs to; the read never upgrades a partial Projection. For example, when a Jira issue's description was fetched completely and rewritten while its comment pagination is partial, a Support whose Evidence is in the description can reach `UNSUPPORTED`, because that object's coverage is authoritative and the carried-forward comments are still read. A Support whose Evidence is in a comment the provider did not return is `UNKNOWN`.
 
@@ -312,7 +315,7 @@ configuration or storage change and receives it by upgrading the OSS pin.
 
 Support Assessment works at `(memory_id, independent_support_id)` granularity. An Evidence Unit remains one Primary plus zero or more Required refs, possibly selected from several fragments or ReadingGroups in the current AssessmentContext.
 
-The final semantic wire result is `SUPPORTED(work_id, primary_ref, required_refs[]) | UNSUPPORTED(work_id)`. Only `SUPPORTED` admits selectors. Its selectable current pool is the current AssessmentContext catalog plus current refs grounded by earlier contexts and rehydrated with exact current text in `carried_witness_catalog`; historical refs are never selectable. Streamed model output carries only `witness_delta` additions. Application code validates and monotonically union-merges them into grounded supporting/opposing sets, so omission cannot erase an earlier witness; no cumulative status is model-owned. Steps inside the first part of the order return only `witness_delta`. The step that completes the first part, and any later step, may return `SUPPORTED` for a work item, which then exits; otherwise the step returns only its `witness_delta`. The step that reads the last ReadingGroup of the order returns `SUPPORTED` or `UNSUPPORTED`. Partial coverage (including an `UNKNOWN` part, which never reaches the model), incomplete manifests, capacity/provider/schema failure, a work item that still fails after the LLM batch runner split its request down to that one item and one ReadingGroup, model abstention or order disagreement become application-owned `UNRESOLVED(reason)` and KEEP.
+The final semantic wire result is `SUPPORTED(work_id, primary_ref, required_refs[]) | UNSUPPORTED(work_id)`. Only `SUPPORTED` admits selectors. Its selectable current pool is the current AssessmentContext catalog plus current refs grounded by earlier contexts and rehydrated with exact current text in `carried_witness_catalog`; historical refs are never selectable. Streamed model output carries only `witness_delta` additions. Application code validates and monotonically union-merges them into grounded supporting/opposing sets, so omission cannot erase an earlier witness; no cumulative status is model-owned. Steps inside the first part of the order return only `witness_delta`. The step that completes the first part, and any later step, may return `SUPPORTED` for a work item, which then exits; otherwise the step returns only its `witness_delta`. A work item exits only on a model-returned `SUPPORTED` that passes program validation. A non-empty opposing-witness set does not block that exit, because the opposing text is carried in the request through `carried_witness_catalog` and the model judged with it. The step that reads the last ReadingGroup of the order returns `SUPPORTED` or `UNSUPPORTED`. Partial coverage (including an `UNKNOWN` part, which never reaches the model), incomplete manifests, capacity/provider/schema failure, a work item that still fails after the LLM batch runner split its request down to that one item and one ReadingGroup, and model abstention become application-owned `UNRESOLVED(reason)` and KEEP.
 
 ### Sparse same-Unit Relation
 
@@ -403,18 +406,21 @@ Target contract, tracked by Cloud issue #505.
 
 `SupportRelationCoordinator` is program code that runs after both lines finish and
 before Lifecycle Reconciliation. For each same-Unit old Memory it combines the
-Support result with the Relation edges that point at that Memory:
+Support result with the Relation edges that point at that Memory. The rows are
+evaluated in this order and the first match wins: the `UNRESOLVED` row (keep),
+then the row for an old Memory with both an equivalent and a contradicts edge
+(Review), then the remaining rows.
 
 | Support result | Relation result | Action |
 | --- | --- | --- |
 | `SUPPORTED` | none or equivalent | keep the old Memory; an equivalent Candidate is consumed, no ADD |
-| `SUPPORTED` | contradicts | the current source supports two mutually exclusive statements: the old Memory's verified Support is rebound to its current Evidence, and a Review of the existing SUPERSEDE kind is created |
-| `UNSUPPORTED` (whole order read) | equivalent | targeted re-check with the Candidate's current Evidence: supported keeps the old Memory and rebinds it to that Evidence; still unsupported goes to Review |
+| `SUPPORTED` | contradicts | the current source supports two mutually exclusive statements: the old Memory's verified Support is rebound to its current Evidence, and a coordinator Review is created |
+| `UNSUPPORTED` (whole order read) | equivalent | targeted re-check with the Candidate's current Evidence: supported keeps the old Memory and rebinds it to that Evidence; still unsupported creates a coordinator Review |
 | `UNSUPPORTED` (whole order read) | contradicts | normal SUPERSEDE |
 | `UNSUPPORTED` (whole order read) | none | remove this source's Support; retire the Memory only if no other source has Active Support |
 | `UNAFFECTED` (rebound) | contradicts | Change Impact miss: run Support Assessment for this Claim once, in the normal reading order |
-| `UNRESOLVED` | any | keep unchanged; related Candidates are held with it and cannot ADD alone |
-| any | both an equivalent and a contradicts edge on the same old Memory | Review |
+| `UNRESOLVED` | any | keep unchanged; related Candidates are consumed this round, with no ADD and no destructive action |
+| any | both an equivalent and a contradicts edge on the same old Memory | coordinator Review |
 
 Re-check rules:
 
@@ -438,6 +444,14 @@ Support results, and the coordinator never lets one line decide the other's trut
 A rebound `UNAFFECTED` Support with no contradicts edge follows the `SUPPORTED`
 rows. REFINES and uncertain Relation results keep the reducer and revision-proof
 rules in [Local unresolved claim relationships](#local-unresolved-claim-relationships).
+When one Candidate receives different treatments across several old Memories,
+the same local unresolved component rule applies: the whole related component is
+consumed this round, with no ADD and no destructive action.
+
+Known residue: while a Support stays `UNRESOLVED` (for example under repeated
+partial projection), the new knowledge in its related Candidates is not
+re-extracted, because an update extracts only changed structures; it returns
+when that structure changes again.
 
 Cloud impact: the coordinator is shared OSS reducer code. It needs no HANA schema
 change.
@@ -448,27 +462,63 @@ Target contract, tracked by Cloud issue #505. The first version stays minimal.
 It applies only to Reviews created by the coordinator table; Source Authority
 Reviews keep their existing rules.
 
-- Deduplication: a contradicting Candidate with the same normalized claim, for
-  the same Source Unit and the same old Memory, is the same conflict. The Review
-  ID and the challenger Memory ID are deterministic, derived from the Source
-  Unit, the old Memory and a hash of the normalized Candidate claim, so the same
-  conflict produces exactly one Review. The Review does not record the last
-  revision in which the conflict was seen.
-- Storage: the contradicting Candidate is stored through the existing
-  mechanism, as a `pending_review` challenger Memory that is not Active.
+- Storage: a coordinator Review is the Lifecycle Plan's existing `CREATE_REVIEW`
+  mutation, written to `lifecycle_reviews`. The Candidate that raised it (the
+  contradicting Candidate; only for `UNSUPPORTED` x equivalent, the equivalent
+  Candidate) stays in the Review's staged evidence together with the
+  proposed action; no Memory is created for it. Approval applies the proposed
+  action recorded in the Review, and rejection keeps the status quo. For
+  `UNSUPPORTED` x equivalent that is still unsupported after the re-check, the
+  proposed action keeps the old Memory and rebinds it to the Candidate's
+  Evidence. For `SUPPORTED` x contradicts, the proposed action supersedes the
+  old Memory with a Memory created from the staged contradicting Candidate.
+  For an old Memory with both an equivalent and a contradicts edge, the staged
+  Candidate is the contradicting one and the proposed action is the same
+  supersession; rejection keeps the old Memory and rebinds it to the equivalent
+  Candidate's Evidence.
+- Stale guard: the Review carries its own stale guard in its staged evidence,
+  taken after the creating Plan's own mutations. A Support rebound in the same
+  Plan (the `SUPPORTED` x contradicts row) is therefore already part of the
+  guard, and approval checks this guard rather than the creating Plan's
+  pre-apply guard.
+- Identity: the Review ID is deterministic, derived from the Source Unit, the
+  old Memory and a hash of the normalized Candidate claim. It does not include
+  the per-run scope, so the same conflict always names the same Review. Reviews
+  raised from an equivalent edge use the same ID inputs.
+- Recurrence: when a new revision raises the same conflict, the existing Review
+  is reused according to its status, and a second record is never created:
+  - `pending`: reused; this revision's `CREATE_REVIEW` for the same ID refreshes
+    its staged evidence and stale guard to this revision's Support set,
+    including a Support rebound this round;
+  - `rejected`: the same conflict is not raised again, respecting the human
+    decision;
+  - `stale`: reopened as `pending` with refreshed staged evidence and stale
+    guard;
+  - `approved`: the action already ran, so the conflict no longer exists.
 - Visibility: while the Review is pending, the old Memory stays Active,
   retrievable and unchanged. There is no "conflicted" marker.
 - New revision: it is processed normally and the coordinator judges again. If the
-  conflict is gone, the old Review is closed automatically with the reason
-  "source updated". If the same conflict remains, its deterministic IDs name the
-  existing Review, which is reused. If a different conflict appears, the old
-  Review is closed and a new one is created.
+  conflict is gone, the revision's Plan closes the Review with the existing
+  `stale` status. A different conflict has a different Candidate claim hash and
+  therefore its own Review.
 - A review decision applies only while the related Memory and Support are
   unchanged, through the existing stale guards.
 
-Cloud impact: the Review and challenger Memory use existing records and the
-existing Review protocol in `storage/adapters/protocols.py`. No Review field and
-no SQLite or HANA migration is added; Cloud upgrades the pin.
+Cloud impact: the ID derivation, the Review's own stale guard and the
+recurrence decision live in the OSS planner and review code. Reuse, reopen and
+close change an existing `lifecycle_reviews` row, which Plan apply cannot do
+today: `CREATE_REVIEW` is a plain insert, so the same ID collides on its primary
+key, and `RESOLVE_REVIEW` inside a Plan only approves. Both stores therefore
+change their Plan apply. `CREATE_REVIEW` becomes an upsert on the Review ID that
+writes an existing `pending` or `stale` row back to `pending` with the new Plan
+ID and staged evidence (the planner never emits it for a `rejected` or
+`approved` Review), and `RESOLVE_REVIEW` also accepts `stale`. The call sites are
+the `CREATE_REVIEW` and `RESOLVE_REVIEW` branches of
+`_apply_lifecycle_mutation_unlocked` in OSS `storage/database.py` and of
+`_apply_lifecycle_mutation_on_connection` in Cloud's HANA adapter
+`packages/adapters/store/hana/.../workspace.py`. No field, status, migration or
+mutation type is added, but Cloud changes the HANA adapter together with the pin
+upgrade.
 
 ### Same-Unit identity backstop
 
@@ -500,6 +550,9 @@ already implements `excluded_memory_ids`, so Cloud upgrades the pin.
 
 ### Automated destructive validation
 
+Target contract, tracked by Cloud issue #505; main has no `DestructiveValidation`
+code.
+
 There is no human confirmation step. Before applying a proposed
 `REMOVE_SUPPORT`, `SUPERSEDE` or `RETIRE_MEMORY`, Lifecycle Reconciliation runs
 an automatic `DestructiveValidation` over the affected fixed claims. It verifies:
@@ -508,17 +561,16 @@ an automatic `DestructiveValidation` over the affected fixed claims. It verifies
 2. complete Claim Extraction and Support Assessment manifests with no technical
    failure or unresolved independent Support;
 3. resolvable decisive current witnesses and non-stale Support-set hashes;
-4. target (#505): every `UNSUPPORTED` proposal binds a completed receipt for the
-   whole ordered read;
+4. every `UNSUPPORTED` proposal binds a completed receipt for the whole ordered
+   read;
 5. the aggregate active-Support count after simulating source-scoped removals;
-6. target (#505): for any SUPERSEDE or UPDATE (a revision UPDATE emits
-   `SUPERSEDE_MEMORY`), complete Relation work: every admitted Candidate has its
-   completion row over the complete same-Unit old-Memory catalog.
+6. for any SUPERSEDE or UPDATE (a revision UPDATE emits `SUPERSEDE_MEMORY`),
+   complete Relation work: every admitted Candidate has its completion row over
+   the complete same-Unit old-Memory catalog.
 
 The validator does not run another semantic scan. Support Assessment owns the
-single ordered read (target, #505); DestructiveValidation verifies its
-receipt, manifests, witnesses, Support count, Relation completeness and stale
-guards. Unknown coverage, unresolved execution, capacity failure or stale input
+single ordered read; DestructiveValidation verifies its receipt, manifests,
+witnesses, Support count, Relation completeness and stale guards. Unknown coverage, unresolved execution, capacity failure or stale input
 yields KEEP and leaves the validation baseline unchanged. Only zero remaining
 active Supports may retire a Memory. Another source's active Support always
 prevents retirement by the current source.
@@ -883,8 +935,9 @@ The application validates the final complete Evidence Unit from exact original
 refs; it does not require a final model request to reread all retained raw text.
 Cumulative witnesses are inference state, not stored Evidence. Bounded execution
 still accepts model semantic misses, but complete range coverage, decisive-witness
-retention and order-invariant reduction prevent transport partitioning from silently
-forgetting an earlier judgment. A Support Assessment that cannot complete,
+retention and the union merge of witness sets, which yields the same set in any
+merge order, prevent transport partitioning from silently forgetting an earlier
+judgment. A Support Assessment that cannot complete,
 including a work item that still fails after the LLM batch runner split its
 request down to that one item and one ReadingGroup, produces `UNRESOLVED(reason)`: the program emits a bare NOOP / KEEP, preserves its existing
 Support and Evidence, and does not advance its validation baseline. If any
@@ -1152,7 +1205,7 @@ contract remains 4, authority policy remains 5, and the model presentation polic
 is 4. The planner amendment changes request scope and presentation identity only;
 it does not migrate stored Evidence or create a lifecycle version.
 
-Implementing the 2026-09-21, 2026-09-22 and 2026-09-24 amendments must allocate
+Implementing the target contract must allocate
 successor semantic-work and input-policy identities for exact correspondence,
 witness state, the ordered Support read, changed-structure and first-import
 streaming extraction, candidate admission, the Relation input change, the coordinator and
