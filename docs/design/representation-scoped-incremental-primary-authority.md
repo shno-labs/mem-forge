@@ -214,7 +214,7 @@ Primary bit in this result.
 | private representation adapter / `RepresentationIndex` | one implementation of base/target structural or field mapping and exact target coordinates | Source type branches or lifecycle policy |
 | Evidence Fragment Compiler | exact structural/field Fragment compilation inside supplied ranges | widening authority or inferring change |
 | `RevisionInputPlanner` / reading index | Claim Extraction input: one-step representation-owned reading expansion, complete delta/current-full candidates, request-format cost forecasting and selection (implemented; the target makes no selection, see the scope note) | Support Assessment reading, changing supplied Primary authority, semantic dependency inference, lifecycle grouping |
-| Support reading planner (`plan_support_revision`) | exact prior Evidence correspondence, whole-Support routing and the ordered current-revision reading of the complete current revision | cost comparison, semantic similarity, stored correspondence status, Primary authority for new claims |
+| Support reading planner (`plan_support_revision`) | exact prior Evidence correspondence, whole-Support routing, the ChangeBundle (changed ReadingGroups and removed old text) and the ordered current-revision reading of the complete current revision | the Change Impact judgment itself (the revision work executor owns it), cost comparison, semantic similarity, stored correspondence status, Primary authority for new claims |
 | LLM | claim content and selection among offered refs | offsets, IDs, change detection, eligibility, lifecycle action |
 | Resolver / lifecycle | exact ref validation, Evidence Unit, Support and lifecycle safety | repairing or guessing an invalid authority plan |
 

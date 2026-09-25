@@ -139,10 +139,15 @@ Support Assessment does not use this planner. It judges fixed claims, so it has
 no Primary authority to plan and no request mode to choose. Exact Evidence
 correspondence routes each whole Support: when every Evidence part is exactly
 unchanged and the revision has no changed content, the program rebinds the
-Support; when an Evidence part lies in an Observation whose presence the partial
-Projection cannot prove, such as a comment the provider did not return, the
-Support is kept as `UNRESOLVED(partial_coverage)` without a model call; every
-other Support is read in the
+Support; when every part is exactly unchanged and the revision has changed
+content, removed content included, Change Impact judges the claim against the
+ChangeBundle of changed ReadingGroups and removed old text, an `UNAFFECTED`
+Support is rebound by the program, and an `AFFECTED` Support or a Change Impact
+execution failure is read like the rest; when an Evidence part lies in an
+Observation whose presence the partial Projection cannot prove, such as a
+comment the provider did not return, the Support is kept as
+`UNRESOLVED(partial_coverage)` without a model call; every other Support is read
+in the
 [ordered current-revision reading](../adr/0034-unify-incremental-support-and-claim-assessment.md#ordered-current-revision-reading).
 That reading covers the complete current revision in one fixed order. Its first
 part holds the changed ReadingGroups, the removed text and the ReadingGroups of
