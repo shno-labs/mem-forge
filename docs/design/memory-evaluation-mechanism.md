@@ -61,7 +61,6 @@ Source sync / Admin action / Scheduler / Review action
         v
 Decision owner
   - MemoryEngine
-  - SourceSupportDetector
   - ReviewService
   - Admin API
   - Scheduler

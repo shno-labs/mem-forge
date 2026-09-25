@@ -586,7 +586,7 @@ The first case kinds match the two existing nondeterministic task seams:
 | Case kind | Pinned input | Candidate output |
 | --- | --- | --- |
 | `source_unit_derivation_v1` | normalized Source Unit revision, Block catalog, and extraction contract | candidate Memories, Evidence references, and drop dispositions |
-| `source_unit_reconciliation_v1` | candidate output, incumbent versions, document update context, and reconciliation contract | complete relation-first `ReconcileOperation` ledger, bounded failure, and reducer metrics |
+| `source_unit_reconciliation_v1` | candidate output, incumbent versions, pinned incumbent Support assessments (`support_audits`), and reconciliation contract | complete relation-first `ReconcileOperation` ledger, bounded failure, and reducer metrics |
 
 A case is neither one provider request nor a whole Source Sync. Separating the
 two task boundaries lets a prompt/extraction change rerun derivation without
