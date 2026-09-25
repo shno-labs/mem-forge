@@ -485,22 +485,20 @@ ReviewService owns human-gated approval and rejection.
 New source types and representation adapters must not bypass these Modules with
 direct Memory or Support writes.
 
-## Support Cutover Eligibility
+## Support Model
 
-The v1-to-v2 Support cutover is a mechanical authority migration, not semantic
-revalidation. An active v1 group is eligible only when every Primary and
-Required Evidence Reference pins its Observation's current stable Revision at
-the locked cutover snapshot. A non-current active group remains preserved as
-non-authoritative `legacy_limited` provenance with reason
-`active_support_revision_non_current`; the cutover must not infer that old
-Evidence still supports the current claim. Inactive groups retain their pinned
-historical Revisions because they grant no current lifecycle authority.
+Evidence Unit Support is the only Support model. Each active Support Assertion
+names one complete Evidence Unit: the claim, its exact Primary and Required
+parts pinned to stable Observation Revisions, and the access context. Lifecycle
+Plans add and remove Support only by Evidence Unit identity, and a Support set
+hash covers the complete active Unit set of one Memory.
 
-The complete grouping, exact-count, transaction, and forward-only rollout
-contract is defined by
-[ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md#support-schema-and-cutover).
-This rule is representation- and Source-neutral: all providers reach it through
-the same stable Observation and current-Revision identities.
+The workspace records this model in its Support scope marker. Storage refuses to
+open a workspace whose marker names any other scope, and an older workspace that
+still holds reference-scoped Support rows refuses to start instead of being
+converted in place. This rule is representation- and Source-neutral: all
+providers reach it through the same stable Observation and current-Revision
+identities.
 
 ## Source-Type Extensibility
 
