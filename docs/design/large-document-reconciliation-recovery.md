@@ -206,7 +206,9 @@ A/B 指同一环境、时间和规则，不能同时成立；如果分别指测�
 
 ## 8. 大文档还有一个必须关闭的安全风险
 
-当前 incumbent Support audit 只传 `updated_document[:100000]`、`changed_hunks[:40000]`。对 28.5 万字符的文档，“返回了 248 个判断”不等于“看到了足以判断这 248 条 claim 的 Evidence”。
+> 状态：已关闭。独立的 incumbent Support audit 已删除；incumbent 的 current Support 只由 Support Assessment 判断，它经 LLM 批量执行器按容量分段读完整个修订范围，不再使用固定文档前缀。下文保留当时的问题分析。
+
+当时的 incumbent Support audit 只传 `updated_document[:100000]`、`changed_hunks[:40000]`。对 28.5 万字符的文档，“返回了 248 个判断”不等于“看到了足以判断这 248 条 claim 的 Evidence”。
 
 修复必须将审计输入与实际 Support 及 Revision Delta 对齐，使用现有 compiler 提供必要的完整当前片段和变更上下文；不能用固定文档前缀充当完整权威视图。
 未覆盖到的文本不证明 claim 已失去支持。无法取得足够 Evidence 时，只能保留准确的未决处置、进入已有 Review/失败路径，不能自动 REMOVE，也不能虚构 KEEP 的 current Support。
