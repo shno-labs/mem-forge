@@ -534,19 +534,27 @@ the classifier contract version whose input it holds; a case pinned for another
 version is not replayed, so a contract that changes the input is evaluated on a
 set seeded again under it. The case kind `cross_document_relation_v1` names the
 case structure (a Memory pair and one accepted label), not the classifier
-version; the classifier version is the manifest's `classifier_version`. Confirmed and dismissed Cross-Source Conflict Reviews
-seed the set, and each Relation Dismissal adds a case. The set holds workspace
-content, so it lives in that workspace's evaluation store, not in this
-repository. A change of relation prompt, label definition, classifier backend
-or threshold reports precision and recall per label on this set, and the
-threshold recorded with the classifier version comes from that report. The run
-report stays content-free; a maintenance operator reads each case's pinned
-input, accepted label and the model's label and reason through
-`GET /api/v1/agent-evaluations/runs/{run_id}/case-outputs`.
+version; the classifier version is the manifest's `classifier_version`.
+
+A maintenance operator seeds the set with
+`POST /api/v1/agent-evaluations/relation-cases/seed`: confirmed Cross-Source
+Conflict Reviews become `contradicts` cases and dismissed ones `none`, unless the
+request relabels a Review by id. A decision is pinned only while both Memories
+still hold the version it was made for. A Relation Dismissal is not pinned: it
+says one label is wrong, not which label is right. The route freezes the pinned
+cases as one cohort and returns its id, which an evaluation run uses and which
+the one-time Review conversion requires before it deletes the converted Review
+rows. The set holds workspace content, so it lives in that workspace's
+evaluation store, not in this repository. A change of relation prompt, label
+definition, classifier backend or threshold reports precision and recall per
+label on this set, and the threshold recorded with the classifier version comes
+from that report. The run report stays content-free; a maintenance operator
+reads each case's pinned input, accepted label and the model's label and reason
+through `GET /api/v1/agent-evaluations/runs/{run_id}/case-outputs`.
 
 ```yaml
 case: later-ticket-decision-changes-earlier-design-page
-operation_under_test: cross_document_relation
+operation_under_test: cross_document_relation_v1
 challenger_memory_snapshot: sha256:...
 candidate_memory_snapshot: sha256:...
 expected_label: updates
