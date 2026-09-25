@@ -66,7 +66,18 @@ a local binding for only that call and never mutates configuration.
 Hook capture pins the resolved workspace with the local session cursor before
 asynchronous upload. Later configuration changes cannot split one admitted
 session across workspaces. Hooks remain fail-open for the coding client and
-retain bounded retry state when no selection is available.
+retain bounded retry state when no selection is available: a capture that
+cannot select a workspace sends no further requests until local resolution
+succeeds, and only backlog from the last seven days is uploaded after it does.
+
+The CLI takes the same request-scoped selector as `--workspace-id` on every
+workspace data-plane command. Project commands (`search` and `memory`) fall
+back to the current directory's repository or directory binding; other
+commands send no selector and surface the server's candidate IDs when a
+selection is required. The CLI stores no default workspace. Commands that
+refresh one credential for several workspaces, such as the Jira browser
+session, upload it to each workspace with a matching Source and report each
+result.
 
 Self-hosted OSS implements the same contract as a singleton directory. Its
 stable readable workspace ID is `local`, its role is `owner`, and it is always

@@ -34,10 +34,12 @@ owner sees it; if exit wins, the producer can acquire ownership. Network request
 and transcript scans run outside these write transactions.
 
 Failures preserve the pending bookmark and record completion time. Eligibility
-requires at least 60 seconds since failure completion; a failed identity is also
-excluded for the rest of that activation. A worker with no eligible work exits
-without polling or scheduling a timer. Later hooks or explicit recovery retry
-eligible pending work. SessionStart promotes its current already-pending row as
+waits for the row's `retry_after`, which backs off exponentially from 60 seconds
+to one hour across consecutive failures; a failed identity is also excluded for
+the rest of that activation. A capture that cannot select a workspace is not
+sent again until local resolution selects one (see ADR 0021). A worker with no
+eligible work exits without polling or scheduling a timer. Later hooks or
+explicit recovery retry eligible pending work. SessionStart promotes its current already-pending row as
 well as rearming an idle row whose transcript grew. Pending promotion precedes
 the idle check: either its new sequence protects the in-flight result, or the
 idle check observes the completed row and rearms its tail.
