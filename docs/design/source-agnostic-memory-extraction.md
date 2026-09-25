@@ -115,41 +115,48 @@ and Anchor, content or Artifact digest, and access scope.
 
 ### RevisionInputPlanner
 
-The planner receives an extraction task with its already-authorized current
-ranges, or a Support task with fixed claims and their existing Support. It asks
-the representation-owned reading index to expand the selected structures, then
-builds complete delta and current-full request candidates when a valid baseline
-permits both. The task-specific request policy materializes actual requests and
-forecasts prompt/schema tokens, images, output reservation, repeated request
-data, initial state and the existing cumulative-state reserve. Future
-model-selected state remains subject to actual per-request admission. A safe
-image-free lower bound may prove full cannot beat an already materialized delta;
-otherwise full is materialized before comparison. The planner chooses the lower
-forecast token cost; delta wins an exact tie. Request and image counts/bytes
-remain diagnostics. It uses no source-type branch or percentage threshold. A
-normal-update L1 current-full candidate must fit its complete reading scope in
-one request. Initial extraction and L1 delta may still partition authorized
-Primary work with local reading context; L3 may use its existing cumulative
-Support-assessment state across requests.
+The planner plans Claim Extraction input. It receives an extraction task with
+its already-authorized current ranges, asks the representation-owned reading
+index to expand the selected structures, then builds complete delta and
+current-full request candidates when a valid baseline permits both. The
+extraction request policy materializes actual requests and forecasts
+prompt/schema tokens, images, output reservation and repeated request data. A
+safe image-free lower bound may prove full cannot beat an already materialized
+delta; otherwise full is materialized before comparison. The planner chooses the
+lower forecast token cost; delta wins an exact tie. Request and image
+counts/bytes remain diagnostics. It uses no source-type branch or percentage
+threshold. A normal-update L1 current-full candidate must fit its complete
+reading scope in one request. Initial extraction and L1 delta may still
+partition authorized Primary work with local reading context.
 
-The result records mode, exact catalog, reading groups, removed historical
-material, selection reason, estimated complete cost and materialized transport.
-These values are derivation input, not persistent Source, Evidence, Support or
-lifecycle state. Current-full affects reading only: it preserves the extraction
-task's exact Primary bits. Support assessment may retain legitimate current
-Primary capability because it evaluates a fixed claim rather than authorizing a
-new one.
+The result records mode, exact catalog, reading groups, selection reason,
+estimated complete cost and materialized transport. These values are derivation
+input, not persistent Source, Evidence, Support or lifecycle state. Reading
+expansion adds Context only: current-full preserves the extraction task's exact
+Primary bits, and a Fragment added for reading is never Primary-eligible.
+
+Support Assessment does not use this planner. It judges fixed claims, so it has
+no Primary authority to plan and no request mode to choose. Exact Evidence
+correspondence routes each whole Support: when every Evidence part is exactly
+unchanged and the revision has no changed content, the program rebinds the
+Support; when an Evidence part lies in an Observation whose presence the partial
+Projection cannot prove, such as a comment the provider did not return, the
+Support is kept as `UNRESOLVED(partial_coverage)` without a model call; every
+other Support is read in the
+[ordered current-revision reading](../adr/0034-unify-incremental-support-and-claim-assessment.md#ordered-current-revision-reading).
+That reading covers the complete current revision in one fixed order. Its first
+part holds the changed ReadingGroups, the removed text and the ReadingGroups of
+the Support's own prior Evidence; each work item may exit once its first part
+has been read. A Support without a usable validation baseline reads the whole
+current revision as its first part.
 
 The delta/current-full comparison above is the implemented `revision-input-v6`
-behavior. Target (Cloud #505): neither task compares costs. On an update, Claim
-Extraction reads only the changed structures, with their ReadingGroups as
+behavior. Target (Cloud #505): Claim Extraction makes no cost comparison. On an
+update, it reads only the changed structures, with their ReadingGroups as
 context; Primary is already limited to the changed authorized work. A first
 import streams per ReadingGroup through the LLM batch runner of
 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md), so no
-extraction read has to fit one request. Support Assessment reads the complete
-current revision in one fixed order, with per-work-item early exit once the first
-part of the order (changed ReadingGroups, removed ones included, and prior-Evidence
-groups) has been read.
+extraction read has to fit one request.
 
 ## Deterministic Primary Eligibility
 
@@ -323,19 +330,22 @@ Primary eligibility remains local to each exact range, and Context cannot widen
 it to the whole Observation.
 
 For a valid base/target pair, `RevisionInputPlanner` forecasts complete delta and
-current-full transports and chooses the lower forecast token cost, with delta
-winning ties. Delta includes the complete removed/replaced structural history
-emitted by the delta and, for Support tasks, prior Support Evidence; it does not
-semantically prune old material before assessment. Current-full reads the
-complete eligible effective current Source Projection and omits non-current
-history. Partial Projection carry-forward remains current, and full does not turn
-an uncovered upstream omission into a deletion. Full reading does not promote
-Context to Primary. Normal-update L1 full reading must fit one request; L3
-current-full may use cumulative batching. If no verified Support baseline is
-recorded, L3 may use current-full when complete-current proof is allowed; a named
-baseline that is missing or does
-not match fails as a technical contract violation. Ordinary incremental L1 never
+current-full extraction transports and chooses the lower forecast token cost,
+with delta winning ties. Delta includes the complete removed/replaced structural
+history emitted by the delta; it does not semantically prune old material before
+extraction. Current-full reads the complete eligible effective current Source
+Projection and omits non-current history. Partial Projection carry-forward
+remains current, and full does not turn an uncovered upstream omission into a
+deletion. Full reading does not promote Context to Primary. Normal-update L1 full
+reading must fit one request. A named extraction baseline that is missing or does
+not match fails as a technical contract violation; ordinary incremental L1 never
 uses that failure as initial-import authority.
+
+L3 Support Assessment uses the ordered current-revision reading instead of this
+comparison. A Support without a recorded validation baseline, or whose named
+baseline snapshot is missing or inconsistent, reads the whole current revision
+as its first part; an unusable named snapshot is logged as a diagnostic, not
+treated as a failure.
 
 Target (Cloud #505): see the target note in [RevisionInputPlanner](#revisioninputplanner)
 and [ADR 0034, Ordered current-revision reading](../adr/0034-unify-incremental-support-and-claim-assessment.md#ordered-current-revision-reading).
@@ -393,8 +403,9 @@ Required part changed, provided the revalidation work explicitly includes the
 current or rebound incumbent range. Therefore the invariant is
 Primary-from-authorized-work, not Primary-from-delta.
 
-L3 now performs one fixed-claim support assessment and complete current Evidence
-reconstruction using full or complete delta context. Required membership can
+L3 performs one fixed-claim Support assessment and complete current Evidence
+reconstruction, reading the complete current revision in the ordered
+current-revision reading. Required membership can
 split, merge, grow or shrink; there is no selector per old Required part. One
 local correction remains available for unknown current refs. Unresolved support
 and exhausted correction cannot become independent ADD or a whole-document

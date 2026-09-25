@@ -155,7 +155,7 @@ Revision 原样沿用，仍有效的准确 Anchor 可直接对应；若它产生
 和派生 Fragment ID 只能用来缩小查找，必须在**同一 Source Unit、同一 provider
 Observation** 下找到唯一兼容的当前片段，并核对准确内容或 presentation digest。
 对应关系每次重新计算，不给 Evidence 加一个可变的“未变”字段。
-Provider `FragmentMapping` 也只提供候选对应，不代替正文相等证明。标点变化会
+Provider `FragmentMapping` 不参与这一对应：它不能证明正文相等，也不在多个精确候选中挑选，重复出现的原文按 `AMBIGUOUS` 处理。标点变化会
 改变准确匹配；同义改写更不能由 digest 自动视为未变。跨 Source Unit 不做自动
 Evidence rebind。原文唯一精确匹配即为 `EXACT_UNCHANGED`；所在 ReadingGroup
 是否变化不参与路由，变化内容已在 ChangeBundle 中。
