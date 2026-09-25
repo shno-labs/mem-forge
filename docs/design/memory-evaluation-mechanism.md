@@ -540,7 +540,11 @@ A maintenance operator seeds the set with
 `POST /api/v1/agent-evaluations/relation-cases/seed`: confirmed Cross-Source
 Conflict Reviews become `contradicts` cases and dismissed ones `none`, unless the
 request relabels a Review by id. A decision is pinned only while both Memories
-still hold the version it was made for. A Relation Dismissal is not pinned: it
+still hold the version it was made for and both are shown from active workspace
+Sources. The route counts every decision it does not pin by reason
+(`memory_changed`, `private_memory`, `source_unavailable`,
+`no_source_evidence`) and reads none of its content, so one private, changing or
+deleted Source does not hold back the rest. A Relation Dismissal is not pinned: it
 says one label is wrong, not which label is right. The route freezes the pinned
 cases as one cohort and returns its id, which an evaluation run uses and which
 the one-time Review conversion requires before it deletes the converted Review
