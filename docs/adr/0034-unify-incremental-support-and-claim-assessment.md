@@ -722,7 +722,8 @@ implemented contract is summarized in [Status](#status).
    conflicts are discovered. This temporary window is accepted; no conflict-free
    publication guarantee or fixed completion deadline is implied. Persist work
    with the lifecycle transaction, retain auditable failure/retry, and never give
-   discovery authority to retire another source's knowledge. Pre-creation
+   discovery authority to retire another source's knowledge. Discovery records
+   relations, not Reviews ([ADR 0037](0037-record-cross-document-conflicts-as-relations.md)). Pre-creation
    identity reuse also covers this Unit's kept old Memories, as described in
    [Same-Unit identity backstop](#same-unit-identity-backstop).
 
@@ -761,9 +762,9 @@ owns immutable Evidence representation; ADR 0009 owns asynchronous discovery.
   pending proposed mutation, or unrelated successful validation does not advance
   this association. Existing causal and complete-coverage guards remain required.
 - A protected old Support retained pending a destructive lifecycle Review keeps
-  its last proven baseline. An asynchronous cross-source conflict Review does
-  not freeze independently validated Support on either Memory. Review presence
-  is not itself a validation result or a new baseline state.
+  its last proven baseline. A cross-document relation does not freeze
+  independently validated Support on either Memory, and Review presence is not
+  itself a validation result or a new baseline state.
 - Supports established at v3, v10 and v15 but each validated through v19 can
   share v19-to-v20 assessment context. A Support still validated only through v3
   requires v3-to-v20 context or a complete current-catalog proof. Unchanged
