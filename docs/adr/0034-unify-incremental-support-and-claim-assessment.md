@@ -262,8 +262,9 @@ offset or derived Fragment ID is only a locator hint: the planner must find
 exactly one compatible current Fragment in the same Source Unit and provider
 Observation, and compare the persisted exact content/presentation digest with
 the compiler's current exact representation. The comparison does not ignore
-punctuation or paraphrases. Provider `FragmentMapping` can narrow candidates
-but cannot itself prove text equality or make an old ref current. A unique
+punctuation or paraphrases. Provider `FragmentMapping` does not enter this comparison:
+it cannot prove text equality, make an old ref current or choose among exact
+candidates, so repeated exact text is `AMBIGUOUS`. A unique
 exact match is `EXACT_UNCHANGED` whether or not the ReadingGroup around it
 changed; changed surrounding content reaches the claim through the ChangeBundle.
 A cross-Source-Unit match is never an automatic rebind.
