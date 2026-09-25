@@ -140,6 +140,17 @@ task's exact Primary bits. Support assessment may retain legitimate current
 Primary capability because it evaluates a fixed claim rather than authorizing a
 new one.
 
+The delta/current-full comparison above is the implemented `revision-input-v6`
+behavior. Target (Cloud #505): neither task compares costs. On an update, Claim
+Extraction reads only the changed structures, with their ReadingGroups as
+context; Primary is already limited to the changed authorized work. A first
+import streams per ReadingGroup through the LLM batch runner of
+[ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md), so no
+extraction read has to fit one request. Support Assessment reads the complete
+current revision in one fixed order, with per-work-item early exit once the first
+part of the order (changed ReadingGroups, removed ones included, and prior-Evidence
+groups) has been read.
+
 ## Deterministic Primary Eligibility
 
 The application answers only one static authority question before extraction:
@@ -325,6 +336,9 @@ recorded, L3 may use current-full when complete-current proof is allowed; a name
 baseline that is missing or does
 not match fails as a technical contract violation. Ordinary incremental L1 never
 uses that failure as initial-import authority.
+
+Target (Cloud #505): see the target note in [RevisionInputPlanner](#revisioninputplanner)
+and [ADR 0034, Ordered current-revision reading](../adr/0034-unify-incremental-support-and-claim-assessment.md#ordered-current-revision-reading).
 
 For compiler-backed v9, `canonical-record` and whole-Artifact coordinate
 profiles are different representation contracts, not Source-type exceptions.

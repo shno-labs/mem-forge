@@ -1,6 +1,6 @@
 # Sparse claim catalog contract
 
-Canonical decision: [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md#sparse-claim-discovery-over-complete-input-catalogs). This is the single-round relationship-discovery design; no new default destructive-action recheck is added.
+Current contract: this document describes the implemented `claim-revision-v7-sparse-catalog` contract that main runs. Target contract: the Relation contract that replaces it, tracked by Cloud issue #505, is defined in ADR 0034 [Sparse same-Unit Relation](../adr/0034-unify-incremental-support-and-claim-assessment.md#sparse-same-unit-relation) and [Same-Unit Relation execution](../adr/0034-unify-incremental-support-and-claim-assessment.md#same-unit-relation-execution). Its request has no `current_support` and its response has no evidence entailment status; [Support and Relation coordination](../adr/0034-unify-incremental-support-and-claim-assessment.md#support-and-relation-coordination) combines its result with Support.
 
 The request contains `new_claims`, `existing_claims`, and `evidence_catalog`. Short IDs are application-issued and scoped to the immutable request. Candidate evidence references preserve Primary/Required roles and observation/revision identity. Existing claims carry the completed current Support audit, not an inferred connection to another claim's evidence. Evidence records are deduplicated only by exact canonical content and provenance. Current full Support audit coverage remains independent of sparse relationship output.
 

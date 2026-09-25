@@ -5,6 +5,18 @@ documentation and upstream source repositories. It is design evidence only: no
 runtime code, dependency, provider configuration, or existing design document
 was changed.
 
+**Superseded where it conflicts with [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md)
+and [Semantic judgment execution](../design/semantic-judgment-execution.md).**
+The adopted design differs in these points: Support Assessment is Structured-LLM
+`GenerationWork`, not a Jev judgment; same-Unit Relation is sparse Structured-LLM
+discovery; runtime probabilities are diagnostic only and no confidence threshold
+selects a backend or result; one configured backend serves each task, with no
+automatic policy; DestructiveValidation runs no semantic scan; no warm-up
+inference is sent. The adopted names are `RepresentationCompiler`,
+`ContextBundle`, `GenerationExecutor` and `JudgmentExecutor` in place of
+`RepresentationIndex`, `RevisionJudgmentContext`, `GenerativeClaimEngine` and
+`JudgmentEngine`.
+
 ## Recommendation
 
 Keep `ReadingGroup` as one source-neutral, operation-scoped abstraction owned by

@@ -61,7 +61,7 @@ MemForge is a **memory layer** that:
 | Retrieval latency (no reranking) | < 150ms |
 | Retrieval latency (with reranking) | < 500ms |
 | Memory extraction per document | All durable atomic memories justified by the source; no fixed count |
-| LLM calls per changed Source Unit | Structured extraction, optional CandidateLedger, bounded exact relation/support classification, and a short revision proof only for a unique REFINES proposal |
+| LLM calls per changed Source Unit | Structured extraction, optional CandidateLedger, bounded exact relation/support classification, and a short revision proof only for a unique REFINES proposal (target calls: Claim Extraction, candidate admission, Change Impact, Support Assessment, Sparse Relation and at most one coordinator re-check per Claim; see [ADR 0034](adr/0034-unify-incremental-support-and-claim-assessment.md)) |
 | Relation-discovery work | Post-commit, bounded candidate retrieval and classification; no unbounded Memory history in extraction |
 
 ---
@@ -599,7 +599,10 @@ Reconciliation consumes unified L3 support/Evidence and L4 relation/revision
 assessments under [ADR 0034](adr/0034-unify-incremental-support-and-claim-assessment.md).
 Each old Support alternative is assessed completely; L4 shares each candidate
 Evidence payload across the existing pair group. No second NOOP validation call
-is required. Cloud deployment is verified independently.
+is required. Cloud deployment is verified independently. Target (Cloud #505):
+Support Assessment and Sparse Relation run in parallel, Relation receives no
+Support result, and a SupportRelationCoordinator combines both by ADR 0034's
+table before the Lifecycle Plan.
 
 ## 7. Memory Lifecycle
 
@@ -944,7 +947,11 @@ The current implementation is disabled by default and falls back to the baseline
 provider or schema failure. Backend enablement depends on a fixed MemForge retrieval
 evaluation rather than corpus size. See
 [Query-time Memory reranking](design/query-time-memory-reranking.md) for the provider-neutral
-interface, first-page scope, failure semantics, and quality/latency/cost gates.
+interface, first-page scope, failure semantics, and quality/latency/cost gates. Target
+(Cloud #505): the reranker also sends its request through the LLM batch runner of
+[ADR 0036](adr/0036-separate-semantic-work-from-inference-executors.md) as one
+indivisible listwise item that is never split. Search passes its deadline; timeout or
+invalid output keeps the baseline order.
 
 ### Performance Targets
 
@@ -1342,7 +1349,7 @@ The fundamental mismatch:
 | No memories extracted | Valid structured result contains no candidates | Accept — some Source Units contain no durable atomic claims. |
 | Incomplete entity adjudication | Missing, duplicate, or unknown mention decision | Fail closed; do not silently create entities from an incomplete batch. |
 | Many memories extracted | `len(memories)` is high | Keep every durable, semantically distinct candidate. Exact duplicates collapse deterministically; a complete CandidateLedger removes fully redundant claims within the Source Unit revision. Explicit input budgets fail closed instead of truncating the ledger. |
-| LLM timeout / API error | httpx timeout or 5xx response | Retry with bounded exponential backoff. If all attempts fail, preserve the previous lifecycle state and record the Source Unit failure. |
+| LLM timeout / API error | httpx timeout or 5xx response | Retry with bounded exponential backoff. If all attempts fail, preserve the previous lifecycle state and record the Source Unit failure. Target (Cloud #505): a request holding several work items that times out, exceeds input capacity, gets a provider 413 or returns truncated output is split in half and resent; a single item that still fails is a typed recoverable failure ([ADR 0036](adr/0036-separate-semantic-work-from-inference-executors.md)). |
 
 ### Failure Boundary
 
@@ -1396,6 +1403,12 @@ async with llm_semaphore:
 Concurrency is a capacity control, not a correctness mechanism. Cost and latency
 are measured per Source Unit, including CandidateLedger, entity adjudication,
 and relation-classification calls.
+
+Target (Cloud #505, first step): every model call goes through the LLM batch runner
+defined in [ADR 0036](adr/0036-separate-semantic-work-from-inference-executors.md),
+which owns capacity fit, partitioning, splitting on capacity failure and this
+concurrency limit. The runner applies no per-task item or character caps; only
+limits a backend adapter declares apply.
 
 ---
 

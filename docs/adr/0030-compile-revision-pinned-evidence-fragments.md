@@ -173,7 +173,11 @@ representation-schema reference. The registry key is the pair
 source syntax and coordinate semantics. Compiler contract identity versions
 Fragment boundaries and presentation policy independently: recompiling unchanged
 source bytes must invalidate cached catalogs when those boundaries change.
-This supersedes requiring a persisted profile bump for segmentation changes alone. The schema
+This supersedes requiring a persisted profile bump for segmentation changes alone.
+A segmentation or text-representation change can also make existing Evidence stop
+matching exactly; ADR 0034 owns that lifecycle consequence (the affected Supports
+enter Support Assessment at their Unit's next revision, and the compiler PR states
+the impact). The schema
 reference is required for `canonical-record` and forbidden for profiles that do
 not consume a record schema.
 Representation adapters and nested text parsing remain private implementation
@@ -1368,10 +1372,16 @@ alternative Supports, claims or lifecycle work; do not change Fragment catalog
 identity; and do not claim complete semantic recall across sections.
 
 L1 initial/delta work packs authorized complete units with their local reading
-context into budgeted requests. Normal-update L1 current-full is eligible only
-when the complete read scope fits one request; context-only continuation requests
-cannot simulate joint extraction reading. L3 may use its cumulative fixed-claim
-assessment contract across requests. A protected unit always moves intact, and
+context into budgeted requests. In the ADR 0034 target contract (tracked by Cloud
+issue #505), a first import streams per ReadingGroup through the LLM batch runner
+of ADR 0036, and an update reads only the changed structures with their
+ReadingGroups as context; L1 makes no cost comparison between a Delta read and a
+current-full read. L3 may use its cumulative fixed-claim assessment contract
+across requests; in the ADR 0034 target contract it reads the current revision in
+one fixed order with per-claim early exit after the first part of that order, and
+the LLM batch runner partitions those requests. Cloud impact: shared OSS
+planning code; Cloud upgrades the pin with no configuration or HANA change. A
+protected unit always moves intact, and
 each request counts actual instructions, schema, images, correction reserve and
 output. L1 output reservation scales with its authorized content and respects the
 model's output/context capability. A single protected unit that exceeds the real

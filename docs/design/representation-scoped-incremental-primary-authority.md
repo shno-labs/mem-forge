@@ -10,6 +10,14 @@ Document scope: the representation-specific authority algorithm. For the full
 sync lifecycle, unified Support assessment and revision-input policy, use
 [Source sync to Memory](source-sync-to-memory.md). This algorithm continues to
 govern new-candidate Primary eligibility in both full-context and delta modes.
+The delta/current-full selection described below is the implemented
+`revision-input-v6` behavior. Target ([ADR 0034, Ordered current-revision reading](../adr/0034-unify-incremental-support-and-claim-assessment.md#ordered-current-revision-reading),
+Cloud #505): Support Assessment reads the complete current revision in one fixed
+order with per-work-item early exit once the first part of the order (changed
+ReadingGroups, removed ones included, and prior-Evidence groups) has been read.
+Claim Extraction on an update reads only the changed structures with their
+ReadingGroups as context, and a first import streams per ReadingGroup through the
+LLM batch runner. Neither makes a delta/current-full cost comparison. Primary authority below is unchanged by this.
 
 Target deepening accepted 2026-09-21: the private `RepresentationIndex`, Evidence
 Fragment Compiler and reading-index parsing are one operation-local
@@ -203,7 +211,7 @@ Primary bit in this result.
 | `ProjectionEvidenceWorkPlanner` | transition validation, representation-scoped changed authority, initial exact Context candidates, access/source-activity/model-capability binding and stable plan digest | request-mode selection, provider API semantics, model judgments, Memory actions |
 | private representation adapter / `RepresentationIndex` | one implementation of base/target structural or field mapping and exact target coordinates | Source type branches or lifecycle policy |
 | Evidence Fragment Compiler | exact structural/field Fragment compilation inside supplied ranges | widening authority or inferring change |
-| `RevisionInputPlanner` / reading index | one-step representation-owned reading expansion, complete delta/current-full candidates, request-format cost forecasting and selection | changing supplied Primary authority, semantic dependency inference, lifecycle grouping |
+| `RevisionInputPlanner` / reading index | one-step representation-owned reading expansion, complete delta/current-full candidates, request-format cost forecasting and selection (implemented; the target makes no selection for Support or extraction, see the scope note) | changing supplied Primary authority, semantic dependency inference, lifecycle grouping |
 | LLM | claim content and selection among offered refs | offsets, IDs, change detection, eligibility, lifecycle action |
 | Resolver / lifecycle | exact ref validation, Evidence Unit, Support and lifecycle safety | repairing or guessing an invalid authority plan |
 

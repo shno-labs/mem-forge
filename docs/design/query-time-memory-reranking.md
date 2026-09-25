@@ -79,6 +79,8 @@ Logical result:
 
 The result is valid only when every input candidate appears exactly once, no unknown ID appears, and the request identity still matches the query, facets, candidate manifest, backend, model, and contract version. A timeout, provider error, duplicate, omission, unknown ID, or stale result invalidates the whole rerank. Search then returns the unchanged baseline ranking. Partial reranking is not published.
 
+Target transport (Cloud #505): the reranker sends its request through the LLM batch runner of [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md) as one indivisible listwise item. The runner never splits it. Search passes its deadline to the call, and a timeout or invalid output returns the baseline order. This is a fixed code rule, not configuration.
+
 ## 4. Replaceable inference adapters
 
 ### 4.1 Classifier-model pointwise reranker
