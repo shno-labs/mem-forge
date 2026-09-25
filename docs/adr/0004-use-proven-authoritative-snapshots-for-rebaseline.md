@@ -61,7 +61,8 @@ access contexts validate in one transaction. Retrying its deterministic Review
 ID is idempotent only when the complete immutable Review identity and stale
 guards match; a different finding cannot reuse that Review row or relation
 audit. SQLite and Cloud adapters implement the same validation and error
-contract.
+contract. Cross-document discovery no longer writes this Review; see
+[ADR 0037](0037-record-cross-document-conflicts-as-relations.md).
 
 Cross-document classification reuses the challenger Memory's current primary
 Support Evidence Unit; it may not synthesize detached evidence from Memory

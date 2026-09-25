@@ -299,7 +299,6 @@ class Memory:
     # Confidence and lifecycle
     confidence: float                # 0.0 - 1.0 (LLM extraction confidence)
     corroboration_count: int         # Independent sources confirming this
-    contradiction_count: int         # Sources contradicting this (0 = no conflicts)
     valid_from: datetime | None      # When this fact became true
     valid_until: datetime | None     # When this fact expires
     created_at: datetime
@@ -709,7 +708,6 @@ CREATE TABLE IF NOT EXISTS memories (
     project_key         TEXT,
     confidence          REAL NOT NULL DEFAULT 0.7,
     corroboration_count INTEGER NOT NULL DEFAULT 1,
-    contradiction_count INTEGER NOT NULL DEFAULT 0,
     valid_from          TEXT,
     valid_until         TEXT,
     superseded_by       TEXT REFERENCES memories(id),
@@ -1109,14 +1107,18 @@ rejects the request and tells the agent to omit the filter for a broader search.
   "corroborated_by": 2,
   "last_observed_at": "2026-03-15T10:30:00Z",
   "freshness": "current",
-  "contradiction_warning": null
+  "relation_notice": null,
+  "relations": []
 }
 ```
 
-Search results intentionally omit top-level source and artifact fields. Agents
-call `get_memory` when they need source titles, complete provenance,
-contradiction context, corroborating sources, or artifact URLs before deciding
-which artifact to read.
+`relations` lists the current Cross-Document Relations of the result (section 7)
+with the counterpart Memory, its Sources and source revision date;
+`relation_notice` says in one sentence what a reader must weigh (a conflict, or
+a newer Memory that updates this one). Search results intentionally omit
+top-level source and artifact fields. Agents call `get_memory` when they need
+source titles, complete provenance, corroborating sources, or artifact URLs
+before deciding which artifact to read.
 
 **`freshness` field values:**
 
@@ -1148,7 +1150,7 @@ Returns: full content, context, all source documents with service artifact URLs,
 related memories, entity links, confidence, and lifecycle metadata.
 
 Use `get_memory` when an agent needs source documents for a memory,
-corroboration, contradictions, entities, lifecycle metadata, or artifact URLs.
+corroboration, cross-document relations, entities, lifecycle metadata, or artifact URLs.
 
 ### Tool: `get_resource`
 
@@ -1251,14 +1253,14 @@ Agent receives a question
 
 - Memory reconciliation on document updates (ADD/UPDATE/SUPERSEDE/DELETE)
 - Reconciliation prompt (Section 14e)
-- Contradiction detection and flagging
+- Cross-document relation discovery (conflicts, updates, same knowledge)
 - Lifecycle cleanup: expiry retirement and zero-support retirement
 - Staleness tracking (pending_review on extraction failure)
 - Entity merge suggestion pipeline (embedding clustering)
 - Memory-to-memory relations population (elaborates, supports)
 - Retrieval quality evaluation set + metrics (Recall@k, MRR, NDCG)
 - Observability: structured logging, health check, metrics dashboard
-- Admin UI: quality dashboard, contradiction view, merge suggestions
+- Admin UI: quality dashboard, cross-document relation view, merge suggestions
 - `memforge rebuild-vectors` CLI command
 
 ---
@@ -1335,7 +1337,7 @@ The fundamental mismatch:
   extraction and prompt-injection hardening before they should be treated as a
   high-confidence source.
 - **Outlook gene**: Still planned; requires Microsoft Graph OAuth2 and privacy controls.
-- **Quality dashboard**: Staleness, contradiction, and extraction-quality metrics are
+- **Quality dashboard**: Staleness, cross-document relation, and extraction-quality metrics are
   not yet exposed in the Admin UI.
 - **OAuth2 for Teams/Outlook**: Existing auth only handles browser-based SSO.
   Need OAuth2 provider for Microsoft Graph API.
@@ -1581,17 +1583,24 @@ truth for the session.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/memories` | List memories with pagination, filters (type, status, source, project, entity) |
-| GET | `/api/memories/{id}` | Get memory detail with provenance and visibility-safe cross-source Review dispositions |
+| GET | `/api/memories/{id}` | Get memory detail with provenance, current cross-document relations, `relation_notice`, and the caller's undoable Relation Dismissals |
 | PUT | `/api/memories/{id}` | Update memory (admin edit content, confidence, status) |
 | DELETE | `/api/memories/{id}` | Hide a memory (set status=retired) |
 | GET | `/api/memories/stats` | Memory counts by type, source, status |
-| GET | `/api/memories/contradictions` | List memories with contradiction_count > 0 |
+| GET | `/api/memories/relations` | List current cross-document relations the caller can see, filtered by label; a view, not a queue |
+| POST | `/api/memories/{id}/relations/{counterpart_id}/dismissal` | Dismiss the shown relation for both Memories' current content |
+| DELETE | `/api/memories/{id}/relations/{counterpart_id}/dismissal` | Undo the dismissals in force for the pair |
+| POST | `/api/memories/cross-source-review-conversion/report` | Maintenance operator: classify every Cross-Source Conflict Review for the one-time conversion, with optional `label_overrides` by Review id; writes nothing |
+| POST | `/api/memories/cross-source-review-conversion/apply` | Maintenance operator: apply one reported conversion once, with the report's `label_overrides` |
+| POST | `/api/memories/cross-source-review-conversion/delete` | Maintenance operator: delete the converted Review rows of a complete conversion after the relation evaluation cohort is frozen |
+| GET | `/api/relation-discovery/work` | Maintenance operator: list discovery work by state (`exhausted`, `completed`, `failed`) with its last error |
+| POST | `/api/relation-discovery/work/rerun` | Maintenance operator: queue selected exhausted or completed work again, auditing each item's last state |
 
 ### Review Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/memory-reviews` | List exact caller-visible Review pages with kind, origin, Source, and status filters |
+| GET | `/api/memory-reviews` | List exact caller-visible Review pages with origin, Source, and status filters |
 | GET | `/api/memory-reviews/{id}` | Get decision presentation, Evidence, and the current decision fingerprint |
 | POST | `/api/memory-reviews/{id}/refresh` | Reissue one stale nonterminal Lifecycle Review against current stale guards without applying its proposal |
 | POST | `/api/memory-reviews/{id}/approve` | Apply the Review kind's presented approve action through its existing lifecycle path |
@@ -1641,7 +1650,7 @@ truth for the session.
 | GET | `/api/stats` | Overall statistics (memory count, entity count, sync history) |
 | GET | `/api/schedule` | Get sync schedule config |
 | PUT | `/api/schedule` | Update sync schedule |
-| GET | `/api/quality/dashboard` | Retrieval quality metrics, staleness rate, contradiction rate |
+| GET | `/api/quality/dashboard` | Retrieval quality metrics, staleness rate, cross-document conflict rate |
 
 ---
 
@@ -1682,7 +1691,7 @@ logger.info("memory_extracted", extra={
 | Relation candidates checked per Source Unit | relation-run metrics | Unbounded growth |
 | Average confidence | SQLite aggregate | < 0.6 |
 | Dedup hit rate | MemoryStore logs | -- (informational) |
-| Contradiction rate | SQLite (contradiction_count > 0) / total | > 10% |
+| Exhausted relation discovery work | `exhausted_total` in the relation worker log, `GET /api/relation-discovery/work?state=exhausted` | Any growth |
 | Search latency p50/p95/p99 | retrieval logs | p95 > 300ms |
 | Sync duration per gene | sync_history table | > 2x average |
 | Stale memory rate | SQLite (pending_review) / total | > 10% |
@@ -1891,8 +1900,8 @@ Public implementation references:
 - **Memory reranking**: A config-gated listwise LLM implementation exists but is disabled by
   default. The accepted target adds a provider-neutral pointwise/listwise seam and enables a
   backend only after the fixed retrieval evaluation passes.
-- **Memory quality dashboard**: Surface extraction errors, stale memories, contradiction
-  rates, retrieval-to-use ratios.
+- **Memory quality dashboard**: Surface extraction errors, stale memories, cross-document
+  conflict rates, retrieval-to-use ratios.
 - **Agent feedback loop**: When an agent fetches Level 1 detail but doesn't use the memory,
   record as implicit negative signal for ranking tuning.
 - **Webhook-based sync**: Real-time push from Confluence/Jira via webhooks.
