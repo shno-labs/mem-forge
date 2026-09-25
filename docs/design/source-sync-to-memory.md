@@ -4,9 +4,9 @@
 
 本文以一篇 Confluence 页面为主线，覆盖首次导入和后续更新。Jira、Markdown 和带附件的文档复用相同领域流程，差异集中在源解析与表示方式。实施前评审基线为 OSS main `abdbdf18a3c1100289051c289046c0c07092fa76`：基线核对的相关路径与固定复核工作树 `3b8b1fc4` 一致。Cloud 对照基线为 `11338e0235ab23df3199b8024a05c1b17ed71d10`。这里不宣称线上 Cloud 已部署目标设计。
 
-**阅读约定：**第 0 节是已接受的目标合同，尚未据此宣称实现或部署完成；第 18 节继续记录实现差异。后文历史段落中的 L1–L7 只是旧模型职责编号，不能进入新的类型、方法或状态名称。新设计统一使用 Claim Extraction、候选准入（Candidate Admission）、Support Assessment、Sparse Relation（同 Unit 的 Claim Reconciliation）、SupportRelationCoordinator 和 Lifecycle Reconciliation。若旧段落与第 0 节冲突，以第 0 节和 [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md#target-contract-tracked-by-cloud-issue-505)（Support 与 Relation 的汇合见[该 ADR 的目标合同概览](../adr/0034-unify-incremental-support-and-claim-assessment.md#target-contract-overview)）为准。
+**阅读约定：**第 0 节是已接受的目标合同，已实现的部分见下一段，其他部分尚未实现，两者都不代表已经部署；第 18 节继续记录实现差异。后文历史段落中的 L1–L7 只是旧模型职责编号，不能进入新的类型、方法或状态名称。新设计统一使用 Claim Extraction、候选准入（Candidate Admission）、Support Assessment、Sparse Relation（同 Unit 的 Claim Reconciliation）、SupportRelationCoordinator 和 Lifecycle Reconciliation。若旧段落与第 0 节冲突，以第 0 节和 [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md#target-contract-tracked-by-cloud-issue-505)（Support 与 Relation 的汇合见[该 ADR 的目标合同概览](../adr/0034-unify-incremental-support-and-claim-assessment.md#target-contract-overview)）为准。
 
-**当前已实现合同与目标的差别：**main 的 `revision-input-v6` 在完整 Delta 计划与完整 Full 计划中选择序列化成本较低者，Delta 单独得出否定结果时即可提出移除 Support；同 Unit Relation 使用 [Sparse claim catalog](sparse-claim-catalog.md) 描述的稀疏合同（`claim-revision-v7-sparse-catalog`），请求带旧 Memory 的 `current_support` 结论，响应带证据蕴含状态（`evidence_status`）；候选准入只在多个候选时调用模型，调用失败时保留整批候选。这些行为在 #505 完成前保留，不加过渡保护；#505 必须完整实现第 0.4 节的顺序读取和第 6.2 节的提取读取范围。
+**当前已实现合同与目标的差别：**Support 一侧的第 0.3-0.5 节已经实现：精确 Evidence 对应、按整个 Support 路由、Change Impact、顺序读取和 witness 累积，不再比较成本；第 0.6 节的候选准入、Sparse Relation 与 SupportRelationCoordinator 尚未实现。Claim Extraction 仍用 `revision-input-v6`，在完整 Delta 计划与完整 Full 计划中选择序列化成本较低者；同 Unit Relation 使用 [Sparse claim catalog](sparse-claim-catalog.md) 描述的稀疏合同（`claim-revision-v7-sparse-catalog`），请求带旧 Memory 的 `current_support` 结论，响应带证据蕴含状态（`evidence_status`）；候选准入只在多个候选时调用模型，调用失败时保留整批候选。这些行为在 #505 完成前保留，不加过渡保护；#505 必须完整实现第 6.2 节的提取读取范围。
 
 ## 文档职责与阅读入口
 
@@ -194,7 +194,7 @@ RepresentationCompiler 若改变片段切分或文字表示，已有 Evidence �
 
 `REBIND_SUPPORT` 只刷新当前 provenance：Memory ID 与 claim 不变，程序创建或复用 target Revision 的 Evidence Unit，并在同一 Lifecycle Plan 事务中 `ATTACH_SUPPORT` 新 assertion、将被替换的旧 assertion 标为 inactive。旧 Support 行、旧 Evidence 与 lifecycle history 保持不可变并可审计，不做物理删除或原地改写。幂等身份绑定 Memory、Source Unit、target Revision 与 current Fragment。
 
-`EXACT_UNCHANGED` 只证明原句仍在，不证明远处没有新增例外。Planner 将全部新增、修改的 ReadingGroups，以及被删除 ReadingGroups 的旧文本（作为删除内容），组合成 `ChangeBundle`，这样远处被删掉的限定条件也能被 Change Impact 看到；Change Impact 对每条 exact-rebound fixed claim 输出 `AFFECTED` 或 `UNAFFECTED`。一个 bundle 对 300 条 claims 是 300 个分类问题，不是 `300 × group_count`。一次请求放不下时，LLM batch runner 按 ReadingGroup 边界分成多个 bundle，程序对每条 claim 的各 bundle 结果作 OR 归约；任一 `AFFECTED` 进入完整 Support Assessment，全部 `UNAFFECTED` 才完成 KEEP+REBIND。变化中出现作用范围不明确的全局性说法（如“以上流程”“本文档”“自某日起停用”）时判为 `AFFECTED`；不为这条规则单独设计评估用例。某条 claim 的 Change Impact 执行失败（对半拆分到单条仍失败、不可分超限、输出纠错后仍不合法等）时，该 claim 进入 Support Assessment；程序不把执行失败记成 `AFFECTED` 标签。
+`EXACT_UNCHANGED` 只证明原句仍在，不证明远处没有新增例外。Planner 将全部新增、修改的 ReadingGroups（只删掉了其中几项的列表也算修改，整组连同引导句进入），以及被删除 Fragment 的旧文本（作为删除内容，带它在基线中的标题路径或记录字段），组合成 `ChangeBundle`，这样远处被删掉的限定条件也能被 Change Impact 看到；Change Impact 对每条 exact-rebound fixed claim 输出 `AFFECTED` 或 `UNAFFECTED`。一个 bundle 对 300 条 claims 是 300 个分类问题，不是 `300 × group_count`。一次请求放不下时，LLM batch runner 按 ReadingGroup 边界分成多个 bundle，程序对每条 claim 的各 bundle 结果作 OR 归约；任一 `AFFECTED` 进入完整 Support Assessment，全部 `UNAFFECTED` 才完成 KEEP+REBIND。变化中出现作用范围不明确的全局性说法（如“以上流程”“本文档”“自某日起停用”）时判为 `AFFECTED`；不为这条规则单独设计评估用例。某条 claim 的 Change Impact 执行失败（对半拆分到单条仍失败、不可分超限、输出纠错后仍不合法等）时，该 claim 进入 Support Assessment；程序不把执行失败记成 `AFFECTED` 标签。
 
 Change Impact 在分类器 backend（Jev 或小参数 LLM）通过 #506 的通用评估之前，由现有 Structured LLM 执行。backend 是否接管该任务由固定评估集整体决定，不按单条 confidence fallback。
 
