@@ -807,16 +807,20 @@ UPDATE 是知识修订语义：现有 planner 使用新修订记录关联旧历�
 
 RelationDiscoveryWork 固定 Memory 的身份、预期内容 hash、来源和已知分类。Worker 先确认该 Memory 仍适用，再召回其他 Source Unit 的 Memory（同一 Source 的其他文档也算），复用尚有效的分类，否则调用关系分类器。
 
-每一对只给一个标签，定义与领域无关，不列举版本、国家、环境等具体维度：
+每一对只给一个标签，定义与领域无关，不列举版本、国家、环境等具体维度。标签取决于两条陈述是否说的是同一情境：对象相同、适用范围相同、陈述性质相同（都在说应该怎样、都在说实际发生了什么，或都在说计划或决定了什么）、说的是同一次发生，四条都满足才算同一情境；任何一条不同或无法确认，就判 `none`。不同的事件或不同的运行不是同一次发生；同一个持续的状态或决定，即使来源在不同时间记录，也是同一情境，`updates` 正是这种情况。要求和观察到的行为、设计和缺陷现象、两次不同的运行，都不是同一情境。
 
 | 标签 | 含义 | 读取时的表现 |
 |---|---|---|
-| `none` | 读者不需要知道的关系，包括一条比另一条更具体 | 无 |
-| `equivalent` | 两条说的是同一知识 | 只返回其中一条，注明另一来源说法相同 |
-| `updates` | 适用于同一情境、现在不能同时成立，原文显示随时间变化 | 较新一条靠前；较旧一条附提示，指向较新的 Memory、来源和日期 |
-| `contradicts` | 适用于同一情境、不能同时成立，且不是随时间的变化 | 返回任一条时附上另一条和警告 |
+| `none` | 不是同一情境，或是同一情境、两条都能成立但说的不是同一知识（例如一条比另一条更具体） | 无 |
+| `equivalent` | 同一情境，两条说的是同一知识 | 只返回其中一条，注明另一来源说法相同 |
+| `updates` | 同一情境，现在不能同时成立，较晚的一条取代较早的一条 | 较新一条靠前；较旧一条附提示，指向较新的 Memory、来源和日期 |
+| `contradicts` | 同一情境，不能同时成立，且不是随时间的取代 | 返回任一条时附上另一条和警告 |
 
-拿不准时判 `none`：误报会打扰每一个读到这两条 Memory 的人，漏报只是少一条提示。`updates` 的方向由程序按两边 Evidence 的原文时间决定，不由模型决定；时间分不出先后时记为 `contradicts`。分类器按标签使用经过评估的阈值，低于阈值即 `none`；分类器评估通过之前，由现有 Structured LLM 按同一合同给出同样四个标签。任何 prompt、标签定义、后端或阈值的改动，先在人工标注过的 Memory 对上评估，再上线。
+分类器对每条 Memory 看到：陈述、Memory 类型、来源类型、文档标题、Primary Evidence 的原文时间（未知时为空），以及支撑该陈述的 Evidence 原文。Evidence 原文是 Primary 和 Required Evidence 锚定范围内的 Fragment 呈现文本，与 Support Assessment 读到的相同；记录类来源按原文顺序给出字段内容，每个字段标上 JSON pointer，同一数组项的字段排在一起（如 Jira 评论正文，changelog 每一项的字段、旧值和新值），不给原始 JSON。原文时间取 Observation Revision 记录的时间（评论、changelog、消息）；只有文档时间就是正文修订时间的来源（Confluence 页面版本时间），且锚定的 revision 仍是当前 revision 时，才退回文档时间；其余情况为空，不把同步或提交时间当作原文时间。标题、时间和 Evidence 就是判断是否同一情境的依据。
+
+Evidence 原文只能和存储的锚点一样窄：whole-Observation 锚点给出整个 Observation，页面或文件就是整页、整个文件，上限是 Fragment catalog 的 `DEFAULT_MAX_FRAGMENTS` 和 `DEFAULT_MAX_PRESENTATION_CHARS`；超过上限、锚定的 revision 已不是当前 revision、或 Primary 不是文本（如图片附件）时，没有 Evidence 原文。更窄的 Evidence 要靠抽取和 Support 产生更窄的锚点，不在分类器里裁剪。
+
+拿不准时判 `none`：误报会打扰每一个读到这两条 Memory 的人，漏报只是少一条提示。`updates` 的方向由程序按分类器看到的同一个原文时间（`RelationSubject.evidence_time`）决定，不由模型决定；时间分不出先后时记为 `contradicts`。分类器按标签使用经过评估的阈值，低于阈值即 `none`；分类器评估通过之前，由现有 Structured LLM 按同一合同给出同样四个标签。任何 prompt、标签定义、后端或阈值的改动，先在人工标注过的 Memory 对上评估，再上线。
 
 L7 只写关系，不生成 Review，不合并 Memory，也不退休任何一方。只有调用者能看到两条 Memory 时才附上关系。任意一方的内容或 Support 变化后，关系不再有效，下次该 Memory 的 L7 重新判断。L6 是创建前的身份复用；L7 是提交后的非破坏性标注，两者不能混为一次“去重”。
 
