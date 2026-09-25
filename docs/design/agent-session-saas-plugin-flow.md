@@ -148,9 +148,19 @@ One activation can process at most five historical rows, while new wakes and
 successful bounded prefixes can continue into further rounds. A claimed round
 is not preempted by a later hook.
 
-Failure keeps the bookmark and starts a 60-second cooldown at failure completion.
-The same identity is not retried within that worker activation. With no eligible
-work the owner exits; later hooks or explicit recovery retry pending work.
+Failure keeps the bookmark and sets `retry_after` from failure completion. Upload
+failures back off exponentially from 60 seconds, doubling per consecutive
+failure (`failure_count`) up to one hour; success clears both. A failure that
+means no workspace can be selected (`workspace_selection_required`,
+`workspace_not_found_or_inaccessible`, or a local binding error) waits the full
+hour. When it is due again the worker resolves the session directory locally and
+sends nothing while that still selects no workspace; a later hook that resolves a
+workspace clears the wait. Waiting captures whose transcript last changed more
+than 7 days ago are dropped with `last_error = workspace_backlog_expired`.
+SessionStart shows the binding hint while such captures wait and the current
+project is unbound. The same identity is not retried within that worker
+activation. With no eligible work the owner exits; later hooks or explicit
+recovery retry pending work.
 SessionStart wakes its current already-pending row, or rearms its idle row if
 the transcript grew. It never changes the pinned workspace to wake a session.
 
