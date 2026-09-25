@@ -99,9 +99,11 @@ at extraction and Support, not from the classifier.
 
 For `updates`, the program orders the pair by the same source revision time the
 classifier sees for each Memory (`RelationSubject.evidence_time`); the model
-does not choose the direction. When the times do not order the pair, it is
-recorded as `contradicts`. Directional `REFINES` is no longer recorded for
-cross-document pairs.
+does not choose the direction. A relation stores both times with its label, so
+readers see the order and dates it was decided on. When the times do not order
+the pair (either is unknown, or both fall on the same date), it is recorded as
+`contradicts`. Directional `REFINES` is no longer recorded for cross-document
+pairs.
 
 ### Executor
 
@@ -147,8 +149,8 @@ existing visibility-safe conflict read model. A relation is valid for the exact
 content of both Memories. When either content changes, the relation stops being
 current, and the next discovery for the changed Memory judges the pair again. A
 Support change leaves the relation current, because the label describes the two
-statements; it changes only which Memory reads as newer for `updates` and the
-dates shown. A Lifecycle write still owns authoritative Support relations and may
+statements; its order and dates stay those it was decided on until discovery
+judges the pair again. A Lifecycle write still owns authoritative Support relations and may
 replace the whole projection; discovery never deletes or overrides them.
 
 ### People act at the point of use
@@ -190,7 +192,7 @@ relabels the relation evaluation set is seeded with:
 
 | Existing record | Becomes |
 | --- | --- |
-| decided Review labeled `contradicts`, `updates` or `equivalent` | relation of that label decided by review, with the reviewer and time kept in its audit record |
+| decided Review labeled `contradicts`, `updates` or `equivalent` | relation of that label decided by review, with both Memories' Evidence times as discovery would show them, and the reviewer and time kept in its audit record; `updates` is recorded as `contradicts` when those times do not order the pair |
 | decided Review labeled `none` | dismissal of `contradicts` and `updates` for that pair and both Memories' content |
 | pending Review | re-run of discovery for the challenger |
 | exhausted discovery work | re-run of discovery |
@@ -220,7 +222,8 @@ applied counts. Deleting them is a separate approved step.
   (relation read, source references, discovery completion and failure, work
   count) and adds workspace database methods the admin API calls (dismissal
   write and undo, relation view, exhausted-work listing and re-run, conversion),
-  which the HANA adapter must implement.
+  which the HANA adapter must implement. A stored relation carries both
+  Memories' Evidence times; Support state carries no source time.
 - The one-time conversion runs per workspace through the Cloud maintenance path;
   its apply and Review deletion steps require operator approval.
 - The classifier and its interim Structured LLM use the existing LiteLLM `sap/`
@@ -228,8 +231,8 @@ applied counts. Deleting them is a separate approved step.
 - The classifier input reads the current Observation Revisions of each
   Memory's Source Unit (`get_current_source_observation_revisions`, with its
   Evidence Representation Profile and `observed_at`) and the document
-  (`get_document`), which the HANA adapter already implements. No protocol
-  method changes shape.
+  (`get_document`), which the HANA adapter already implements. Discovery and the
+  conversion build that input with the same methods.
 - `proxy/external_runtime.py` call sites do not change.
 
 ## Related

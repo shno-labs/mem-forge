@@ -1587,7 +1587,7 @@ truth for the session.
 | PUT | `/api/memories/{id}` | Update memory (admin edit content, confidence, status) |
 | DELETE | `/api/memories/{id}` | Hide a memory (set status=retired) |
 | GET | `/api/memories/stats` | Memory counts by type, source, status |
-| GET | `/api/memories/relations` | List current cross-document relations the caller can see, filtered by the label a reader sees; a view, not a queue |
+| GET | `/api/memories/relations` | List current cross-document relations the caller can see, filtered by label; a view, not a queue |
 | POST | `/api/memories/{id}/relations/{counterpart_id}/dismissal` | Dismiss the shown relation for both Memories' current content |
 | DELETE | `/api/memories/{id}/relations/{counterpart_id}/dismissal` | Undo the dismissals in force for the pair |
 | POST | `/api/memories/cross-source-review-conversion/report` | Maintenance operator: classify every Cross-Source Conflict Review for the one-time conversion, with optional `label_overrides` by Review id; writes nothing |
