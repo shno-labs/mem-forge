@@ -1,6 +1,8 @@
 # Bound cross-document relation discovery before semantic classification
 
-Status: Accepted
+Status: Accepted. Its Review output and relation labels are superseded by
+[ADR 0037](0037-record-cross-document-conflicts-as-relations.md); bounded
+retrieval, leasing and fenced completion remain in force.
 
 ## Context
 

@@ -624,13 +624,16 @@ inside that transaction. A permitted Review can preserve only its exact
 contested prior Support, not any stale edge in the Plan.
 
 Cross-document relation discovery follows the commit asynchronously. Both
-independently supported conflicting Memories may be active before a conflict
-is annotated; this window is accepted. A cross-source Review's confirm/dismiss
-records a relationship disposition, whereas a gated LifecycleReview's
-approval/rejection applies a complete protected Plan. Neither similarity nor
-source recency is destructive authority.
+independently supported conflicting Memories may be active before a relation
+is annotated; this window is accepted. Each pair of Memories from different
+Source Units receives one label, `none`, `equivalent`, `updates` or
+`contradicts`, and discovery writes relations only, never a Review. Search
+attaches a relation when the caller can see both Memories; a person may dismiss
+it or correct the outdated Memory through the existing correction paths.
+Neither similarity nor source recency is destructive authority.
 
 [ADR 0009](adr/0009-bound-cross-document-relation-discovery.md),
+[ADR 0037](adr/0037-record-cross-document-conflicts-as-relations.md),
 [ADR 0017](adr/0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md)
 and [ADR 0023](adr/0023-keep-review-orchestration-outside-memory-lifecycle.md)
 own the detailed work, atomicity and Review contracts.

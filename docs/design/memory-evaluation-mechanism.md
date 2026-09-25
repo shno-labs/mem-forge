@@ -526,11 +526,31 @@ expected_retrieval:
   hit_at_5: true
 ```
 
+Cross-document relation cases pin two Memory snapshots and the label a person
+decided for the pair ([ADR 0037](../adr/0037-record-cross-document-conflicts-as-relations.md)).
+Confirmed and dismissed Cross-Source Conflict Reviews seed the set, and each
+Relation Dismissal adds a case. The set holds workspace content, so it lives in
+that workspace's evaluation store, not in this repository. A change of relation
+prompt, label definition, classifier backend or threshold reports precision and
+recall per label on this set, and the threshold recorded with the classifier
+version comes from that report.
+
+```yaml
+case: later-ticket-decision-changes-earlier-design-page
+operation_under_test: cross_document_relation
+challenger_memory_snapshot: sha256:...
+candidate_memory_snapshot: sha256:...
+expected_label: updates
+decided_by: reviewer
+```
+
 Release gate:
 
 - no unresolved P0 daily health failures
 - no unresolved P1 evaluator findings that affect lifecycle or search visibility
 - replay fixtures pass for lifecycle and retrieval cases touched by the change
+- cross-document relation precision per label does not drop below the recorded
+  classifier version's report
 
 ## Example End-to-End Flow
 

@@ -500,7 +500,7 @@ flowchart TD
     M --> N[单个 Source Unit 数据库事务]
     N --> O[Memory + Evidence Unit + Support / 或 Review]
     N --> P[Vector Outbox：Embedding 与索引交付]
-    N --> Q[RelationDiscoveryWork：L7 条件性关系分类]
+    N --> Q[RelationDiscoveryWork：L7 提交后跨文档关系，只写关系标注]
     P --> R[Memory 可通过相应索引检索]
 ```
 
@@ -752,11 +752,11 @@ L5 是检索辅助，不是知识真实性或生命周期授权检查。其现�
 
 | 场景 | 创建前 L6 / 当前 Lifecycle | 提交后 L7 |
 |---|---|---|
-| Jira 已有“两人审批”，Confluence 新候选表达相同规则 | 等价且访问兼容则复用原 Memory，追加 Confluence 的独立完整 Support | 按需要发现其他关系；不再创建一个重复 Memory 后做合并 |
-| Jira 为“两人审批”，Confluence 新候选明确改为“三人审批”，此前二者没有共享 Memory | 不属于等价，不能把支持三人的 Evidence 附到两人 claim；候选按其合法来源进入独立创建 | 在同主体/范围冲突被确认时建立关系与既有冲突 Review，不自动覆盖 Jira 的知识 |
-| Memory 已同时有 Jira/Confluence 的 Support，之后 Confluence 改为三人审批 | 当前 Unit 已能通过 scoped Support 找到这条共享 Memory；完整评估 Confluence 的支持变化。其他 Source 仍有 Support 时，替代受 external-support Review gate 约束 | 可补充跨来源关系与冲突信息；不能接管当前 Unit 的原子 Support 更新 |
+| Jira 已有“两人审批”，Confluence 新候选表达相同规则 | 等价且访问兼容则复用原 Memory，追加 Confluence 的独立完整 Support | 不再创建重复 Memory；若 L6 召回漏掉，L7 标注 `equivalent`，搜索只返回其中一条并注明另一来源说法相同 |
+| Jira 为“两人审批”，Confluence 新候选明确改为“三人审批”，此前二者没有共享 Memory | 不属于等价，不能把支持三人的 Evidence 附到两人 claim；候选按其合法来源进入独立创建 | 两者适用于同一情境、不能同时成立，且原文显示随时间变化：标注 `updates`，按两边 Evidence 的原文时间确定较新一方，搜索时较新一条靠前、较旧一条附提示；时间分不出先后则标注 `contradicts`。都不覆盖或退休 Jira 的知识 |
+| Memory 已同时有 Jira/Confluence 的 Support，之后 Confluence 改为三人审批 | 当前 Unit 已能通过 scoped Support 找到这条共享 Memory；完整评估 Confluence 的支持变化。其他 Source 仍有 Support 时，替代受 external-support Review gate 约束 | 可补充跨文档关系标注；不能接管当前 Unit 的原子 Support 更新 |
 
-跨文档只是更具体的补充、或属于不同场景时，不把 REFINES/相似度当成 EQUIVALENT：可以保留独立知识并建立关系。命中跨文档候选不赋予修改其来源的权限。当前 Unit 的完整处理覆盖与跨文档的有界候选发现是不同合同；后者不能替代前者。
+跨文档只是更具体的补充、或属于不同场景时，两者都能成立，标注为 `none`，不把相似度当成 `equivalent`。命中跨文档候选不赋予修改其来源的权限。当前 Unit 的完整处理覆盖与跨文档的有界候选发现是不同合同；后者不能替代前者。
 
 ## 12. 步骤九：构建 Evidence 与 LifecyclePlan【已有骨架，校验接口改造，无 LLM】
 
@@ -803,15 +803,28 @@ UPDATE 是知识修订语义：现有 planner 使用新修订记录关联旧历�
 
 数据库成功而向量服务暂时失败时，Memory 已持久化，但相应向量检索可能尚未可用。不能重新跑 extraction 来修向量交付。事务性 outbox 的职责是将业务提交与后续交付可靠关联，参见 [AWS 原始模式说明](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html)。
 
-### 提交后关系发现 L7：条件性 LLM
+### 提交后关系发现 L7：分类器【目标设计见 ADR 0037，待实现】
 
-RelationDiscoveryWork 固定 Memory 的身份、预期内容 hash、来源和已知分类。Worker 先确认该 Memory 仍适用，再召回其他 Memory，复用尚有效的分类，否则调用关系分类模型。
+RelationDiscoveryWork 固定 Memory 的身份、预期内容 hash、来源和已知分类。Worker 先确认该 Memory 仍适用，再召回其他 Source Unit 的 Memory（同一 Source 的其他文档也算），复用尚有效的分类，否则调用关系分类器。
 
-输出关系或既有跨 Source 冲突 Review。它不自动合并 Memory、不依据关系标签退休其他 Source 的知识。L6 是创建前的身份复用；L7 是提交后的非破坏性知识关系发现，两者不能混为一次“去重”。
+每一对只给一个标签，定义与领域无关，不列举版本、国家、环境等具体维度：
+
+| 标签 | 含义 | 读取时的表现 |
+|---|---|---|
+| `none` | 读者不需要知道的关系，包括一条比另一条更具体 | 无 |
+| `equivalent` | 两条说的是同一知识 | 只返回其中一条，注明另一来源说法相同 |
+| `updates` | 适用于同一情境、现在不能同时成立，原文显示随时间变化 | 较新一条靠前；较旧一条附提示，指向较新的 Memory、来源和日期 |
+| `contradicts` | 适用于同一情境、不能同时成立，且不是随时间的变化 | 返回任一条时附上另一条和警告 |
+
+拿不准时判 `none`：误报会打扰每一个读到这两条 Memory 的人，漏报只是少一条提示。`updates` 的方向由程序按两边 Evidence 的原文时间决定，不由模型决定；时间分不出先后时记为 `contradicts`。分类器按标签使用经过评估的阈值，低于阈值即 `none`；分类器评估通过之前，由现有 Structured LLM 按同一合同给出同样四个标签。任何 prompt、标签定义、后端或阈值的改动，先在人工标注过的 Memory 对上评估，再上线。
+
+L7 只写关系，不生成 Review，不合并 Memory，也不退休任何一方。只有调用者能看到两条 Memory 时才附上关系。任意一方的内容或 Support 变化后，关系不再有效，下次该 Memory 的 L7 重新判断。L6 是创建前的身份复用；L7 是提交后的非破坏性标注，两者不能混为一次“去重”。
+
+人在使用时处理，不设待审队列：在搜索结果、Memory 详情或 agent 会话里看到关系的人，可以把它标为不成立（对这一对和两边当前内容生效，任一方变化后失效，可撤销，不带任何 lifecycle 权限），或者通过现有的 Memory Correction Proposal / 退休流程处理过时的一方。管理界面可以筛选带关系的 Memory，它是视图，不是待办。
 
 **异步边界已接受。** 有效来源支持的新 Memory 可以先提交、被读取，跨文档冲突关系随后由 L7 发现；用户接受短时间尚未标注冲突的窗口。这是收录策略，不是数据库禁止提交前做模型判断。任务与业务状态同事务登记，现有 worker 负责重试与 stale guards；失败或耗尽重试必须可见，不能承诺固定时限完成。L7 是有界发现，不是全库无冲突证明，也不是持续重审所有历史冲突的扫描器。
 
-L7 复用有效分类，否则使用实体图、语义向量与内容 BM25 的独立候选渠道，经 RRF 和访问/来源过滤后判断。当前代码只有不同 Source 的明确冲突进入 CROSS_SOURCE_CONFLICT Review；同 Source 不同文档的冲突仍为非破坏性关系。Review 的发现/确认不自动授权淘汰另一来源，不能与 gated LifecycleReview 的批准动作混同。
+L7 复用有效分类，否则使用实体图、语义向量与内容 BM25 的独立候选渠道，经 RRF 和访问/来源过滤后判断。耗尽重试的任务在管理 API 中列出并计数；运维可以按错误类型、时间段或分类器版本重新执行已耗尽或已完成的任务，例如修复缺陷或新分类器版本评估通过后。重新执行前把原状态和错误写入审计事件，任务是否仍然有效由原有的内容、Support 与访问检查决定。
 
 ### 完成信号
 
@@ -830,7 +843,7 @@ SourceSyncRun/SyncState 汇总页面处理结果，报告成功、局部失败�
 | SupportRelationCoordinator | 两条线都完成后 | Support 结果 + Relation 结果 | 动作草案或 Review；冲突组每条 Claim 至多复核 1 次；程序 | 否 |
 | Entity Resolution | 精确名称/别名不足以确定 | mention、实体候选、必要局部语境 | 匹配/不匹配 | 否；实体字典可准备写入 |
 | Cross-document Identity | 精确 claim 未命中且召回候选 | 新旧 claim 与范围 | 等价目标或无目标 | 否 |
-| Post-commit Relation Discovery | 有关系候选且没有有效已分类结果 | 已提交 Memory 对及范围 | 关系/冲突判定 | 否；通过既有关系/Review提交 |
+| Post-commit Relation Discovery | 有关系候选且没有有效已分类结果 | 已提交 Memory 对及范围 | 每对一个标签：`none` / `equivalent` / `updates` / `contradicts`；分类器（评估通过前为 Structured LLM） | 否；只写关系标注，不生成 Review |
 
 程序归约、资格检查、delta 计算、Evidence Resolver、Lifecycle Planner、数据库提交不新增语义 LLM。Embedding、token counting、provider API 单独计量，不混算为“revalidation 调用”。可选 Artifact 摘要复用提取响应，不额外规定一个必需的摘要模型阶段。
 
@@ -991,7 +1004,7 @@ Sparse Relation 在同 Unit 内读取全部 Active 旧 Memory，每个 Candidate
 - Relation 漏报 equivalent 的 fixture 下，同 Unit 不产生重复 Active Memory；同一 Plan 内不出现对同一 Memory 既删除、替代或修订又挂接。
 - 候选准入：证据不完整支持的 Candidate 为 `REJECTED`，记录拒绝事件；同轮重复被合并；每个 revision 报告 admitted/rejected/merged 数量。
 - 多条目请求组超时、输入超限、provider 413 或输出截断后对半拆分直到完成，每条 work 恰一个结果；单条 work（Support 为单个 ReadingGroup）仍失败为可恢复失败并保留诊断：Support 的单组超容量为 `UNRESOLVED(capacity)`，其他失败使该 revision 不提交，重试成功后 Candidate 不丢失。
-- 等价候选不重复 ADD；跨来源等价可追加 Support；跨来源冲突不自动退休其他来源。
+- 等价候选不重复 ADD；跨文档等价可追加 Support；跨文档的 `updates` / `contradicts` 只写关系标注，不生成 Review，不退休任何一方。
 - Required 拆分/合并、移动+改写、重复原文、新增远处例外都进入同一个合同测试。
 - 每个 incumbent 有明确结果；模型未判到的事实风险与程序丢失完整输入/非法引用分开评价。
 - 一个失败 batch、一次 stale commit、一次 vector failure 分别从正确位置恢复，不能放大成重跑整个 Source。

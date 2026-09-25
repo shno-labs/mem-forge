@@ -52,10 +52,11 @@ Pending Review alone neither proves nor prevents validation progress.
 
 Review is a case over an action or relationship, not a universal Memory status.
 A gated LifecycleReview can stage a hidden challenger and proposed mutations;
-its approval/rejection goes through the complete Plan. A cross-source conflict
-Review records a disagreement and does not automatically retire either Memory.
-The review kind determines its postcondition; confirm/dismiss must not be
-interpreted as approve/reject a destructive proposal.
+its approval/rejection goes through the complete Plan. A disagreement between
+Memories of different Source Units is a Cross-Document Relation, not a Review
+([ADR 0037](../adr/0037-record-cross-document-conflicts-as-relations.md)); it
+annotates both Memories and retires neither. The review kind determines its
+postcondition.
 
 A durable Review may protect only its exact explicitly contested prior-revision
 Support. It does not turn that Support into verified current Evidence or exempt
