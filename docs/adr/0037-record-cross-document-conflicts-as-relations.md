@@ -51,25 +51,57 @@ whether or not they belong to the same Source.
 ### One label per pair
 
 Candidate retrieval stays bounded as in ADR 0009. Each (challenger, candidate)
-pair receives exactly one label:
+pair receives exactly one label. The labels depend on whether the two
+statements are about the same situation: they are only if they concern the
+same object, the same scope, the same kind of statement (what should be, what
+actually happened, or what was planned or decided) and the same occurrence.
+Statements about different events or runs concern different occurrences;
+statements about the same lasting state or decision concern the same one even
+when their sources recorded them at different times, which is what makes an
+`updates` pair possible. If any of these differs or cannot be established, the
+pair is `none`.
 
 | Label | Meaning |
 | --- | --- |
-| `none` | no relation a reader needs, including one statement being more specific than the other |
-| `equivalent` | both state the same knowledge |
-| `updates` | both apply to the same situation, cannot both hold now, and the texts show a change over time |
-| `contradicts` | both apply to the same situation and cannot both hold, with no change over time between them |
+| `none` | not the same situation, or the same situation with statements that can both hold without stating the same knowledge (for example, one is more specific than the other) |
+| `equivalent` | same situation, and both state the same knowledge |
+| `updates` | same situation, both cannot hold now, and the later statement replaces the earlier one |
+| `contradicts` | same situation, both cannot hold, and neither replaces the other over time |
 
 The label definitions are domain-neutral; no list of scope dimensions (version,
-country, environment, ticket) is part of the contract. A pair whose statements
-can both hold under any reading is `none`. When the judgment is not certain,
-the pair is `none`: a false conflict warns every reader of both Memories, while
-a missed one only omits a hint.
+country, environment, ticket) is part of the contract. A requirement and an
+observed behavior, a design and a defect, or two different runs are different
+kinds of statement or different occurrences, so such a pair is `none`. When
+the judgment is not certain, the pair is `none`: a false relation warns every
+reader of both Memories, while a missed one only omits a hint.
 
-For `updates`, the program orders the pair by the source revision time of each
-Memory's Evidence; the model does not choose the direction. When the times do
-not order the pair, it is recorded as `contradicts`. Directional `REFINES` is no
-longer recorded for cross-document pairs.
+For each Memory the classifier sees the statement, its memory type, the source
+type and document title, the source revision time of its Primary Evidence, and
+the Evidence text that supports it. The Evidence text is the anchored Fragment
+text of the Primary and Required Evidence as Support Assessment reads it:
+record fields in source order, each labeled by its JSON pointer so that the
+fields of one array item stay together (a Jira comment body, each changelog
+item's field, previous value and new value), never the stored raw record. The
+source revision time is the time the Observation Revision records (a comment, a
+changelog entry, a message) or, where the document time is the revision time of
+the document body and the anchored revision is still current, the document
+time; otherwise it is unknown, never a sync or submission time. The title, time
+and Evidence are the inputs for deciding whether two statements are about the
+same situation.
+
+The Evidence text is only as narrow as the stored Anchor. A whole-Observation
+Anchor shows the whole Observation, so a page or file Primary shows the whole
+page or file, up to the Fragment catalog limits (`DEFAULT_MAX_FRAGMENTS`,
+`DEFAULT_MAX_PRESENTATION_CHARS`); an Observation beyond them, an anchored
+revision that is no longer current, and a non-text Primary such as an image
+attachment show no Evidence text. Narrower Evidence comes from narrower Anchors
+at extraction and Support, not from the classifier.
+
+For `updates`, the program orders the pair by the same source revision time the
+classifier sees for each Memory (`RelationSubject.evidence_time`); the model
+does not choose the direction. When the times do not order the pair, it is
+recorded as `contradicts`. Directional `REFINES` is no longer recorded for
+cross-document pairs.
 
 ### Executor
 
@@ -90,7 +122,12 @@ pinned under the offline evaluation mechanism
 change of prompt, label definition, backend or threshold is evaluated on that
 set before rollout, the same gate the Change Impact classifier uses. The set
 holds workspace content, so it stays with the workspace's evaluation store and
-is not committed to this repository.
+is not committed to this repository. Each case pins the classifier input of
+both Memories and the classifier contract version
+(`cross-document-relation-v2`); a contract that changes the input is evaluated
+on a set seeded again under it. The run report stays content-free, and a
+maintenance operator reads each case's input, accepted label and the model's
+label and reason for failure analysis.
 
 ### Relations are the output
 
@@ -181,6 +218,11 @@ applied counts. Deleting them is a separate approved step.
   its apply and Review deletion steps require operator approval.
 - The classifier and its interim Structured LLM use the existing LiteLLM `sap/`
   routes and the LLM batch runner. No configuration is added.
+- The classifier input reads the current Observation Revisions of each
+  Memory's Source Unit (`get_current_source_observation_revisions`, with its
+  Evidence Representation Profile and `observed_at`) and the document
+  (`get_document`), which the HANA adapter already implements. No protocol
+  method changes shape.
 - `proxy/external_runtime.py` call sites do not change.
 
 ## Related
