@@ -57,13 +57,13 @@ AFFECTED / UNAFFECTED]
     F1 -->|第一段未找到支持| F2[Support Assessment 第二段
 按文档顺序续读其余 ReadingGroup
 找到完整支持即退出；全部读完仍无支持才判 UNSUPPORTED]
-    P -->|任一 UNKNOWN，不调用模型| U[UNRESOLVED（部分投影 / 单组超容量）
+    P -->|任一 UNKNOWN，不调用模型| U[UNRESOLVED（部分投影 / 单项超容量 / 单项输出无效）
 保留原状]
-    F1 -->|单组超容量| U
-    F2 -->|单组超容量| U
-    F1 -->|执行失败| XF[本 revision 不提交
+    F1 -->|单项无法判断| U
+    F2 -->|单项无法判断| U
+    F1 -->|临时性失败| XF[本 revision 不提交
 下次同步重试]
-    F2 -->|执行失败| XF
+    F2 -->|临时性失败| XF
     RB --> CO[SupportRelationCoordinator
 程序：组合表]
     F1 -->|SUPPORTED| CO
@@ -75,7 +75,7 @@ AFFECTED / UNAFFECTED]
 已读完全文的：只核 Candidate 的新原文
 未做过 Support 的：按正常读取顺序补做一次]
     RC --> CO
-    RC -->|执行失败：本 revision 不提交| XF
+    RC -->|临时性失败：本 revision 不提交| XF
     CO -->|真实冲突 / 复核后仍冲突| RV[待审 Review
 旧 Memory 保持 Active；同一冲突只保留一条]
     CO --> I[Lifecycle Reconciliation
@@ -91,7 +91,7 @@ deterministic proposal]
     class XF failnote
 ```
 
-图中 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation 都经同一个 LLM batch runner 调用模型：多条目请求组超时或超出容量时对半拆分后重发（见 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md)）。Change Impact 用单独颜色标出，因为它是可以换成分类器 backend 的判断任务。Support 线与 Relation 线并行执行，只在 SupportRelationCoordinator 汇合。
+图中 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation 都经同一个 LLM batch runner 调用模型：多条目请求组超时、超出容量，或纠正一次后输出仍不合法时，对半拆分后重发（见 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md)）。失败按一条规则处理：临时性失败（provider 错误、超时）使该 Source Unit revision 不提交，下次同步重试；某一项单独处理仍无法判断（单项超容量，或单项输出纠正后仍不合法）时，由所在阶段记录下来，revision 照常提交。一项无法判断，不会挡住同一 Unit 的其他内容。Change Impact 用单独颜色标出，因为它是可以换成分类器 backend 的判断任务。Support 线与 Relation 线并行执行，只在 SupportRelationCoordinator 汇合。
 
 执行器按任务类型选择，而不是按单条 confidence 分流：开放式生成和依赖多字段的 Evidence 计划使用 Structured LLM；封闭、输入完整、逐项独立的分类或排序使用分类器模型（Jev 或小参数 LLM）；exact 比较、完整性、权限和 lifecycle action 始终由程序负责。分类概率只用于离线评估和监控，不决定运行时是否换模型。Change Impact 在分类器 backend 通过 #506 的评估之前由现有 Structured LLM 执行；候选准入与 Sparse Relation 由 Structured LLM 执行，逐 pair 的分类器 backend 需要另立合同和评估。
 
@@ -126,7 +126,7 @@ Support 与 Claim Extraction 共用同一个 ReadingGroup 划分：一个最外�
 
 阅读上下文只能被选为 Required，不设字符上限；单个 item 连同其上下文超出容量时按 LLM batch runner 的规则处理。Unit Title 不自成 ReadingGroup，也不是 Support 读取顺序里的一段，它在每一步都作为阅读上下文出现；Unit Title 变化时作为变化内容进入 ChangeBundle 和 Support 读取顺序的第一段。
 
-抽取时单个 ReadingGroup 连同阅读上下文就超出请求容量，该组被跳过：程序写诊断（Source Unit、ReadingGroup、`input_capacity_exceeded`），其余组照常抽取，revision 提交。规划时按容量判断放不下的组不进入任何请求；请求发出后 provider 仍对单独这一组报容量错误的，同样跳过。恢复 derivation 时规划得到同样的跳过，跳过的组数计入抽取统计（`skipped_reading_group_count`）。这是已知限制，与 Support 的 `UNRESOLVED(capacity)` 并列：因为更新时只抽取变化的结构，这一组的知识要等该结构再次变化才会重新抽取。
+抽取时单个 ReadingGroup 连同阅读上下文就超出请求容量，该组被跳过：程序写诊断（Source Unit、ReadingGroup、`input_capacity_exceeded`），其余组照常抽取，revision 提交。规划时按容量判断放不下的组不进入任何请求；请求发出后 provider 仍对单独这一组报容量错误的，同样跳过。单独读这一组时，模型输出纠正一次后仍不合法的，也同样跳过，诊断原因为 `invalid_response`。恢复 derivation 时规划得到同样的跳过，跳过的组数计入抽取统计（`skipped_reading_group_count`）。这是已知限制，与 Support 的 `UNRESOLVED(capacity)` 并列：因为更新时只抽取变化的结构，这一组的知识要等该结构再次变化才会重新抽取。
 
 #### `RepresentationCompiler` 只在 planner 内部暴露
 
@@ -243,7 +243,7 @@ Support 可以使用两种 cache 布局。一个固定 current Evidence Catalog 
 
 单个超大 Observation 只能按已注册 representation contract 拆成具有 exact authority coverage 的结构，例如完整列表、heading+paragraph、完整表格或 canonical record field。仍不可分且超限时返回 typed capacity failure，KEEP 受影响 Support，不推进 baseline，也不从部分结果创建 Memory。
 
-容量判断和分批由 LLM batch runner 统一完成。多条目请求组遇到以下任一情况都视为容量不足：超时（`deadline_exceeded`）、输入超限（`input_capacity_exceeded`）、provider 返回 413（`payload_too_large`）、输出被截断（`finish_reason=length`）。这时对半拆分后分别重发，直到完成；每条 work 恰好得到一个结果。输出被截断时不用同样的 `max_tokens` 改发 JSON 文本请求。某一步只剩一条 Claim、但它跨多个 ReadingGroup 时，先对半拆分 ReadingGroup。拆到一条 work、一个 ReadingGroup 仍失败时，按原因区分：这个 ReadingGroup 单独就超出模型容量时，该 Support 为 `UNRESOLVED(capacity)` 并 KEEP，诊断写明 Source Unit 和 ReadingGroup，其余 work 与 revision 照常提交；纠错一次后仍是 provider 错误、超时或 schema/ID 错误时，该 Source Unit revision 不提交，下次同步重试。不设输出预算，不按 tokens/s 预估请求大小，也不设按任务写死的条目数或字符数上限；只保留 backend adapter 自己声明的限制（例如 Jev 的选项数）。
+容量判断和分批由 LLM batch runner 统一完成。多条目请求组遇到以下任一情况都视为容量不足：超时（`deadline_exceeded`）、输入超限（`input_capacity_exceeded`）、provider 返回 413（`payload_too_large`）、输出被截断（`finish_reason=length`）。这时对半拆分后分别重发，直到完成；每条 work 恰好得到一个结果。输出被截断时不用同样的 `max_tokens` 改发 JSON 文本请求。纠正一次后输出仍不合法（schema、ID 或选择错误）的多条目请求，同样按 Claim 对半拆分，让出错的那条单独暴露出来。某一步只剩一条 Claim、但它跨多个 ReadingGroup 时，遇到容量不足先对半拆分 ReadingGroup。拆到一条 work 仍失败时，按原因区分：这条 work 的 ReadingGroup 单独就超出模型容量时，该 Support 为 `UNRESOLVED(capacity)`；这条 work 单独的输出纠正一次后仍不合法时，为 `UNRESOLVED(invalid_response)`。两者都 KEEP，诊断写明 Source Unit 和 ReadingGroup，其余 work 与 revision 照常提交。仍是 provider 错误或超时时，该 Source Unit revision 不提交，下次同步重试。不设输出预算，不按 tokens/s 预估请求大小，也不设按任务写死的条目数或字符数上限；只保留 backend adapter 自己声明的限制（例如 Jev 的选项数）。
 
 **Cloud 影响：**读取顺序和容量失败时的对半拆分只依赖 LiteLLM 元数据、现有 `MEMFORGE_LLM_MAX_*` 上限和 `request_timeout_s`，在只有环境变量、没有数据库配置行的 Cloud 部署中同样成立；不新增环境变量，不改 HANA 协议，Cloud 升级 pin 即可。
 
@@ -276,7 +276,9 @@ UNSUPPORTED(work_id)
 
 第一段还没读完时，每一步对每条 work 只返回 `witness_delta`；从读完第一段的那一步起，Structured LLM 对仍未退出的 work 返回 `SUPPORTED(...)`（该 work 退出，不再进入后续请求）或 `witness_delta`；程序先将 delta 单调合并到累计 witnesses，下一步只读取尚未处理的 contexts。读完顺序中最后一组的调用，对仍未退出的 work 返回 `SUPPORTED(...)` 或 `UNSUPPORTED(work_id)`；`UNSUPPORTED` 还要求受影响对象的覆盖是权威的。`SUPPORTED` 同时带“省略的已匹配 ref”列表（见第 0.3 节），只列 ref。
 
-执行结果由程序另行包装为 `COMPLETED(SUPPORTED|UNSUPPORTED)` 或 `UNRESOLVED(reason)`。`UNRESOLVED` 只有两个原因：`partial_coverage`（有 `UNKNOWN` part，不调用模型）和 `capacity`（单个 ReadingGroup 单独就超出模型容量）。两者都 KEEP、不允许自动破坏性动作、不推进 Support baseline，revision 照常提交。拆到单条 work 与单个 ReadingGroup、纠错一次后仍是 provider 错误、超时或 schema/ID 错误的，不算 `UNRESOLVED`：该 Source Unit revision 不提交，下次同步重试。完整 Support Assessment 是依赖多字段的 Evidence 计划，统一由 Structured LLM 完成，不拆成按 confidence 选择 backend 的 cascade。
+执行结果由程序另行包装为 `COMPLETED(SUPPORTED|UNSUPPORTED)` 或 `UNRESOLVED(reason)`。`UNRESOLVED` 有三个原因：`partial_coverage`（有 `UNKNOWN` part，不调用模型）、`capacity`（单个 ReadingGroup 单独就超出模型容量）和 `invalid_response`（这条 work 单独的输出纠正一次后仍不合法）。三者都 KEEP、不允许自动破坏性动作、不推进 Support baseline，revision 照常提交。拆到单条 work 后仍是 provider 错误或超时的，不算 `UNRESOLVED`：该 Source Unit revision 不提交，下次同步重试。
+
+`SUPPORTED` 必须交代每个精确匹配的旧 Evidence part：要么被选中，要么列入 `omitted_matched_refs`。程序只检查这一点。模型在 `omitted_matched_refs` 里多列了本请求提供过、但不是旧 Evidence 的 ref，不影响任何结果，照常接受；本请求没有提供过的 ref 仍按未知 ref 拒绝。完整 Support Assessment 是依赖多字段的 Evidence 计划，统一由 Structured LLM 完成，不拆成按 confidence 选择 backend 的 cascade。
 
 ### 0.6 候选准入、Sparse Relation 与两条线的汇合
 
@@ -294,9 +296,10 @@ UNSUPPORTED(work_id)
 | `ADMITTED` | 进入 Sparse Relation |
 | `REJECTED`（`evidence_incomplete` 证据不足，或 `low_value`） | 本轮不新增，不进 Review |
 | 同轮重复 | 合并，保留一个进入 Sparse Relation |
-| 执行失败（拆分后仍超时、schema 错误、非法 ID 等） | 属于提取侧失败：该 Source Unit revision 不提交，Candidate 本轮不新增；下次同步重试这个 revision（沿用现有提取失败合同），不部分发布 |
+| 单独处理仍无法判断（单项超容量，或输出纠正一次后仍不合法） | 本轮按 `REJECTED` 处理，拒绝理由为 `capacity_exceeded` 或 `invalid_response`，像其他拒绝一样记录事件；不 ADD，不进 Review，revision 照常提交 |
+| 临时性失败（拆分后仍是 provider 错误或超时） | 该 Source Unit revision 不提交，Candidate 本轮不新增；下次同步重试这个 revision（沿用现有提取失败合同），不部分发布 |
 
-`REJECTED` 记录一条结构化事件，内容为 Source Unit、revision、Candidate Claim、所选 Evidence 引用和拒绝理由，不保存完整原文。每个 revision 统计 admitted、rejected、merged 数量，用于发现抽取质量退化，例如某个 Source 或某次部署后拒绝比例升高。执行失败沿用现有 failure trace，不新增机制；同轮合并只计数，不作为异常记录。
+`REJECTED` 记录一条结构化事件，内容为 Source Unit、revision、Candidate Claim、所选 Evidence 引用和拒绝理由，不保存完整原文。每个 revision 统计 admitted、rejected、merged 数量，用于发现抽取质量退化，例如某个 Source 或某次部署后拒绝比例升高。临时性失败沿用现有 failure trace，不新增机制；同轮合并只计数，不作为异常记录。
 
 模型只能准入、拒绝或合并现有候选，不自行编写新的合成 claim。与其他 Unit、其他 source 的 Memory 去重由 identity 负责（第 0.6.5 节），不属于候选准入。
 
@@ -304,7 +307,7 @@ UNSUPPORTED(work_id)
 
 Sparse Relation（同 Unit 的 claim revision）只接收 `ADMITTED` Candidate，只判断它们与同 Unit 旧 Memory 的关系。程序先消费 exact duplicate；模型输入只有三类内容：Candidate 的 Claim、该 Candidate 的当前 Evidence、同 Unit 全部 Active 旧 Memory 的 Claim。输入不含 Support 结论和理由；Support 结果只在 SupportRelationCoordinator 中由程序使用，所以 Relation 与 Support Assessment 并行执行。旧 Memory 目录包含全部 Active 旧 Memory，因为 Relation 运行时还不知道哪些 Support 会得到 `UNRESOLVED`。
 
-输出为每个 Candidate 一行完成记录，只列有意义的关系：等价、矛盾、带方向的细化，或明确列出的不确定旧 Memory。某条旧 Memory 未被列出表示“未提出关系”，不是判定无关。缺少 Candidate 行、未知 ID、同一对重复或矛盾的关系都会被拒绝；输出被截断属于容量失败，由 LLM batch runner 拆分重发；这些都不能当作“未提出关系”。拆分后仍然失败属于提取侧失败：该 Source Unit revision 不提交，下次同步重试，不部分发布。Relation 不检查证据是否完整支持 Candidate，这由候选准入负责。
+输出为每个 Candidate 一行完成记录，只列有意义的关系：等价、矛盾、带方向的细化，或明确列出的不确定旧 Memory。某条旧 Memory 未被列出表示“未提出关系”，不是判定无关。缺少 Candidate 行、未知 ID、同一对重复或矛盾的关系都会被拒绝；输出被截断属于容量失败，由 LLM batch runner 拆分重发；这些都不能当作“未提出关系”。纠正一次后输出仍不合法的请求也会对半拆分，直到出错的 Candidate 单独成一个请求。某个 Candidate 单独判断时输出仍不合法，就在本地留作未决：SupportRelationCoordinator 消费它，不 ADD，不建 Review，写诊断；其他 Candidate 照常处理。因为缺了它的完成行，DestructiveValidation 会保留本 revision 所有的 SUPERSEDE 和 UPDATE。拆分后仍是 provider 错误或超时的，该 Source Unit revision 不提交，下次同步重试，不部分发布。Relation 不检查证据是否完整支持 Candidate，这由候选准入负责。
 
 Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batch runner 切分，旧 Memory 目录被分块时，程序对每个 Candidate 各块的关系取并集。切分只是传输细节，不产生业务状态，不改变覆盖，也不部分提交。该步骤由 Structured LLM 执行；逐 pair 输出标签的分类器 backend 需要另立合同和评估。
 
@@ -312,7 +315,7 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 
 #### 0.6.3 SupportRelationCoordinator
 
-两条线都完成后，程序中的 SupportRelationCoordinator 按下表组合结果，然后才交给 Lifecycle Planner。两条线互不替对方判断真假。各行按以下顺序匹配，先命中的生效：`UNRESOLVED(capacity)` 行（保留原状）优先；其次是同一旧 Memory 同时有 equivalent 边和 contradicts 边的行（进入 Review，暂存矛盾的 Candidate，拟替代旧 Memory）；最后是其余各行，包括 `UNRESOLVED(partial_coverage)` 的三行。Support Assessment 或复核的执行失败不会进入协调器，因为该 revision 不提交。
+两条线都完成后，程序中的 SupportRelationCoordinator 按下表组合结果，然后才交给 Lifecycle Planner。两条线互不替对方判断真假。各行按以下顺序匹配，先命中的生效：无法判断的 Claim 所在行（`UNRESOLVED(capacity)` 或 `UNRESOLVED(invalid_response)`，保留原状）优先；其次是同一旧 Memory 同时有 equivalent 边和 contradicts 边的行（进入 Review，暂存矛盾的 Candidate，拟替代旧 Memory）；最后是其余各行，包括 `UNRESOLVED(partial_coverage)` 的三行。Support Assessment 或复核的临时性失败不会进入协调器，因为该 revision 不提交。Relation 无法判断的 Candidate 没有任何边，协调器按局部未决处理：消费它，不 ADD，不建 Review，计入未决 Candidate 数。
 
 | Support 结果 | Relation 结果 | 处理 |
 | --- | --- | --- |
@@ -322,7 +325,7 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 | `UNSUPPORTED`（完整读取） | contradicts | 正常 SUPERSEDE |
 | `UNSUPPORTED`（完整读取） | 无关系 | 移除本来源的 Support；只有没有其他来源的 Active Support 时才退休 Memory |
 | `UNAFFECTED`（已换绑） | contradicts | 分类器漏判：对该 Claim 补做一次 Support Assessment（按正常顺序读取） |
-| `UNRESOLVED(capacity)` | 任意 | 保留原状；相关 Candidate 在本轮被消费，不 ADD，也不做破坏性动作 |
+| `UNRESOLVED(capacity)` 或 `UNRESOLVED(invalid_response)` | 任意 | 保留原状；相关 Candidate 在本轮被消费，不 ADD，也不做破坏性动作 |
 | `UNRESOLVED(partial_coverage)` | equivalent | 用该 Candidate 的当前 Evidence 定向复核：支持则保留旧 Memory、换绑到该 Evidence，并消费该 Candidate，不 ADD；仍不支持则创建协调器 Review |
 | `UNRESOLVED(partial_coverage)` | contradicts | 创建协调器 Review，拟用矛盾的 Candidate 替代旧 Memory；旧 Evidence 的状态未知，所以不自动替代 |
 | `UNRESOLVED(partial_coverage)` | 无关系 | 保留原状 |
@@ -330,7 +333,7 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 
 已换绑的 `UNAFFECTED` 且无 contradicts 边，按 `SUPPORTED` 行处理；REFINES 与不确定关系沿用局部 unresolved 规则（协调器与 revision proof 规则），未决组件内的旧 Memory 不做 refinement 两两比较。同一 Candidate 对不同旧 Memory 得到不同处理，或者同时暂存在多个旧 Memory 的 Review 里时，同样沿用局部 unresolved 的连通组件规则：整个相关组件在本轮被消费，不 ADD，也不做破坏性动作。同一 Candidate 暂存两次时没有唯一决定：每次批准都会再执行一遍，要么再建一次同一条 Memory，要么把第二个旧 Memory 也换绑到同一 Claim。`UNAFFECTED` × contradicts 补做的那次 Support 即该 Claim 唯一的一次复核，结果重新查表。
 
-已知限制：某条 Claim 的单个 ReadingGroup 单独就超出模型容量时，其 Support 为 `UNRESOLVED(capacity)`：旧 Memory 保持不变，诊断写明 Source Unit 和 ReadingGroup，revision 照常提交。相关 Candidate 在本轮被消费，不 ADD，也不做破坏性动作；因为更新时只提取变化的结构，这些新知识要等该结构再次变化才会重新提取。除局部 unresolved 关系规则外，这是 Candidate 未经判定就被消费的唯一情况。
+已知限制：某条 Claim 的单个 ReadingGroup 单独就超出模型容量时，其 Support 为 `UNRESOLVED(capacity)`；这条 Claim 单独的输出纠正一次后仍不合法时，为 `UNRESOLVED(invalid_response)`。旧 Memory 保持不变，诊断写明 Source Unit 和 ReadingGroup，revision 照常提交。相关 Candidate 在本轮被消费，不 ADD，也不做破坏性动作；因为更新时只提取变化的结构，这些新知识要等该结构再次变化才会重新提取。Relation 单独判断仍无法判断的 Candidate 也是如此。除局部 unresolved 关系规则外，只有这几种情况会让 Candidate 未经判定就被消费。
 
 冲突组的定向复核规则：
 
@@ -338,11 +341,11 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 - 已读完全文的 Claim，以及 Support 为 `UNRESOLVED(partial_coverage)` 的 Claim：只核 Candidate 的新原文。后者复核得到支持后，原先含 `UNKNOWN` part 的 Support 被替换，之后的 revision 不会再因它得到 `UNKNOWN`；
 - 未做过 Support 的 Claim（Change Impact 判为 `UNAFFECTED`，Relation 却发现矛盾）：按正常顺序读取补做一次，允许读到全文；
 - 复核后仍冲突就进入 Review，不做第二次复核；
-- 复核执行失败时，该 Source Unit revision 不提交，下次同步重试，不进 Review；复核用到的 ReadingGroup 单独就超出容量时为 `UNRESOLVED(capacity)`，按该行处理。
+- 复核遇到临时性失败时，该 Source Unit revision 不提交，下次同步重试，不进 Review；复核用到的 ReadingGroup 单独就超出容量，或复核输出单独纠正后仍不合法时，为 `UNRESOLVED(capacity)` 或 `UNRESOLVED(invalid_response)`，按该行处理。
 
 复核找到支持时可以采信，因为“有支持”由程序可验证的具体当前 ref 证明，而“没找到”只说明一次长读取中没有发现。所以只核 Candidate 新原文的复核没找到支持时，该 Claim 保持原来的结果，不会因此失去 Support。
 
-一个旧 Memory 在本 Unit 可能有多条 Support，它们按表的优先级合成一个 Memory 级结果：任一 Support 为 `UNRESOLVED(capacity)` 时为 capacity；否则任一为 `UNRESOLVED(partial_coverage)` 时为 partial_coverage；否则只要有一条经读取判为支持即 `SUPPORTED`；只经换绑、没有读取的为 `UNAFFECTED`，此时补做的 Support 只读那些换绑的 Support；全部读完仍不支持才是 `UNSUPPORTED`。只核 Candidate 新原文的复核对一条 Claim 只做一次，一次读完它全部等价 Candidate 的 Evidence，并带上该 Claim 在本 Unit 的全部旧 Evidence part。
+一个旧 Memory 在本 Unit 可能有多条 Support，它们按表的优先级合成一个 Memory 级结果：任一 Support 为 `UNRESOLVED(capacity)` 时为 capacity；否则任一为 `UNRESOLVED(invalid_response)` 时为 invalid_response；否则任一为 `UNRESOLVED(partial_coverage)` 时为 partial_coverage；否则只要有一条经读取判为支持即 `SUPPORTED`；只经换绑、没有读取的为 `UNAFFECTED`，此时补做的 Support 只读那些换绑的 Support；全部读完仍不支持才是 `UNSUPPORTED`。只核 Candidate 新原文的复核对一条 Claim 只做一次，一次读完它全部等价 Candidate 的 Evidence，并带上该 Claim 在本 Unit 的全部旧 Evidence part。
 
 同一旧 Memory 有多条 contradicts 边时不猜后继：全文读完仍不支持时移除本来源的 Support，各 Candidate 各自新增；其余情况旧 Memory 保留，每条矛盾 Candidate 各得一条协调器 Review。
 
@@ -361,7 +364,7 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 
   已决定的冲突再次出现时维持现状：旧 Memory 按本轮结果处理、不再进 Review，Candidate 被消费。
 - 可见性：待审期间旧 Memory 保持 Active、检索可见、状态不变。暂不增加“有冲突”标注。source 处于 lifecycle gate 时，要移除 Support 的换绑也随 Review 等待，Review 按当前 Support 提出动作；该旧 Memory 只有一个 Review 决定。
-- 新 revision：照常处理，由协调器重新判断。更新时只抽取变化的结构，Candidate 所在结构没变时本 revision 不会再抽取它，Relation 也就无法再次提出这个冲突。因此待审 Review 暂存的 Candidate Evidence 仍全部精确对应当前内容时，程序把这条 Candidate 和原来的边重新交给协调器，不再复核，按表处理：通常刷新 Review；旧 Memory 本轮读完仍不支持时，按行正常替代，Review 随之关闭。本 revision 对旧 Memory 作出了决定、却不再提出这个冲突时，冲突已消失，由本 revision 的 Plan 用现有的 `stale` 状态关闭 Review，关闭排在 Plan 的破坏性变更之前。本 revision 没有对旧 Memory 作出决定、只是保留原状时（局部未决组件、`UNRESOLVED(capacity)`，或被 DestructiveValidation 保留的破坏性决定），它的待审 Review 原样保留，等之后对它作出决定的 revision 刷新或关闭。变成不同冲突时，Candidate Claim 的 hash 或提案类型不同，对应另一条 Review。协调器 Review 不提供手动刷新，下一次提出同一冲突的 revision 会重新打开它。
+- 新 revision：照常处理，由协调器重新判断。更新时只抽取变化的结构，Candidate 所在结构没变时本 revision 不会再抽取它，Relation 也就无法再次提出这个冲突。因此待审 Review 暂存的 Candidate Evidence 仍全部精确对应当前内容时，程序把这条 Candidate 和原来的边重新交给协调器，不再复核，按表处理：通常刷新 Review；旧 Memory 本轮读完仍不支持时，按行正常替代，Review 随之关闭。本 revision 对旧 Memory 作出了决定、却不再提出这个冲突时，冲突已消失，由本 revision 的 Plan 用现有的 `stale` 状态关闭 Review，关闭排在 Plan 的破坏性变更之前。本 revision 没有对旧 Memory 作出决定、只是保留原状时（局部未决组件、`UNRESOLVED(capacity)` 或 `UNRESOLVED(invalid_response)`，或被 DestructiveValidation 保留的破坏性决定），它的待审 Review 原样保留，等之后对它作出决定的 revision 刷新或关闭。变成不同冲突时，Candidate Claim 的 hash 或提案类型不同，对应另一条 Review。协调器 Review 不提供手动刷新，下一次提出同一冲突的 revision 会重新打开它。
 - 审核结果只在相关 Memory、Support 和 Source Unit revision 未变化时生效，沿用现有 stale guard。guard 不再成立时拒绝这次决定（409），协调器 Review 保持待审，因为 `stale` 只表示冲突已消失；该 Source Unit 的下一个 revision 会按当前状态重新提出这个冲突。
 - lifecycle gate：批准和需要换绑的拒绝都是 Plan，要求该来源的 lifecycle gate 已启用，gate 状态下返回 409；不需要换绑的拒绝只改 Review 状态，gate 状态下也可以执行。
 
@@ -373,9 +376,11 @@ Relation 漏报 equivalent 时，由现有 identity 去重兜底：identity 只�
 
 已知遗留：旧 Memory 本轮被删而 Relation 又漏报等价时，结果是换一个 Memory ID，不产生重复，可以接受。
 
+identity 对每一对 Candidate/Memory 经 LLM batch runner 判断；请求目录把每个 Candidate 允许比较的 Memory ID 直接列在该 Candidate 旁边（`memory-relation-v5-sparse`），不再另给一张对照表。已证明等价的一对照常挂接，即使同一 Candidate 的另一对无法判断。没有证明等价、又有一对单独判断仍无法判断（超容量，或输出纠正一次后仍不合法）的 Candidate，可能与旧 Memory 重复：本轮消费它，不 ADD，写诊断，revision 照常提交。identity 的临时性失败使该 revision 不提交。
+
 当前实现：排除集合由 planner 的同一套规则算出（`memory/lifecycle_planner.py` 的 `identity_excluded_incumbent_ids`），在本轮 Evidence Unit 建好之后、identity 之前计算：DELETE、SUPERSEDE、UPDATE；本轮提出的协调器 Review（人已决定过的冲突不再提出，旧 Memory 保留，可以匹配）；lifecycle gate 下会移除 Support 的换绑。Plan 对决定不是 KEEP 的旧 Memory 拒绝 identity 挂接，两边不一致时 revision 失败，不会提交。
 
-**Cloud 影响：**候选准入、Relation 输入、协调器和 identity 排除集合都是 OSS 共享代码与提示词；Cloud 升级 pin 即可，不改配置。`LiteLlmStructuredClient` 的构造调用不变；#505 第一个 PR 删除 `SourceSupportDetector`，Cloud `proxy/external_runtime.py` 第 23、217、237、249 行随 pin 升级同批修改。identity 的 `excluded_memory_ids` 已由 HANA adapter 实现，只是 OSS 传入的集合改变。协调器 Review 的 ID 生成、Review 自带的 stale guard 和再次出现时的判断都在 OSS planner 与 review 代码中。沿用、重新打开和关闭都要修改 `lifecycle_reviews` 里已有的行，所以 SQLite 和 HANA 的 Plan apply 都把 `CREATE_REVIEW` 作为按 Review ID 的 upsert：把已有的 `pending` 或 `stale` 行写回 `pending`，并更新 Plan ID 和 staged evidence，其他状态拒绝（planner 不会为 `rejected` 或 `approved` 的 Review 发出它）；`RESOLVE_REVIEW` 也接受 `stale` 和 `rejected`；Plan apply 在全部变更之后写入每条新建 Review 自带的 guard；`list_lifecycle_reviews` 增加 `incumbent_memory_ids` 参数，按本 Unit 的旧 Memory 读取 Review。需要修改的位置是 OSS `storage/database.py` 中 `_apply_lifecycle_mutation_unlocked` 的 `CREATE_REVIEW` 与 `RESOLVE_REVIEW` 分支，以及 Cloud HANA adapter（`packages/adapters/store/hana/.../workspace.py`）中 `_apply_lifecycle_mutation_on_connection` 的相同分支。`UNRESOLVED(partial_coverage)` 行产生的 Review 走同样的 Plan apply；Support 执行失败导致的未提交 revision 沿用现有 sync 失败状态和 LLM failure trace。不新增字段、状态、迁移或变更类型，但 Cloud 需要在升级 pin 时同批修改 HANA adapter。
+**Cloud 影响：**候选准入、Relation 输入、协调器和 identity 排除集合都是 OSS 共享代码与提示词；Cloud 升级 pin 即可，不改配置。`LiteLlmStructuredClient` 的构造调用不变；#505 第一个 PR 删除 `SourceSupportDetector`，Cloud `proxy/external_runtime.py` 第 23、217、237、249 行随 pin 升级同批修改。identity 的 `excluded_memory_ids` 已由 HANA adapter 实现，只是 OSS 传入的集合改变。协调器 Review 的 ID 生成、Review 自带的 stale guard 和再次出现时的判断都在 OSS planner 与 review 代码中。沿用、重新打开和关闭都要修改 `lifecycle_reviews` 里已有的行，所以 SQLite 和 HANA 的 Plan apply 都把 `CREATE_REVIEW` 作为按 Review ID 的 upsert：把已有的 `pending` 或 `stale` 行写回 `pending`，并更新 Plan ID 和 staged evidence，其他状态拒绝（planner 不会为 `rejected` 或 `approved` 的 Review 发出它）；`RESOLVE_REVIEW` 也接受 `stale` 和 `rejected`；Plan apply 在全部变更之后写入每条新建 Review 自带的 guard；`list_lifecycle_reviews` 增加 `incumbent_memory_ids` 参数，按本 Unit 的旧 Memory 读取 Review。需要修改的位置是 OSS `storage/database.py` 中 `_apply_lifecycle_mutation_unlocked` 的 `CREATE_REVIEW` 与 `RESOLVE_REVIEW` 分支，以及 Cloud HANA adapter（`packages/adapters/store/hana/.../workspace.py`）中 `_apply_lifecycle_mutation_on_connection` 的相同分支。`UNRESOLVED(partial_coverage)` 行产生的 Review 走同样的 Plan apply；临时性失败导致的未提交 revision 沿用现有 sync 失败状态和 LLM failure trace。单项无法判断时新增的 Support 原因 `invalid_response` 只存在于内存结果中，候选准入的拒绝沿用现有审计事件，identity 请求目录的形状变化（`memory-relation-v5-sparse`）只在 OSS 提示词中，都不需要改 HANA。不新增字段、状态、迁移或变更类型，但 Cloud 需要在升级 pin 时同批修改 HANA adapter。
 
 ### 0.7 自动 DestructiveValidation
 
@@ -384,7 +389,7 @@ Relation 漏报 equivalent 时，由现有 identity 去重兜底：identity 只�
 普通 KEEP、Evidence replacement 和非破坏性 ADD 不增加额外检查。准备 `REMOVE_SUPPORT`、`SUPERSEDE` 或 `RETIRE_MEMORY` 时，程序自动验证：
 
 1. affected object 有 authoritative coverage 或 explicit tombstone；
-2. Claim Extraction、Support Assessment 与 work manifest 完整且无技术失败；抽取时因超容量跳过的 ReadingGroup 是已记录的覆盖事实，不算技术失败；SUPERSEDE 或 UPDATE 还要求 Sparse Relation 完整；
+2. Claim Extraction、Support Assessment 与 work manifest 完整且无技术失败；抽取时因单独读仍无法处理（超容量或输出无效）而跳过的 ReadingGroup 是已记录的覆盖事实，不算技术失败；SUPERSEDE 或 UPDATE 还要求 Sparse Relation 完整；
 3. decisive current witnesses 可重新解析，Support set 与 revision 未 stale；
 4. `UNSUPPORTED` proposal 是否绑定完整顺序读取的完成收据，且受影响对象的覆盖是权威的；
 5. 模拟 source-scoped removal 后，Memory 是否还有其他 Active Support。
@@ -459,7 +464,7 @@ Evidence Unit 的时间取 Primary 锚定的 Observation Revision 的时间；�
 | 近全文重写 | 当前全部 ReadingGroups 流式读完；全部 work 完成后一次提交；某个 ReadingGroup 单独就超出容量时该 Support 为 `UNRESOLVED(capacity)` 并 KEEP，其余照常提交 |
 | 全部 part 为 `EXACT_UNCHANGED`，本次无变化内容 | 直接 `REBIND_SUPPORT`，不调用模型 |
 | Change Impact 执行失败 | 相关 Claim 进入 Support Assessment；不记 `AFFECTED` 标签 |
-| 多条目请求组超时、输入超限、provider 413 或输出截断 | 对半拆分后重发直到完成，每条 work 恰好一个结果；拆到单条 work、单个 ReadingGroup 后，单组超容量为 `UNRESOLVED(capacity)` 并保留诊断，其他失败使该 revision 不提交 |
+| 多条目请求组超时、输入超限、provider 413、输出截断，或纠正一次后输出仍不合法 | 对半拆分后重发直到完成，每条 work 恰好一个结果；拆到单条 work 后，单项超容量为 `UNRESOLVED(capacity)`，单项输出仍不合法为 `UNRESOLVED(invalid_response)`，都保留诊断；仍是 provider 错误或超时的使该 revision 不提交 |
 | Support 请求拆到单条后仍是 provider 错误或超时 | 该 Source Unit revision 不提交；下次同步重试成功，相关 Candidate 不丢失 |
 | 单个 ReadingGroup 单独超出容量 | 旧 Memory 保持不变，诊断写明 Source Unit 和 ReadingGroup；revision 提交 |
 | 部分投影下旧 Support 有 `UNKNOWN` part，Relation 报 equivalent | 用 Candidate 的当前 Evidence 复核一次；支持则换绑到该 Evidence，不新增 Memory |
@@ -498,7 +503,7 @@ work 数量和成本，不改变单条 Support 的语义结果：
 | 全部 part 唯一精确匹配（`EXACT_UNCHANGED`） | 无变化内容时直接 REBIND；有变化内容时经 Change Impact，`UNAFFECTED` 则 REBIND | `AFFECTED` 或 Change Impact 执行失败只增加 Support Assessment 成本，不能直接移除 Support |
 | 原 fragment 修改或同义改写 | old exact excerpt + 对应 current ReadingGroup + 全部 changed ReadingGroups | 第一段未命中继续读取其余部分；只有读完全部内容且受影响对象覆盖权威才能 `UNSUPPORTED` |
 | 原 fragment 删除 | old exact excerpt + changed ReadingGroups | 读取顺序第二段仍会寻找其他未改位置的 current Support |
-| 多个 exact candidate | old exact excerpt + 全部候选 ReadingGroups | 不能任取一个；单组超容量时 `UNRESOLVED(capacity)`，执行失败时 revision 不提交 |
+| 多个 exact candidate | old exact excerpt + 全部候选 ReadingGroups | 不能任取一个；单项无法判断时为 `UNRESOLVED(capacity)` 或 `UNRESOLVED(invalid_response)`，临时性失败时 revision 不提交 |
 | 受影响对象的覆盖为 Partial/Unknown | 不把未返回对象当删除 | `UNRESOLVED(partial_coverage)` + KEEP，禁止 `UNSUPPORTED` |
 
 Confluence Page 使用稳定 page ID 与 page-body Observation；普通局部编辑仅改变相关
@@ -673,7 +678,7 @@ Primary 本来就只限于本次变化的授权工作。提取同样不比较 De
 实现上，每个含授权 Primary 的 ReadingGroup 是一个 item，请求读这些 item 及其阅读上下文
 （第 0.2 节），阅读上下文里的 Fragment 一律降为 Required-only；runner 按实际容量把 item
 打包成请求，每个请求在暂存前落成一个 derivation batch；执行时仍经 runner，多条目请求
-超时或超容量时对半拆分。每个授权 Primary Fragment 恰好属于一个请求。
+超时、超容量或纠正后输出仍不合法时对半拆分。每个授权 Primary Fragment 恰好属于一个请求。
 
 Claim Extraction 按 representation-safe ReadingGroups 经 LLM batch runner 传输；
 Support Assessment 按上述读取顺序流式传输。Claim Extraction 仅从每组获授权
@@ -750,7 +755,7 @@ Evidence-fixed、多 Memory cohorts 可使用 `REVISION_FIRST` cache layout；co
 
 共享上下文被分块时，任一块判 `REJECTED` 即为 `REJECTED`，各块报告的重复取并集。程序只在 `ADMITTED` 的 Candidate 之间按连通分量合并，每组保留内容最具体（规范化后最长）的一条，相同时保留先抽取的一条；被拒绝的 Candidate 不吸收、也不连接其他 Candidate。准入请求作为 `candidate_admission` 工作记入 derivation，重试时复用已完成的请求，提交门禁要求这些工作已完成。
 
-每个 `REJECTED` 记一条 `candidate_admission_rejected` 审计事件，内容为 Source Unit、目标 revision、Claim、所选 Evidence 的位置和拒绝理由，不含原文；统计键为 `candidate_admission_admitted_count`、`_rejected_count`、`_merged_count`、`_llm_calls`、`_prompt_chars`。执行失败（拆分到单条后仍超容量、schema 错误、非法 ID、缺少所选 Evidence）使该 Source Unit revision 不提交，下次同步重试。完整规则见第 0.6.1 节。
+每个 `REJECTED` 记一条 `candidate_admission_rejected` 审计事件，内容为 Source Unit、目标 revision、Claim、所选 Evidence 的位置和拒绝理由，不含原文；统计键为 `candidate_admission_admitted_count`、`_rejected_count`、`_merged_count`、`_llm_calls`、`_prompt_chars`。拆分到单条后仍超容量或输出仍不合法的 Candidate 本轮按 `REJECTED` 处理，拒绝理由为 `capacity_exceeded` 或 `invalid_response`；临时性失败，以及缺少所选 Evidence 等输入错误，使该 Source Unit revision 不提交，下次同步重试。完整规则见第 0.6.1 节。
 
 这是本次候选内部的准入，不是跨文档 Memory 身份匹配。模型只能准入、拒绝或合并现有候选，不自行编写新的合成 claim。
 
@@ -789,7 +794,7 @@ fixed old claim
 
 `ReadingGroup` 是可理解结构，内部可有多条 EvidenceFragments；`AssessmentContext` 是一次调用实际读取的一个或多个 ReadingGroups；`AssessmentScope` 是整个 work 的逻辑覆盖。读取顺序对大文档按 contexts 流式覆盖完整 current Catalog，而不是一次传原始全文。
 
-第一段读完之前，每一步对每条 work 只输出 `witness_delta`；此后每一步对仍未退出的 work 输出 `SUPPORTED(primary_ref, required_refs[])`（该 work 退出）或 `witness_delta`。`witness_delta` 是本次观察到的 supporting/opposing current refs，程序校验后与已有 state 单调 union。读完最后一个 context 的调用，对仍未退出的 work 输出最终判别联合：`SUPPORTED` 必须带一 Primary 和零到多个 Required；`UNSUPPORTED` 禁止 selector 字段。`SUPPORTED` 附带省略的已匹配 ref 列表，只列 ref。部分覆盖与单组超容量由程序包装为 `UNRESOLVED(reason)`，不是模型的第三个语义状态；其他执行失败使该 Source Unit revision 不提交。`UNSUPPORTED` 只提出 source-scoped Support removal，最终是否 supersede/retire 仍由 Lifecycle Planner 检查完整 coverage、其他 Active Supports 和 stale guards。
+第一段读完之前，每一步对每条 work 只输出 `witness_delta`；此后每一步对仍未退出的 work 输出 `SUPPORTED(primary_ref, required_refs[])`（该 work 退出）或 `witness_delta`。`witness_delta` 是本次观察到的 supporting/opposing current refs，程序校验后与已有 state 单调 union。读完最后一个 context 的调用，对仍未退出的 work 输出最终判别联合：`SUPPORTED` 必须带一 Primary 和零到多个 Required；`UNSUPPORTED` 禁止 selector 字段。`SUPPORTED` 附带省略的已匹配 ref 列表，只列 ref。部分覆盖、单组超容量和单项输出纠正后仍不合法由程序包装为 `UNRESOLVED(reason)`，不是模型的第三个语义状态；临时性失败使该 Source Unit revision 不提交。`UNSUPPORTED` 只提出 source-scoped Support removal，最终是否 supersede/retire 仍由 Lifecycle Planner 检查完整 coverage、其他 Active Supports 和 stale guards。
 
 程序解析选择并构造完整 current Evidence Unit；模型判断语义，程序验证 revision、selector membership、角色、digest 与 authority。`REBIND_SUPPORT` 在同一事务中附加 target-Revision Evidence 的新 Support assertion，并将被替换的旧 assertion 标为 inactive；Memory/claim 不变，旧行与历史不改写。
 
@@ -797,7 +802,7 @@ fixed old claim
 
 本阶段只比较本 Unit 的 `ADMITTED` Candidates 与同 Unit Active 旧 Memory。程序先处理 exact duplicate；其余由 Structured LLM 读取 Candidate、其当前 Evidence 和同 Unit 全部 Active 旧 Memory 的 Claim，为每个 Candidate 输出一行，只列有意义的关系。输入不含 Support 结论，也不检查 Candidate 的证据。合同细节见第 0.6.2 节，请求形状见 [Sparse claim catalog](sparse-claim-catalog.md)。
 
-Relation 与 Support Assessment 并行执行，两条线都完成后由 SupportRelationCoordinator 按第 0.6.3 节的组合表汇合；任一条线抛出执行失败时取消另一条，该 revision 不提交。Relation 的模型或合同失败作为该线的结果返回，不抛出，所以 Support 线会读完；revision 同样不提交，重试时从 journal 复用这些 Support 结果。
+Relation 与 Support Assessment 并行执行，两条线都完成后由 SupportRelationCoordinator 按第 0.6.3 节的组合表汇合；任一条线抛出执行失败时取消另一条，该 revision 不提交。Relation 的临时性失败或合同失败作为该线的结果返回，不抛出，所以 Support 线会读完；revision 同样不提交，重试时从 journal 复用这些 Support 结果。Relation 单独判断仍无法判断的 Candidate 属于完整结果的一部分，标为未判断，由协调器消费。
 
 | 关系 | 含义 |
 | --- | --- |
@@ -806,7 +811,7 @@ Relation 与 Support Assessment 并行执行，两条线都完成后由 SupportR
 | contradicts | 同一主体、重叠范围和时间内不能同时为真 |
 | 不确定 | 明确列出无法判断的旧 Memory ID |
 
-未列出的旧 Memory 表示“未提出关系”。缺少 Candidate 行、未知 ID、重复或矛盾的关系或模型拒绝都是执行失败；输出截断先由 LLM batch runner 拆分重发。这些都不能当作“未提出关系”。执行失败时该 Source Unit revision 不提交，下次同步重试。
+未列出的旧 Memory 表示“未提出关系”。缺少 Candidate 行、未知 ID、重复或矛盾的关系或模型拒绝都是执行失败；输出截断先由 LLM batch runner 拆分重发，纠正后输出仍不合法也先拆分。这些都不能当作“未提出关系”。某个 Candidate 单独判断仍失败时，按第 0.6.2 节在本地留作未决；临时性失败时该 Source Unit revision 不提交，下次同步重试。
 
 Relation 结果不是 lifecycle action。等价和矛盾如何处理由第 0.6.3 节的组合表决定；任何 REMOVE、SUPERSEDE 或 RETIRE 仍需要 Support Assessment 与 DestructiveValidation。跨文档关系继续由 bounded retrieval 产生 `K` pairs 后分类，不做全工作区 N×M。
 
@@ -968,13 +973,13 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 | provider 抓取失败 | Run 与错误；可能有其他成功页面 | 本页不据此证明删除 | provider/本页采集 |
 | Artifact 不适合当前推理 | 准确原始 Artifact 与 eligibility | 依赖它的 Support 走明确未决保护；不伪造视觉验证 | eligibility/既有 Review |
 | 提取 schema/transport 失败 | 固定 target 与成功 sibling batch 输出 | 本页不以不完整提取覆盖提交新知识 | 失败工作；精确输出复用 |
-| 请求超容量，或多条目请求组超时、provider 413、输出截断 | 固定目标与成功阶段 | LLM batch runner 按容量拆分；多条目请求组遇到这些容量失败时对半拆分后重发，直到完成；不截断成“完整” | 精确复用成功阶段；拆到单条（Support 为单个 ReadingGroup）仍失败时：Support 的单组超容量为 `UNRESOLVED(capacity)`，其他失败使该 revision 不提交、下次同步重试；候选准入或 Sparse Relation 使该 revision 不提交、下次同步重试；Claim Extraction 的单组超容量跳过该组并写诊断，其余组照常抽取，revision 提交 |
-| Support 未决 (`UNRESOLVED`) | 原 Memory、Support、Evidence、验证基线 | 目标（#505）：部分覆盖（`partial_coverage`）和单个 ReadingGroup 单独超出容量（`capacity`）成为 `UNRESOLVED` 并 KEEP，本轮 NOOP，其他处理和 Source 提交继续；Support 结果只有 `SUPPORTED` 和 `UNSUPPORTED`，没有 insufficient。当前实现：模型返回 insufficient 时 `supported` 为 None，该 Memory 被跳过并保留，Unit 其余部分继续（`revision_work.py`、`engine.py`）；只有抛出的执行失败（容量、provider、schema）使整个 Unit 失败 | KEEP；记录 `partial_coverage` 或 `capacity` 原因，`capacity` 的诊断写明 Source Unit 和 ReadingGroup；不新增人工确认 |
-| Support 或定向复核执行失败 | 失败诊断（现有 failure trace） | 目标（#505）：拆到单条 work、单个 ReadingGroup 并纠错一次后仍是 provider 错误、超时或 schema/ID 错误时，该 Source Unit revision 不提交；Unit 内其他工作在重试时重新计算 | 下次同步重试该 revision；重复失败通过现有 sync 失败状态和 LLM failure trace 可见，不新增机制 |
+| 请求超容量，或多条目请求组超时、provider 413、输出截断 | 固定目标与成功阶段 | LLM batch runner 按容量拆分；多条目请求组遇到这些容量失败时对半拆分后重发，直到完成；不截断成“完整” | 精确复用成功阶段；拆到单条仍失败时：临时性失败使该 revision 不提交、下次同步重试；单项无法判断（超容量或输出仍不合法）由各阶段记录，revision 提交：Support 为 `UNRESOLVED(capacity)` 或 `UNRESOLVED(invalid_response)`，候选准入本轮拒绝该 Candidate，Sparse Relation 与 identity 本地留作未决、不 ADD，Claim Extraction 跳过该组并写诊断 |
+| Support 未决 (`UNRESOLVED`) | 原 Memory、Support、Evidence、验证基线 | 目标（#505）：部分覆盖（`partial_coverage`）、单个 ReadingGroup 单独超出容量（`capacity`）和单项输出纠正后仍不合法（`invalid_response`）成为 `UNRESOLVED` 并 KEEP，本轮 NOOP，其他处理和 Source 提交继续；Support 结果只有 `SUPPORTED` 和 `UNSUPPORTED`，没有 insufficient。已实现（`revision_work.py`、`engine.py`）：`supported` 为 None 并带未决原因，该 Memory 保留，Unit 其余部分继续；只有临时性失败（provider 错误、超时）使整个 Unit 失败 | KEEP；记录 `partial_coverage`、`capacity` 或 `invalid_response` 原因，后两者的诊断写明 Source Unit 和 ReadingGroup；不新增人工确认 |
+| Support 或定向复核临时性失败 | 失败诊断（现有 failure trace） | 目标（#505）：拆到单条 work 后仍是 provider 错误或超时时，该 Source Unit revision 不提交；Unit 内其他工作在重试时重新计算 | 下次同步重试该 revision；重复失败通过现有 sync 失败状态和 LLM failure trace 可见，不新增机制 |
 | Change Impact 执行失败 | 失败诊断 | 相关 Claim 进入 Support Assessment；不记 `AFFECTED` 标签 | 同一 revision 内由 Support Assessment 继续 |
-| 候选准入执行失败 | 失败诊断（现有 failure trace） | 该 Source Unit revision 不提交，本轮不新增该 Candidate，不部分发布 | 下次同步重试该 revision（现有提取失败合同） |
-| Sparse Relation 输出不完整 | 判断诊断 | 不强行支持，不擅自破坏旧知识；缺 Candidate 行、未知 ID 或截断不是“未提出关系”；该 Source Unit revision 不提交 | 下次同步重试该 revision；不自动换模型重试 |
-| Support 与 Relation 冲突 | 协调器诊断 | 每条 Claim 至多复核 1 次；仍冲突进入 Review；复核执行失败使该 revision 不提交，不进 Review | 下一 revision 重新判断；同一冲突按第 0.6.4 节沿用原 Review |
+| 候选准入临时性失败 | 失败诊断（现有 failure trace） | 该 Source Unit revision 不提交，本轮不新增该 Candidate，不部分发布 | 下次同步重试该 revision（现有提取失败合同） |
+| Sparse Relation 输出不完整 | 判断诊断 | 不强行支持，不擅自破坏旧知识；缺 Candidate 行、未知 ID 或截断不是“未提出关系”；拆分到单个 Candidate 仍不完整时，该 Candidate 本地留作未决，不 ADD，revision 提交 | 该 Candidate 的知识等其结构再次变化时重新判断；不自动换模型重试 |
+| Support 与 Relation 冲突 | 协调器诊断 | 每条 Claim 至多复核 1 次；仍冲突进入 Review；复核的临时性失败使该 revision 不提交，不进 Review | 下一 revision 重新判断；同一冲突按第 0.6.4 节沿用原 Review |
 | 事务锁冲突/可重试提交失败 | 准备结果；业务事务回滚 | 不留下半套 Memory/Support | 同一准备结果重试并重查 guards |
 | target/旧 Memory/Support 已改变 | 历史准备与审计 | 不使用过期判断提交 | 重新针对适用快照准备 |
 | 进程在 commit 前崩溃 | 持久 extraction staging 保留；部分生命周期准备仍可能只是内存 | 不保证所有生命周期模型结果都免重跑 | 已有恢复合同 |
@@ -996,10 +1001,10 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 | 静态格式有效但当前 workset selector 无效 | 沿现有边界最多一次局部纠正，保持相同输入与 allowed refs；耗尽后产生明确错误，不让外层重跑 extraction、关系分类或同目标整个文档 |
 | revision/access/Primary 资格错误、缺失必需决策、捏造引用或不完整 Support | 保留硬约束，不能默认为有效、无关或独立 ADD；局部修复不可行则明确终止当前工作 |
 | 读完全部当前内容后没有任何 Support | Support Assessment 返回 `UNSUPPORTED`；程序仍需通过 DestructiveValidation、其他 Active Supports 和 stale guards 才能移除/退休 |
-| 部分覆盖或单组超容量 | `UNRESOLVED(reason)` 保留旧 Memory；Support 与 Relation 的语义冲突按第 0.6.3 节组合表处理，不自动换模型期待改口 |
-| Support 或定向复核执行失败 | 该 Source Unit revision 不提交，下次同步重试 |
+| 部分覆盖、单组超容量或单项输出无效 | `UNRESOLVED(reason)` 保留旧 Memory；Support 与 Relation 的语义冲突按第 0.6.3 节组合表处理，不自动换模型期待改口 |
+| Support 或定向复核临时性失败 | 该 Source Unit revision 不提交，下次同步重试 |
 
-不同职责的失败有不同出口：候选准入或 Sparse Relation 执行失败时，该 Source Unit revision 不提交，下次同步重试；Support Assessment 与定向复核执行失败时同样不提交该 revision、下次同步重试，只有单组超容量为 `UNRESOLVED(capacity)` 并 KEEP；Change Impact 执行失败进入 Support Assessment；Sparse Relation 执行失败不能当作“未提出关系”。任何一步的失败都不能变成“直接新增”。保留已有日志/指标，分别统计确定性规范化、局部纠正、语义 Review、能力失败及实际外层重试；不能只看最终 partial sync 数量。
+失败按一条规则处理：临时性失败（provider 错误、超时）使该 Source Unit revision 不提交，下次同步重试；某一项单独处理仍无法判断（超容量，或输出纠正一次后仍不合法）时，由所在阶段记录，revision 提交。各阶段的记录方式：Support Assessment 与定向复核为 `UNRESOLVED(capacity)` 或 `UNRESOLVED(invalid_response)` 并 KEEP；候选准入本轮拒绝该 Candidate；Sparse Relation 与 identity 把该 Candidate 本地留作未决，不 ADD；Claim Extraction 跳过该 ReadingGroup。Change Impact 的任何执行失败都进入 Support Assessment；Sparse Relation 的失败不能当作“未提出关系”。任何一步的失败都不能变成“直接新增”。保留已有日志/指标，分别统计确定性规范化、局部纠正、语义 Review、能力失败及实际外层重试；不能只看最终 partial sync 数量。
 
 实施验收必须回放此前修复的边界样例：角色 ref 兼容、重复 Required、固定 slot 重复、非适用字段、完整选择纠正、纠正耗尽不重放外层工作，以及文档其他 Unit 继续完成。支持的输入不应因新模型 schema 更严而退化为 partial sync；真正无法证明的状态仍不能假报成功。
 
@@ -1037,7 +1042,7 @@ source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含
 | 2 采集/快照 | `pipeline/sync.py`、SourceProjectionAdapter、不可变 revisions、raw/normalized/Artifact 存储 | 无基础重构；资格问题单独见下表 | provider 部分覆盖、删除证明、稳定 Unit 身份 |
 | 3 工作准备 | `source_derivation.py`、`pipeline/projection_context.py` 与 Fragment compiler 已有暂存、结构授权和索引 | **中，已实现**：`plan_projection_evidence_work` 只算授权，`pipeline/extraction_requests.py` 按 ReadingGroup item 经 runner 规划请求；首次导入读每个 ReadingGroup、更新时只读变化结构及其 ReadingGroup（不做成本比较、不截断）；适用基线和工作合同身份 | 首次导入、contested Support、超限不可截断、旧输出不可复用到新合同 |
 | 4 L1 提取 | 已有结构目录与 Primary/Required selector；增量完整结构授权已实现 | **小到中**：消费上述读取范围；不放宽已实现的 Primary 授权 | 全文只是可读上下文；canonical 完整解析不等于全记录 Primary |
-| 5 候选准入 | 实施前为 `candidate_ledger.py`，确定性去重与条件性模型选择 | **已实现**（`memory/candidate_admission.py`，`candidate-admission-v2`）：每个 Candidate 执行证据完整支持 + 同轮去重（请求带本轮全部 Candidate Claim，程序合并）；`DROP_LOW_VALUE` 并入 `REJECTED(low_value)`；执行失败时 revision 不提交；`REJECTED` 事件与 admitted/rejected/merged 计数 | `REJECTED` 不进 Review；Relation 只接收 `ADMITTED` |
+| 5 候选准入 | 实施前为 `candidate_ledger.py`，确定性去重与条件性模型选择 | **已实现**（`memory/candidate_admission.py`，`candidate-admission-v2`）：每个 Candidate 执行证据完整支持 + 同轮去重（请求带本轮全部 Candidate Claim，程序合并）；`DROP_LOW_VALUE` 并入 `REJECTED(low_value)`；单项无法判断时本轮拒绝该 Candidate，临时性失败时 revision 不提交；`REJECTED` 事件与 admitted/rejected/merged 计数 | `REJECTED` 不进 Review；Relation 只接收 `ADMITTED` |
 | 6 Support Assessment | 早期合并判断与 current Evidence 解析可复用 | **大，主要改动**：接入 exact correspondence（无容器状态）、按整个 Support 路由、明确 excerpt 规则、ChangeBundle 分类、固定顺序读取与提前退出、判别联合和 automated DestructiveValidation（已实现） | UNKNOWN 不调用模型；读完全部内容且覆盖权威才能 unsupported；REBIND 不重写历史 |
 | 7 Sparse Relation | 现有 sparse claim revision 合同与 revision proof 类型可复用 | **中**：请求删除 Support 结论与证据蕴含字段并更新合同版本（已实现，`claim-revision-v8-sparse-catalog`）；只接收 `ADMITTED` Candidate（已实现）；与 Support 并行（已实现） | 每个 Candidate 恰一行；省略即未提出关系；分片不能改变覆盖或原子提交 |
 | 7 程序归约/未决 | `reduce_relation_ledger` 与现有单提案 Review 可复用；proof 技术失败目前可退回 KEEP+ADD，多互斥 refiner 会抛错 | **中到大**：禁止把合并响应失败当独立新增；明确单提案可表达范围和失败出口；增加 SupportRelationCoordinator 组合表、至多一次复核与待审 Review 的确定性 ID、按状态复用和以 `stale` 关闭（已实现，`pipeline/support_relation_coordinator.py`，取代 `reduce_relation_ledger`）；SQLite 的 Plan apply 支持 Review 按 ID upsert 和 `stale` 关闭（已实现），HANA 随 pin 升级同改 | ADD/NOOP 不因 flag 自动产生 Review；多候选竞争不自动选后继；不顺带实现多选提案 UI |
@@ -1090,11 +1095,11 @@ Sparse Relation 在同 Unit 内读取全部 Active 旧 Memory，每个 Candidate
 
 - 首次导入的流式读取和更新时只读变化结构，都只改变供应内容，不能改变同一变化的新知识授权。
 - 三个例子分别得到证据更新、替代、无损修订；任何新增条件不能藏在 Required 中而保留错误 claim。
-- Sparse Relation 为每个 `ADMITTED` Candidate 输出一行；覆盖等价、细化双向、同范围新增要求、仅缩小范围、冲突和不确定。缺 Candidate 行、非法引用、重复或矛盾关系均为执行失败，不能被静默当作未提出关系。
-- 第 0.6.3 节组合表每行一个 fixture；每条 Claim 至多复核 1 次，复核执行失败时 revision 不提交、下次同步重试。
+- Sparse Relation 为每个 `ADMITTED` Candidate 输出一行；覆盖等价、细化双向、同范围新增要求、仅缩小范围、冲突和不确定。缺 Candidate 行、非法引用、重复或矛盾关系均为执行失败，不能被静默当作未提出关系；单个 Candidate 仍失败时，该 Candidate 本地留作未决，revision 照常提交。
+- 第 0.6.3 节组合表每行一个 fixture；每条 Claim 至多复核 1 次，复核的临时性失败使 revision 不提交、下次同步重试。
 - Relation 漏报 equivalent 的 fixture 下，同 Unit 不产生重复 Active Memory；同一 Plan 内不出现对同一 Memory 既删除、替代或修订又挂接。
 - 候选准入：证据不完整支持的 Candidate 为 `REJECTED`，记录拒绝事件；同轮重复被合并；每个 revision 报告 admitted/rejected/merged 数量。
-- 多条目请求组超时、输入超限、provider 413 或输出截断后对半拆分直到完成，每条 work 恰一个结果；单条 work（Support 为单个 ReadingGroup）仍失败为可恢复失败并保留诊断：Support 的单组超容量为 `UNRESOLVED(capacity)`，其他失败使该 revision 不提交，重试成功后 Candidate 不丢失。
+- 多条目请求组超时、输入超限、provider 413、输出截断，或纠正后输出仍不合法时对半拆分直到完成，每条 work 恰一个结果；单条 work 仍失败时保留诊断：单项无法判断（超容量或输出仍不合法）由各阶段记录、revision 提交，临时性失败使该 revision 不提交，重试成功后 Candidate 不丢失。
 - 等价候选不重复 ADD；跨文档等价可追加 Support；跨文档的 `updates` / `contradicts` 只写关系标注，不生成 Review，不退休任何一方。
 - Required 拆分/合并、移动+改写、重复原文、新增远处例外都进入同一个合同测试。
 - 每个 incumbent 有明确结果；模型未判到的事实风险与程序丢失完整输入/非法引用分开评价。

@@ -27,8 +27,8 @@ inference transport:
 domain planner
   -> ContextBundle + GenerationWork or JudgmentWork
   -> capability-checked executor
-     -> LLM batch runner (capacity, partitioning, split on capacity failure,
-        concurrency, coverage, correction, typed failures)
+     -> LLM batch runner (capacity, partitioning, split on capacity failure
+        or invalid output, concurrency, coverage, correction, typed failures)
         -> Structured LLM adapter
         -> classifier adapter: TypeSafe/Jev or a small-model LLM
   -> application-owned validation and reducer
@@ -277,20 +277,25 @@ class ItemFailure:
    character caps. The only other limits are ones a backend adapter declares, such
    as Jev's Choice option count.
 2. Packing items, in order, into transport requests that fit.
-3. Splitting on capacity failure. A request holding several items that ends in
-   `deadline_exceeded`, `input_capacity_exceeded`, a provider 413
-   `payload_too_large` or truncated output (`finish_reason=length`) is a capacity
-   failure: the runner splits it into two halves and resends each half until they
-   complete. Truncated output is not resent as JSON text at the same
-   `max_tokens`. In the chain form a cohort splits into two lanes that continue
-   from the same position with their own state, and a step holding a single Claim
-   that spans several ReadingGroups first halves its ReadingGroups. A request
-   holding one item, and in the chain form one ReadingGroup, that still fails
-   returns a typed `ItemFailure` with diagnostics. The failure says whether that
-   item alone exceeds the route's input capacity (from the capacity fit,
-   `input_capacity_exceeded` or a provider 413) or failed otherwise, for example
-   with a provider error, a timeout, or a schema or ID failure after the one
-   correction.
+3. Splitting on capacity failure or invalid output. A request holding several
+   items that ends in `deadline_exceeded`, `input_capacity_exceeded`, a provider
+   413 `payload_too_large` or truncated output (`finish_reason=length`) is a
+   capacity failure: the runner splits it into two halves and resends each half
+   until they complete. Truncated output is not resent as JSON text at the same
+   `max_tokens`. A request holding several items whose output is still invalid
+   after its one correction (a schema, ID or coverage failure, including a
+   malformed response the client rejects) is split the same way, so the output
+   for one item never fails the others. In the chain form a cohort splits into
+   two lanes that continue from the same position with their own state; a step
+   holding a single Claim that spans several ReadingGroups first halves its
+   ReadingGroups on a capacity failure, while invalid output splits only Claims.
+   A request holding one item that still fails returns a typed `ItemFailure`
+   with diagnostics. Its category says whether the item alone exceeds the
+   route's input capacity (`capacity_exceeded`: from the capacity fit,
+   `input_capacity_exceeded` or a provider 413), its output alone stays invalid
+   after the one correction (`invalid_response`), or the failure is transient
+   (`deadline_exceeded` or `provider_error`). The first two make the item
+   unjudgeable in isolation: sending it again would fail again.
 4. Bounded concurrency through the existing collector and Structured LLM
    semaphore.
 5. Complete coverage. Every submitted item ends with exactly one outcome, a
@@ -303,16 +308,20 @@ class ItemFailure:
 
 **What the caller decides**
 
-The business meaning of an `ItemFailure` belongs to the task:
+One rule governs every Source Unit task: a transient failure leaves the Source
+Unit revision uncommitted and the next sync retries it; an item that stays
+unjudgeable in isolation (capacity or invalid output) is recorded by its task,
+and the revision commits. One item the model cannot judge never blocks the rest
+of its Unit. The business meaning of an `ItemFailure` belongs to the task:
 
-| Task | Outcome of an item failure |
-| --- | --- |
-| Support Assessment and its targeted re-check | a ReadingGroup that alone exceeds capacity: `UNRESOLVED(capacity)`, KEEP, the Support baseline does not advance, and the diagnostic names the Source Unit and the ReadingGroup; any other failure: the Source Unit revision is not committed and the next sync retries it |
-| Change Impact | the Claim enters Support Assessment; no `AFFECTED` label is recorded |
-| Candidate admission | extraction-side failure: the Source Unit revision is not committed, so the Candidate is not added this round, and the next sync retries the revision |
-| Sparse Relation | extraction-side failure: the Source Unit revision is not committed and the next sync retries it; never read as "no relation proposed" |
-| Rerank | baseline order, also on timeout or invalid output; a fixed code rule, not configuration |
-| Claim Extraction | a ReadingGroup that alone exceeds capacity: skipped with a diagnostic naming the Source Unit, the ReadingGroup and `input_capacity_exceeded`, the other groups are extracted and the revision commits; any other failure: the existing extraction failure for that Source Unit, with no partial candidates |
+| Task | Item unjudgeable in isolation (capacity or invalid output) | Transient failure |
+| --- | --- | --- |
+| Support Assessment and its targeted re-check | `UNRESOLVED(capacity)` or `UNRESOLVED(invalid_response)`, KEEP, the Support baseline does not advance, and the diagnostic names the Source Unit and the ReadingGroup | the Source Unit revision is not committed and the next sync retries it |
+| Change Impact | the Claim enters Support Assessment; no `AFFECTED` label is recorded | the same |
+| Candidate admission | the Candidate is `REJECTED` for this round with reason `capacity_exceeded` or `invalid_response`, recorded like any rejection; no ADD | the Source Unit revision is not committed and the next sync retries it |
+| Sparse Relation and the same-Unit identity backstop | the Candidate is unresolved locally: consumed without ADD and without a Review, with a diagnostic; never read as "no relation proposed" | the Source Unit revision is not committed and the next sync retries it |
+| Claim Extraction | the ReadingGroup is skipped with a diagnostic naming the Source Unit, the ReadingGroup and the reason (`input_capacity_exceeded` or `invalid_response`); the other groups are extracted | the existing extraction failure for that Source Unit, with no partial candidates |
+| Rerank | baseline order, also on timeout or invalid output; a fixed code rule, not configuration | the same |
 
 **What it does not add**
 
@@ -394,13 +403,13 @@ setting until a classifier backend passes evaluation and is configured.
 
 ChangeBundles contain all changed ReadingGroups that fit one shared state. Removed content counts as changed: a removed ReadingGroup enters the bundle as its old text, so a distant qualifier that was deleted is visible to Change Impact. Three groups plus 300 fixed claims therefore produce 300 questions, not 900. If they do not fit one request, the runner chunks them at ReadingGroup boundaries into several bundles and application code OR-reduces each claim's labels: any `AFFECTED` routes that claim to complete Support Assessment. When Change Impact execution fails for a claim, for example a single item that still fails after the runner's splitting, an indivisible bundle beyond the backend's capacity, or a bundle with images that a text-only backend cannot read, that claim enters Support Assessment. The failure is never recorded as an `AFFECTED` label.
 
-Sparse Relation consumes deterministic exact matches first. Catalog bodies occur once per request; the LLM batch runner packs and splits requests, and when the old Memory catalog must be chunked the program takes the union of each Candidate's relations. Every admitted Candidate must return exactly one row. A missing row, an unknown ID or a duplicate or contradictory relation is rejected, and truncated output is a capacity failure that the runner splits; none of them is read as "no relation proposed". A failure that remains is an extraction-side failure: the Source Unit revision is not committed and the next sync retries it. Partitioning cannot weaken coverage, introduce lifecycle state or publish partial results. Whole-workspace relation discovery remains retrieve-then-classify over bounded `K` because its Cartesian product is unbounded and non-destructive discovery accepts recall loss.
+Sparse Relation consumes deterministic exact matches first. Catalog bodies occur once per request; the LLM batch runner packs and splits requests, and when the old Memory catalog must be chunked the program takes the union of each Candidate's relations. Every admitted Candidate must return exactly one row. A missing row, an unknown ID or a duplicate or contradictory relation is rejected, and truncated output is a capacity failure that the runner splits; none of them is read as "no relation proposed". The runner also splits a request whose output is still invalid after its correction, so a failure narrows to the Candidate that causes it. A Candidate whose row stays invalid when judged alone is unresolved locally: it is consumed without ADD and without a Review, the other Candidates are decided as usual, and because its completion row is missing, DestructiveValidation keeps every SUPERSEDE and UPDATE of the revision. A transient failure leaves the Source Unit revision uncommitted, and the next sync retries it. Partitioning cannot weaken coverage, introduce lifecycle state or publish partial results. Whole-workspace relation discovery remains retrieve-then-classify over bounded `K` because its Cartesian product is unbounded and non-destructive discovery accepts recall loss.
 
 TypeSafe/Jev evaluates independent Choice, Noul or Score questions over shared text state. A small-model LLM adapter emits the same application-owned result schema. Jev's current 64k request limit, text-only input and Choice option limit are adapter capabilities, not domain semantics. Jev has no documented cross-request prompt cache; its efficiency comes from many questions sharing one state. See [Models](https://docs.typesafe.ai/models), [System One](https://docs.typesafe.ai/concepts/system-one.md) and [Parallel questions](https://docs.typesafe.ai/cookbooks/parallel_questions.md).
 
 Complete Support Assessment remains `GenerationWork`, even though its final semantic result is a small union. One Primary, zero or more Required refs, opposing witnesses and streamed previous state form one dependent Evidence-plan proposal. Splitting them into independent classifier questions would recreate a second Support engine in application code.
 
-Missing answers, unknown IDs, incomplete manifests, unsupported modality, capacity failure or provider failure are technical work failures. The LLM batch runner first splits a multi-item request that hit a capacity failure in half; only a failure that remains for a single item is reported. Failures never become labels and do not trigger a hidden backend fallback. Retry uses the configured backend and exact work identity; changing backend is an explicit operation policy/configuration change.
+Missing answers, unknown IDs, incomplete manifests, unsupported modality, capacity failure or provider failure are technical work failures. The LLM batch runner first splits a multi-item request that hit a capacity failure, or whose output stayed invalid after its correction, in half; only a failure that remains for a single item is reported. Failures never become labels and do not trigger a hidden backend fallback. Retry uses the configured backend and exact work identity; changing backend is an explicit operation policy/configuration change.
 
 ### Support planning and execution contract
 
@@ -531,14 +540,14 @@ UNRESOLVED(reason)
 ```
 
 `UNRESOLVED` is the third, application-owned Support result, not a model label.
-It has two reasons: `partial_coverage`, an `UNKNOWN` exact correspondence under
-partial coverage (no model call), and `capacity`, a single ReadingGroup that
-alone exceeds the model's capacity for the work item. It causes KEEP, blocks
-automatic destructive action, does not advance the Support baseline, and commits
-with the revision. A provider error, a timeout, or a schema or ID failure that
-remains after the runner's splitting and the one correction is not
-`UNRESOLVED`: the Source Unit revision is not committed and the next sync
-retries it.
+It has three reasons: `partial_coverage`, an `UNKNOWN` exact correspondence under
+partial coverage (no model call); `capacity`, a single ReadingGroup that alone
+exceeds the model's capacity for the work item; and `invalid_response`, output
+for the work item alone that stays invalid after the one correction. It causes
+KEEP, blocks automatic destructive action, does not advance the Support
+baseline, and commits with the revision. A provider error or a timeout that
+remains after the runner's splitting is not `UNRESOLVED`: the Source Unit
+revision is not committed and the next sync retries it.
 
 ## 6. Current semantic-call inventory
 
@@ -579,9 +588,9 @@ Complete Support Assessment is always compound `GenerationWork`. Users cannot ro
 
 Classifier backends begin with fixed, non-mutating evaluation cases. Acceptance is per task contract and model version, not per response confidence. Evaluation records exact label quality, especially `AFFECTED` recall; complete item coverage; unknown-ID and truncation rejection; input/output tokens; concurrency and latency; and lifecycle simulation proving that labels alone cannot perform REMOVE, SUPERSEDE or RETIRE.
 
-Sparse Relation acceptance includes one row per admitted Candidate, rejection of missing rows, unknown IDs and truncation, the rule that omission means "no relation proposed", idempotent retries and identical results across legal partitions with a deterministic fixture client. Change Impact acceptance includes several changed groups combined into one bundle, multiple bundles OR-reduced by code, distant revocation/exception examples, a deleted distant qualifier, execution failure routing to Support Assessment, and source types represented by Markdown/Confluence, Jira and Teams. The global-scope rule has no dedicated cases; the generic #506 classifier evaluation applies. Complete Support Assessment is evaluated separately as Structured LLM generation/compound proposal work.
+Sparse Relation acceptance includes one row per admitted Candidate, rejection of missing rows, unknown IDs and truncation, a Candidate whose row stays invalid alone left unresolved while the revision commits, the rule that omission means "no relation proposed", idempotent retries and identical results across legal partitions with a deterministic fixture client. Change Impact acceptance includes several changed groups combined into one bundle, multiple bundles OR-reduced by code, distant revocation/exception examples, a deleted distant qualifier, execution failure routing to Support Assessment, and source types represented by Markdown/Confluence, Jira and Teams. The global-scope rule has no dedicated cases; the generic #506 classifier evaluation applies. Complete Support Assessment is evaluated separately as Structured LLM generation/compound proposal work.
 
-LLM batch runner acceptance includes multi-item requests that hit each capacity failure (timeout, input capacity, provider 413, truncated output) and complete after halving with exactly one result per item, a single-item failure returned as a typed failure with diagnostics, a single-Claim chain step that halves its ReadingGroups first, shared context chunked into per-item-and-chunk results, identical results across legal partitions and split points with a deterministic fixture client, rejection of missing, unknown and duplicate IDs, and a Support chain in which an item that finds Support in the first part leaves only after the first part is read.
+LLM batch runner acceptance includes multi-item requests that hit each capacity failure (timeout, input capacity, provider 413, truncated output) and complete after halving with exactly one result per item, a multi-item request whose output stays invalid after its correction split until the failing item stands alone (item and chain form, malformed output included), a single-item failure returned as a typed failure with diagnostics, a single-Claim chain step that halves its ReadingGroups first, shared context chunked into per-item-and-chunk results, identical results across legal partitions and split points with a deterministic fixture client, rejection of missing, unknown and duplicate IDs, and a Support chain in which an item that finds Support in the first part leaves only after the first part is read.
 
 ## 9. Non-goals
 
