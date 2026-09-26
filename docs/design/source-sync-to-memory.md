@@ -420,6 +420,27 @@ COMPLETE_SNAPSHOT 证明 A 消失（B 提交之后）
 
 Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 summary，Confluence 的 space 和页面标题，GitHub 的仓库、路径和 ref，GitHub Pages 的标题和 URL，本地 Markdown 的 vault 和路径，Teams 的会话类型、team、频道、窗口标题和时间范围，agent session 的客户端、窗口类型和标题；扩展 Source 至少给出标题和 source type。Adapter 只写 payload 里有的值，不猜测，也不为某个 Source 写专用 prompt。Unit Title 投影为每个 live Unit 的第一条 Observation（类型 `unit_identity`，表示 `unit-identity`），每次投影都返回，部分投影下也不会成为 `UNKNOWN`；整个 Unit 被 tombstone 时不再有 Unit Title。它编译为一个 Fragment：永远不能作为 Primary，可以被选为 Required 并随 Evidence 持久化。Claim 写出或依赖 Unit 名称（例如 issue key）时应把它选为 Required，候选准入据此检查识别信息（第 0.6.1 节）。Unit Title 变化（Jira summary 修改、页面改名、文件移动）是普通的修改内容：不产生抽取工作，选了它的 Support 为 `MODIFIED`，其他 Support 经 Change Impact。Jira 应分别表达 core/comments/changelog coverage 并完成分页；Teams 应提供稳定 thread/window membership、reply pagination 和明确 edit/delete/tombstone。Adapter 无法证明时降级为 Partial，流程仍可处理 positive changes，但不会从缺失推断删除。
 
+**Observation 修订时间。** 每个 Observation Revision 的 `observed_at` 是来源自己记录的、这份内容形成的时间，不是 MemForge 发现、拉取、接收或同步它的时间。来源没有这样的时间时为空，任何路径都不用同步时间、提交时间或当前时间代替。时间是修订的属性，不参与修订身份：修订 id 只由 Observation 和语义哈希决定，Unit 修订、Evidence Unit 和 Lifecycle Plan 的身份也不含时间，所以纠正时间不会产生新修订或 Delta。已有修订的时间为空、本次投影给出时间时，存储补写一次；已写入的时间不再改。内容从 A 改成 B 再改回 A 时，第二次的 A 复用第一次的修订，时间仍是第一次 A 的时间。
+
+整篇正文只有一个 Observation 的来源（Confluence 页面、GitHub 文件、GitHub Pages 页面、本地文件、agent concept 文档、扩展 Source），由 Gene 在 `normalize()` 里通过 `source_semantics["source_updated_at"]`（带时区偏移的 ISO 时间）报告正文的时间，没有就不写。这个时间属于整篇正文，对其中某一段来说是上界。`ContentItem.last_modified` 只用于发现阶段的变化判断、`since` 过滤和文档的 `last_modified`，可以是发现或提交时间，从不当作内容时间读取；文档和 Memory 的 `source_updated_at` 也只取 Gene 报告的时间。Adapter 尽量从已经取得的数据里拿时间；确实需要多一次 provider 调用时，选最便宜的真实来源，并写明成本，不加轮询，也不加配置。
+
+| 来源 | Observation 时间 | 额外成本 |
+|---|---|---|
+| Confluence 页面正文 | 页面版本时间 `version.when`，发现时已取得 | 无 |
+| Jira `issue_core` | changelog 完整时，取改动 core 字段（summary、description、status、priority、assignee、labels、resolution）的最晚一条 history 的 `created`；没有这样的 history 时取 `fields.created`；changelog 被截断时为空。`fields.updated` 会被评论等其他变化推后，不用 | 无 |
+| Jira comment、changelog | 评论的 `updated`，没有则 `created`；history 的 `created`。Issue 的文档时间取 `fields.updated` | 无，local agent 不改 |
+| Teams message | `lastModifiedDateTime`，没有则 `time`。窗口的文档时间取窗口内最晚的消息时间 | 无 |
+| GitHub Repository（cloud pull） | 在本次集合的 commit 上，改动该文件的最后一次提交的 committer 时间；符号链接取链接和目标两者中较晚的一次 | 每个文件每次同步多 1 次 REST 调用（`commits?sha=&path=&per_page=1`，符号链接 2 次），和读取 blob 一样在 `fetch()` 里执行，文件数不超过 `max_files` |
+| GitHub Repository（local push） | 同上，由 local agent 用 `gh api` 查询，随请求的 `source_updated_at` 发送 | 只对有变化、需要上传的文件多 1 次调用；旧版 local agent 不发送，时间为空 |
+| GitHub Pages | repo 模式取页面文件在分支上的最后提交时间；sitemap 模式取 `lastmod`；HTTP 模式取 `Last-Modified`（GitHub Pages 给的是部署时间，可能晚于真正的修改）；都没有时为空 | 无 |
+| 本地 Markdown | 在 Git 里已跟踪、没有本地修改的文件取最后提交时间（checkout 和 clone 会把文件修改时间设成当时）；其他文件取文件修改时间（复制或部分同步工具可能重置它） | 有文件要上传时多 1 次本地 `git status`，每个上传文件 1 次 `git log -1`，没有网络调用；旧版 local agent 不发送，时间为空 |
+| agent session concept | 授权这次修改的 primary 事件的 `timestamp`；用户更正和退休取用户操作的时间 | 无，插件不改 |
+| Unit Title | 空；它不能作为 Primary | 无 |
+| Source Artifact | 继承同一投影里父 Observation 的时间 | 无 |
+| 扩展 Source | Gene 报告的时间，没有则为空 | 无 |
+
+Evidence Unit 的时间取 Primary 锚定的 Observation Revision 的时间；去重 Support 指向 Memory 而不是来源修订，没有时间。关系分类器的原文时间只读这个时间（第 14 节），不再按 Source 类型退回文档时间。
+
 ### 0.10 验收案例
 
 | 案例 | 预期 |
@@ -810,7 +831,7 @@ identity 只排除本轮将被 DELETE、SUPERSEDE 或 UPDATE 的旧 Memory，以
 | 场景 | 创建前 L6 / 当前 Lifecycle | 提交后 L7 |
 |---|---|---|
 | Jira 已有“两人审批”，Confluence 新候选表达相同规则 | 等价且访问兼容则复用原 Memory，追加 Confluence 的独立完整 Support | 不再创建重复 Memory；若 L6 召回漏掉，L7 标注 `equivalent`，搜索只返回其中一条并注明另一来源说法相同 |
-| Jira 为“两人审批”，Confluence 新候选明确改为“三人审批”，此前二者没有共享 Memory | 不属于等价，不能把支持三人的 Evidence 附到两人 claim；候选按其合法来源进入独立创建 | 两者适用于同一情境、不能同时成立，且原文显示随时间变化：标注 `updates`，按两边当前 Support 的原文时间确定较新一方，搜索时较新一条靠前、较旧一条附提示；时间分不出先后则标注 `contradicts`。都不覆盖或退休 Jira 的知识 |
+| Jira 为“两人审批”，Confluence 新候选明确改为“三人审批”，此前二者没有共享 Memory | 不属于等价，不能把支持三人的 Evidence 附到两人 claim；候选按其合法来源进入独立创建 | 两者适用于同一情境、不能同时成立，且原文显示随时间变化：标注 `updates`，按两边 Primary Evidence 的原文时间（`evidence_time`，第 14 节）确定较新一方，搜索时较新一条靠前、较旧一条附提示；时间分不出先后则标注 `contradicts`。都不覆盖或退休 Jira 的知识 |
 | Memory 已同时有 Jira/Confluence 的 Support，之后 Confluence 改为三人审批 | 当前 Unit 已能通过 scoped Support 找到这条共享 Memory；完整评估 Confluence 的支持变化。其他 Source 仍有 Support 时，替代受 external-support Review gate 约束 | 可补充跨文档关系标注；不能接管当前 Unit 的原子 Support 更新 |
 
 跨文档只是更具体的补充、或属于不同场景时，两者都能成立，标注为 `none`，不把相似度当成 `equivalent`。命中跨文档候选不赋予修改其来源的权限。当前 Unit 的完整处理覆盖与跨文档的有界候选发现是不同合同；后者不能替代前者。
@@ -873,7 +894,7 @@ RelationDiscoveryWork 固定 Memory 的身份、预期内容 hash 和来源。Wo
 | `updates` | 同一情境，现在不能同时成立，较晚的一条取代较早的一条 | 较新一条靠前；较旧一条附提示，指向较新的 Memory、来源和日期 |
 | `contradicts` | 同一情境，不能同时成立，且不是随时间的取代 | 返回任一条时附上另一条和警告 |
 
-分类器对每条 Memory 看到：陈述、Memory 类型、来源类型、文档标题、Primary Evidence 的原文时间（未知时为空），以及支撑该陈述的 Evidence 原文。Evidence 原文是 Primary 和 Required Evidence 锚定范围内的 Fragment 呈现文本，与 Support Assessment 读到的相同；记录类来源按原文顺序给出字段内容，每个字段标上 JSON pointer，同一数组项的字段排在一起（如 Jira 评论正文，changelog 每一项的字段、旧值和新值），不给原始 JSON。原文时间取 Observation Revision 记录的时间（评论、changelog、消息）；只有文档时间就是正文修订时间的来源（Confluence 页面版本时间），且锚定的 revision 仍是当前 revision 时，才退回文档时间；其余情况为空，不把同步或提交时间当作原文时间。标题、时间和 Evidence 就是判断是否同一情境的依据。
+分类器对每条 Memory 看到：陈述、Memory 类型、来源类型、文档标题、Primary Evidence 的原文时间（未知时为空），以及支撑该陈述的 Evidence 原文。Evidence 原文是 Primary 和 Required Evidence 锚定范围内的 Fragment 呈现文本，与 Support Assessment 读到的相同；记录类来源按原文顺序给出字段内容，每个字段标上 JSON pointer，同一数组项的字段排在一起（如 Jira 评论正文，changelog 每一项的字段、旧值和新值），不给原始 JSON。原文时间取 Primary 锚定的 Observation Revision 的 `observed_at`，即来源给这份内容的时间（第 0.9 节），锚定的 revision 已不是当前 revision 或来源没有时间时为空；所有 Source 用同一条规则，不把同步或提交时间当作原文时间。标题、时间和 Evidence 就是判断是否同一情境的依据。
 
 Evidence 原文只能和存储的锚点一样窄：whole-Observation 锚点给出整个 Observation，页面或文件就是整页、整个文件，上限是 Fragment catalog 的 `DEFAULT_MAX_FRAGMENTS` 和 `DEFAULT_MAX_PRESENTATION_CHARS`；超过上限、锚定的 revision 已不是当前 revision、或 Primary 不是文本（如图片附件）时，没有 Evidence 原文。更窄的 Evidence 要靠抽取和 Support 产生更窄的锚点，不在分类器里裁剪。
 
