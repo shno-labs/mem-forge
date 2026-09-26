@@ -8,18 +8,16 @@ Canonical decision: [ADR 0030](../adr/0030-compile-revision-pinned-evidence-frag
 
 Document scope: the representation-specific authority algorithm. For the full
 sync lifecycle, unified Support assessment and revision-input policy, use
-[Source sync to Memory](source-sync-to-memory.md). This algorithm continues to
-govern new-candidate Primary eligibility in both full-context and delta modes.
-The delta/current-full selection described below is the implemented
-`revision-input-v6` behavior of Claim Extraction. Support Assessment makes no
-such selection: it reads the complete current revision in one fixed order with
-per-work-item early exit once the first part of the order (changed
-ReadingGroups, removed ones included, and prior-Evidence groups) has been read
+[Source sync to Memory](source-sync-to-memory.md). This algorithm governs
+new-candidate Primary eligibility. Claim Extraction reads the ReadingGroups that
+hold this authority: on an update only the changed structures with their
+ReadingGroups as context, on a first import every ReadingGroup, one LLM batch
+runner item per ReadingGroup, with no delta/current-full cost comparison
+(`revision-input-v7`). Support Assessment reads the complete current revision in
+one fixed order with per-work-item early exit once the first part of the order
+(changed ReadingGroups, removed ones included, and prior-Evidence groups) has
+been read
 ([ADR 0034, Ordered current-revision reading](../adr/0034-unify-incremental-support-and-claim-assessment.md#ordered-current-revision-reading)).
-Target (Cloud #505): Claim Extraction on an update reads only the changed
-structures with their ReadingGroups as context, and a first import streams per
-ReadingGroup through the LLM batch runner; it makes no delta/current-full cost
-comparison either. Primary authority below is unchanged by this.
 
 Target deepening accepted 2026-09-21: the private `RepresentationIndex`, Evidence
 Fragment Compiler and reading-index parsing are one operation-local
@@ -54,8 +52,8 @@ provider payload
   -> EvidenceCandidateRange(primary_eligible=true|false)
   -> Evidence Fragment Compiler
      owns representation parsing and exact Fragment boundaries
-  -> RevisionInputPlanner + representation reading index
-     own bounded read-scope expansion and delta/current-full selection
+  -> extraction request planning + representation reading index
+     own ReadingGroup items, Required-only reading context and runner packing
   -> Fragment Catalog
   -> LLM selects primary_ref + required_refs
   -> Resolver, Evidence Unit and existing lifecycle pipeline
@@ -78,10 +76,10 @@ contracts or registers a new representation contract with exact coordinates.
 
 ## 2. Problem being fixed
 
-The active Support-v2 / `projection-extraction-v9` path currently calls
-`plan_projection_extraction_batches()` directly. It sees that an Observation
-changed, but it does not consume the existing base/target changed ranges when
-deciding which current text may become Primary.
+Before this algorithm, the `projection-extraction-v9` path planned extraction
+batches directly from changed Observations. It saw that an Observation changed,
+but it did not consume the existing base/target changed ranges when deciding
+which current text may become Primary.
 
 For a document represented by one text Observation, a small edit therefore
 becomes:
@@ -149,8 +147,7 @@ plan_projection_evidence_work(
     target_projection,
     committed_base_snapshot,
     reprocess_all_current_observations,
-    extraction_contract_version,
-) -> tuple[ProjectionExtractionBatch, ...] | TypedPlanningFailure
+) -> ExtractionAuthority | TypedPlanningFailure
 ```
 
 `SourceUnitDeriver` binds this plan to the access-context and inference-
@@ -202,8 +199,9 @@ ProjectionEvidenceWorkPlan(
 
 This is one deep-module authority facade. Private representation mapping and
 exact initial Context candidates do not leak source-specific concepts to callers.
-The downstream reading index may add Required-only Context without changing any
-Primary bit in this result.
+`ExtractionAuthority` maps each authorized Observation to its exact ranges, or
+to its whole revision. The downstream reading context may add Required-only
+Context without changing any Primary bit in this result.
 
 ### 4.2 Responsibility split
 
@@ -213,7 +211,7 @@ Primary bit in this result.
 | `ProjectionEvidenceWorkPlanner` | transition validation, representation-scoped changed authority, initial exact Context candidates, access/source-activity/model-capability binding and stable plan digest | request-mode selection, provider API semantics, model judgments, Memory actions |
 | private representation adapter / `RepresentationIndex` | one implementation of base/target structural or field mapping and exact target coordinates | Source type branches or lifecycle policy |
 | Evidence Fragment Compiler | exact structural/field Fragment compilation inside supplied ranges | widening authority or inferring change |
-| `RevisionInputPlanner` / reading index | Claim Extraction input: one-step representation-owned reading expansion, complete delta/current-full candidates, request-format cost forecasting and selection (implemented; the target makes no selection, see the scope note) | Support Assessment reading, changing supplied Primary authority, semantic dependency inference, lifecycle grouping |
+| Extraction request planning (`pipeline/extraction_requests.py`) / reading index | Claim Extraction input: one runner item per ReadingGroup that holds authorized Primary, the shared Required-only reading context, and packing by actual capacity | Support Assessment reading, changing supplied Primary authority, cost comparison, semantic dependency inference, lifecycle grouping |
 | Support reading planner (`plan_support_revision`) | exact prior Evidence correspondence, whole-Support routing, the ChangeBundle (changed ReadingGroups and removed old text) and the ordered current-revision reading of the complete current revision | the Change Impact judgment itself (the revision work executor owns it), cost comparison, semantic similarity, stored correspondence status, Primary authority for new claims |
 | LLM | claim content and selection among offered refs | offsets, IDs, change detection, eligibility, lifecycle action |
 | Resolver / lifecycle | exact ref validation, Evidence Unit, Support and lifecycle safety | repairing or guessing an invalid authority plan |
@@ -224,13 +222,11 @@ confirmed content change into Evidence authority using the Revision's declared
 representation. This keeps provider facts at the projection seam and Evidence
 authority at the Evidence seam.
 
-`ProjectionEvidenceWorkPlanner` replaces the authority selection and authority
-digest responsibilities formerly embedded in `plan_projection_extraction_batches()`.
-`RevisionInputPlanner` then expands representation-proven reading groups and
-selects one complete request mode before the existing pure transport packer
-consumes already authorized ranges. The old changed-Observation/whole-authority
-path is removed for active fragment-catalog contracts; it cannot remain as a
-parallel entrypoint.
+`ProjectionEvidenceWorkPlanner` owns the authority selection formerly embedded in
+changed-Observation batch planning. Extraction request planning then reads the
+representation-proven ReadingGroups that hold this authority and lets the LLM
+batch runner pack them. The old changed-Observation/whole-authority path is
+removed; it cannot remain as a parallel entrypoint.
 
 ## 5. Representation algorithms
 

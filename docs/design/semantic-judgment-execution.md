@@ -369,11 +369,16 @@ unclear scope, such as "the process above", "this document" or "discontinued
 from a given date", is `AFFECTED`. The rule has no dedicated evaluation cases;
 the generic #506 classifier evaluation applies.
 
-`REJECTED` has two reasons: the selected Evidence does not completely support
-the Claim, or `low_value`, which replaces the current ledger's
-`DROP_LOW_VALUE`. Every admission request carries all of this round's Candidate
-claims as shared context, so the model can report a duplicate that sits in
-another request; the program merges reported duplicates deterministically.
+`REJECTED` has two reasons: `evidence_incomplete`, when the selected Evidence
+does not completely support the Claim, including identifying details such as a
+name or key that the Claim states, or `low_value`. Every admission request
+carries all of this round's Candidate claims as shared context, so the model can
+report a duplicate that sits in another request. Candidates with the same
+normalized claim, type and validity are duplicates without the model saying so,
+but each is judged on its own Evidence. The program merges duplicates
+deterministically, only among admitted Candidates, and keeps the most specific
+Candidate of each group; a Candidate rejected in any context chunk is
+rejected.
 
 Sparse Relation never receives Support results or their reasons and does not
 check whether Evidence supports the Candidate; candidate admission owns that
@@ -541,7 +546,7 @@ The current `LiteLlmStructuredClient` mixes generation, classification and ranki
 
 | Responsibility | Shape | Batch shape | Target executor |
 | --- | --- | --- | --- |
-| Claim Extraction / managed patch | open-vocabulary claim or patch generation; on an update only the changed structures with their ReadingGroups as context, on a first import every ReadingGroup | independent items | Structured LLM `GenerationExecutor` |
+| Claim Extraction / managed patch | open-vocabulary claim or patch generation; on an update only the changed structures with their ReadingGroups as context, on a first import every ReadingGroup; each request reads its items with their reading context and the Unit Title | independent items, one per ReadingGroup that holds authorized Primary | Structured LLM `GenerationExecutor` |
 | Complete Support Assessment | dependent status + Primary/Required + carried witnesses | ordered chain | Structured LLM `GenerationExecutor` |
 | Change Impact | fixed claim vs shared ChangeBundle; `AFFECTED/UNAFFECTED` | independent items | existing Structured LLM until a classifier backend (Jev or small-parameter LLM) passes #506 evaluation |
 | Sparse Relation (same Unit) | one row per admitted Candidate; only meaningful relations to same-Unit old Memories | independent items | Structured LLM; a pairwise classifier needs its own contract and evaluation |

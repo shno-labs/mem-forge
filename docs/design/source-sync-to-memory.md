@@ -6,7 +6,7 @@
 
 **阅读约定：**第 0 节是已接受的目标合同，已实现的部分见下一段，其他部分尚未实现，两者都不代表已经部署；第 18 节继续记录实现差异。后文历史段落中的 L1–L7 只是旧模型职责编号，不能进入新的类型、方法或状态名称。新设计统一使用 Claim Extraction、候选准入（Candidate Admission）、Support Assessment、Sparse Relation（同 Unit 的 Claim Reconciliation）、SupportRelationCoordinator 和 Lifecycle Reconciliation。若旧段落与第 0 节冲突，以第 0 节和 [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md#target-contract-tracked-by-cloud-issue-505)（Support 与 Relation 的汇合见[该 ADR 的目标合同概览](../adr/0034-unify-incremental-support-and-claim-assessment.md#target-contract-overview)）为准。
 
-**当前已实现合同与目标的差别：**Support 一侧的第 0.3-0.5 节已经实现：精确 Evidence 对应、按整个 Support 路由、Change Impact、顺序读取和 witness 累积，不再比较成本；第 0.6 节的候选准入、Sparse Relation 与 SupportRelationCoordinator 尚未实现。Claim Extraction 仍用 `revision-input-v6`，在完整 Delta 计划与完整 Full 计划中选择序列化成本较低者；同 Unit Relation 使用 [Sparse claim catalog](sparse-claim-catalog.md) 描述的稀疏合同（`claim-revision-v7-sparse-catalog`），请求带旧 Memory 的 `current_support` 结论，响应带证据蕴含状态（`evidence_status`）；候选准入只在多个候选时调用模型，调用失败时保留整批候选。这些行为在 #505 完成前保留，不加过渡保护；#505 必须完整实现第 6.2 节的提取读取范围。
+**当前已实现合同与目标的差别：**Support 一侧的第 0.3-0.5 节已经实现：精确 Evidence 对应、按整个 Support 路由、Change Impact、顺序读取和 witness 累积，不再比较成本；第 0.6.1 节的候选准入（`candidate-admission-v1`）和第 0.6.2 节的 Sparse Relation 请求（`claim-revision-v8-sparse-catalog`，不带 Support 结论和证据蕴含状态）已经实现；SupportRelationCoordinator 尚未实现，所以 Relation 仍在 Support Assessment 之后执行，目录只含 Support 已有结论的旧 Memory，Relation 与 Support 的组合仍由 reducer 按程序规则完成（第 10 节）。第 6.2 节的 Claim Extraction 读取范围已经实现（`revision-input-v7`）：更新只读获授权的变化结构及其 ReadingGroup，首次导入读每个 ReadingGroup，每个含授权 Primary 的 ReadingGroup 是 LLM batch runner 的一个 item，不比较成本、不截断。每个 Unit 的 Unit Title（第 0.9 节）投影为一条 Observation，出现在每一次模型读取中（第 0.2 节）。
 
 ## 文档职责与阅读入口
 
@@ -117,6 +117,16 @@ scope / container / before / target / after
 ```
 
 `target` 可以是 current Fragment，也可以是 `RemovedAnchor`。因此纯删除不需要伪造空 current Fragment。ReadingGroup 只扩大阅读范围，不扩大 Primary 权限；Context 和历史 excerpt 不能被选为当前 Evidence。
+
+Support 与 Claim Extraction 共用同一个 ReadingGroup 划分：一个最外层列表，或一个 Fragment（`RevisionAssessmentContext.reading_groups`）。每一次模型读取（Claim Extraction 的每个请求、Support Assessment 的每一步、Change Impact 的每个 bundle）都在所读 Fragment 之外带同一份阅读上下文（`RevisionAssessmentContext.reading_context`）：
+
+- 表示层给出的标题、标题后第一段和列表引导段；
+- 所读 Observation 由 provider 声明其回复或跟随的那一条：有 `REPLIES_TO` 时取被回复的消息，否则取 `PRECEDES` 的前一条（Jira comment 读到前一条 comment 或 issue core）；不按顺序或文本相似度推断；
+- 该 Unit 的 Unit Title（第 0.9 节）。
+
+阅读上下文只能被选为 Required，不设字符上限；单个 item 连同其上下文超出容量时按 LLM batch runner 的规则处理。Unit Title 不自成 ReadingGroup，也不是 Support 读取顺序里的一段，它在每一步都作为阅读上下文出现；Unit Title 变化时作为变化内容进入 ChangeBundle 和 Support 读取顺序的第一段。
+
+抽取时单个 ReadingGroup 连同阅读上下文就超出请求容量，该 revision 以 `input_capacity_exceeded` 失败、不提交；重试读的是同样的输入，所以在路由容量或 Unit 内容变化之前一直失败。这是已知限制：Support 有 `UNRESOLVED(capacity)` 让 revision 仍能提交，抽取没有对应规则，因为跳过这一组会让它的知识静默丢失。
 
 #### `RepresentationCompiler` 只在 planner 内部暴露
 
@@ -266,7 +276,7 @@ UNSUPPORTED(work_id)
 
 ### 0.6 候选准入、Sparse Relation 与两条线的汇合
 
-本节是目标合同，由 #505 跟踪；模型调用经 #505 第一步交付的 LLM batch runner。规范性决策记录在 [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md)。
+本节是目标合同，由 #505 跟踪；模型调用经 #505 第一步交付的 LLM batch runner。规范性决策记录在 [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md)。第 0.6.1 节已经实现；第 0.6.2 节的请求与输出已经实现，与 Support 并行执行、目录包含 `UNRESOLVED` 旧 Memory 随第 0.6.3 节一起实现。
 
 #### 0.6.1 候选准入
 
@@ -278,7 +288,7 @@ UNSUPPORTED(work_id)
 | 结果 | 处理 |
 | --- | --- |
 | `ADMITTED` | 进入 Sparse Relation |
-| `REJECTED`（证据不足，或 `low_value`：现有的 `DROP_LOW_VALUE` 并入这一结果） | 本轮不新增，不进 Review |
+| `REJECTED`（`evidence_incomplete` 证据不足，或 `low_value`） | 本轮不新增，不进 Review |
 | 同轮重复 | 合并，保留一个进入 Sparse Relation |
 | 执行失败（拆分后仍超时、schema 错误、非法 ID 等） | 属于提取侧失败：该 Source Unit revision 不提交，Candidate 本轮不新增；下次同步重试这个 revision（沿用现有提取失败合同），不部分发布 |
 
@@ -385,7 +395,9 @@ COMPLETE_SNAPSHOT 证明 A 消失（B 提交之后）
 
 ### 0.9 Source adapter 前置合同
 
-统一流程依赖 Adapter 提供：稳定 Unit/Observation identity、coherent provider checkpoint、细粒度 coverage、Added/Changed/Removed/Tombstoned facts、结构/顺序/回复关系和 exact selectable ranges。Jira 应分别表达 core/comments/changelog coverage 并完成分页；Teams 应提供稳定 thread/window membership、reply pagination 和明确 edit/delete/tombstone。Adapter 无法证明时降级为 Partial，流程仍可处理 positive changes，但不会从缺失推断删除。
+统一流程依赖 Adapter 提供：稳定 Unit/Observation identity、coherent provider checkpoint、细粒度 coverage、Added/Changed/Removed/Tombstoned facts、结构/顺序/回复关系、exact selectable ranges，以及 Unit Title。
+
+Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 summary，Confluence 的 space 和页面标题，GitHub 的仓库、路径和 ref，GitHub Pages 的标题和 URL，本地 Markdown 的 vault 和路径，Teams 的会话类型、team、频道、窗口标题和时间范围，agent session 的客户端、窗口类型和标题；扩展 Source 至少给出标题和 source type。Adapter 只写 payload 里有的值，不猜测，也不为某个 Source 写专用 prompt。Unit Title 投影为每个 live Unit 的第一条 Observation（类型 `unit_identity`，表示 `unit-identity`），每次投影都返回，部分投影下也不会成为 `UNKNOWN`；整个 Unit 被 tombstone 时不再有 Unit Title。它编译为一个 Fragment：永远不能作为 Primary，可以被选为 Required 并随 Evidence 持久化。Claim 写出或依赖 Unit 名称（例如 issue key）时应把它选为 Required，候选准入据此检查识别信息（第 0.6.1 节）。Unit Title 变化（Jira summary 修改、页面改名、文件移动）是普通的修改内容：不产生抽取工作，选了它的 Support 为 `MODIFIED`，其他 Support 经 Change Impact。Jira 应分别表达 core/comments/changelog coverage 并完成分页；Teams 应提供稳定 thread/window membership、reply pagination 和明确 edit/delete/tombstone。Adapter 无法证明时降级为 Partial，流程仍可处理 positive changes，但不会从缺失推断删除。
 
 ### 0.10 验收案例
 
@@ -405,6 +417,13 @@ COMPLETE_SNAPSHOT 证明 A 消失（B 提交之后）
 | 部分投影下旧 Support 有 `UNKNOWN` part，Relation 报 equivalent | 用 Candidate 的当前 Evidence 复核一次；支持则换绑到该 Evidence，不新增 Memory |
 | 部分投影下旧 Support 有 `UNKNOWN` part，Relation 报 contradicts | 创建协调器 Review，不自动替代 |
 | 候选证据不完整支持 Claim | 候选准入 `REJECTED`：不新增、不进 Review，记录拒绝事件并计数 |
+| Jira Claim 写出 issue key | Claim 选了 Unit Title 为 Required 时，准入看得到 key 并可准入；Claim 把本 issue 的内容写成另一个 key 且所选 Evidence 没有给出它时 `REJECTED(evidence_incomplete)` |
+| 已有 Unit 升级后首次带 Unit Title | Unit Title 是新增内容，不产生抽取调用；`EXACT_UNCHANGED` 的 Support 经 Change Impact |
+| Jira summary 修改 | 选了 Unit Title 的 Support 为 `MODIFIED`，进入 Support Assessment；其他 Support 经 Change Impact |
+| 已关闭的 Jira issue 按当前 revision 重新处理 | 不访问 provider，从存储的原始内容和已提交 revision 的 Artifact 重新投影；抽取读每个 ReadingGroup；每条 Support 按没有可用基线整篇读取（带 Unit Title，不换绑、不走 Change Impact）；同步游标不变，不推断删除；其他 Unit 不受影响 |
+| 已关闭的 Confluence 子页面按当前 revision 重新处理 | Document 行保存了 Gene 发现该页面时的 item 元数据（含父页面），重新投影得到与已提交 revision 相同的位置 |
+| 重新处理时存储内容缺失或不再重现 Unit 位置 | 该 Unit 以 `stored_raw_content_missing`、`stored_artifact_missing`、`stored_artifact_invalid` 或 `stored_input_incomplete` 等原因失败、不提交，其他 Unit 照常处理；保存 item 元数据之前存储的 Confluence 子页面和 GitHub 文件属于后者，普通同步重新存储该 Document 后即可重新处理 |
+| 更新的阅读上下文超过 20,000 字符 | 不截断：变化结构所在的整个 ReadingGroup 与其阅读上下文都被读到；单个 item 超出容量是类型化容量错误 |
 | Relation 漏报 equivalent | 同 Unit 不产生重复 Active Memory；同一 Plan 不对同一 Memory 既删除、替代或修订又挂接 |
 | Change Impact 判 `UNAFFECTED`，Relation 报 contradicts | 对该 Claim 补做一次 Support Assessment；仍冲突进入 Review |
 | 同一冲突在下一 revision 再次出现 | 确定性 ID 指向原 Review，不新建：`pending` 的沿用并刷新 stale guard，`rejected` 的不再提出，`stale` 的重新打开；冲突消失时以 `stale` 关闭 |
@@ -525,7 +544,7 @@ flowchart TD
 | SourceDerivationAttempt / BatchRecord | 持久化本次目标、工作清单、完成输出和失败信息，以便准确恢复 | 否 |
 | RevisionFragmentIndex / Catalog | 按固定版本编译的片段与临时引用；操作级复用，不引入片段业务状态表 | 否 |
 | RawMemory / Candidate | 模型提取的候选及选择的证据；成功提取结果可暂存 | 否 |
-| CandidateLedgerResult / 支持判断 / 关系判断 | 准入与生命周期准备结果；通常是工作内中间值，必要审计进入已有 Plan/runtime 记录 | 否 |
+| CandidateAdmission / 支持判断 / 关系判断 | 准入与生命周期准备结果；通常是工作内中间值，必要审计进入已有 Plan/runtime 记录 | 否 |
 | Entity / EntityAlias | 项目、系统等名称的规范身份；实体字典不是 Memory | 否 |
 | EvidenceReference | 精确版本、位置、摘要和角色的原文引用 | 是正式知识的依据 |
 | EvidenceUnit | 一条 claim 的完整证据组：一个 Primary、零到多个 Required | 是正式支持依据 |
@@ -577,11 +596,13 @@ Representation 为需要的固定 revision 构建一次索引；相同 base/targ
 
 小文档读全文也不能扩大第二个范围。旧片段可支持固定旧 claim；不能因为成为 revalidation Primary 就获得 extraction Primary 授权。Required 和辅助 Context 不自动产生新的提取权限。首次导入或明确全量 reprocess 使用其自身授权合同。
 
+明确的重新处理有两种：force-resync 重新抓取整个 Source，每个 Unit 按当前全部 Observation 授权，Support 走普通路由；运维人员按当前 revision 重新处理（`REPROCESS` sync run，`POST /sources/{id}/reprocess` 或 `memforge sources reprocess`）只读指定 Document 的存储输入（Document 行保存的 Gene item 元数据、原始内容和已提交 revision 的 Artifact），用当前 adapter 和编译器重新投影，同样按全部 Observation 授权，并在 derivation 上下文里记录 `support_without_baseline`，让每条 Support 按没有可用基线整篇读取。两种都以本次运行 id 作为 `reprocess_operation_id`，所以重新投影与已提交 revision 相同时也会重新执行，不复用旧 derivation 的完成工作。两种都对照已提交的 base 规划：需要语义工作的 Unit 不提前记录投影，投影由生命周期提交在同一事务里记录，因此只有位置变化的 Unit 也能按已提交 base 重新处理。
+
 ### 6.2 输入范围与请求预算
 
-本节中 Support Assessment 与 Claim Extraction 的读取规则是目标合同（#505）；当前实现见文首阅读约定。
+本节中 Support Assessment 与 Claim Extraction 的读取规则已经实现；尚未实现的部分见文首阅读约定。
 
-首次导入：L1 按 ReadingGroup 经 LLM batch runner 流式提取候选，不要求全文装进一次请求。
+首次导入与明确的重新处理：Claim Extraction 读每个 ReadingGroup，经 LLM batch runner 流式提取候选，不要求全文装进一次请求。
 正常更新：统一 RevisionContextPlanner 用 exact correspondence、CatalogDiff、coverage
 和完整 current manifest 确定 Support 的读取顺序。第一段包括新增、修改和删除的结构（删除的只读旧文本）、该 Claim 自己的旧
 Evidence 所在的 ReadingGroups、compact Support metadata、旧 Evidence 的 current
@@ -596,6 +617,10 @@ exact historical excerpts；第二段是当前 revision 的其余 ReadingGroups�
 对 Claim Extraction，正常更新只读取变化的结构，并以其所在 ReadingGroup 作为上下文；
 Primary 本来就只限于本次变化的授权工作。提取同样不比较 Delta 与 current-full 的成本，
 也不要求一次请求装下完整阅读范围。程序可解析完整快照以计算准确 delta；这本身不授权全文。
+实现上，每个含授权 Primary 的 ReadingGroup 是一个 item，请求读这些 item 及其阅读上下文
+（第 0.2 节），阅读上下文里的 Fragment 一律降为 Required-only；runner 按实际容量把 item
+打包成请求，每个请求在暂存前落成一个 derivation batch；执行时仍经 runner，多条目请求
+超时或超容量时对半拆分。每个授权 Primary Fragment 恰好属于一个请求。
 
 Claim Extraction 按 representation-safe ReadingGroups 经 LLM batch runner 传输；
 Support Assessment 按上述读取顺序流式传输。Claim Extraction 仅从每组获授权
@@ -652,11 +677,11 @@ Evidence-fixed、多 Memory cohorts 可使用 `REVISION_FIRST` cache layout；co
 
 `support_assess` 保存模型阶段；`support_finalize` 仅是程序完成收据。分批 witness 不成为 Evidence 或 lifecycle state；分包与拆分点不改变覆盖、work 身份与 lifecycle 含义。测试要求：使用确定性的 fixture client 时，不同的合法分包和拆分点得到相同结果。
 
-## 7. 步骤四：Claim Extraction【早期合同已实现；第 0 节优化待验收】
+## 7. 步骤四：Claim Extraction【已实现，按 ReadingGroup 经 LLM batch runner】
 
 **触发：**首次导入有获授权内容，或普通更新存在获授权的新增/修改结构。仅删除且无当前 Primary 授权时可跳过。
 
-**输入：**本次工作类型、允许生成 Primary 的当前片段、可读上下文、角色限制和输出合同。图片参与判断时必须实际供应对应 revision 的 bytes，不用空文字或摘要替代。
+**输入：**允许生成 Primary 的当前片段所在的 ReadingGroups、它们的阅读上下文（含 Unit Title）、角色限制和输出合同。图片参与判断时必须实际供应对应 revision 的 bytes，不用空文字或摘要替代。
 
 **LLM 输出：**canonical claim、类型、实体 mentions、适用时间等候选信息，以及 Primary/Required 的当前片段引用。文档摘要或 Artifact 摘要如有，属于可选辅助输出，不能替代 Evidence。
 
@@ -664,11 +689,13 @@ Evidence-fixed、多 Memory cohorts 可使用 `REVISION_FIRST` cache layout；co
 
 本文按两个步骤描述：L1 找出本次变化带来的新知识候选；L3 检查已有知识是否仍被当前来源支持。L1 输出候选，不直接创建 Memory；L3 输出支持判断与证据调整方案，不直接修改旧 Memory。两种结果都交给后面的统一 reconciliation 和 Lifecycle Plan，决定最终如何提交。
 
-## 8. 步骤五：候选准入【当前为条件性 LLM；目标为每个 Candidate 执行】
+## 8. 步骤五：候选准入【已实现，每个 Candidate 执行】
 
-**当前实现：**输入是本次提取到的候选集合及必要的候选元数据，不需要再次读全文。程序先做确定性质量检查和完全相同内容合并；有多个候选时 LLM 选择不冗余且有价值的候选，输出 CandidateLedgerResult；调用失败时保留整批候选。
+程序先做确定性质量检查。每个 Candidate 都经 LLM batch runner 判断一次；规范化后 Claim、类型和有效期都相同的 Candidate 由程序直接视为重复，但各自按自己的 Evidence 判断，只有一个 Candidate、Unit 没有旧 Memory 时也一样：请求带 Candidate 的 Claim、类型、有效期和所选 Primary/Required Evidence 原文，并带本轮全部 Candidate 的 ID 与 Claim 作为共享上下文。Claim 里的名称、编号等识别信息属于 Claim，所选 Evidence 没有给出时判为 `REJECTED(evidence_incomplete)`。
 
-**目标（#505）：**候选准入对每个 Candidate 都执行，在同一个请求内检查所选 Evidence 是否完整支持 Claim，并报告同轮重复（每个请求都带本轮全部 Candidate 的 Claim），由程序合并；`REJECTED`（含 `low_value`）时本轮不新增；执行失败时该 Source Unit revision 不提交，下次同步重试。完整规则、日志与统计见第 0.6.1 节。
+共享上下文被分块时，任一块判 `REJECTED` 即为 `REJECTED`，各块报告的重复取并集。程序只在 `ADMITTED` 的 Candidate 之间按连通分量合并，每组保留内容最具体（规范化后最长）的一条，相同时保留先抽取的一条；被拒绝的 Candidate 不吸收、也不连接其他 Candidate。准入请求作为 `candidate_admission` 工作记入 derivation，重试时复用已完成的请求，提交门禁要求这些工作已完成。
+
+每个 `REJECTED` 记一条 `candidate_admission_rejected` 审计事件，内容为 Source Unit、目标 revision、Claim、所选 Evidence 的位置和拒绝理由，不含原文；统计键为 `candidate_admission_admitted_count`、`_rejected_count`、`_merged_count`、`_llm_calls`、`_prompt_chars`。执行失败（拆分到单条后仍超容量、schema 错误、非法 ID、缺少所选 Evidence）使该 Source Unit revision 不提交，下次同步重试。完整规则见第 0.6.1 节。
 
 这是本次候选内部的准入，不是跨文档 Memory 身份匹配。模型只能准入、拒绝或合并现有候选，不自行编写新的合成 claim。
 
@@ -711,9 +738,11 @@ fixed old claim
 
 程序解析选择并构造完整 current Evidence Unit；模型判断语义，程序验证 revision、selector membership、角色、digest 与 authority。`REBIND_SUPPORT` 在同一事务中附加 target-Revision Evidence 的新 Support assertion，并将被替换的旧 assertion 标为 inactive；Memory/claim 不变，旧行与历史不改写。
 
-## 10. 步骤七：Sparse Relation【目标，#505】
+## 10. 步骤七：Sparse Relation【请求合同已实现；与 Support 并行待 coordinator】
 
-本阶段只比较本 Unit 的 `ADMITTED` Candidates 与同 Unit Active 旧 Memory。程序先处理 exact duplicate；其余由 Structured LLM 读取 Candidate、其当前 Evidence 和同 Unit 全部 Active 旧 Memory 的 Claim，为每个 Candidate 输出一行，只列有意义的关系。输入不含 Support 结论，也不检查 Candidate 的证据。合同细节见第 0.6.2 节；当前实现使用 [Sparse claim catalog](sparse-claim-catalog.md) 的请求形状。
+本阶段只比较本 Unit 的 `ADMITTED` Candidates 与同 Unit Active 旧 Memory。程序先处理 exact duplicate；其余由 Structured LLM 读取 Candidate、其当前 Evidence 和同 Unit 全部 Active 旧 Memory 的 Claim，为每个 Candidate 输出一行，只列有意义的关系。输入不含 Support 结论，也不检查 Candidate 的证据。合同细节见第 0.6.2 节，请求形状见 [Sparse claim catalog](sparse-claim-catalog.md)。
+
+**当前实现：**SupportRelationCoordinator 实现之前，Relation 在 Support Assessment 之后执行，由 reducer 按程序规则组合两者：等价的 Candidate 遇到 `UNSUPPORTED` 的旧 Memory，或修订证明说 Candidate 保留了 `UNSUPPORTED` 旧 Memory 的全部含义时，两个判断冲突，该对及其相关组件作为局部未决处理：保留旧 Memory 和它的 Support，消费 Candidate，不 ADD，也不提出删除。协调器的定向复核实现后取代这条规则。
 
 | 关系 | 含义 |
 | --- | --- |
@@ -840,7 +869,7 @@ SourceSyncRun/SyncState 汇总页面处理结果，报告成功、局部失败�
 
 | 领域职责 | 何时发生 | 主要输入 | 输出 | 是否直接改变正式 Memory |
 |---|---|---|---|---|
-| Claim Extraction | 有获授权 Primary 工作 | current ReadingGroups、授权、解释上下文、实际图片 | Candidate + 当前 Evidence selection | 否 |
+| Claim Extraction | 有获授权 Primary 工作 | 含授权 Primary 的 current ReadingGroups、阅读上下文（含 Unit Title）、实际图片 | Candidate + 当前 Evidence selection | 否 |
 | 候选准入 | 每个 Candidate | 候选、所选 Evidence 与同轮其他候选 | `ADMITTED` / `REJECTED` / 合并；Structured LLM | 否 |
 | Change Impact | 全部 part 为 `EXACT_UNCHANGED` 且本次有变化内容 | fixed claims + capacity-safe ChangeBundle | 每 claim 的 `AFFECTED` / `UNAFFECTED`；现有 Structured LLM，分类器 backend 通过 #506 评估后可替换 | 否 |
 | Support 读取顺序 | Support work 已建立 | exact correspondence、CatalogDiff、coverage、完整 current manifest | 固定读取顺序；程序 | 否 |
@@ -915,7 +944,7 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 | 部分覆盖或单组超容量 | `UNRESOLVED(reason)` 保留旧 Memory；Support 与 Relation 的语义冲突按第 0.6.3 节组合表处理，不自动换模型期待改口 |
 | Support 或定向复核执行失败 | 该 Source Unit revision 不提交，下次同步重试 |
 
-不同职责的失败有不同出口：候选准入或 Sparse Relation 执行失败时，该 Source Unit revision 不提交，下次同步重试（当前 CandidateLedger 在失败时保留整批候选，#505 改为这一规则）；Support Assessment 与定向复核执行失败时同样不提交该 revision、下次同步重试，只有单组超容量为 `UNRESOLVED(capacity)` 并 KEEP；Change Impact 执行失败进入 Support Assessment；Sparse Relation 执行失败不能当作“未提出关系”。任何一步的失败都不能变成“直接新增”。保留已有日志/指标，分别统计确定性规范化、局部纠正、语义 Review、能力失败及实际外层重试；不能只看最终 partial sync 数量。
+不同职责的失败有不同出口：候选准入或 Sparse Relation 执行失败时，该 Source Unit revision 不提交，下次同步重试；Support Assessment 与定向复核执行失败时同样不提交该 revision、下次同步重试，只有单组超容量为 `UNRESOLVED(capacity)` 并 KEEP；Change Impact 执行失败进入 Support Assessment；Sparse Relation 执行失败不能当作“未提出关系”。任何一步的失败都不能变成“直接新增”。保留已有日志/指标，分别统计确定性规范化、局部纠正、语义 Review、能力失败及实际外层重试；不能只看最终 partial sync 数量。
 
 实施验收必须回放此前修复的边界样例：角色 ref 兼容、重复 Required、固定 slot 重复、非适用字段、完整选择纠正、纠正耗尽不重放外层工作，以及文档其他 Unit 继续完成。支持的输入不应因新模型 schema 更严而退化为 partial sync；真正无法证明的状态仍不能假报成功。
 
@@ -926,21 +955,21 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 | 当前标识 | 实际职责 | 本次升级原则 |
 |---|---|---|
 | `projection-extraction-v9` | L1 的提取合同，使用 Fragment catalog 与模型 selector；是 Source 抽取使用的唯一合同 | 保持现有 L1 selector/授权语义时不因 L3/L4 合并而自动命名 v10；若提取合同含义确实改变，再显式注册新提取合同 |
-| `COMPILER_CONTRACT_VERSION = 4` | 表示编译、片段边界、坐标和 catalog 身份合同 | 完整表格、列表、HTML 等结构语义已经由 compiler 4 固定；输入模式变化不重编译历史 Evidence。改变片段切分或文字表示时，已有 Evidence 可能无法再精确匹配，相关 Support 在其 Unit 下一次出现新 revision 时整体进入 Support Assessment；这类变更须在 PR 中说明此影响，不做版本迁移或放量机制 |
-| authority policy / presentation policy（当前分别 5 / 4） | 增量结构授权及模型目录呈现规则 | 只有对应规划/呈现语义改变才调整，变化必须进入工作输入身份 |
+| `COMPILER_CONTRACT_VERSION = 4` | 表示编译、片段边界、坐标和 catalog 身份合同 | 完整表格、列表、HTML 等结构语义已经由 compiler 4 固定；输入模式变化不重编译历史 Evidence。改变片段切分或文字表示时，已有 Evidence 可能无法再精确匹配，相关 Support 在其 Unit 下一次出现新 revision 时整体进入 Support Assessment；不再更新的 Unit 由运维人员按当前 revision 重新处理（第 6.1 节）。这类变更须在 PR 中说明 OSS 与 Cloud 的负载以及建议重新处理哪些 Unit，不做版本迁移或放量机制 |
+| authority policy / presentation policy（当前分别 6 / 5） | 增量结构授权及模型目录呈现规则 | 只有对应规划/呈现语义改变才调整，变化必须进入工作输入身份 |
 | L3/L4 的语义工作合同及输入身份 | 决定结果是否可复用 | **必须显式更新**：新输入模式、支持判断、可变 Required 与合并关系/修订响应不能复用旧合同结果；沿用现有 descriptor/hash/staging 机制，不新建版本账本 |
 | Source revision / Evidence Unit v2 | 前者是采集内容版本，后者是 Support 数据模型能力 | 都不因模型调用合并自动变化；本阶段没有新 Support schema 或历史内容迁移要求 |
 
 现有 `source_derivation.py` 将 extraction contract、base/target、权限、inference
 能力及 authority/presentation 规则纳入可复用身份。未完成 derivation 按现有
 合同变更流程失效/重建，已提交 Memory 和历史 Evidence 不被批量改写。当前实现
-保持 `projection-extraction-v9`、compiler 4、authority policy 5、presentation
-policy 4、`revision-support-v2`、`claim-revision-v7-sparse-catalog` 和
-`memory-relation-v3`；统一阅读范围与成本选择使用 `revision-input-v6`，并进入
-inference capability hash 与 source-derivation `semantic_input_policy`。目标（#505）
-的固定读取顺序、不做成本选择的提取读取范围、去掉 Support 结论与证据蕴含字段的
-Relation 请求，以及新的候选准入合同，都必须显式更新各自的合同版本。改变这些
-输入不能复用旧结果，也不能通过改 compiler 常量代替正确的工作身份失效。
+保持 `projection-extraction-v9` 和 compiler 4，使用 authority policy 6、presentation
+policy 5、`revision-support-v5`、`support-ordered-reading-v3`、`change-impact-v2`、
+`candidate-admission-v1`、`claim-revision-v8-sparse-catalog` 和 `memory-relation-v3`；
+阅读范围与阅读上下文使用 `revision-input-v7`，并进入 inference capability hash 与
+source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含字段的 Relation
+请求和候选准入各自有新的合同版本，也进入生命周期操作输入身份。改变这些输入不能复用
+旧结果，也不能通过改 compiler 常量代替正确的工作身份失效。
 
 ## 18. 逐步实现评审与改动规模
 
@@ -948,13 +977,14 @@ Relation 请求，以及新的候选准入合同，都必须显式更新各自�
 
 | 步骤 | 实施前代码与可复用部分 | 目标差异及规模 | 必须验证的边界 |
 |---|---|---|---|
-| 1 Trigger/Worker | `admin_api` 的 Source sync 路由 → SyncService → SourceSyncWorker，已有 run/lease/coalescing | 无行为改造 | 只恢复失败工作；不新增调度器 |
+| 1 Trigger/Worker | `admin_api` 的 Source sync 路由 → SyncService → SourceSyncWorker，已有 run/lease/coalescing | **小，已实现**：按当前 revision 重新处理是同一队列上的 `REPROCESS` run（`source_sync_runs.reprocess_document_ids_json`）；有活动运行时返回 409、不合并，重新处理期间请求的同步在它之后执行；失败不自动重试；`dry_run` 只读 | 只恢复失败工作；不新增调度器 |
+| 2 采集/快照（重新处理） | `pipeline/stored_document.py` 从 Document 行（含 Gene 的 item 元数据）、存储的原始内容和已提交 revision 的 Artifact 还原输入 | **小，已实现**：不访问 provider；Artifact 随 Unit 带回；存储输入不能重现已提交位置时该 Unit 失败；读取最新存储的输入 | 不推进游标、不做删除检测；存储缺失只影响该 Unit |
 | 2 采集/快照 | `pipeline/sync.py`、SourceProjectionAdapter、不可变 revisions、raw/normalized/Artifact 存储 | 无基础重构；资格问题单独见下表 | provider 部分覆盖、删除证明、稳定 Unit 身份 |
-| 3 工作准备 | `source_derivation.py`、`pipeline/projection_context.py` 与 Fragment compiler 已有暂存、结构授权和索引 | **中**：统一完整请求预算、首次导入按 ReadingGroup 流式提取、更新时只读变化结构及其 ReadingGroup（不做成本比较）、适用基线和工作合同身份 | 首次导入、contested Support、超限不可截断、旧输出不可复用到新合同 |
+| 3 工作准备 | `source_derivation.py`、`pipeline/projection_context.py` 与 Fragment compiler 已有暂存、结构授权和索引 | **中，已实现**：`plan_projection_evidence_work` 只算授权，`pipeline/extraction_requests.py` 按 ReadingGroup item 经 runner 规划请求；首次导入读每个 ReadingGroup、更新时只读变化结构及其 ReadingGroup（不做成本比较、不截断）；适用基线和工作合同身份 | 首次导入、contested Support、超限不可截断、旧输出不可复用到新合同 |
 | 4 L1 提取 | 已有结构目录与 Primary/Required selector；增量完整结构授权已实现 | **小到中**：消费上述读取范围；不放宽已实现的 Primary 授权 | 全文只是可读上下文；canonical 完整解析不等于全记录 Primary |
-| 5 候选准入 | `candidate_ledger.py`，确定性去重与条件性模型选择 | **中**：每个 Candidate 执行证据完整支持 + 同轮去重（请求带本轮全部 Candidate Claim，程序合并）；`DROP_LOW_VALUE` 并入 `REJECTED(low_value)`；执行失败时 revision 不提交；`REJECTED` 事件与 admitted/rejected/merged 计数 | `REJECTED` 不进 Review；Relation 只接收 `ADMITTED` |
+| 5 候选准入 | 实施前为 `candidate_ledger.py`，确定性去重与条件性模型选择 | **已实现**（`memory/candidate_admission.py`，`candidate-admission-v1`）：每个 Candidate 执行证据完整支持 + 同轮去重（请求带本轮全部 Candidate Claim，程序合并）；`DROP_LOW_VALUE` 并入 `REJECTED(low_value)`；执行失败时 revision 不提交；`REJECTED` 事件与 admitted/rejected/merged 计数 | `REJECTED` 不进 Review；Relation 只接收 `ADMITTED` |
 | 6 Support Assessment | 早期合并判断与 current Evidence 解析可复用 | **大，主要改动**：接入 exact correspondence（无容器状态）、按整个 Support 路由、明确 excerpt 规则、ChangeBundle 分类、固定顺序读取与提前退出、判别联合和 automated DestructiveValidation | UNKNOWN 不调用模型；读完全部内容且覆盖权威才能 unsupported；REBIND 不重写历史 |
-| 7 Sparse Relation | 现有 sparse claim revision 合同与 revision proof 类型可复用 | **中**：请求删除 Support 结论与证据蕴含字段并更新合同版本；只接收 `ADMITTED` Candidate；与 Support 并行 | 每个 Candidate 恰一行；省略即未提出关系；分片不能改变覆盖或原子提交 |
+| 7 Sparse Relation | 现有 sparse claim revision 合同与 revision proof 类型可复用 | **中**：请求删除 Support 结论与证据蕴含字段并更新合同版本（已实现，`claim-revision-v8-sparse-catalog`）；只接收 `ADMITTED` Candidate（已实现）；与 Support 并行（随 coordinator） | 每个 Candidate 恰一行；省略即未提出关系；分片不能改变覆盖或原子提交 |
 | 7 程序归约/未决 | `reduce_relation_ledger` 与现有单提案 Review 可复用；proof 技术失败目前可退回 KEEP+ADD，多互斥 refiner 会抛错 | **中到大**：禁止把合并响应失败当独立新增；明确单提案可表达范围和失败出口；增加 SupportRelationCoordinator 组合表、至多一次复核与待审 Review 的确定性 ID、按状态复用和以 `stale` 关闭；SQLite 与 HANA 的 Plan apply 支持 Review 按 ID upsert 和 `stale` 关闭 | ADD/NOOP 不因 flag 自动产生 Review；多候选竞争不自动选后继；不顺带实现多选提案 UI |
 | 8 L5 实体解析 | `entity_resolver.resolve_many` 已有名称/别名、Embedding、条件性消歧、作用域与指标 | **无必需改造** | 它是辅助召回，不是事实依据；现有语境为文档前缀，非精准语境 |
 | 8 L6 身份匹配 | `identity_resolver.py` 与 `memory/store.py` 的 exact + bounded semantic/entity 召回 | **小**：排除集合只含本轮将被 DELETE、SUPERSEDE、UPDATE 或决定为 Review 的旧 Memory；Planner 拒绝对同一 Memory 既删除、替代或修订又挂接的 Plan | 只复用确证等价且访问兼容目标；Relation 漏报 equivalent 时同 Unit 不产生重复 Active Memory；并发创建/召回遗漏不保证全消重 |
@@ -975,8 +1005,8 @@ Relation 请求，以及新的候选准入合同，都必须显式更新各自�
   自动 DestructiveValidation 只保护拟执行的破坏性动作。后续身份匹配、原子提交和
   outbox 保持原职责。
 - 输入预算采用 LiteLLM 已知能力、显式部署 input/context/output 上限及 0.8 比例，同时预留本次输出、schema 和 correction。未知模型路由需要明确配置，不静默假设通用模型窗口。`MEMFORGE_LLM_MAX_INPUT_TOKENS`、`MEMFORGE_LLM_CONTEXT_WINDOW_TOKENS`、`MEMFORGE_LLM_MAX_OUTPUT_TOKENS`、`MEMFORGE_LLM_INPUT_BUDGET_FRACTION` 可调整；实际提取输出 allowance 同样进入恢复身份。这些计算由 LLM batch runner 对所有模型调用统一完成，不新增环境变量；按任务写死的条目数和字符数上限一并删除，只保留 backend adapter 自己声明的限制。
-- 完整上下文可能需要图片时先取得既有图片执行配额；lower bound 可以不加载图片，
-  最终参与比较和执行的方案必须按最终目录加载准确 bytes，并把图片 token 计入请求。
+- 请求可能需要图片时先取得既有图片执行配额；请求规划按每个请求的最终目录加载准确
+  bytes，并把图片 token 计入请求。
   容量不足不能通过丢弃必需图片变成可执行；摘要、长度或资格错误不会触发整篇
   文档重试。
 

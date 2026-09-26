@@ -580,7 +580,7 @@ Release gate:
 1. Sync starts and creates `run_id`.
 2. The gene fetches and normalizes a document.
 3. One structured Source Unit extraction emits Memory candidates, revision-pinned Evidence localization, and entity mentions.
-4. The quality gate, CandidateLedger, and batched EntityResolver emit their audit events.
+4. The quality gate, candidate admission, and batched EntityResolver emit their audit events.
 5. `MemoryEngine` creates a Lifecycle Plan against the complete same-source incumbent scope.
 6. The core transaction commits lifecycle state, the Memory-vector outbox task, and relation work.
 7. Bounded Relation Discovery runs after commit and records its candidate/classification outcome.

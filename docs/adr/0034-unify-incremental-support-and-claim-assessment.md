@@ -16,19 +16,22 @@ evaluation and cache-aware context are tracked by
 Release and deployment evidence remains external to this ADR, and a source
 change alone does not prove a deployed Cloud runtime.
 
-Current implemented contract: for both Claim Extraction and Support Assessment,
-`revision-input-v6` forecasts a complete Delta plan and a complete current-full
-plan, chooses the lower token cost and lets Delta win an exact tie. A negative
-Support result from Delta alone can propose Support removal. This is accepted
-until #505 lands with no interim guard; the #505 implementation replaces it with
-the ordered read below, including the continuation of a Delta-negative Claim
-through the rest of the document, and with changed-structure extraction. Same-Unit
-Relation uses the sparse claim revision contract in
-[Sparse claim catalog](../design/sparse-claim-catalog.md), whose request
-carries each old Memory's `current_support` result and whose response carries
-an evidence entailment status. The candidate ledger keeps a whole batch when its
-call fails, and marks low-value Candidates `DROP_LOW_VALUE`. Sections labelled
-"target" describe the contract that replaces these behaviors.
+Current implemented contract: Support Assessment uses exact correspondence,
+Change Impact and the [ordered read](#ordered-current-revision-reading) with
+cumulative witnesses. Claim Extraction reads as described in
+[Unified revision input planning](#unified-revision-input-planning-and-bounded-execution)
+under `revision-input-v7`: changed structures with their ReadingGroups on an
+update, every ReadingGroup on a first import, one runner item per ReadingGroup,
+with no cost comparison and no truncation. Every reading carries the Unit Title
+([One deep context-planning module](#one-deep-context-planning-module)).
+[Candidate admission](#candidate-admission) is implemented as
+`candidate-admission-v1`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
+request is implemented as `claim-revision-v8-sparse-catalog`, described in
+[Sparse claim catalog](../design/sparse-claim-catalog.md). Until
+`SupportRelationCoordinator` lands, Relation runs after Support Assessment over
+the old Memories whose Support has a result, and the reducer combines the two by
+program rules. Sections labelled "target" describe the contract that replaces
+these behaviors.
 
 ## Context
 
@@ -102,6 +105,11 @@ that owns the detail.
   ReadingGroups as context; a first import streams per ReadingGroup. Extraction
   makes no Delta/current-full cost comparison
   ([Unified revision input planning](#unified-revision-input-planning-and-bounded-execution)).
+  Implemented as `revision-input-v7`.
+- Every Source adapter supplies the Unit Title, the Unit's human-facing name, as
+  the Unit's first Observation. It is never Primary, can be selected as Required,
+  and is read with every model reading of the Unit
+  ([One deep context-planning module](#one-deep-context-planning-module)).
 - Candidate admission is an independent step between Claim Extraction and
   Relation. Low-value Candidates are `REJECTED` with reason `low_value`, and
   every admission request carries the round's Candidate claims so duplicates are
@@ -133,7 +141,8 @@ that owns the detail.
   attach commit before the old Unit is removed
   ([Source Unit identity and convergence](#source-unit-identity-and-convergence)).
 - A RepresentationCompiler change to segmentation or text representation is
-  absorbed by ordinary Support Assessment
+  absorbed by ordinary Support Assessment; a Unit that no longer changes is
+  reprocessed at its current revision by an operator
   ([Validation and version boundaries](#validation-and-version-boundaries)).
 - Every model call goes through the LLM batch runner of
   [ADR 0036](0036-separate-semantic-work-from-inference-executors.md) (decision
@@ -239,6 +248,27 @@ The change target is a sum type: either a current Fragment or a removed Anchor.
 A pure deletion therefore has a valid reading group even though no current
 target Fragment exists. Historical content is explicitly non-selectable.
 
+Implemented reading groups and reading context: Support and Claim Extraction
+share one partition of a revision into ReadingGroups, one outermost list or one
+Fragment. Every model reading, whether a Claim Extraction request, a Support
+Assessment step or a Change Impact bundle, reads its Fragments with one reading
+context: the representation's heading, intro and list lead-in; the Observation
+its provider declares it replies to, or else follows (`REPLIES_TO`, else
+`PRECEDES`), never inferred from order or similarity; and the Unit Title.
+Reading context is Required-only and has no character cap.
+
+The Unit Title is the provider's human-facing name of the Unit, such as a Jira
+key, type and summary, a Confluence space and page title, or a repository and
+path. The Source adapter contract requires every adapter to supply it from the
+values present in the provider payload, without guessing and without
+source-specific prompt instructions. It is projected as the first Observation of
+every live Unit (`unit_identity`, representation `unit-identity`), so a partial
+projection always returns it. It compiles to one Fragment that is never Primary:
+it scopes and identifies claims but states none. A claim that names the Unit
+selects it as Required, which is what candidate admission checks identifying
+details against. It forms its own ReadingGroup, so a changed Unit Title is
+ordinary changed content.
+
 ### Exact current Evidence correspondence
 
 The planner deterministically classifies every part of prior Support Evidence:
@@ -331,8 +361,15 @@ The final semantic wire result is `SUPPORTED(work_id, primary_ref, required_refs
 
 ### Sparse same-Unit Relation
 
-Target contract, tracked by Cloud issue #505. The implemented contract is
-described in [Sparse claim catalog](../design/sparse-claim-catalog.md).
+Target contract, tracked by Cloud issue #505. The request and output are
+implemented as `claim-revision-v8-sparse-catalog`, described in
+[Sparse claim catalog](../design/sparse-claim-catalog.md); running in parallel
+with Support Assessment over every same-Unit old Memory arrives with
+`SupportRelationCoordinator`. Until then the reducer combines Relation with
+Support in program code: an equivalent Candidate of an unsupported old Memory,
+and a refinement whose proof preserves all of an unsupported old Memory's truth,
+conflict with Support, so the pair is unresolved locally and the old Memory
+keeps its Support. The targeted re-check below replaces this rule.
 
 Relation (the claim revision judgment) receives only `ADMITTED` Candidates, each
 with its current Evidence, and the Claims of every same-Unit Active old Memory
@@ -366,24 +403,29 @@ schema changes; Cloud upgrades the pin with no HANA or configuration change.
 
 ### Candidate admission
 
-Target contract, tracked by Cloud issue #505; execution through the LLM batch
-runner.
+Implemented as `candidate-admission-v1`; execution through the LLM batch runner.
 
 Candidate admission runs between Claim Extraction and Sparse Relation, for
-every Candidate, whether or not the Unit has old Memories. It replaces the
-current candidate ledger. One admission request covers both duties, with no
-additional call round:
+every Candidate, whether or not the Unit has old Memories. One admission request
+covers both duties, with no additional call round:
 
 1. Complete evidence support: the Candidate's selected Primary and Required
    Evidence completely support its Claim, including scope, exceptions and
-   table-header qualifiers.
+   table-header qualifiers. Identifying details the Claim states, such as a
+   name, key or subject, are part of the Claim and need Evidence too.
 2. Same-round deduplication: the Candidate states the same knowledge as another
    Candidate of this round. Every admission request carries all of this round's
    Candidate claims (Candidate ID and claim text, no Evidence) as shared context,
    so a duplicate is found even when the two Candidates are judged in different
-   requests. The program merges duplicates deterministically into one. If that
+   requests. Candidates with the same normalized Claim, type and validity are
+   duplicates without the model saying so, but each is still judged on its own
+   Evidence. The program merges duplicates deterministically into one: only
+   admitted Candidates merge, by connected groups of duplicates, and each group
+   keeps its most specific (longest normalized) Candidate, the earliest
+   extracted among equals. If that
    list does not fit, the LLM batch runner chunks it as shared context and
-   returns one result per Candidate and chunk; the caller merges them.
+   returns one result per Candidate and chunk; a Candidate rejected in any chunk
+   is rejected, and the reported duplicates of all chunks are united.
 
 | Result | Handling |
 | --- | --- |
@@ -392,14 +434,15 @@ additional call round:
 | same-round duplicate | merged; one Candidate continues to Sparse Relation |
 | execution failure (timeout, schema error, illegal ID) | extraction-side failure: the Source Unit revision is not committed and the next sync retries it |
 
-The ledger's `DROP_LOW_VALUE` outcome becomes `REJECTED` with reason
-`low_value`. An admission execution failure adds no Candidate this round and
-publishes nothing for that revision; it follows the existing extraction-failure
-contract.
+An admission execution failure adds no Candidate this round and publishes
+nothing for that revision; it follows the existing extraction-failure contract.
+Each admission request is recorded as `candidate_admission` derivation work, so a
+retried sync reuses completed requests and the atomic commit requires them
+complete.
 
 A `REJECTED` Candidate emits one structured event with the Source Unit, revision,
 Candidate Claim, selected Evidence refs and reject reason, without full source
-text. Each revision counts admitted, rejected and merged Candidates, so an
+text, once the revision commits. Each revision counts admitted, rejected and merged Candidates, so an
 extraction quality regression becomes visible, for example a rising reject ratio
 for one Source or after one deployment. Execution failures use the existing
 failure trace. Merges are only counted, not recorded as anomalies.
@@ -408,9 +451,10 @@ Sparse Relation receives only `ADMITTED` Candidates. Deduplication against
 Memories of other Units and other sources is identity's job
 ([Same-Unit identity backstop](#same-unit-identity-backstop)), not admission's.
 
-Cloud impact: admission is a shared OSS prompt and contract. The event and counts
-use the existing OSS structured logging and sync statistics, so Cloud needs no
-HANA or configuration change.
+Cloud impact: admission is a shared OSS prompt and contract. The event uses the
+existing Memory audit events and the counts use sync statistics, so Cloud needs
+no HANA schema or configuration change. The HANA commit gate must accept
+`candidate_admission` as a required derivation work kind, as SQLite does.
 
 ### Support and Relation coordination
 
@@ -852,6 +896,44 @@ in its PR. There is no version migration or rollout mechanism for it. Cloud impa
 reaches Cloud when it upgrades to a pin that contains such a compiler change, so
 the PR statement also covers Cloud.
 
+A Source adapter that adds model-visible Unit content, such as the Unit Title,
+is absorbed the same way: the next revision of each Unit carries the new
+Observation as added content. It authorizes no extraction, and exact Supports go
+through Change Impact. Such a change states the one-time load in its PR. Cloud
+impact: Cloud reaches the same load as its Units are next fetched after the pin
+upgrade; the new Observation needs no HANA schema change.
+
+Both rules wait for a Unit's next revision, and a Unit that no longer changes (a
+closed Jira issue, an archived page) never gets one. An operator reprocesses such
+Units at their current revision: a `REPROCESS` Source sync run reprojects each
+named Document from its stored input (the item metadata its Gene discovered,
+kept with the Document, the raw content, and the Artifacts of its committed
+revision) with the current adapter and compiler, without contacting the provider.
+The Unit then goes through the ordinary revision flow in one atomic commit, with
+two differences: extraction reads every ReadingGroup, under the run's reprocess
+authorization, and every Support is read over the whole Unit as if it had no
+usable baseline, so no Support is rebound or sent to Change Impact. The run
+keeps the sync cursor and infers no removal, and a stored input that no longer
+places the Unit where its committed revision does fails that Unit with
+`stored_input_incomplete`. A Document stored before its item metadata was kept
+can fail this way when the adapter places the Unit from that metadata (a
+Confluence child page, a GitHub file); an ordinary sync that stores the Document
+again makes it reprocessable. The run reads the latest stored input: raw content
+that a sync stored but whose revision never committed is projected and committed
+as the next ordinary sync would. Like every run that holds the Source lease, a
+reprocess run first finishes derivations an earlier run left interrupted. A
+compiler or adapter change states in its PR the OSS and Cloud load and which
+Units, if any, should be reprocessed; `dry_run` reports each Unit's stored input
+and an estimate of its model calls before the run (extraction items, one
+admission request, one Relation request when the Unit has Supports, one
+whole-Unit reading per Support), leaving out requests split for capacity,
+Support readings that take several steps, selector corrections, entity
+resolution, cross-document relation classification and the interrupted
+derivations the run finishes first. Cloud impact: the reprocess runs on the
+Source sync run queue, which gains one HANA column for its Documents and the
+reprocess enqueue rules; the Document row gains one HANA column for the item
+metadata; and `run_source_sync` passes `execution_mode` again.
+
 The input policy counts the exact fallback prompt with its response schema,
 actual supplied images and requested output allowance. Configured input,
 context-window and output caps are intersected with LiteLLM metadata. Known route
@@ -876,18 +958,17 @@ errors are terminal, while unavailable storage remains a recoverable read failur
 
 ## Consequences
 
-Current implemented contract (`claim-revision` sparse catalog): same-Unit sparse
-claim assessment uses the shared request catalog and completion
-validator described in ADR 0009. Challenger/incumbent references are `NEW`/`MEM`;
-Evidence catalog references are `PRM`/`REQ`, each followed by four digits. The
-claim work identity includes the changed contract and schema, so older completed
-work cannot be reused against a different catalog. This does not change current
-Evidence entailment, complete incumbent support auditing, conditional exact
-comparisons between competing refiners, or destructive revision proof. The
-target contract removes the incumbent Support result from Relation input and
-moves Evidence entailment to candidate admission
-([Sparse same-Unit Relation](#sparse-same-unit-relation),
-[Candidate admission](#candidate-admission)).
+Same-Unit sparse claim assessment (`claim-revision-v8-sparse-catalog`) uses the
+shared request catalog and completion validator described in ADR 0009.
+Challenger/incumbent references are `NEW`/`MEM`; Evidence catalog references are
+`PRM`/`REQ`, and admission's Candidate references are `CND`, each followed by
+four digits. The claim work identity includes the changed contract and schema,
+so older completed work cannot be reused against a different catalog. Relation
+input carries no incumbent Support result, and Evidence entailment belongs to
+candidate admission ([Sparse same-Unit Relation](#sparse-same-unit-relation),
+[Candidate admission](#candidate-admission)). Complete incumbent support
+auditing, conditional exact comparisons between competing refiners and
+destructive revision proof are unchanged.
 
 The material changes concentrate in input preparation, L3, L4, and reducer/Plan
 integration. Entity resolution stays a bounded retrieval helper, not a truth or
@@ -1040,8 +1121,13 @@ work contracts invalidate their own reuse, without changing authority 5, extract
 Compiler 4 independently changes structural boundaries as described in ADR 0030.
 Legacy stage records remain immutable history. See ADR 0017 for storage ownership.
 
-Target contract, tracked by Cloud issue #505: Claim Extraction scope is defined in
-[Decision](#decision) item 2. Claim Extraction and Support Assessment share
+Claim Extraction scope is defined in [Decision](#decision) item 2 and implemented
+as `revision-input-v7`: `plan_projection_evidence_work` computes Primary authority
+only, and each ReadingGroup that holds authorized Primary is one LLM batch runner
+item, read with its reading context demoted to Required-only. The runner packs
+items into requests by actual capacity; each planned request is staged as one
+derivation batch and, when executed, is still split in half on a capacity or
+deadline failure. Claim Extraction and Support Assessment share
 catalog, budget and durable execution primitives, while retaining distinct
 semantic duties. Cloud impact: extraction scope is shared OSS
 planning code; Cloud upgrades the pin with no configuration or HANA change.
@@ -1132,11 +1218,9 @@ prompt/schema version corrects them.
 
 ## Same-Unit Relation execution
 
-Target contract, tracked by Cloud issue #505. The
-implemented contract (`claim-revision` sparse catalog) is described in
-[Sparse claim catalog](../design/sparse-claim-catalog.md); its request carries each
-old Memory's `current_support` result and its response carries an evidence
-entailment status.
+Target contract, tracked by Cloud issue #505. The request and output are
+implemented as `claim-revision-v8-sparse-catalog`, described in
+[Sparse claim catalog](../design/sparse-claim-catalog.md).
 
 Same-Unit Relation keeps the sparse output shape: one completion row per
 `ADMITTED` Candidate, listing only meaningful relations; omitting an old Memory
@@ -1262,8 +1346,13 @@ it does not migrate stored Evidence or create a lifecycle version.
 Implementing the target contract must allocate
 successor semantic-work and input-policy identities for exact correspondence,
 witness state, the ordered Support read, changed-structure and first-import
-streaming extraction, candidate admission, the Relation input change, the coordinator and
-DestructiveValidation. Existing completed v6 work
+streaming extraction, candidate admission (`candidate-admission-v1`), the Relation
+input change (`claim-revision-v8-sparse-catalog`), the coordinator and
+DestructiveValidation. Reading per ReadingGroup with the shared reading context
+and the Unit Title uses `revision-input-v7`, `revision-support-v5`,
+`support-ordered-reading-v3`, `change-impact-v2`, authority policy 6 and model
+presentation policy 5; the extraction contract stays `projection-extraction-v9`
+and the compiler stays 4. Existing completed v6 work
 must never be reinterpreted under the amended contract. Exact successor numbers
 are assigned with the implementation so they cannot collide with independently
 released work; no stored Evidence or lifecycle schema migration follows merely

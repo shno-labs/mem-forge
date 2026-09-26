@@ -61,7 +61,7 @@ MemForge is a **memory layer** that:
 | Retrieval latency (no reranking) | < 150ms |
 | Retrieval latency (with reranking) | < 500ms |
 | Memory extraction per document | All durable atomic memories justified by the source; no fixed count |
-| LLM calls per changed Source Unit | Structured extraction, optional CandidateLedger, bounded exact relation/support classification, and a short revision proof only for a unique REFINES proposal (target calls: Claim Extraction, candidate admission, Change Impact, Support Assessment, Sparse Relation and at most one coordinator re-check per Claim; see [ADR 0034](adr/0034-unify-incremental-support-and-claim-assessment.md)) |
+| LLM calls per changed Source Unit | Structured extraction, candidate admission for every Candidate, Change Impact, Support Assessment and Sparse Relation (target: at most one coordinator re-check per Claim; see [ADR 0034](adr/0034-unify-incremental-support-and-claim-assessment.md)) |
 | Relation-discovery work | Post-commit, bounded candidate retrieval and classification; no unbounded Memory history in extraction |
 
 ---
@@ -591,7 +591,8 @@ Source adapters normalize and project provider content into stable Units and
 immutable Observations. The work planner authorizes exact current structures,
 prepares bounded context and stages recoverable extraction. Models generate
 candidates and select exact supplied Evidence; they do not grant authority or
-write Memory. CandidateLedger selects among existing candidates without
+write Memory. Candidate admission checks that each candidate's selected
+Evidence completely supports it and merges same-round duplicates without
 inventing merged claims. The complete Unit's work reaches one lifecycle Plan.
 
 Reconciliation consumes unified L3 support/Evidence and L4 relation/revision
@@ -1210,7 +1211,7 @@ Agent receives a question
 **Week 2 focus: Memory extraction layer**
 
 - One structured Source Unit extraction contract
-- MemoryEngine: quality gate, CandidateLedger, lifecycle planning, and commit
+- MemoryEngine: quality gate, candidate admission, lifecycle planning, and commit
 - MemoryStore: SQLite lifecycle state, deduplication, FTS5 sync, and durable
   Memory-vector outbox publication
 - ChromaDB "memories" collection (parameterized get_chroma_collection)
@@ -1353,7 +1354,7 @@ The fundamental mismatch:
 | Invalid or incomplete structured extraction | Schema or exact-coverage validation fails | Retry once within the same bound, then fail closed for that Source Unit; do not persist partial candidates. |
 | No memories extracted | Valid structured result contains no candidates | Accept — some Source Units contain no durable atomic claims. |
 | Incomplete entity adjudication | Missing, duplicate, or unknown mention decision | Fail closed; do not silently create entities from an incomplete batch. |
-| Many memories extracted | `len(memories)` is high | Keep every durable, semantically distinct candidate. Exact duplicates collapse deterministically; a complete CandidateLedger removes fully redundant claims within the Source Unit revision. Explicit input budgets fail closed instead of truncating the ledger. |
+| Many memories extracted | `len(memories)` is high | Keep every durable, semantically distinct candidate. Exact duplicates collapse deterministically; candidate admission judges every candidate and merges same-round duplicates within the Source Unit revision. A candidate that alone exceeds the input budget fails the revision instead of being truncated. |
 | LLM timeout / API error | httpx timeout or 5xx response | Retry with bounded exponential backoff. If all attempts fail, preserve the previous lifecycle state and record the Source Unit failure. Target (Cloud #505): a request holding several work items that times out, exceeds input capacity, gets a provider 413 or returns truncated output is split in half and resent; a single item that still fails is a typed recoverable failure ([ADR 0036](adr/0036-separate-semantic-work-from-inference-executors.md)). |
 
 ### Failure Boundary
@@ -1406,7 +1407,7 @@ async with llm_semaphore:
 ```
 
 Concurrency is a capacity control, not a correctness mechanism. Cost and latency
-are measured per Source Unit, including CandidateLedger, entity adjudication,
+are measured per Source Unit, including candidate admission, entity adjudication,
 and relation-classification calls.
 
 Target (Cloud #505, first step): every model call goes through the LLM batch runner
