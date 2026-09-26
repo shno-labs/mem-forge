@@ -3,8 +3,8 @@
 ## Status
 
 Accepted. The original unified assessment contract was implemented on
-2026-09-06. The sections labelled "target" are the accepted shared contract and
-are not implemented. They are tracked by
+2026-09-06. The sections labelled "target" are the accepted shared contract
+tracked by
 [Cloud issue #505](https://github.com/dodoman-sun/memforge-cloud/issues/505),
 whose first step delivers the LLM batch runner of
 [ADR 0036](0036-separate-semantic-work-from-inference-executors.md) and moves
@@ -34,8 +34,10 @@ concurrently with Support Assessment over every same-Unit old Memory, and
 [Same-Unit identity backstop](#same-unit-identity-backstop),
 [Automated destructive validation](#automated-destructive-validation) and the
 commit order of a [Source Unit identity](#source-unit-identity-and-convergence)
-change are implemented. Sections labelled "target" describe the contract that is
-not implemented yet.
+change are implemented. With them every section labelled "target" is
+implemented in OSS. Cloud implements the HANA side with its pin upgrade, and the
+read-only shadow cohort and deployment evidence that Cloud issue #505 requires
+are recorded outside this ADR.
 
 ## Context
 
@@ -510,8 +512,8 @@ because a supported result names concrete current refs that the program validate
 while "not found" only reports absence over a long read. Relation never sees
 Support results, and the coordinator never lets one line decide the other's truth.
 A rebound `UNAFFECTED` Support with no contradicts edge follows the `SUPPORTED`
-rows. REFINES and uncertain Relation results keep the reducer and revision-proof
-rules in [Local unresolved claim relationships](#local-unresolved-claim-relationships).
+rows. REFINES and uncertain Relation results follow the revision-proof and local
+unresolved rules in [Local unresolved claim relationships](#local-unresolved-claim-relationships).
 When one Candidate receives different treatments across several old Memories,
 the same local unresolved component rule applies: the whole related component is
 consumed this round, with no ADD and no destructive action. The treatments are
@@ -840,8 +842,8 @@ implemented contract is summarized in [Status](#status).
    denotes the same knowledge item with a compatible directional change; the
    label alone still cannot replace a broader incumbent with a narrower rule.
    Relation never receives Support results. `SupportRelationCoordinator` combines
-   Relation with Support by the fixed table, and the reducer then applies source
-   authority and scope facts before proposing actions. Relation labels never
+   Relation with Support by the fixed table, and the Lifecycle Planner then
+   applies source authority and scope facts before proposing actions. Relation labels never
    directly authorize destructive mutation.
 5. Keep existing Lifecycle Plan, complete incumbent coverage, Source Authority,
    Review, causal stale guards, and atomic commit. Model output never directly
@@ -1239,7 +1241,7 @@ material, is unresolved locally. Candidate admission
 already owns whether supplied current Evidence entails the challenger, including
 table column associations; relation classification cannot repair candidate text.
 
-For an unresolved pair, the reducer consumes the candidate and emits a bare skipped
+For an unresolved pair, the coordinator consumes the candidate and emits a bare skipped
 NOOP for the incumbent, preserving Support, Evidence and validation baseline.
 If either participates in other related pairs, preserve the related component
 together so a shared candidate cannot escape as ADD or drive another destructive
