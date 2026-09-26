@@ -287,11 +287,15 @@ class ItemFailure:
    names an ID the request did not supply means the response's IDs cannot be
    trusted to match their rows (an answer may sit under its neighbour's ID), so
    the whole response is treated as unreadable (step 5). Valid rows are accepted
-   at once and never sent again. Claim Extraction, candidate admission, Change
-   Impact, Support Assessment, Sparse Relation (`claim_revision`), the
-   refinement comparison, cross-document relation, entity resolution and
-   agent-session authority work this way. The same-Unit identity catalog is
-   validated as one answer, so it keeps the whole-request correction and split.
+   at once and never sent again. Candidate admission, Change Impact, Support
+   Assessment, Sparse Relation (`claim_revision`), the refinement comparison,
+   cross-document relation, entity resolution and agent-session authority work
+   this way. Claim Extraction has no per-item rows, because one response serves
+   all ReadingGroups of the request: a response that cannot be read is split down
+   to single ReadingGroups, and a ReadingGroup still unreadable alone is skipped;
+   an invalid selector gets one correction and then only that claim is dropped.
+   The same-Unit identity catalog is validated as one answer, so it keeps the
+   whole-request correction and split.
 4. One re-ask. The rejected items are re-asked once, together, in one request
    that holds only them and lists each item's error, packed by capacity when
    they do not fit one request. In the chain form a re-asked item reads the same
