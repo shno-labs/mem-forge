@@ -16,13 +16,14 @@ evaluation and cache-aware context are tracked by
 Release and deployment evidence remains external to this ADR, and a source
 change alone does not prove a deployed Cloud runtime.
 
-Current implemented contract: for both Claim Extraction and Support Assessment,
-`revision-input-v6` forecasts a complete Delta plan and a complete current-full
-plan, chooses the lower token cost and lets Delta win an exact tie. A negative
-Support result from Delta alone can propose Support removal. This is accepted
-until #505 lands with no interim guard; the #505 implementation replaces it with
-the ordered read below, including the continuation of a Delta-negative Claim
-through the rest of the document, and with changed-structure extraction.
+Current implemented contract: Support Assessment uses exact correspondence,
+Change Impact and the [ordered read](#ordered-current-revision-reading) with
+cumulative witnesses. Claim Extraction reads as described in
+[Unified revision input planning](#unified-revision-input-planning-and-bounded-execution)
+under `revision-input-v7`: changed structures with their ReadingGroups on an
+update, every ReadingGroup on a first import, one runner item per ReadingGroup,
+with no cost comparison and no truncation. Every reading carries the Unit Title
+([One deep context-planning module](#one-deep-context-planning-module)).
 [Candidate admission](#candidate-admission) is implemented as
 `candidate-admission-v1`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
 request is implemented as `claim-revision-v8-sparse-catalog`, described in
@@ -104,6 +105,11 @@ that owns the detail.
   ReadingGroups as context; a first import streams per ReadingGroup. Extraction
   makes no Delta/current-full cost comparison
   ([Unified revision input planning](#unified-revision-input-planning-and-bounded-execution)).
+  Implemented as `revision-input-v7`.
+- Every Source adapter supplies the Unit Title, the Unit's human-facing name, as
+  the Unit's first Observation. It is never Primary, can be selected as Required,
+  and is read with every model reading of the Unit
+  ([One deep context-planning module](#one-deep-context-planning-module)).
 - Candidate admission is an independent step between Claim Extraction and
   Relation. Low-value Candidates are `REJECTED` with reason `low_value`, and
   every admission request carries the round's Candidate claims so duplicates are
@@ -240,6 +246,27 @@ scope + container + before + target + after
 The change target is a sum type: either a current Fragment or a removed Anchor.
 A pure deletion therefore has a valid reading group even though no current
 target Fragment exists. Historical content is explicitly non-selectable.
+
+Implemented reading groups and reading context: Support and Claim Extraction
+share one partition of a revision into ReadingGroups, one outermost list or one
+Fragment. Every model reading, whether a Claim Extraction request, a Support
+Assessment step or a Change Impact bundle, reads its Fragments with one reading
+context: the representation's heading, intro and list lead-in; the Observation
+its provider declares it replies to, or else follows (`REPLIES_TO`, else
+`PRECEDES`), never inferred from order or similarity; and the Unit Title.
+Reading context is Required-only and has no character cap.
+
+The Unit Title is the provider's human-facing name of the Unit, such as a Jira
+key, type and summary, a Confluence space and page title, or a repository and
+path. The Source adapter contract requires every adapter to supply it from the
+values present in the provider payload, without guessing and without
+source-specific prompt instructions. It is projected as the first Observation of
+every live Unit (`unit_identity`, representation `unit-identity`), so a partial
+projection always returns it. It compiles to one Fragment that is never Primary:
+it scopes and identifies claims but states none. A claim that names the Unit
+selects it as Required, which is what candidate admission checks identifying
+details against. It forms its own ReadingGroup, so a changed Unit Title is
+ordinary changed content.
 
 ### Exact current Evidence correspondence
 
@@ -864,6 +891,13 @@ in its PR. There is no version migration or rollout mechanism for it. Cloud impa
 reaches Cloud when it upgrades to a pin that contains such a compiler change, so
 the PR statement also covers Cloud.
 
+A Source adapter that adds model-visible Unit content, such as the Unit Title,
+is absorbed the same way: the next revision of each Unit carries the new
+Observation as added content. It authorizes no extraction, and exact Supports go
+through Change Impact. Such a change states the one-time load in its PR. Cloud
+impact: Cloud reaches the same load as its Units are next fetched after the pin
+upgrade; the new Observation needs no HANA schema change.
+
 The input policy counts the exact fallback prompt with its response schema,
 actual supplied images and requested output allowance. Configured input,
 context-window and output caps are intersected with LiteLLM metadata. Known route
@@ -1051,8 +1085,13 @@ work contracts invalidate their own reuse, without changing authority 5, extract
 Compiler 4 independently changes structural boundaries as described in ADR 0030.
 Legacy stage records remain immutable history. See ADR 0017 for storage ownership.
 
-Target contract, tracked by Cloud issue #505: Claim Extraction scope is defined in
-[Decision](#decision) item 2. Claim Extraction and Support Assessment share
+Claim Extraction scope is defined in [Decision](#decision) item 2 and implemented
+as `revision-input-v7`: `plan_projection_evidence_work` computes Primary authority
+only, and each ReadingGroup that holds authorized Primary is one LLM batch runner
+item, read with its reading context demoted to Required-only. The runner packs
+items into requests by actual capacity; each planned request is staged as one
+derivation batch and, when executed, is still split in half on a capacity or
+deadline failure. Claim Extraction and Support Assessment share
 catalog, budget and durable execution primitives, while retaining distinct
 semantic duties. Cloud impact: extraction scope is shared OSS
 planning code; Cloud upgrades the pin with no configuration or HANA change.
@@ -1273,7 +1312,11 @@ successor semantic-work and input-policy identities for exact correspondence,
 witness state, the ordered Support read, changed-structure and first-import
 streaming extraction, candidate admission (`candidate-admission-v1`), the Relation
 input change (`claim-revision-v8-sparse-catalog`), the coordinator and
-DestructiveValidation. Existing completed v6 work
+DestructiveValidation. Reading per ReadingGroup with the shared reading context
+and the Unit Title uses `revision-input-v7`, `revision-support-v5`,
+`support-ordered-reading-v3`, `change-impact-v2`, authority policy 6 and model
+presentation policy 5; the extraction contract stays `projection-extraction-v9`
+and the compiler stays 4. Existing completed v6 work
 must never be reinterpreted under the amended contract. Exact successor numbers
 are assigned with the implementation so they cannot collide with independently
 released work; no stored Evidence or lifecycle schema migration follows merely

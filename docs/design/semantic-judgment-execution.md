@@ -544,7 +544,7 @@ The current `LiteLlmStructuredClient` mixes generation, classification and ranki
 
 | Responsibility | Shape | Batch shape | Target executor |
 | --- | --- | --- | --- |
-| Claim Extraction / managed patch | open-vocabulary claim or patch generation; on an update only the changed structures with their ReadingGroups as context, on a first import every ReadingGroup | independent items | Structured LLM `GenerationExecutor` |
+| Claim Extraction / managed patch | open-vocabulary claim or patch generation; on an update only the changed structures with their ReadingGroups as context, on a first import every ReadingGroup; each request reads its items with their reading context and the Unit Title | independent items, one per ReadingGroup that holds authorized Primary | Structured LLM `GenerationExecutor` |
 | Complete Support Assessment | dependent status + Primary/Required + carried witnesses | ordered chain | Structured LLM `GenerationExecutor` |
 | Change Impact | fixed claim vs shared ChangeBundle; `AFFECTED/UNAFFECTED` | independent items | existing Structured LLM until a classifier backend (Jev or small-parameter LLM) passes #506 evaluation |
 | Sparse Relation (same Unit) | one row per admitted Candidate; only meaningful relations to same-Unit old Memories | independent items | Structured LLM; a pairwise classifier needs its own contract and evaluation |

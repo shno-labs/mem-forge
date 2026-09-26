@@ -33,8 +33,8 @@ provider payload
   -> committed base + staged target ProjectionEvidenceWorkPlanner
   -> exact authorized ranges + complete representation index
   -> RepresentationCompiler: exact Fragments + ReadingGroups
-  -> RevisionInputPlanner expands reading groups and compares delta/current-full cost
-  -> immutable request catalog + display-only Context
+  -> extraction request planning: one runner item per ReadingGroup that holds authorized Primary
+  -> immutable request catalog: items + Required-only reading context and Unit Title
   -> LLM returns Memory content + primary_ref + required_refs
   -> deterministic Evidence Resolver
   -> one revision-pinned Evidence Unit
@@ -44,8 +44,8 @@ provider payload
 
 The complete Source Projection may contain the whole current Jira issue,
 conversation, document, or session. Ordinary extraction does not make that
-whole projection claim-authoritative. The planner authorizes exact work for the
-current batch and includes only bounded current Context needed to interpret it.
+whole projection claim-authoritative. The planner authorizes exact work and each
+request reads only the ReadingGroups that hold it, with their reading context.
 
 ## Module Responsibilities
 
@@ -57,11 +57,15 @@ The adapter owns provider facts:
 - immutable Observation Revisions;
 - edit, delete, ordering, containment, reply, and reference relations;
 - Revision Delta and provider coverage;
-- representation-profile assignment for each new Revision.
+- representation-profile assignment for each new Revision;
+- the Unit Title: the Unit's human-facing name from values present in the
+  provider payload, projected as the Unit's first Observation.
 
 It does not assign final Evidence roles. A `precedes`, `replies_to`,
-`contained_by`, or `references` relation may help the planner find bounded
-Context, but the relation alone never grants Primary or Required authority.
+`contained_by`, or `references` relation never grants Primary or Required
+authority. A reading reads an Observation with the one its provider declares it
+replies to, or else follows (`replies_to`, else `precedes`), as Required-only
+context.
 
 ### EvidenceRepresentationProfile
 
@@ -113,30 +117,30 @@ This Boolean is transient catalog policy, not a persistent Source, Fragment, or
 lifecycle state. Durable Evidence stores only the resolved role, exact Revision
 and Anchor, content or Artifact digest, and access scope.
 
-### RevisionInputPlanner
+### Extraction request planning
 
-The planner plans Claim Extraction input. It receives an extraction task with
-its already-authorized current ranges, asks the representation-owned reading
-index to expand the selected structures, then builds complete delta and
-current-full request candidates when a valid baseline permits both. The
-extraction request policy materializes actual requests and forecasts
-prompt/schema tokens, images, output reservation and repeated request data. A
-safe image-free lower bound may prove full cannot beat an already materialized
-delta; otherwise full is materialized before comparison. The planner chooses the
-lower forecast token cost; delta wins an exact tie. Request and image
-counts/bytes remain diagnostics. It uses no source-type branch or percentage
-threshold. A normal-update L1 current-full candidate must fit its complete
-reading scope in one request. Initial extraction and L1 delta may still
-partition authorized Primary work with local reading context.
+`pipeline/extraction_requests.py` plans Claim Extraction requests. It receives
+the exact Primary authority of one Source Unit revision
+(`plan_projection_evidence_work`) and the revision's shared reading context
+(`RevisionAssessmentContext`). Each ReadingGroup, one outermost list or one
+Fragment, that holds authorized Primary is one LLM batch runner item. A request
+reads its items with the context every reading of them adds: the
+representation's heading, intro and list lead-in, the Observation its provider
+declares it replies to or follows, and the Unit Title. Reading context is
+Required-only and is never truncated. The runner packs items into the fewest
+requests that fit the route; each planned request is staged as one derivation
+batch before execution, and execution still halves a multi-item request that
+times out or exceeds capacity. Every authorized Primary Fragment belongs to
+exactly one request.
 
-The result records mode, exact catalog, reading groups, selection reason,
-estimated complete cost and materialized transport. These values are derivation
-input, not persistent Source, Evidence, Support or lifecycle state. Reading
-expansion adds Context only: current-full preserves the extraction task's exact
-Primary bits, and a Fragment added for reading is never Primary-eligible.
+On an update the authority holds only the changed structures, so extraction
+reads those ReadingGroups; a first import or an explicit reprocess authorizes
+every current structure, so it reads every ReadingGroup. There is no second
+reading scope and no cost comparison. A ReadingGroup that alone exceeds the
+route's capacity is a typed capacity limitation, not a truncated success.
 
 Support Assessment does not use this planner. It judges fixed claims, so it has
-no Primary authority to plan and no request mode to choose. Exact Evidence
+no Primary authority to plan; it shares the ReadingGroups and reading context. Exact Evidence
 correspondence routes each whole Support: when every Evidence part is exactly
 unchanged and the revision has no changed content, the program rebinds the
 Support; when every part is exactly unchanged and the revision has changed
@@ -155,13 +159,9 @@ the Support's own prior Evidence; each work item may exit once its first part
 has been read. A Support without a usable validation baseline reads the whole
 current revision as its first part.
 
-The delta/current-full comparison above is the implemented `revision-input-v6`
-behavior. Target (Cloud #505): Claim Extraction makes no cost comparison. On an
-update, it reads only the changed structures, with their ReadingGroups as
-context; Primary is already limited to the changed authorized work. A first
-import streams per ReadingGroup through the LLM batch runner of
+Claim Extraction runs on the LLM batch runner of
 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md), so no
-extraction read has to fit one request.
+extraction read has to fit one request. This is `revision-input-v7`.
 
 ## Deterministic Primary Eligibility
 
@@ -206,13 +206,18 @@ nested Markdown string reuses the same section/list rules through its decoded-to
 coordinate map. Teams message content therefore follows its canonical schema and
 nested text contract. Agent
 Session `session_summary` content follows `markdown-structural`; neither path asks
-the selector to infer structure from arbitrary JSON. Source relations may supply
-additional exact Context under their existing contract. Budgets bound the
-material actually presented to the model.
+the selector to infer structure from arbitrary JSON. The provider-declared reply
+target, or else predecessor, of each read Observation and the Unit Title are
+added as exact Context. No character budget truncates this Context; a request
+that cannot hold one item with its Context is a capacity limitation.
 
 Tables and binary Artifacts retain their existing atomic representation and get
 no additional reading group. The reading index does not budget or batch requests;
-the revision request policy enforces actual route capacity after expansion.
+the LLM batch runner enforces actual route capacity after expansion.
+
+The Unit Title compiles to one `unit-identity` Fragment that is never
+Primary-eligible. It names the Unit a catalog belongs to, such as a Jira key and
+summary; a claim that names or depends on that Unit selects it as Required.
 
 Reading expansion starts from the caller's selected Fragments and runs once;
 newly added Context does not recursively trigger unrelated groups. A complete
@@ -245,8 +250,8 @@ display-only input. The model never returns Context references.
 ## Catalog and Model Contract
 
 One catalog belongs to one exact Source, Source Unit Revision, access context,
-batch workset, compiler contract, and presentation. It contains only exact
-current-revision Fragments admitted for that batch; it is not the complete
+request workset, compiler contract, and presentation. It contains only exact
+current-revision Fragments admitted for that request; it is not the complete
 Source Unit contents.
 
 Conceptually, the model sees:
@@ -329,31 +334,22 @@ are Primary-eligible; an adjacent Observation assigned to another batch cannot
 cross that authority seam.
 
 Large `markdown-structural` and `plain-text` Observations are indexed into
-complete representation-owned structures before packing. Each authorized
-structure has one Primary batch owner; there is no overlapping Primary window.
-Primary eligibility remains local to each exact range, and Context cannot widen
+complete representation-owned structures. Each authorized structure belongs to
+exactly one request item; there is no overlapping Primary window. Primary
+eligibility remains local to each exact range, and reading context cannot widen
 it to the whole Observation.
 
-For a valid base/target pair, `RevisionInputPlanner` forecasts complete delta and
-current-full extraction transports and chooses the lower forecast token cost,
-with delta winning ties. Delta includes the complete removed/replaced structural
-history emitted by the delta; it does not semantically prune old material before
-extraction. Current-full reads the complete eligible effective current Source
-Projection and omits non-current history. Partial Projection carry-forward
-remains current, and full does not turn an uncovered upstream omission into a
-deletion. Full reading does not promote Context to Primary. Normal-update L1 full
-reading must fit one request. A named extraction baseline that is missing or does
-not match fails as a technical contract violation; ordinary incremental L1 never
-uses that failure as initial-import authority.
+A named extraction baseline that is missing or does not match fails as a
+technical contract violation; ordinary incremental L1 never uses that failure as
+initial-import authority.
 
-L3 Support Assessment uses the ordered current-revision reading instead of this
-comparison. A Support without a recorded validation baseline, or whose named
+L3 Support Assessment uses the ordered current-revision reading. A Support without a recorded validation baseline, or whose named
 baseline snapshot is missing or inconsistent, reads the whole current revision
 as its first part; an unusable named snapshot is logged as a diagnostic, not
 treated as a failure.
 
-Target (Cloud #505): see the target note in [RevisionInputPlanner](#revisioninputplanner)
-and [ADR 0034, Ordered current-revision reading](../adr/0034-unify-incremental-support-and-claim-assessment.md#ordered-current-revision-reading).
+See [Extraction request planning](#extraction-request-planning) and
+[ADR 0034, Ordered current-revision reading](../adr/0034-unify-incremental-support-and-claim-assessment.md#ordered-current-revision-reading).
 
 For compiler-backed v9, `canonical-record` and whole-Artifact coordinate
 profiles are different representation contracts, not Source-type exceptions.
@@ -508,7 +504,10 @@ identities.
 The authority rule does not branch on Source type:
 
 - Jira comments and Teams or future Slack messages use provider-native
-  Observation deltas and bounded conversation Context.
+  Observation deltas, read with the reply target or predecessor their provider
+  declares.
+- Every adapter supplies the Unit Title from its own payload; no prompt carries
+  source-specific instructions for it.
 - Markdown, GitHub, Confluence, local files, and agent-session documents use
   their declared representation profile; raw CommonMark HTML remains a private
   Markdown adapter concern.
@@ -534,7 +533,8 @@ than private planner state. At minimum they prove:
 4. ordering, neighbor, and root Context do not gain authority by themselves;
 5. multiple changed ranges still produce exactly one Primary per atomic
    claim and canonical Required ordering;
-6. initial extraction remains isolated by batch;
+6. initial extraction reads every ReadingGroup, each authorized Primary Fragment
+   in exactly one request;
 7. explicit reprocess and revalidation authorize their current work without an
    ordinary delta;
 8. deletion-only work emits no new extraction catalog;
