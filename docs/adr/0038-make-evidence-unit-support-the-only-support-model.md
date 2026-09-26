@@ -42,8 +42,10 @@ Evidence Unit Support is the only Support model.
   lock order. No code branches on the marker.
 - An older SQLite workspace that has no reference-scoped Support rows moves to
   Evidence Unit Support when it opens. One that still holds such rows refuses to
-  start and tells the operator to finish the cutover with an earlier version or
-  to rebuild the workspace. This version contains no conversion code.
+  start before any migration runs, so its schema and marker stay as they were,
+  and the operator is told to move the database aside and rebuild the workspace
+  from its Sources. This version contains no conversion code. A marker with any
+  other value is never rewritten; the workspace refuses to open.
 - `projection-extraction-v9` is the only extraction contract. Its version string
   and the Evidence Unit scope string stay unchanged because both are hashed into
   stored identities: derivation and batch ids, Evidence Unit ids, and Support
@@ -54,10 +56,14 @@ Evidence Unit Support is the only Support model.
 - The lifecycle cutover subsystem is removed: backfill, recovery jobs, findings,
   finding repair, unprovable retirement, Source rebaseline, rebaseline
   reactivation, and the maintenance jobs that fenced sync, local-agent jobs, and
-  Source writes. The lifecycle gate stays. A new Source enables it at creation;
-  a Source without an enabled gate stays gated. Support recovery is forward-only:
-  a later sync of the current Source revision is the only way to attach new
-  Support.
+  Source writes. The lifecycle gate stays. A new Source enables it at creation.
+  A Source recorded before lifecycle gates existed stays gated: its destructive
+  changes become Reviews, and those Reviews cannot be approved until an operator
+  enables the gate with `POST /sources/{id}/memory-lifecycle/gate`. That route
+  only runs the existing gate check, which requires complete Evidence Unit
+  Support for every active source-backed Memory and Source provenance for every
+  active Support. Support recovery is forward-only: a later sync of the current
+  Source revision is the only way to attach new Support.
 - A pending lifecycle Review whose proposal names Support without Evidence Unit
   ids, or a mutation type this version no longer applies, fails its stale guard.
   Approval marks it stale and returns a conflict.
@@ -74,8 +80,11 @@ Evidence Unit Support is the only Support model.
   operation advances it now that lifecycle maintenance jobs are gone. Whether to
   keep this fence is a separate decision.
 - Lifecycle Plan payloads no longer carry a Support scope version or Evidence
-  Reference ids, so a Plan staged before the upgrade and retried after it fails
-  its payload comparison. Upgrades need no staged Plans in flight.
+  Reference ids, so the payload hash for a given Plan id changes. Derivation
+  recovery and tombstones read an already applied Plan instead of applying it
+  again, but a job that replays an applied agent claim Plan after the upgrade
+  fails its payload comparison. Upgrades need no sync runs, non-terminal
+  derivations, or queued or leased local-agent jobs.
 
 ## Cloud impact
 
@@ -101,7 +110,9 @@ pin:
 - Cloud's worker stops recovering stale lifecycle jobs and checking the active
   lifecycle job fence, and the local-agent job route drops the same fence.
 - The proxied admin app no longer serves the Source lifecycle backfill,
-  rebaseline, and finding repair routes. The Source lifecycle view no longer
+  rebaseline, and finding repair routes, and serves the new
+  `POST /sources/{id}/memory-lifecycle/gate`, which calls the existing
+  `enable_lifecycle_gate`. HANA's implementation drops its open-finding check. The Source lifecycle view no longer
   returns jobs and findings, the Source list no longer returns
   `lifecycle_maintenance`, and Memory Evidence no longer returns
   `support_scope_version` or `legacy_limited`.
@@ -112,6 +123,12 @@ pin:
   change.
 
 ## Related
+
+- [ADR 0017](0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md):
+  derivation recovery. Its diff-guided and structural work strategies are
+  removed here.
+- [ADR 0025](0025-correlate-online-quality-events-with-source-derivation.md):
+  quality event Sessions, whose structural-fallback example no longer applies.
 
 - [ADR 0030](0030-compile-revision-pinned-evidence-fragments.md): Evidence
   Fragments and Evidence Unit Support. Its Support cutover and legacy-limited

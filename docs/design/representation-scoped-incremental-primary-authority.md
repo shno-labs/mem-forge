@@ -652,8 +652,8 @@ The minimum deterministic suite is:
 - no top-k replacement for mandatory destructive lifecycle coverage;
 - no increased timeout, concurrency, or batch fragmentation as the remedy;
 - no redesign of relation conflict Review or exhaustive multi-window extraction;
-- no source ingestion rerun, Source rebaseline, Memory mutation, Support rewrite,
-  or lifecycle-history rewrite;
+- no source ingestion rerun, Memory mutation, Support rewrite, or
+  lifecycle-history rewrite;
 - no promise that genuine first imports or full rewrites avoid large relation work.
 
 ## 14. Existing design records changed by this implementation
