@@ -22,13 +22,15 @@ plan, chooses the lower token cost and lets Delta win an exact tie. A negative
 Support result from Delta alone can propose Support removal. This is accepted
 until #505 lands with no interim guard; the #505 implementation replaces it with
 the ordered read below, including the continuation of a Delta-negative Claim
-through the rest of the document, and with changed-structure extraction. Same-Unit
-Relation uses the sparse claim revision contract in
-[Sparse claim catalog](../design/sparse-claim-catalog.md), whose request
-carries each old Memory's `current_support` result and whose response carries
-an evidence entailment status. The candidate ledger keeps a whole batch when its
-call fails, and marks low-value Candidates `DROP_LOW_VALUE`. Sections labelled
-"target" describe the contract that replaces these behaviors.
+through the rest of the document, and with changed-structure extraction.
+[Candidate admission](#candidate-admission) is implemented as
+`candidate-admission-v1`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
+request is implemented as `claim-revision-v8-sparse-catalog`, described in
+[Sparse claim catalog](../design/sparse-claim-catalog.md). Until
+`SupportRelationCoordinator` lands, Relation runs after Support Assessment over
+the old Memories whose Support has a result, and the reducer combines the two by
+program rules. Sections labelled "target" describe the contract that replaces
+these behaviors.
 
 ## Context
 
@@ -331,8 +333,14 @@ The final semantic wire result is `SUPPORTED(work_id, primary_ref, required_refs
 
 ### Sparse same-Unit Relation
 
-Target contract, tracked by Cloud issue #505. The implemented contract is
-described in [Sparse claim catalog](../design/sparse-claim-catalog.md).
+Target contract, tracked by Cloud issue #505. The request and output are
+implemented as `claim-revision-v8-sparse-catalog`, described in
+[Sparse claim catalog](../design/sparse-claim-catalog.md); running in parallel
+with Support Assessment over every same-Unit old Memory arrives with
+`SupportRelationCoordinator`. Until then the reducer combines Relation with
+Support in program code: an equivalent Candidate never keeps an unsupported old
+Memory, and a refinement whose proof preserves all of an unsupported old
+Memory's truth is unresolved locally.
 
 Relation (the claim revision judgment) receives only `ADMITTED` Candidates, each
 with its current Evidence, and the Claims of every same-Unit Active old Memory
@@ -366,24 +374,26 @@ schema changes; Cloud upgrades the pin with no HANA or configuration change.
 
 ### Candidate admission
 
-Target contract, tracked by Cloud issue #505; execution through the LLM batch
-runner.
+Implemented as `candidate-admission-v1`; execution through the LLM batch runner.
 
 Candidate admission runs between Claim Extraction and Sparse Relation, for
-every Candidate, whether or not the Unit has old Memories. It replaces the
-current candidate ledger. One admission request covers both duties, with no
-additional call round:
+every Candidate, whether or not the Unit has old Memories. One admission request
+covers both duties, with no additional call round:
 
 1. Complete evidence support: the Candidate's selected Primary and Required
    Evidence completely support its Claim, including scope, exceptions and
-   table-header qualifiers.
+   table-header qualifiers. Identifying details the Claim states, such as a
+   name, key or subject, are part of the Claim and need Evidence too.
 2. Same-round deduplication: the Candidate states the same knowledge as another
    Candidate of this round. Every admission request carries all of this round's
    Candidate claims (Candidate ID and claim text, no Evidence) as shared context,
    so a duplicate is found even when the two Candidates are judged in different
-   requests. The program merges duplicates deterministically into one. If that
+   requests. The program merges duplicates deterministically into one: only
+   admitted Candidates merge, by connected groups of reported duplicates, and
+   each group keeps its most specific (longest normalized) Candidate. If that
    list does not fit, the LLM batch runner chunks it as shared context and
-   returns one result per Candidate and chunk; the caller merges them.
+   returns one result per Candidate and chunk; a Candidate rejected in any chunk
+   is rejected, and the reported duplicates of all chunks are united.
 
 | Result | Handling |
 | --- | --- |
@@ -392,10 +402,11 @@ additional call round:
 | same-round duplicate | merged; one Candidate continues to Sparse Relation |
 | execution failure (timeout, schema error, illegal ID) | extraction-side failure: the Source Unit revision is not committed and the next sync retries it |
 
-The ledger's `DROP_LOW_VALUE` outcome becomes `REJECTED` with reason
-`low_value`. An admission execution failure adds no Candidate this round and
-publishes nothing for that revision; it follows the existing extraction-failure
-contract.
+An admission execution failure adds no Candidate this round and publishes
+nothing for that revision; it follows the existing extraction-failure contract.
+Each admission request is recorded as `candidate_admission` derivation work, so a
+retried sync reuses completed requests and the atomic commit requires them
+complete.
 
 A `REJECTED` Candidate emits one structured event with the Source Unit, revision,
 Candidate Claim, selected Evidence refs and reject reason, without full source
@@ -408,9 +419,10 @@ Sparse Relation receives only `ADMITTED` Candidates. Deduplication against
 Memories of other Units and other sources is identity's job
 ([Same-Unit identity backstop](#same-unit-identity-backstop)), not admission's.
 
-Cloud impact: admission is a shared OSS prompt and contract. The event and counts
-use the existing OSS structured logging and sync statistics, so Cloud needs no
-HANA or configuration change.
+Cloud impact: admission is a shared OSS prompt and contract. The event uses the
+existing Memory audit events and the counts use sync statistics, so Cloud needs
+no HANA schema or configuration change. The HANA commit gate must accept
+`candidate_admission` as a required derivation work kind, as SQLite does.
 
 ### Support and Relation coordination
 
@@ -876,18 +888,17 @@ errors are terminal, while unavailable storage remains a recoverable read failur
 
 ## Consequences
 
-Current implemented contract (`claim-revision` sparse catalog): same-Unit sparse
-claim assessment uses the shared request catalog and completion
-validator described in ADR 0009. Challenger/incumbent references are `NEW`/`MEM`;
-Evidence catalog references are `PRM`/`REQ`, each followed by four digits. The
-claim work identity includes the changed contract and schema, so older completed
-work cannot be reused against a different catalog. This does not change current
-Evidence entailment, complete incumbent support auditing, conditional exact
-comparisons between competing refiners, or destructive revision proof. The
-target contract removes the incumbent Support result from Relation input and
-moves Evidence entailment to candidate admission
-([Sparse same-Unit Relation](#sparse-same-unit-relation),
-[Candidate admission](#candidate-admission)).
+Same-Unit sparse claim assessment (`claim-revision-v8-sparse-catalog`) uses the
+shared request catalog and completion validator described in ADR 0009.
+Challenger/incumbent references are `NEW`/`MEM`; Evidence catalog references are
+`PRM`/`REQ`, and admission's Candidate references are `CND`, each followed by
+four digits. The claim work identity includes the changed contract and schema,
+so older completed work cannot be reused against a different catalog. Relation
+input carries no incumbent Support result, and Evidence entailment belongs to
+candidate admission ([Sparse same-Unit Relation](#sparse-same-unit-relation),
+[Candidate admission](#candidate-admission)). Complete incumbent support
+auditing, conditional exact comparisons between competing refiners and
+destructive revision proof are unchanged.
 
 The material changes concentrate in input preparation, L3, L4, and reducer/Plan
 integration. Entity resolution stays a bounded retrieval helper, not a truth or
@@ -1132,11 +1143,9 @@ prompt/schema version corrects them.
 
 ## Same-Unit Relation execution
 
-Target contract, tracked by Cloud issue #505. The
-implemented contract (`claim-revision` sparse catalog) is described in
-[Sparse claim catalog](../design/sparse-claim-catalog.md); its request carries each
-old Memory's `current_support` result and its response carries an evidence
-entailment status.
+Target contract, tracked by Cloud issue #505. The request and output are
+implemented as `claim-revision-v8-sparse-catalog`, described in
+[Sparse claim catalog](../design/sparse-claim-catalog.md).
 
 Same-Unit Relation keeps the sparse output shape: one completion row per
 `ADMITTED` Candidate, listing only meaningful relations; omitting an old Memory
@@ -1262,7 +1271,8 @@ it does not migrate stored Evidence or create a lifecycle version.
 Implementing the target contract must allocate
 successor semantic-work and input-policy identities for exact correspondence,
 witness state, the ordered Support read, changed-structure and first-import
-streaming extraction, candidate admission, the Relation input change, the coordinator and
+streaming extraction, candidate admission (`candidate-admission-v1`), the Relation
+input change (`claim-revision-v8-sparse-catalog`), the coordinator and
 DestructiveValidation. Existing completed v6 work
 must never be reinterpreted under the amended contract. Exact successor numbers
 are assigned with the implementation so they cannot collide with independently

@@ -451,7 +451,7 @@ Memory write. The shared pipeline then applies separate policies:
 all resolved batch candidates
   -> deterministic durability gate
   -> deterministic exact-duplicate collapse
-  -> complete semantic CandidateLedger
+  -> candidate admission
   -> incumbent reconciliation
   -> atomic Lifecycle Plan
 ```
@@ -461,15 +461,18 @@ and routing-field history. A claim extracted from the actual supplied content
 of an Artifact is different and may pass with revision-pinned Evidence. The
 gate is shared and never switches on provider type.
 
-CandidateLedger owns only within-revision uniqueness. It receives candidate
-identity, Memory type, canonical content, and resolved Evidence identity. It
-does not receive provider payloads and never rewrites candidate content. Its
-only actions remain `KEEP` and `DROP_REDUNDANT -> canonical_index`.
+Candidate admission owns complete Evidence support and within-revision
+uniqueness. It receives each candidate's claim, Memory type, validity and the
+exact text of its selected Primary and Required Evidence, plus every claim of
+the round as shared context. It does not receive provider payloads and never
+rewrites candidate content. Each candidate is `ADMITTED` or `REJECTED` with
+reason `evidence_incomplete` or `low_value`, and may name same-round
+duplicates, which the program merges among admitted candidates.
 
-The semantic ledger must return exactly one valid decision for every candidate.
-Incomplete or over-budget coverage fails closed: no candidate is written and no
-destructive incumbent lifecycle action is authorized. Exact duplicates are
-collapsed before semantic budgets are applied.
+Admission must return exactly one valid decision for every candidate. Incomplete
+or over-budget coverage fails closed: no candidate is written, the Source Unit
+revision is not committed and the next sync retries it. Exact duplicates are
+collapsed before any model call.
 
 ## Lifecycle Module Ownership
 

@@ -369,11 +369,14 @@ unclear scope, such as "the process above", "this document" or "discontinued
 from a given date", is `AFFECTED`. The rule has no dedicated evaluation cases;
 the generic #506 classifier evaluation applies.
 
-`REJECTED` has two reasons: the selected Evidence does not completely support
-the Claim, or `low_value`, which replaces the current ledger's
-`DROP_LOW_VALUE`. Every admission request carries all of this round's Candidate
-claims as shared context, so the model can report a duplicate that sits in
-another request; the program merges reported duplicates deterministically.
+`REJECTED` has two reasons: `evidence_incomplete`, when the selected Evidence
+does not completely support the Claim, including identifying details such as a
+name or key that the Claim states, or `low_value`. Every admission request
+carries all of this round's Candidate claims as shared context, so the model can
+report a duplicate that sits in another request. The program merges reported
+duplicates deterministically, only among admitted Candidates, and keeps the most
+specific Candidate of each group; a Candidate rejected in any context chunk is
+rejected.
 
 Sparse Relation never receives Support results or their reasons and does not
 check whether Evidence supports the Candidate; candidate admission owns that
