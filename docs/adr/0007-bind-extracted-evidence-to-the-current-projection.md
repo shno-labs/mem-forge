@@ -175,7 +175,7 @@ current localized Evidence, or is merely a sibling/narrower claim, UPDATE is not
 authorized. The lifecycle-safe fallback retains the incumbent and admits the
 original claim-sized candidate independently.
 
-Legacy cutover follows the same storage rule. An exact legacy excerpt may be
+Legacy cutover (removed by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md)) followed the same storage rule. An exact legacy excerpt may be
 preserved, while lineage that lacks one uses empty `LEGACY_LIMITED` Evidence.
 Cutover must never copy a complete Source Observation Revision into each
 backfilled Evidence Unit. During cutover a Memory may temporarily retain more

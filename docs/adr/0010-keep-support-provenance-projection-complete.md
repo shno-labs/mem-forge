@@ -2,6 +2,10 @@
 
 Status: Accepted
 
+Amended 2026-09-26 by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md): the legacy cutover path and migration inventory
+named below are removed. Lifecycle gates and operator evaluation still check
+both directions of the projection invariant.
+
 Amended 2026-08-27 by [ADR 0030](0030-compile-revision-pinned-evidence-fragments.md).
 A Support Assertion now means the relationship from a Memory to one complete
 claim-sized Evidence Unit. Primary and Required references inside that unit are

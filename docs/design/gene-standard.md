@@ -667,8 +667,8 @@ Comment body text.
    facts that the memory extractor would persist.
 7. **Normalization is the extension point**: Genes own source-specific
    normalization only. After `NormalizedContent` is produced, the shared
-   source-agnostic update planner chooses diff-guided extraction or
-   full-document fallback, and the centralized memory pipeline owns extraction,
+   Source projection decides which Observation revisions changed, and the
+   centralized memory pipeline owns Evidence Fragment extraction,
    reconciliation, support management, review gating, and lifecycle writes. See
    `docs/design/source-agnostic-memory-extraction.md`.
 

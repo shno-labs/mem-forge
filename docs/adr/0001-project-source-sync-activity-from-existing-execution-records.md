@@ -10,6 +10,10 @@ provider-neutral retryability across the pipeline and durable worker seam;
 retry to the displayed execution record.
 Amended: 2026-09-09 to bind each durable server-run attempt to the Source
 activity that fences its writes.
+Amended: 2026-09-26 by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md):
+lifecycle-maintenance jobs are removed, so Source Sync Activity projects only
+local collection jobs and server processing runs. The maintenance statements
+below describe the removed projection.
 
 Local collection jobs, server processing runs, and lifecycle-maintenance jobs keep their independent durable lifecycles because they have different owners, leases, retries, and storage transactions. The Sources UI consumes one Source Sync Activity read model projected from those records, rather than introducing a cross-store master operation or extending one execution record to own the others.
 

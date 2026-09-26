@@ -44,7 +44,8 @@ correction, supersedes the incumbent, and writes Review-owned durable vector
 work in one relational transaction. Rejection retires only the challenger.
 The old `replace_memory` MCP tool, REST route, and client method are removed.
 
-A preserved `legacy_limited` configured-source Memory may have provenance edges
+(Unchanged by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md), which stops showing `legacy_limited` but keeps the stored
+value.) A preserved `legacy_limited` configured-source Memory may have provenance edges
 but no complete active v2 Support Set. Those legacy edges cannot grant direct
 Correction Authority or synthesize a Support hash. A confirmed correction may
 still stage the ordinary hidden `user_correction` challenger and pending Review:
