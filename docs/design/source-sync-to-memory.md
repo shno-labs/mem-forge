@@ -124,7 +124,9 @@ Support 与 Claim Extraction 共用同一个 ReadingGroup 划分：一个最外�
 - 所读 Observation 由 provider 声明其回复或跟随的那一条：有 `REPLIES_TO` 时取被回复的消息，否则取 `PRECEDES` 的前一条（Jira comment 读到前一条 comment 或 issue core）；不按顺序或文本相似度推断；
 - 该 Unit 的 Unit Title（第 0.9 节）。
 
-阅读上下文只能被选为 Required，不设字符上限；单个 item 连同其上下文超出容量时按 LLM batch runner 的规则处理。Unit Title 自成一个 ReadingGroup，变化时照常进入 ChangeBundle 和 Support 读取顺序的第一段。
+阅读上下文只能被选为 Required，不设字符上限；单个 item 连同其上下文超出容量时按 LLM batch runner 的规则处理。Unit Title 不自成 ReadingGroup，也不是 Support 读取顺序里的一段，它在每一步都作为阅读上下文出现；Unit Title 变化时作为变化内容进入 ChangeBundle 和 Support 读取顺序的第一段。
+
+抽取时单个 ReadingGroup 连同阅读上下文就超出请求容量，该 revision 以 `input_capacity_exceeded` 失败、不提交；重试读的是同样的输入，所以在路由容量或 Unit 内容变化之前一直失败。这是已知限制：Support 有 `UNRESOLVED(capacity)` 让 revision 仍能提交，抽取没有对应规则，因为跳过这一组会让它的知识静默丢失。
 
 #### `RepresentationCompiler` 只在 planner 内部暴露
 
@@ -419,7 +421,8 @@ Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 s
 | 已有 Unit 升级后首次带 Unit Title | Unit Title 是新增内容，不产生抽取调用；`EXACT_UNCHANGED` 的 Support 经 Change Impact |
 | Jira summary 修改 | 选了 Unit Title 的 Support 为 `MODIFIED`，进入 Support Assessment；其他 Support 经 Change Impact |
 | 已关闭的 Jira issue 按当前 revision 重新处理 | 不访问 provider，从存储的原始内容和已提交 revision 的 Artifact 重新投影；抽取读每个 ReadingGroup；每条 Support 按没有可用基线整篇读取（带 Unit Title，不换绑、不走 Change Impact）；同步游标不变，不推断删除；其他 Unit 不受影响 |
-| 重新处理时存储内容缺失或不再重现 Unit 位置 | 该 Unit 以 `stored_raw_content_missing`、`stored_artifact_missing` 或 `stored_input_incomplete` 等原因失败、不提交，其他 Unit 照常处理 |
+| 已关闭的 Confluence 子页面按当前 revision 重新处理 | Document 行保存了 Gene 发现该页面时的 item 元数据（含父页面），重新投影得到与已提交 revision 相同的位置 |
+| 重新处理时存储内容缺失或不再重现 Unit 位置 | 该 Unit 以 `stored_raw_content_missing`、`stored_artifact_missing`、`stored_artifact_invalid` 或 `stored_input_incomplete` 等原因失败、不提交，其他 Unit 照常处理；保存 item 元数据之前存储的 Confluence 子页面和 GitHub 文件属于后者，普通同步重新存储该 Document 后即可重新处理 |
 | 更新的阅读上下文超过 20,000 字符 | 不截断：变化结构所在的整个 ReadingGroup 与其阅读上下文都被读到；单个 item 超出容量是类型化容量错误 |
 | Relation 漏报 equivalent | 同 Unit 不产生重复 Active Memory；同一 Plan 不对同一 Memory 既删除、替代或修订又挂接 |
 | Change Impact 判 `UNAFFECTED`，Relation 报 contradicts | 对该 Claim 补做一次 Support Assessment；仍冲突进入 Review |
@@ -593,7 +596,7 @@ Representation 为需要的固定 revision 构建一次索引；相同 base/targ
 
 小文档读全文也不能扩大第二个范围。旧片段可支持固定旧 claim；不能因为成为 revalidation Primary 就获得 extraction Primary 授权。Required 和辅助 Context 不自动产生新的提取权限。首次导入或明确全量 reprocess 使用其自身授权合同。
 
-明确的重新处理有两种：force-resync 重新抓取整个 Source，每个 Unit 按当前全部 Observation 授权，Support 走普通路由；运维人员按当前 revision 重新处理（`REPROCESS` sync run，`POST /sources/{id}/reprocess` 或 `memforge sources reprocess`）只读指定 Document 的存储内容，用当前 adapter 和编译器重新投影，同样按全部 Observation 授权，并在 derivation 上下文里记录 `support_without_baseline`，让每条 Support 按没有可用基线整篇读取。两种都以本次运行 id 作为 `reprocess_operation_id`，所以重新投影与已提交 revision 相同时也会重新执行，不复用旧 derivation 的完成工作。两种都对照已提交的 base 规划：需要语义工作的 Unit 不提前记录投影，投影由生命周期提交在同一事务里记录，因此只有位置变化的 Unit 也能按已提交 base 重新处理。
+明确的重新处理有两种：force-resync 重新抓取整个 Source，每个 Unit 按当前全部 Observation 授权，Support 走普通路由；运维人员按当前 revision 重新处理（`REPROCESS` sync run，`POST /sources/{id}/reprocess` 或 `memforge sources reprocess`）只读指定 Document 的存储输入（Document 行保存的 Gene item 元数据、原始内容和已提交 revision 的 Artifact），用当前 adapter 和编译器重新投影，同样按全部 Observation 授权，并在 derivation 上下文里记录 `support_without_baseline`，让每条 Support 按没有可用基线整篇读取。两种都以本次运行 id 作为 `reprocess_operation_id`，所以重新投影与已提交 revision 相同时也会重新执行，不复用旧 derivation 的完成工作。两种都对照已提交的 base 规划：需要语义工作的 Unit 不提前记录投影，投影由生命周期提交在同一事务里记录，因此只有位置变化的 Unit 也能按已提交 base 重新处理。
 
 ### 6.2 输入范围与请求预算
 
@@ -688,9 +691,9 @@ Evidence-fixed、多 Memory cohorts 可使用 `REVISION_FIRST` cache layout；co
 
 ## 8. 步骤五：候选准入【已实现，每个 Candidate 执行】
 
-程序先做确定性质量检查，并把规范化后内容完全相同的候选合并（不调用模型）。其余每个 Candidate 都经 LLM batch runner 判断一次，只有一个 Candidate、Unit 没有旧 Memory 时也一样：请求带 Candidate 的 Claim、类型、有效期和所选 Primary/Required Evidence 原文，并带本轮全部 Candidate 的 ID 与 Claim 作为共享上下文。Claim 里的名称、编号等识别信息属于 Claim，所选 Evidence 没有给出时判为 `REJECTED(evidence_incomplete)`。
+程序先做确定性质量检查。每个 Candidate 都经 LLM batch runner 判断一次；规范化后 Claim、类型和有效期都相同的 Candidate 由程序直接视为重复，但各自按自己的 Evidence 判断，只有一个 Candidate、Unit 没有旧 Memory 时也一样：请求带 Candidate 的 Claim、类型、有效期和所选 Primary/Required Evidence 原文，并带本轮全部 Candidate 的 ID 与 Claim 作为共享上下文。Claim 里的名称、编号等识别信息属于 Claim，所选 Evidence 没有给出时判为 `REJECTED(evidence_incomplete)`。
 
-共享上下文被分块时，任一块判 `REJECTED` 即为 `REJECTED`，各块报告的重复取并集。程序只在 `ADMITTED` 的 Candidate 之间按连通分量合并，每组保留内容最具体（规范化后最长）的一条；被拒绝的 Candidate 不吸收、也不连接其他 Candidate。准入请求作为 `candidate_admission` 工作记入 derivation，重试时复用已完成的请求，提交门禁要求这些工作已完成。
+共享上下文被分块时，任一块判 `REJECTED` 即为 `REJECTED`，各块报告的重复取并集。程序只在 `ADMITTED` 的 Candidate 之间按连通分量合并，每组保留内容最具体（规范化后最长）的一条，相同时保留先抽取的一条；被拒绝的 Candidate 不吸收、也不连接其他 Candidate。准入请求作为 `candidate_admission` 工作记入 derivation，重试时复用已完成的请求，提交门禁要求这些工作已完成。
 
 每个 `REJECTED` 记一条 `candidate_admission_rejected` 审计事件，内容为 Source Unit、目标 revision、Claim、所选 Evidence 的位置和拒绝理由，不含原文；统计键为 `candidate_admission_admitted_count`、`_rejected_count`、`_merged_count`、`_llm_calls`、`_prompt_chars`。执行失败（拆分到单条后仍超容量、schema 错误、非法 ID、缺少所选 Evidence）使该 Source Unit revision 不提交，下次同步重试。完整规则见第 0.6.1 节。
 
@@ -739,7 +742,7 @@ fixed old claim
 
 本阶段只比较本 Unit 的 `ADMITTED` Candidates 与同 Unit Active 旧 Memory。程序先处理 exact duplicate；其余由 Structured LLM 读取 Candidate、其当前 Evidence 和同 Unit 全部 Active 旧 Memory 的 Claim，为每个 Candidate 输出一行，只列有意义的关系。输入不含 Support 结论，也不检查 Candidate 的证据。合同细节见第 0.6.2 节，请求形状见 [Sparse claim catalog](sparse-claim-catalog.md)。
 
-**当前实现：**SupportRelationCoordinator 实现之前，Relation 在 Support Assessment 之后执行，由 reducer 按程序规则组合两者：等价的 Candidate 不能保留 `UNSUPPORTED` 的旧 Memory（DELETE 并进 Review）；修订证明说 Candidate 保留了 `UNSUPPORTED` 旧 Memory 的全部含义时，两个判断冲突，该对作为局部未决处理，保留旧 Memory 并消费 Candidate。
+**当前实现：**SupportRelationCoordinator 实现之前，Relation 在 Support Assessment 之后执行，由 reducer 按程序规则组合两者：等价的 Candidate 遇到 `UNSUPPORTED` 的旧 Memory，或修订证明说 Candidate 保留了 `UNSUPPORTED` 旧 Memory 的全部含义时，两个判断冲突，该对及其相关组件作为局部未决处理：保留旧 Memory 和它的 Support，消费 Candidate，不 ADD，也不提出删除。协调器的定向复核实现后取代这条规则。
 
 | 关系 | 含义 |
 | --- | --- |
@@ -975,7 +978,7 @@ source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含
 | 步骤 | 实施前代码与可复用部分 | 目标差异及规模 | 必须验证的边界 |
 |---|---|---|---|
 | 1 Trigger/Worker | `admin_api` 的 Source sync 路由 → SyncService → SourceSyncWorker，已有 run/lease/coalescing | **小，已实现**：按当前 revision 重新处理是同一队列上的 `REPROCESS` run（`source_sync_runs.reprocess_document_ids_json`）；有活动运行时返回 409、不合并，重新处理期间请求的同步在它之后执行；失败不自动重试；`dry_run` 只读 | 只恢复失败工作；不新增调度器 |
-| 2 采集/快照（重新处理） | `pipeline/stored_document.py` 从 Document 行、存储的原始内容和已提交 revision 的 Artifact 还原输入 | **小，已实现**：不访问 provider；Artifact 随 Unit 带回；存储输入不能重现已提交位置时该 Unit 失败 | 不推进游标、不做删除检测；存储缺失只影响该 Unit |
+| 2 采集/快照（重新处理） | `pipeline/stored_document.py` 从 Document 行（含 Gene 的 item 元数据）、存储的原始内容和已提交 revision 的 Artifact 还原输入 | **小，已实现**：不访问 provider；Artifact 随 Unit 带回；存储输入不能重现已提交位置时该 Unit 失败；读取最新存储的输入 | 不推进游标、不做删除检测；存储缺失只影响该 Unit |
 | 2 采集/快照 | `pipeline/sync.py`、SourceProjectionAdapter、不可变 revisions、raw/normalized/Artifact 存储 | 无基础重构；资格问题单独见下表 | provider 部分覆盖、删除证明、稳定 Unit 身份 |
 | 3 工作准备 | `source_derivation.py`、`pipeline/projection_context.py` 与 Fragment compiler 已有暂存、结构授权和索引 | **中，已实现**：`plan_projection_evidence_work` 只算授权，`pipeline/extraction_requests.py` 按 ReadingGroup item 经 runner 规划请求；首次导入读每个 ReadingGroup、更新时只读变化结构及其 ReadingGroup（不做成本比较、不截断）；适用基线和工作合同身份 | 首次导入、contested Support、超限不可截断、旧输出不可复用到新合同 |
 | 4 L1 提取 | 已有结构目录与 Primary/Required selector；增量完整结构授权已实现 | **小到中**：消费上述读取范围；不放宽已实现的 Primary 授权 | 全文只是可读上下文；canonical 完整解析不等于全记录 Primary |

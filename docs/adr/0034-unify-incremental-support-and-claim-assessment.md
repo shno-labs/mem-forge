@@ -366,9 +366,10 @@ implemented as `claim-revision-v8-sparse-catalog`, described in
 [Sparse claim catalog](../design/sparse-claim-catalog.md); running in parallel
 with Support Assessment over every same-Unit old Memory arrives with
 `SupportRelationCoordinator`. Until then the reducer combines Relation with
-Support in program code: an equivalent Candidate never keeps an unsupported old
-Memory, and a refinement whose proof preserves all of an unsupported old
-Memory's truth is unresolved locally.
+Support in program code: an equivalent Candidate of an unsupported old Memory,
+and a refinement whose proof preserves all of an unsupported old Memory's truth,
+conflict with Support, so the pair is unresolved locally and the old Memory
+keeps its Support. The targeted re-check below replaces this rule.
 
 Relation (the claim revision judgment) receives only `ADMITTED` Candidates, each
 with its current Evidence, and the Claims of every same-Unit Active old Memory
@@ -416,9 +417,12 @@ covers both duties, with no additional call round:
    Candidate of this round. Every admission request carries all of this round's
    Candidate claims (Candidate ID and claim text, no Evidence) as shared context,
    so a duplicate is found even when the two Candidates are judged in different
-   requests. The program merges duplicates deterministically into one: only
-   admitted Candidates merge, by connected groups of reported duplicates, and
-   each group keeps its most specific (longest normalized) Candidate. If that
+   requests. Candidates with the same normalized Claim, type and validity are
+   duplicates without the model saying so, but each is still judged on its own
+   Evidence. The program merges duplicates deterministically into one: only
+   admitted Candidates merge, by connected groups of duplicates, and each group
+   keeps its most specific (longest normalized) Candidate, the earliest
+   extracted among equals. If that
    list does not fit, the LLM batch runner chunks it as shared context and
    returns one result per Candidate and chunk; a Candidate rejected in any chunk
    is rejected, and the reported duplicates of all chunks are united.
@@ -438,7 +442,7 @@ complete.
 
 A `REJECTED` Candidate emits one structured event with the Source Unit, revision,
 Candidate Claim, selected Evidence refs and reject reason, without full source
-text. Each revision counts admitted, rejected and merged Candidates, so an
+text, once the revision commits. Each revision counts admitted, rejected and merged Candidates, so an
 extraction quality regression becomes visible, for example a rising reject ratio
 for one Source or after one deployment. Execution failures use the existing
 failure trace. Merges are only counted, not recorded as anomalies.
@@ -902,20 +906,33 @@ upgrade; the new Observation needs no HANA schema change.
 Both rules wait for a Unit's next revision, and a Unit that no longer changes (a
 closed Jira issue, an archived page) never gets one. An operator reprocesses such
 Units at their current revision: a `REPROCESS` Source sync run reprojects each
-named Document from its stored raw content and the Artifacts of its committed
-revision with the current adapter and compiler, without contacting the provider.
+named Document from its stored input (the item metadata its Gene discovered,
+kept with the Document, the raw content, and the Artifacts of its committed
+revision) with the current adapter and compiler, without contacting the provider.
 The Unit then goes through the ordinary revision flow in one atomic commit, with
 two differences: extraction reads every ReadingGroup, under the run's reprocess
 authorization, and every Support is read over the whole Unit as if it had no
 usable baseline, so no Support is rebound or sent to Change Impact. The run
 keeps the sync cursor and infers no removal, and a stored input that no longer
 places the Unit where its committed revision does fails that Unit with
-`stored_input_incomplete`. A compiler or adapter change states in its PR the OSS
-and Cloud load and which Units, if any, should be reprocessed; `dry_run` reports
-each Unit's stored input and an upper bound on the model calls before the run.
-Cloud impact: the reprocess runs on the Source sync run queue, which gains one
-HANA column for its Documents and the reprocess enqueue rules, and
-`run_source_sync` passes `execution_mode` again.
+`stored_input_incomplete`. A Document stored before its item metadata was kept
+can fail this way when the adapter places the Unit from that metadata (a
+Confluence child page, a GitHub file); an ordinary sync that stores the Document
+again makes it reprocessable. The run reads the latest stored input: raw content
+that a sync stored but whose revision never committed is projected and committed
+as the next ordinary sync would. Like every run that holds the Source lease, a
+reprocess run first finishes derivations an earlier run left interrupted. A
+compiler or adapter change states in its PR the OSS and Cloud load and which
+Units, if any, should be reprocessed; `dry_run` reports each Unit's stored input
+and an estimate of its model calls before the run (extraction items, one
+admission request, one Relation request when the Unit has Supports, one
+whole-Unit reading per Support), leaving out requests split for capacity,
+Support readings that take several steps, selector corrections, entity
+resolution, cross-document relation classification and the interrupted
+derivations the run finishes first. Cloud impact: the reprocess runs on the
+Source sync run queue, which gains one HANA column for its Documents and the
+reprocess enqueue rules; the Document row gains one HANA column for the item
+metadata; and `run_source_sync` passes `execution_mode` again.
 
 The input policy counts the exact fallback prompt with its response schema,
 actual supplied images and requested output allowance. Configured input,

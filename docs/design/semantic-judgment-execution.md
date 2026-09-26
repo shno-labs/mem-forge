@@ -373,9 +373,11 @@ the generic #506 classifier evaluation applies.
 does not completely support the Claim, including identifying details such as a
 name or key that the Claim states, or `low_value`. Every admission request
 carries all of this round's Candidate claims as shared context, so the model can
-report a duplicate that sits in another request. The program merges reported
-duplicates deterministically, only among admitted Candidates, and keeps the most
-specific Candidate of each group; a Candidate rejected in any context chunk is
+report a duplicate that sits in another request. Candidates with the same
+normalized claim, type and validity are duplicates without the model saying so,
+but each is judged on its own Evidence. The program merges duplicates
+deterministically, only among admitted Candidates, and keeps the most specific
+Candidate of each group; a Candidate rejected in any context chunk is
 rejected.
 
 Sparse Relation never receives Support results or their reasons and does not

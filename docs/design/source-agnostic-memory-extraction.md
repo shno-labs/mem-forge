@@ -467,8 +467,9 @@ duplicates, which the program merges among admitted candidates.
 
 Admission must return exactly one valid decision for every candidate. Incomplete
 or over-budget coverage fails closed: no candidate is written, the Source Unit
-revision is not committed and the next sync retries it. Exact duplicates are
-collapsed before any model call.
+revision is not committed and the next sync retries it. Candidates with the same
+normalized claim, type and validity are duplicates without the model saying so;
+each is still judged on its own Evidence, and only admitted ones merge.
 
 ## Lifecycle Module Ownership
 
