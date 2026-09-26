@@ -977,7 +977,7 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 | 事务锁冲突/可重试提交失败 | 准备结果；业务事务回滚 | 不留下半套 Memory/Support | 同一准备结果重试并重查 guards |
 | target/旧 Memory/Support 已改变 | 历史准备与审计 | 不使用过期判断提交 | 重新针对适用快照准备 |
 | 进程在 commit 前崩溃 | 持久 extraction staging 保留；部分生命周期准备仍可能只是内存 | 不保证所有生命周期模型结果都免重跑 | 已有恢复合同 |
-| 恢复暂存 derivation 时失败，且按 `failure_retryable` 不可重试（例如 `ProjectionIdentityConflict`、模型返回不合法） | 失败诊断 | 该 derivation 以 `DERIVATION_DETERMINISTIC_FAILURE` 标为 superseded，该 Document 在本次运行记为失败；身份冲突在暂存前检查，不发模型调用 | 恢复继续处理下一个 derivation；该 Unit 等下一次同步或重新处理再推导 |
+| 恢复暂存 derivation 时失败，且按 `failure_retryable` 不可重试（例如 `ProjectionIdentityConflict`、模型返回不合法） | 失败诊断 | 该 derivation 以 `DERIVATION_DETERMINISTIC_FAILURE` 标为 superseded，该 Document 在本次运行记为失败；身份冲突在暂存前检查，不发模型调用 | 恢复继续处理下一个 derivation；该 Unit 停在已提交 revision，provider 改动该文档后由增量同步重新推导，或由运维人员重新处理；被标为 superseded 的重新处理或全量同步 derivation 不会被之后的增量同步重试。失败记录在本次运行的失败文档里，也记录在该 derivation 的 `DERIVATION_DETERMINISTIC_FAILURE` 原因码上 |
 | 恢复暂存 derivation 时失败，且可重试（Source activity fence 失效、SQLite/HANA/对象存储错误、模型 provider 错误或超时；lifecycle 包装后的错误按其原因判断） | 暂存 derivation 与成功 batch 输出 | 本次运行停止，derivation 保持暂存 | 下次运行 |
 | 向量交付失败 | 已提交 Memory 与 outbox | Memory 保持已提交；报告索引待交付 | outbox，不重跑 extraction |
 | 关系发现失败 | 已提交 Memory 与 relation work | 不回滚已生成 Memory | relation work |

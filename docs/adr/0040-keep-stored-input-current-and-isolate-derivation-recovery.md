@@ -158,7 +158,12 @@ wrapped failure is classified by its cause.
   the Document counts as failed in this run unless the run's provider pass
   processes the same Unit again, and recovery continues with the next staged
   derivation. `ProjectionIdentityConflict` and an invalid model response are
-  such failures. None of the existing codes fits: `DERIVATION_INPUT_SUPERSEDED`
+  such failures. The Unit stays at its committed revision. It is derived again
+  when the provider changes the Document and an incremental sync picks it up,
+  or when an operator reprocesses it; nothing retries the superseded
+  derivation, so a superseded reprocess or full-sync derivation is not retried
+  by later incremental syncs. The failure is visible in that run's failed
+  Documents and in the attempt's reason code. None of the existing codes fits: `DERIVATION_INPUT_SUPERSEDED`
   means newer input replaced the derivation, and `CONTRACT_SUPERSEDED` means the
   extraction contract changed.
 - A retryable failure stops the run and leaves the derivation staged for the
@@ -205,11 +210,15 @@ call. The store still checks identity when it records the projection.
   `DERIVATION_INPUT_SUPERSEDED` and the current `updated_at`. It runs once with
   its version record, so reprocess derivations staged after the upgrade are
   untouched. Self-hosted installations get it on their next start. The Unit
-  keeps its committed revision, and the next reprocess or sync that changes it
-  derives again.
+  keeps its committed revision and is derived again when the provider changes
+  the Document and an incremental sync picks it up, or when an operator
+  reprocesses it.
 - A retryable failure in recovery still stops the run, as before; the next run
   resumes the staged derivation. Only failures that cannot succeed on retry are
-  taken out of the way.
+  taken out of the way, and nothing retries them automatically: a Unit whose
+  provider does not change the Document again needs an operator reprocess, found
+  through the run's failed Documents or the `DERIVATION_DETERMINISTIC_FAILURE`
+  reason code.
 
 ## Cloud impact
 
@@ -243,7 +252,9 @@ Cloud composes this package through its HANA store and the OSS admin app.
   OSS migration 103 on `SOURCE_DERIVATION_ATTEMPTS`: `STATUS = 'superseded'`,
   `TERMINAL_REASON_CODE = 'DERIVATION_INPUT_SUPERSEDED'` and `UPDATED_AT`, for
   unapplied rows whose `CONTEXT_PAYLOAD_JSON` has `support_without_baseline`
-  true, through `_apply_schema_migration_once`. No manual step remains.
+  true, through `_apply_schema_migration_once`. `_migrate` runs it after
+  `SOURCE_DERIVATION_ATTEMPTS` and its added columns exist, so a new workspace
+  schema initializes. No manual step remains.
 - **Recovery.** `supersede_source_derivation` already stores any reason code
   (`TERMINAL_REASON_CODE NVARCHAR(255)`); no constraint changes. HANA driver
   errors (`hdbcli.dbapi.Error`) do not declare themselves not retryable, so a
