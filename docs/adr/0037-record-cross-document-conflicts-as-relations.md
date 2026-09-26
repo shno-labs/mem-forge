@@ -82,10 +82,13 @@ text of the Primary and Required Evidence as Support Assessment reads it:
 record fields in source order, each labeled by its JSON pointer so that the
 fields of one array item stay together (a Jira comment body, each changelog
 item's field, previous value and new value), never the stored raw record. The
-source revision time is the time the Observation Revision records (a comment, a
-changelog entry, a message) or, where the document time is the revision time of
-the document body and the anchored revision is still current, the document
-time; otherwise it is unknown, never a sync or submission time. The title, time
+source revision time (`RelationSubject.evidence_time`) is the `observed_at` of
+the Observation Revision the Primary Evidence is anchored to, while that
+revision is still current: the time the source itself gives that content (a page
+version, a commit, a comment, a changelog entry, a message, an agent session
+event; design `source-sync-to-memory.md` section 0.9). Every Source follows this
+one rule. Where the anchored revision is no longer current or the source records
+no time, the time is unknown, never a sync or submission time. The title, time
 and Evidence are the inputs for deciding whether two statements are about the
 same situation.
 
@@ -104,6 +107,15 @@ readers see the order and dates it was decided on. When the times do not order
 the pair (either is unknown, or both fall on the same date), it is recorded as
 `contradicts`. Directional `REFINES` is no longer recorded for cross-document
 pairs.
+
+The source revision time belongs to the whole anchored Observation, so it can
+be later than the statement itself: a page, a file or an agent concept revised
+for another passage gives an unchanged older statement the new time, and that
+statement can then be ordered after a genuinely newer one instead of falling
+back to `contradicts`. Content that changes from A to B and back to A keeps the
+time of the first A, so the restored statement looks older than it is. Both are
+known limits of revision-level time. Agent concepts already record the time
+of the event that authorized each claim; ordering does not use it yet.
 
 ### Executor
 
@@ -230,9 +242,12 @@ applied counts. Deleting them is a separate approved step.
   routes and the LLM batch runner. No configuration is added.
 - The classifier input reads the current Observation Revisions of each
   Memory's Source Unit (`get_current_source_observation_revisions`, with its
-  Evidence Representation Profile and `observed_at`) and the document
-  (`get_document`), which the HANA adapter already implements. Discovery and the
-  conversion build that input with the same methods.
+  Evidence Representation Profile and `observed_at`, the only source of the
+  Evidence time) and the document title (`get_document`), which the HANA adapter
+  already implements. Discovery and the conversion build that input with the
+  same methods. `record_source_projection` writes a missing `observed_at` once
+  when a later projection gives it; the HANA adapter must do the same, or
+  Cloud revisions recorded without a time keep an unknown Evidence time.
 - `proxy/external_runtime.py` call sites do not change.
 
 ## Related

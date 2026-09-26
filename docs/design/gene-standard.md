@@ -557,13 +557,14 @@ The unit of discovery. Every gene yields `ContentItem` from `discover()`.
 | `item_id` | `str` | Yes | `{gene_name}-{source_native_id}`. Must match `^[a-z]+-[A-Za-z0-9._-]+$` |
 | `title` | `str` | Yes | Human-readable. For tickets: `"KEY: summary"` |
 | `source_url` | `str` | Yes | Complete, clickable URL to view in source system |
-| `last_modified` | `datetime` | Yes | Timezone-aware (UTC). Most recent meaningful change. |
+| `last_modified` | `datetime` | Yes | Timezone-aware (UTC). Change marker for discovery and `since` filtering; may be the discovery time where the source gives none, so it is never read as the content's source time. |
 | `content_type` | `str` | Yes | MIME type of raw content: `"text/html"`, `"application/json"`, `"text/plain"`, `"text/markdown"` |
 | `space_or_project` | `str` | Yes | Organizational container (space key, project key, channel name) |
 | `version` | `str` | Yes | Opaque, comparable string that changes when content changes. For changelog tracking only. |
 | `author` | `str \| None` | No | Primary human responsible ("who do I ask about this content?") |
 | `labels` | `list[str]` | No | Source-native labels, lowercased. Empty list if none. |
 | `extra` | `dict` | Yes | Source-specific metadata. See below. |
+| `stored_extra` | `dict` | No | Set by the sync pipeline, never by `discover()`: the `extra` recorded when the document was last synced, empty for a new document. `fetch()` may reuse a provider fact recorded for an unchanged provider revision (GitHub Repository reuses a file's commit time for an unchanged blob). |
 
 ### 7.2 `extra` Dict Minimum Schema
 
@@ -645,6 +646,11 @@ Comment body text.
     "author": str | None,           # Same as ContentItem.author
     "created_at": str | None,       # ISO-8601 creation timestamp
     "url": str,                     # Canonical source URL
+
+    # ── Source time (omitted when the source gives none) ──
+    "source_updated_at": str,       # Offset-aware ISO-8601 time the source gives the body's
+                                    # current content (source-sync-to-memory.md 0.9).
+                                    # Never a discovery, fetch or sync time.
 
     # ── Gene-specific keys (namespaced) ──
     "confluence": { ... },          # Only for Confluence items
