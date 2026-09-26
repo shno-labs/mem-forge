@@ -24,7 +24,8 @@ explicit_list
 The first version intentionally does not provide a section picker. Heading
 anchors are renderer-dependent and can silently change. For large sites, users
 should choose a single page, a path subtree, or an explicit URL list, then rely
-on diff-guided extraction to handle small within-page updates.
+on incremental extraction of the changed structures to handle small within-page
+updates.
 
 ## Authentication
 
@@ -146,12 +147,11 @@ After normalization, GitHub Pages documents use the same update behavior as all
 other sources:
 
 ```text
-first sync -> full_document extraction
-small normalized diff -> diff_guided extraction
-large normalized diff -> full_document extraction over deterministic units
-extraction failure -> full_document fallback over deterministic units
+first sync -> Evidence Fragments of the whole page revision
+page update -> Evidence Fragments of the changed structures only
+unchanged page -> no extraction
 ```
 
-The deterministic extraction units are owned by the shared memory pipeline, not
+Fragment planning and extraction are owned by the shared memory pipeline, not
 by the GitHub Pages gene. No GitHub Pages-specific memory extraction or
 lifecycle rules are allowed.

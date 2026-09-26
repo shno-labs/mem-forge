@@ -128,8 +128,8 @@ before an incomplete Lifecycle Plan can commit.
 
 An admitted Unit records one summary on exit, distinguishing committed,
 deferred, skipped and failed execution. A returned extraction error is failure,
-not success. Attempts filtered before execution do not fabricate summaries;
-read-only rebaseline preflight does not persist diagnostic rows. Diagnostic
+not success. Attempts filtered before execution do not fabricate summaries.
+Diagnostic
 write failure must not mask the business result or replay an applied Plan.
 
 ### Keep extraction claim-sized and lifecycle authority explicit

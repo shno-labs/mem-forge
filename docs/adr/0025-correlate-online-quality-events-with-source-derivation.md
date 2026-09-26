@@ -363,6 +363,11 @@ than introducing another durable lifecycle:
 | Root observation | that batch attempt's metadata-only projection | stable name `memforge.agent.extraction_batch` |
 | Child observation | one durable `AgentRuntimeEvent` occurrence | `event_id` in metadata |
 
+Amended by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md) (2026-09-26): diff-guided extraction
+and its structural fallback are removed. A Projection execution can still
+create more than one Derivation when its derivation context changes, and those
+Derivations share one Session.
+
 The Session is deliberately narrower than a whole source sync and broader than
 one Derivation. Diff-guided extraction and its structural fallback may create
 different Derivations, but they remain one Projection workflow and therefore

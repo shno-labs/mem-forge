@@ -168,6 +168,11 @@ Recovery therefore resumes only outputs produced for the same immutable
 Projection, context, strategy, and extraction contract. Changing this planning
 contract advances the extraction contract version.
 
+Amended by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md) (2026-09-26): the deriver plans only
+`projection-extraction-v9` Fragment work. Diff-guided and structural work, the
+fallback between them, and the derivation work-strategy override described in
+the next paragraph are removed.
+
 If diff-guided work raises or returns a terminal extraction error, the deriver
 persists that failed attempt and stages one alternative structural-work
 manifest for the same immutable target. The document update remains
@@ -277,6 +282,11 @@ Lifecycle Plan. The committed plan is authoritative: recovery marks the older
 attempt `superseded` and skips extraction and reconciliation. It must not call
 the model again and then compare a newly inferred payload with the already
 applied plan.
+
+Amended by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md) (2026-09-26): there is one execution
+strategy, so the strategy change below no longer occurs. Several non-terminal
+contexts for one Projection scope still arise when the derivation context
+changes between executions, and recovery still keeps only the latest one.
 
 One immutable Projection scope may also have more than one non-terminal
 derivation context when an earlier execution persisted the target Projection

@@ -627,8 +627,7 @@ The minimum deterministic suite is:
   Source emits it;
 - Jira changelog `attachment_event`/`operational_transition` continues through
   the existing deterministic quality gate instead of duplicating that policy;
-- active `evidence-unit-set-v2` plus `projection-extraction-v9` selection, not a
-  default marker that accidentally exercises v8;
+- `evidence-unit-set-v2` Support with `projection-extraction-v9` selection;
 - repeated planning/compilation produces byte-identical ranges, refs and digest;
 - changing the inference capability hash changes Artifact plan/catalog identity
   and prevents cross-model batch reuse;
@@ -653,8 +652,8 @@ The minimum deterministic suite is:
 - no top-k replacement for mandatory destructive lifecycle coverage;
 - no increased timeout, concurrency, or batch fragmentation as the remedy;
 - no redesign of relation conflict Review or exhaustive multi-window extraction;
-- no source ingestion rerun, Source rebaseline, Memory mutation, Support rewrite,
-  or lifecycle-history rewrite;
+- no source ingestion rerun, Memory mutation, Support rewrite, or
+  lifecycle-history rewrite;
 - no promise that genuine first imports or full rewrites avoid large relation work.
 
 ## 14. Existing design records changed by this implementation
@@ -699,7 +698,8 @@ The fix is complete only when:
 - removal and metadata-only changes produce no false new candidates while their
   non-extraction responsibilities still run;
 - retries preserve exact base/target authority and catalog identity;
-- v8 history remains readable without becoming an active-policy fallback;
+- derivations staged under an earlier extraction contract are superseded, never
+  resumed;
 - OSS/SQLite and Cloud/HANA contract behavior matches;
 - the canonical ADR, both PRs, CF deployment evidence and bounded live smokes
   are recorded against issue #390.

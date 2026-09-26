@@ -410,6 +410,11 @@ under its existing contract and cannot be selected as claim Evidence.
 
 ### Extraction selection contract
 
+Amended by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md) (2026-09-26): `projection-extraction-v9` is the only extraction
+contract; the registry of readable contracts and the mapping from Support scope
+below are removed, and stored derivations under any other contract are
+superseded.
+
 `projection-extraction-v9` replaces all text-versus-Artifact candidate variants
 with one discriminated candidate whose Evidence selection is:
 
@@ -709,6 +714,10 @@ exception in extraction.
 
 ### Support schema and cutover
 
+Superseded by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md) (2026-09-26): the cutover is complete, reference-scoped
+Support storage is dropped, and the Support scope marker is only a startup check
+and, in Cloud, a lock. The unit-scoped Support model below remains in force.
+
 The canonical storage model adds a unit-scoped Support table with
 `id`, `memory_id`, `evidence_unit_id`, `source_id`, `access_context_hash`,
 `active`, `created_at`, and `removed_at`. The unique key is
@@ -790,6 +799,10 @@ union of active v2 Supports and explicitly gated legacy-limited edges during
 the transition, then from v2 Supports alone after convergence.
 
 ### Recovery of preserved legacy-limited Support
+
+Superseded by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md) (2026-09-26): the lifecycle cutover subsystem that produced
+legacy-limited Evidence is removed. `legacy_limited` stays a readable stored
+value and is no longer shown or written.
 
 Post-cutover recovery never edits, relabels, or reactivates the archived v1
 Unit, References, or Support rows. A still-active Memory may gain authority

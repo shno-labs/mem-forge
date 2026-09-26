@@ -88,9 +88,8 @@ own retry and completion boundaries.
 
 A source-level run contains per-Unit commits; failure in one Unit does not roll
 back unrelated successful Units. Current-source complete incumbent coverage
-cannot be replaced by bounded cross-document search. Ordinary replay does not
-resurrect terminal Memory; explicit authorized rebaseline recovery has its own
-contract.
+cannot be replaced by bounded cross-document search. Replay never resurrects
+terminal Memory; Support recovery is forward-only.
 
 Detailed owners: [ADR 0017](../adr/0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md),
 [ADR 0019](../adr/0019-drain-vector-outbox-from-current-relational-truth.md),

@@ -199,8 +199,7 @@ identity, revision, and change kind; the current Document revision and active
 Source Unit lineage still exist; the current Source Unit revision has the exact
 access-context fingerprint; the earlier and current manifests carry the same
 source activity epoch and configuration revision; and no Projection Scope
-transition is open. Force, repair, and rebaseline execution never use this
-path. Any missing or mismatched fact sends that member through the existing
+transition is open. Force execution never uses this path. Any missing or mismatched fact sends that member through the existing
 full path.
 
 Projection reuse does not remove collection membership evidence. Reused members
@@ -230,7 +229,7 @@ delivery failure cannot reverse the authoritative relational commit.
 ## References
 
 - [Local daemon incremental sync capability review](../research/local-daemon-incremental-sync-capability-review.md)
-- [ADR 0004: Use proven authoritative snapshots as the rebaseline corpus](0004-use-proven-authoritative-snapshots-for-rebaseline.md)
+- [ADR 0004: Use proven authoritative snapshots as the rebaseline corpus](0004-use-proven-authoritative-snapshots-for-rebaseline.md), superseded by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md)
 - [ADR 0002: Renew Teams access through a dedicated browser session](0002-renew-teams-access-through-a-dedicated-browser-session.md)
 - [GitHub REST Git Trees](https://docs.github.com/rest/git/trees)
 - [Git repository contents and symlinks](https://docs.github.com/rest/repos/contents)

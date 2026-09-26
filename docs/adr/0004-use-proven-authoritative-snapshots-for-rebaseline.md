@@ -1,5 +1,10 @@
 # Use proven authoritative snapshots as the rebaseline corpus
 
+Superseded by [ADR 0038](0038-make-evidence-unit-support-the-only-support-model.md) (2026-09-26). Source rebaseline, its maintenance jobs, cutover
+findings, and rebaseline reactivation are removed; Support recovery is
+forward-only. The Support and provenance projection rules below remain in force
+through ADR 0010 and ADR 0030.
+
 A completed force-full snapshot defines the current rebaseline corpus only when the source contract explicitly declares authoritative collection. The snapshot must match the current source configuration, have an immutable boundary with no collection or upload failure, contain unique stable document identities, retain fully attested artifacts, and pass non-mutating provider coverage validation. Non-authoritative sources continue to replay every current document and may not infer deletion from absence.
 
 Rebaseline atomically fences ordinary sync, validates the snapshot, resets derived lifecycle state, and replays that snapshot. Documents present only in the old index are then reconciled as authoritative absence, including legacy projections without Source Unit lineage; no compatibility bridge preserves them. Removing a document removes only its Source Support: multi-document and cross-source support remain active, and a Memory is retired only after its final active support is gone.
