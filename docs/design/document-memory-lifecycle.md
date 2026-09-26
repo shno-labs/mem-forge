@@ -16,9 +16,14 @@ Independent complete Evidence Units provide alternative support; partial pieces
 from unrelated sources or access scopes cannot be combined to fabricate one.
 
 A Memory's claim, source provenance, and support validity are different facts.
-Equivalent claims from different documents may reuse a Memory identity while
-retaining independent Evidence Units and Support. The compatibility proof and
-current Support/authority snapshot govern reuse and mutation. Legacy
+Source sync creates a Memory only within one Source Unit: equivalent claims from
+different Source Units are separate Memories, each with its own Evidence Units
+and Support, and cross-document relation discovery records their sameness as an
+`equivalent` relation
+([ADR 0039](../adr/0039-create-memories-within-the-source-unit.md)). A Memory
+that already carries Support from several Units keeps it; each Unit maintains
+its own Support, and the current Support/authority snapshot governs mutation.
+Legacy
 `memory_sources` extracted/corroborated edges are not the canonical v2 authority
 model and cannot substitute for complete scoped Support.
 
@@ -31,7 +36,7 @@ Evidence snapshot link.
 
 | Operation | Meaning and boundary |
 |---|---|
-| ADD | Create an independently supported Memory only after admission and identity matching; an equivalent compatible target receives Support instead. |
+| ADD | Create an independently supported Memory after admission and same-Unit reconciliation. Source sync never attaches the Candidate to a Memory of another Source Unit. |
 | NOOP | Keep claim and identity. Current Evidence may still be reconstructed and scoped Support replaced atomically. |
 | UPDATE | A complete same-identity refinement preserves all incumbent meaning and scope. The planner creates a replacement Memory record and supersedes the prior materialization with revision semantics. |
 | SUPERSEDE | An explicit incompatible replacement has complete Evidence and destructive authority. Other independent Support or source gates can require Review. |

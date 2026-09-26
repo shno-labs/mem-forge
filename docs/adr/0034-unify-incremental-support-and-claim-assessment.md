@@ -39,6 +39,13 @@ implemented in OSS. Cloud implements the HANA side with its pin upgrade, and the
 read-only shadow cohort and deployment evidence that Cloud issue #505 requires
 are recorded outside this ADR.
 
+Amended 2026-09-26 by [ADR 0039](0039-create-memories-within-the-source-unit.md): the
+[Same-Unit identity backstop](#same-unit-identity-backstop) and pre-creation
+identity reuse are removed. Every admitted ADD Candidate creates its own Memory;
+same-Unit duplicates are decided by candidate admission and Sparse Relation, and
+sameness across Source Units is an asynchronous `equivalent` relation. The
+statements about identity below describe the removed step.
+
 ## Context
 
 The preceding reconciliation classified claim pairs, audits incumbent support, and
@@ -138,7 +145,10 @@ that owns the detail.
   record in `lifecycle_reviews`, with the Candidate in its staged evidence and a
   deterministic ID, so one conflict has exactly one Review
   ([Pending coordinator Review](#pending-coordinator-review)).
-- Identity deduplication covers this Unit's kept old Memories and excludes those
+- Amended by [ADR 0039](0039-create-memories-within-the-source-unit.md): every admitted ADD Candidate creates its own Memory,
+  and no identity step follows the coordinator. The next statement describes the
+  removed step.
+  Identity deduplication covers this Unit's kept old Memories and excludes those
   this round deletes, supersedes, updates or sends to Review
   ([Same-Unit identity backstop](#same-unit-identity-backstop)).
 - DestructiveValidation also requires complete Relation work for any SUPERSEDE
@@ -146,6 +156,8 @@ that owns the detail.
 - When a Source Unit's identity changes, the new Unit's creation and identity
   attach commit before the old Unit is removed
   ([Source Unit identity and convergence](#source-unit-identity-and-convergence)).
+  Amended by [ADR 0039](0039-create-memories-within-the-source-unit.md): there is no identity attach; the new Unit creates its
+  own Memories and still commits before the old Unit is removed.
 - A RepresentationCompiler change to segmentation or text representation is
   absorbed by ordinary Support Assessment; a Unit that no longer changes is
   reprocessed at its current revision by an operator
@@ -429,6 +441,9 @@ discovery keeps bounded hybrid retrieval followed by classification over K pairs
 where non-destructive recall loss remains accepted. Same-round Candidate
 deduplication belongs to candidate admission; deduplication against other Units
 and sources belongs to identity.
+Amended by [ADR 0039](0039-create-memories-within-the-source-unit.md): sameness with Memories of other Units and sources is
+recorded only by the asynchronous `equivalent` relation of ADR 0037, which never
+merges Memories.
 
 Cloud impact: the request loses the old Memory's `current_support` field and the
 response loses its evidence entailment status. Both are shared OSS prompt and
@@ -483,6 +498,9 @@ failure trace. Merges are only counted, not recorded as anomalies.
 Sparse Relation receives only `ADMITTED` Candidates. Deduplication against
 Memories of other Units and other sources is identity's job
 ([Same-Unit identity backstop](#same-unit-identity-backstop)), not admission's.
+Amended by [ADR 0039](0039-create-memories-within-the-source-unit.md): no step deduplicates against other Units or Sources; an
+admitted Candidate that the coordinator keeps as an ADD creates its own
+Memory.
 
 Cloud impact: admission is a shared OSS prompt and contract. The event uses the
 existing Memory audit events and the counts use sync statistics, so Cloud needs
@@ -690,6 +708,12 @@ HANA adapter together with the pin upgrade.
 
 ### Same-Unit identity backstop
 
+Superseded by [ADR 0039](0039-create-memories-within-the-source-unit.md) (2026-09-26): the identity step, its exclusion set, the
+attach path and the Plan rule against an identity attach are removed. A Relation
+omission within the Unit is not repaired; Sparse Relation over every active old
+Memory of the Unit and candidate admission's same-round deduplication are the
+only same-Unit duplicate checks. The mechanism below is kept for context.
+
 Implemented for Cloud issue #505 (`identity_excluded_incumbent_ids` in
 `memory/lifecycle_planner.py`).
 
@@ -754,7 +778,8 @@ active Supports may retire a Memory. Another source's active Support always
 prevents retirement by the current source.
 
 The validator runs on the coordinator's operations before identity and the
-Plan, and checks what the earlier steps recorded:
+Plan, and checks what the earlier steps recorded (amended by [ADR 0039](0039-create-memories-within-the-source-unit.md): there
+is no identity step, so it runs directly before the Plan):
 
 - Checks 1 and 2: every Support the old Memory has in this Unit has a result and
   none is `UNRESOLVED`. Exact correspondence already makes a part `REMOVED` only
@@ -792,6 +817,12 @@ returned Observations rather than on an affected-anchor proof, which changes
 Jira and Teams outcomes after the pin upgrade.
 
 ### Source Unit identity and convergence
+
+Amended by [ADR 0039](0039-create-memories-within-the-source-unit.md) (2026-09-26): no identity matching attaches the new Unit's
+Candidates to the old Unit's Memories. The new Unit creates its own Memories,
+and the old Unit's Memories retire once their last Support is removed. The
+commit order stays, because deletions are detected only after every document of
+the run committed, which is what makes absence authoritative.
 
 Provider identity changes are Source Projection facts. If a Confluence Page,
 Teams window or other Unit loses its provider identity, authoritative inventory
@@ -925,6 +956,8 @@ implemented contract is summarized in [Status](#status).
    relations, not Reviews ([ADR 0037](0037-record-cross-document-conflicts-as-relations.md)). Pre-creation
    identity reuse also covers this Unit's kept old Memories, as described in
    [Same-Unit identity backstop](#same-unit-identity-backstop).
+   Amended by [ADR 0039](0039-create-memories-within-the-source-unit.md): pre-creation identity reuse is removed; post-commit
+   relation discovery is the only comparison with other Source Units.
 
 Bounded structural reading groups deliberately accept occasional semantic false
 acceptance when a dependency outside the supplied group is missing and the model
@@ -1234,7 +1267,8 @@ Unresolved incumbents remain in the Sparse Relation catalog, but their preserved
 Support prevents those relation labels from authorizing an automatic destructive
 action; the coordinator table decides their re-check or Review.
 They also remain eligible for ordinary candidate identity matching and
-independent corroboration. A later assessment still uses each
+independent corroboration (amended by [ADR 0039](0039-create-memories-within-the-source-unit.md): identity matching is removed).
+A later assessment still uses each
 Support's actual validation baseline, not the last Source sync revision.
 
 SQLite and HANA apply the same support-preserving invariant in both Support

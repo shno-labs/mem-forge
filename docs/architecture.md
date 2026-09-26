@@ -48,7 +48,7 @@ Development teams accumulate knowledge across many tools (Confluence, Jira, Micr
 MemForge is a **memory layer** that:
 
 - **Extracts** atomic knowledge units (memories) from documents synced via pluggable connectors (genes)
-- **Deduplicates** across sources using semantic similarity
+- **Relates** the same knowledge across sources: each source keeps its own Memory, and asynchronous relation discovery links equivalent, updated and contradicting Memories
 - **Evolves** automatically when source documents change (via scheduled sync)
 - **Retrieves** precisely via hybrid search (vector + BM25 + entity graph) plus explicit source/date filters
 - **Exposes** a unified MCP tool interface through agent-client proxies
@@ -613,8 +613,11 @@ step-by-step examples and change sizing live in the
 
 An ordinary source operation may attach or remove only its authorized complete
 Support, and destructive claim changes require complete incumbent coverage,
-Source Authority and all relevant Support/gates. Equivalent candidates reuse a
-compatible Memory identity. An admissible same-identity revision creates a new
+Source Authority and all relevant Support/gates. Every admitted ADD candidate
+creates its own Memory within its Source Unit; source sync never attaches it to
+a Memory of another Source Unit
+([ADR 0039](adr/0039-create-memories-within-the-source-unit.md)). An admissible
+same-identity revision creates a new
 materialization and supersedes the old record; it does not add an independent
 fact or a new MemoryRevision domain entity.
 
@@ -627,8 +630,10 @@ Cross-document relation discovery follows the commit asynchronously. Both
 independently supported conflicting Memories may be active before a relation
 is annotated; this window is accepted. Each pair of Memories from different
 Source Units receives one label, `none`, `equivalent`, `updates` or
-`contradicts`, and discovery writes relations only, never a Review. Search
-attaches a relation when the caller can see both Memories; a person may dismiss
+`contradicts`, and discovery writes relations only, never a Review. It is the
+only record of the same knowledge across Source Units. Search returns one Memory
+of an `equivalent` pair and attaches a relation when the caller can see both
+Memories; a person may dismiss
 it or correct the outdated Memory through the existing correction paths.
 Neither similarity nor source recency is destructive authority.
 

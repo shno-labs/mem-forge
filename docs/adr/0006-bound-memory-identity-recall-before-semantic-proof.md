@@ -1,5 +1,7 @@
 # Bound Memory identity recall before semantic proof
 
+Status: Superseded by [ADR 0039](0039-create-memories-within-the-source-unit.md) (2026-09-26). Source sync no longer reuses a Memory across Source Units: every admitted ADD Candidate creates its own Memory, and sameness across Units is an asynchronous `equivalent` relation.
+
 Memory identity reuse is provider-neutral and source-neutral. The engine checks exact active identity first, then interleaves bounded strict-vector and shared-entity candidates before structured semantic proof. Candidate recall never decides identity by itself, and the combined candidate set remains capped.
 
 Identity resolution is synchronous within one Reconciliation Scope. Exact
