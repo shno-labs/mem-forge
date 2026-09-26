@@ -100,6 +100,10 @@ The following are removed:
   `find_active_ordinary_claim_memories_by_entities`.
 - The exact claim guard in Plan apply and `ClaimIdentityPolicy`, which existed
   only to switch that guard off for agent claims.
+- `SyncState.memories_corroborated` and the per-document
+  `memories_corroborated` sync statistic. Source sync no longer corroborates, and
+  the value it reported was the count of UPDATE decisions under a misleading
+  name.
 
 User-created Memories (`create_memory`) keep their own near-duplicate check in
 `MemoryStore.deduplicate_and_insert`; this decision covers source sync only.
@@ -165,7 +169,12 @@ Cloud composes this package and takes these changes with one pin update:
   "lifecycle plan exact claim stale guard failed" and "identity attach targets an
   old Memory this Plan deletes, replaces or reviews" disappear, and a Plan that
   attaches Support outside its incumbent ledger and its created Memories fails
-  validation. Sync statistics lose the `identity_resolution_*` keys.
+  validation. Sync statistics lose the `identity_resolution_*` keys, and the
+  sync log lines no longer print a corroborated count.
+- `SyncState` loses `memories_corroborated`. The HANA adapter stops writing
+  `SYNC_STATE.MEMORIES_CORROBORATED` and stops passing it when it reads a
+  `SyncState`; the column stays and keeps its stored values, so no migration is
+  needed. SQLite never stored the field.
 - No HANA migration, no SQLite migration and no configuration change. Model
   access through LiteLLM `sap/` routes and environment-only configuration are
   unchanged; one model request per revision with ADD Candidates goes away.
