@@ -43,6 +43,10 @@ Relations between claims are judged where their authority lives:
 | Same claim in another Source Unit | before creating a Memory (cross-document identity) | it decides whether to create a Memory or add Support to an existing one |
 | Conflict or change across Source Units | after commit, asynchronously | a Unit has no authority over another Unit's Memories; the outcome is an annotation, and its candidates come from workspace-wide retrieval |
 
+Amended 2026-09-26 by [ADR 0039](0039-create-memories-within-the-source-unit.md): there is no cross-document identity step.
+The same claim in another Source Unit is an `equivalent` relation found after
+commit, so the second row no longer applies.
+
 The rule is: a judgment whose outcome changes what this revision commits runs
 before commit; a judgment that only annotates runs after it. Cross-document
 discovery applies to every pair of Memories from different Source Units,
@@ -149,7 +153,8 @@ A completed discovery run writes relations only. It creates no Review.
 
 - `equivalent`: search returns one of the pair and names the other Memory's
   Source as agreeing. Neither Memory changes; merging identities stays the
-  pre-creation identity step's job.
+  pre-creation identity step's job (amended by [ADR 0039](0039-create-memories-within-the-source-unit.md): no step merges
+  Memories across Source Units).
 - `updates`: when both are retrieved, the newer Memory ranks ahead, and the
   older one carries a note naming the newer Memory, its Source and date.
   Neither Memory is retired or hidden.
@@ -257,6 +262,8 @@ applied counts. Deleting them is a separate approved step.
   superseded here.
 - [ADR 0034](0034-unify-incremental-support-and-claim-assessment.md): same-Unit
   relation and pre-creation identity.
+- [ADR 0039](0039-create-memories-within-the-source-unit.md): removes pre-creation identity, so this decision's
+  `equivalent` relation is the only record of sameness across Source Units.
 - [ADR 0036](0036-separate-semantic-work-from-inference-executors.md): classifier
   executor and evaluation gate.
 - [Source sync to Memory](../design/source-sync-to-memory.md): cross-document paths.

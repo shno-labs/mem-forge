@@ -285,6 +285,9 @@ available for corroboration and Lifecycle Plan stale guards; non-target Memory
 content, extraction context, and semantic-pair objects do not survive the
 workset. The resolver releases those transient recall objects before the
 complete Source Unit enters its one atomic Lifecycle Plan.
+Superseded by [ADR 0039](0039-create-memories-within-the-source-unit.md)
+(2026-09-26): source sync no longer resolves Memory identity across Source
+Units, so this workset exists only as history.
 
 This batching is an execution partition, not a reduction in lifecycle or
 identity scope. It must not introduce a global candidate cap, discard a large
