@@ -1,6 +1,6 @@
 # 单篇文档从 Sync 到 Memory 的完整设计
 
-日期：2026-09-07，最近更新：2026-09-26。本文描述共享代码的 Sync→Memory 合同；上一版紧凑 catalog 与可恢复分批的验收记录在已关闭的 [Cloud #473](https://github.com/dodoman-sun/memforge-cloud/issues/473)，第 0 节优化的实现与部署由 [Cloud #505](https://github.com/dodoman-sun/memforge-cloud/issues/505) 跟踪，其第一步是所有模型调用共用的 LLM batch runner：#505 的第一个 PR 交付它并把现有调用点迁移过去。[Cloud #506](https://github.com/dodoman-sun/memforge-cloud/issues/506) 在此基础上增加分类器 backend、Jev 评估与 prompt caching。
+日期：2026-09-07，最近更新：2026-09-27。本文描述共享代码的 Sync→Memory 合同；上一版紧凑 catalog 与可恢复分批的验收记录在已关闭的 [Cloud #473](https://github.com/dodoman-sun/memforge-cloud/issues/473)，第 0 节优化的实现与部署由 [Cloud #505](https://github.com/dodoman-sun/memforge-cloud/issues/505) 跟踪，其第一步是所有模型调用共用的 LLM batch runner：#505 的第一个 PR 交付它并把现有调用点迁移过去。[Cloud #506](https://github.com/dodoman-sun/memforge-cloud/issues/506) 在此基础上增加分类器 backend、Jev 评估与 prompt caching。
 
 本文以一篇 Confluence 页面为主线，覆盖首次导入和后续更新。Jira、Markdown 和带附件的文档复用相同领域流程，差异集中在源解析与表示方式。实施前评审基线为 OSS main `abdbdf18a3c1100289051c289046c0c07092fa76`：基线核对的相关路径与固定复核工作树 `3b8b1fc4` 一致。Cloud 对照基线为 `11338e0235ab23df3199b8024a05c1b17ed71d10`。这里不宣称线上 Cloud 已部署目标设计。
 
@@ -14,7 +14,7 @@
 
 - [Document Memory Lifecycle](document-memory-lifecycle.md) 只定义 Evidence/Support、动作与 Review 的领域约束，不再重复完整 Sync 流程。
 - [Source-Agnostic Memory Extraction](source-agnostic-memory-extraction.md) 负责当前提取、角色和 selector 合同；[增量 Primary authority](representation-scoped-incremental-primary-authority.md) 负责表示级差量算法。本文不另造 compiler 或授权规则。
-- [ADR 0009](../adr/0009-bound-cross-document-relation-discovery.md)、[0017](../adr/0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md)、[0030](../adr/0030-compile-revision-pinned-evidence-fragments.md) 分别拥有异步关系发现、可恢复推导、不可变 Evidence 的详细合同。
+- [ADR 0009](../adr/0009-bound-cross-document-relation-discovery.md)、[0017](../adr/0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md)、[0030](../adr/0030-compile-revision-pinned-evidence-fragments.md) 分别拥有异步关系发现、可恢复推导、不可变 Evidence 的详细合同；[ADR 0040](../adr/0040-keep-stored-input-current-and-isolate-derivation-recovery.md) 拥有存储输入、按当前 revision 重新处理的输入来源、修订复用和恢复隔离的合同。
 - [Semantic judgment execution](semantic-judgment-execution.md) 说明生成与分类调用如何共享 ContextBundle、如何使用 prompt cache，以及哪些判断可以选择 Structured LLM 或 TypeSafe/Jev；[ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md) 记录该共享决策。
 - [大文档恢复分析](large-document-reconciliation-recovery.md) 是历史问题与未批准选项的记录，不是另一份当前主流程或执行 backlog。
 
@@ -428,7 +428,9 @@ COMPLETE_SNAPSHOT 证明 A 消失（B 提交之后）
 
 Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 summary，Confluence 的 space 和页面标题，GitHub 的仓库、路径和 ref，GitHub Pages 的标题和 URL，本地 Markdown 的 vault 和路径，Teams 的会话类型、team、频道、窗口标题和时间范围，agent session 的客户端、窗口类型和标题；扩展 Source 至少给出标题和 source type。Adapter 只写 payload 里有的值，不猜测，也不为某个 Source 写专用 prompt。Unit Title 投影为每个 live Unit 的第一条 Observation（类型 `unit_identity`，表示 `unit-identity`），每次投影都返回，部分投影下也不会成为 `UNKNOWN`；整个 Unit 被 tombstone 时不再有 Unit Title。它编译为一个 Fragment：永远不能作为 Primary，可以被选为 Required 并随 Evidence 持久化。Claim 写出或依赖 Unit 名称（例如 issue key）时应把它选为 Required，候选准入据此检查识别信息（第 0.6.1 节）。Unit Title 变化（Jira summary 修改、页面改名、文件移动）是普通的修改内容：不产生抽取工作，选了它的 Support 为 `MODIFIED`，其他 Support 经 Change Impact。Jira 应分别表达 core/comments/changelog coverage 并完成分页；Teams 应提供稳定 thread/window membership、reply pagination 和明确 edit/delete/tombstone。Adapter 无法证明时降级为 Partial，流程仍可处理 positive changes，但不会从缺失推断删除。
 
-**Observation 修订时间。** 每个 Observation Revision 的 `observed_at` 是来源自己记录的、这份内容形成的时间，不是 MemForge 发现、拉取、接收或同步它的时间。来源没有这样的时间时为空，任何路径都不用同步时间、提交时间或当前时间代替。时间是修订的属性，不参与修订身份：修订 id 只由 Observation 和语义哈希决定，Unit 修订、Evidence Unit 和 Lifecycle Plan 的身份也不含时间，所以纠正时间不会产生新修订或 Delta。已有修订的时间为空、本次投影给出时间时，存储补写一次；已写入的时间不再改。内容从 A 改成 B 再改回 A 时，第二次的 A 复用第一次的修订，时间仍是第一次 A 的时间。Adapter 输出进入投影时，所有时间统一成 UTC ISO 8601；没有时区偏移或格式无法解析的值当作没有时间，不让整个投影失败。
+**Observation 修订时间。** 每个 Observation Revision 的 `observed_at` 是来源自己记录的、这份内容形成的时间，不是 MemForge 发现、拉取、接收或同步它的时间。来源没有这样的时间时为空，任何路径都不用同步时间、提交时间或当前时间代替。时间是修订的属性，不参与修订身份：修订 id 只由 Observation 和语义哈希决定，Unit 修订、Evidence Unit 和 Lifecycle Plan 的身份也不含时间，所以纠正时间不会产生新修订或 Delta。已有修订的时间为空、本次投影给出时间时，存储补写一次；已写入的时间不再改。内容从 A 改成 B 再改回 A 时，第二次的 A 复用第一次的修订，时间仍是第一次 A 的时间。
+
+**修订按内容寻址。** 修订的身份是 Observation、语义哈希和 Evidence 表示 profile，修订 id 由前两者决定。投影产生的修订 id 已经存储时，无论它是当前修订还是历史修订，投影都直接使用存储的那一行：投影先按 id 读出这些行（`get_source_observation_revisions`），这次推导出的 metadata（例如 Jira changelog 的 `semantic_class`）不替换存储的 metadata，抽取和 Evidence 读到的就是存储的内容。存储记录投影时只核对已有行的身份，身份不同即报不可重试的 `ProjectionIdentityConflict`。因此 metadata 里由代码推导的注解在历史行上也必须完整：迁移 102 为缺少 `semantic_class` 的 Jira changelog 修订按其内容补上。`claim_evidence_scope` 参与语义哈希，缺少它的旧修订 id 不同，不会被复用，所以不需要补。Adapter 输出进入投影时，所有时间统一成 UTC ISO 8601；没有时区偏移或格式无法解析的值当作没有时间，不让整个投影失败。
 
 整篇正文只有一个 Observation 的来源（Confluence 页面、GitHub 文件、GitHub Pages 页面、本地文件、agent concept 文档、扩展 Source），由 Gene 在 `normalize()` 里通过 `source_semantics["source_updated_at"]`（带时区偏移的 ISO 时间）报告正文的时间，没有就不写。这个时间属于整篇正文，对其中某一段来说是上界。`ContentItem.last_modified` 只用于发现阶段的变化判断、`since` 过滤和文档的 `last_modified`，可以是发现或提交时间，从不当作内容时间读取；文档和 Memory 的 `source_updated_at` 也只取 Gene 报告的时间。Adapter 尽量从已经取得的数据里拿时间；确实需要多一次 provider 调用时，选最便宜的真实来源，并写明成本，不加轮询，也不加配置。
 
@@ -472,9 +474,12 @@ Evidence Unit 的时间取 Primary 锚定的 Observation Revision 的时间；�
 | Jira Claim 写出 issue key | Claim 选了 Unit Title 为 Required 时，准入看得到 key 并可准入；Claim 把本 issue 的内容写成另一个 key 且所选 Evidence 没有给出它时 `REJECTED(evidence_incomplete)` |
 | 已有 Unit 升级后首次带 Unit Title | Unit Title 是新增内容，不产生抽取调用；`EXACT_UNCHANGED` 的 Support 经 Change Impact |
 | Jira summary 修改 | 选了 Unit Title 的 Support 为 `MODIFIED`，进入 Support Assessment；其他 Support 经 Change Impact |
-| 已关闭的 Jira issue 按当前 revision 重新处理 | 不访问 provider，从存储的原始内容和已提交 revision 的 Artifact 重新投影；抽取读每个 ReadingGroup；每条 Support 按没有可用基线整篇读取（带 Unit Title，不换绑、不走 Change Impact）；同步游标不变，不推断删除；其他 Unit 不受影响 |
-| 已关闭的 Confluence 子页面按当前 revision 重新处理 | Document 行保存了 Gene 发现该页面时的 item 元数据（含父页面），重新投影得到与已提交 revision 相同的位置 |
-| 重新处理时存储内容缺失或不再重现 Unit 位置 | 该 Unit 以 `stored_raw_content_missing`、`stored_artifact_missing`、`stored_artifact_invalid` 或 `stored_input_incomplete` 等原因失败、不提交，其他 Unit 照常处理；保存 item 元数据之前存储的 Confluence 子页面和 GitHub 文件属于后者，普通同步重新存储该 Document 后即可重新处理 |
+| 已关闭的 Jira issue 按当前 revision 重新处理 | Gene 按 issue id 向 Jira 重新发现该 issue，再像同步一样抓取当前内容并投影；抽取读每个 ReadingGroup；每条 Support 按没有可用基线整篇读取（带 Unit Title，不换绑、不走 Change Impact）；同步游标不变，不推断删除；其他 Unit 不受影响 |
+| Jira 条目只在存储的原始内容里缺失 | 重新处理读 provider，不读存储内容，所以不把这些 changelog 当作已删除 |
+| 按当前 revision 重新处理时 provider 不再返回该 Document | 该 Document 以 `provider_document_missing` 失败，不提交、不 tombstone；删除只由能证明删除的同步完成 |
+| 由 local agent 采集或用户上传的 Source 按当前 revision 重新处理 | 没有可询问的 provider，读存储输入：Document 行保存的 item 元数据、原始内容和已提交 revision 的 Artifact；原始内容不会比已提交 revision 旧 |
+| 从存储输入重新处理时存储内容缺失或不再重现 Unit 位置 | 该 Unit 以 `stored_raw_content_missing`、`stored_artifact_missing`、`stored_artifact_invalid` 或 `stored_input_incomplete` 等原因失败、不提交，其他 Unit 照常处理；保存 item 元数据之前存储的 GitHub 文件属于后者，普通同步重新存储该 Document 后即可重新处理 |
+| 同步只改了不进 markdown 的 provider 字段（changelog 作者显示名、Rank、Sprint 等） | 新 Unit revision 提交时同时保存投影用的原始内容，Document 行随 revision 一起提交 |
 | 更新的阅读上下文超过 20,000 字符 | 不截断：变化结构所在的整个 ReadingGroup 与其阅读上下文都被读到；单个 item 超出容量时按下一行跳过 |
 | 抽取时单个 ReadingGroup 单独超出容量 | 跳过该组，诊断写明 Source Unit、ReadingGroup 和 `input_capacity_exceeded`；其余组的 Candidate 照常处理，revision 提交；恢复 derivation 得到同样的跳过 |
 | Relation 漏报 equivalent | Candidate 按 ADD 新建自己的 Memory，本 Unit 多出一条内容相同的 Active Memory；ADR 0039 接受这一结果，后续步骤不补救 |
@@ -637,11 +642,11 @@ Worker 领取租约并续约，使用固定的 Source 配置与访问范围执�
 4. Source Projection Adapter 建立稳定 SourceUnit 和 SourceObservation。页面 body 通常是一个 Observation，附件可以是其他 Observation；Markdown 段落是后续 Fragment，不能把每段都当作一个新 Observation。
 5. 建立目标 SourceObservationRevision，并由 SourceUnitRevision 固定有效成员集合。读取上一成功提交的快照，计算变化事实。
 
-原始文件、规范化文件及准确 Artifact 可提前保存。此时只有“数据已抓取并保存”，不等于目标已成为当前投影，更不等于 Memory 已更新。访问变化、tombstone、Partial Projection 与 Artifact eligibility 必须作为确定性事实处理。
+原始文件、规范化文件及准确 Artifact 可提前保存。此时只有“数据已抓取并保存”，不等于目标已成为当前投影，更不等于 Memory 已更新。投影把 Unit 推到新 revision 时，同步保存这次投影用的原始内容，规范化 markdown 没变也保存。所有路径用同一个顺序：先保存原始内容（以及规范化内容和 PDF），再记录 Unit revision（需要语义工作时由生命周期提交记录，只有位置或访问变化时由投影记录），Document 行随后或同时写入。原始内容保存失败时该 Document 失败，什么都不提交。所以存储的原始内容不会比已提交 revision 旧：它是已提交 revision 的输入，或者是之后一次已保存输入、尚未提交的同步的输入。投影保持已提交 revision 且 markdown 不变时，原始内容不重写。访问变化、tombstone、Partial Projection 与 Artifact eligibility 必须作为确定性事实处理。
 
 ## 6. 步骤三：暂存目标、准备工作【已实现，无 LLM】
 
-在 source_derivation_attempts/source_derivation_batches 中记录固定目标、base、上下文身份、工作输入 hash、提取合同版本及成功输出。未完成的工作可以恢复，完成输出只能在输入与合同完全匹配时复用。
+在 source_derivation_attempts/source_derivation_batches 中记录固定目标、base、上下文身份、工作输入 hash、提取合同版本及成功输出。未完成的工作可以恢复，完成输出只能在输入与合同完全匹配时复用。暂存之前，`SourceUnitDeriver` 按 id 读出投影中修订的存储行并核对身份；存在冲突时报 `ProjectionIdentityConflict`，不暂存，也不发任何模型调用。
 
 Representation 为需要的固定 revision 构建一次索引；相同 base/target 的比较结果在本次操作复用。输入预算计算不等于重新解析每条 Memory 的整个文档。
 
@@ -654,7 +659,7 @@ Representation 为需要的固定 revision 构建一次索引；相同 base/targ
 
 小文档读全文也不能扩大第二个范围。旧片段可支持固定旧 claim；不能因为成为 revalidation Primary 就获得 extraction Primary 授权。Required 和辅助 Context 不自动产生新的提取权限。首次导入或明确全量 reprocess 使用其自身授权合同。
 
-明确的重新处理有两种：force-resync 重新抓取整个 Source，每个 Unit 按当前全部 Observation 授权，Support 走普通路由；运维人员按当前 revision 重新处理（`REPROCESS` sync run，`POST /sources/{id}/reprocess` 或 `memforge sources reprocess`）只读指定 Document 的存储输入（Document 行保存的 Gene item 元数据、原始内容和已提交 revision 的 Artifact），用当前 adapter 和编译器重新投影，同样按全部 Observation 授权，并在 derivation 上下文里记录 `support_without_baseline`，让每条 Support 按没有可用基线整篇读取。两种都以本次运行 id 作为 `reprocess_operation_id`，所以重新投影与已提交 revision 相同时也会重新执行，不复用旧 derivation 的完成工作。两种都对照已提交的 base 规划：需要语义工作的 Unit 不提前记录投影，投影由生命周期提交在同一事务里记录，因此只有位置变化的 Unit 也能按已提交 base 重新处理。
+明确的重新处理有两种：force-resync 重新抓取整个 Source，每个 Unit 按当前全部 Observation 授权，Support 走普通路由；运维人员按当前 revision 重新处理（`REPROCESS` sync run，`POST /sources/{id}/reprocess` 或 `memforge sources reprocess`）处理指定 Document：Source 能按 id 向 provider 询问单个 Document 时（Jira 服务端 API、Confluence；见 `Gene.rediscovers_documents`），Gene 用发现时的表示重新发现该 Document 并抓取其当前内容。重新发现只在全量同步也不会再列出该 Document 时判定它不存在，不比同步更严格：Jira 按 id 读取，只有 404/410 算不存在，不套用 Source 的 JQL（JQL 常带 `updated >= -30d` 这类滑动窗口，移出窗口的 issue 仍然存在）；Confluence 在 404/410、带排除标签，以及全量发现不会列出时算不存在（空间模式下页面不是 current 或不在配置的空间；页面树模式下非根页面不是 current、不在根页面之下，或只能经过非 current 或带排除标签的页面到达，或者不包含子页面）。不存在的 Document 以 `provider_document_missing` 失败；其他 Source（local agent 采集、上传或推送的内容，GitHub Repository、GitHub Pages、Teams）读存储输入（Document 行保存的 Gene item 元数据、原始内容和已提交 revision 的 Artifact）。两种输入都用当前 adapter 和编译器重新投影，同样按全部 Observation 授权，并在 derivation 上下文里记录 `support_without_baseline`，让每条 Support 按没有可用基线整篇读取。两种都以本次运行 id 作为 `reprocess_operation_id`，所以重新投影与已提交 revision 相同时也会重新执行，不复用旧 derivation 的完成工作。两种都对照已提交的 base 规划：需要语义工作的 Unit 不提前记录投影，投影由生命周期提交在同一事务里记录，因此只有位置变化的 Unit 也能按已提交 base 重新处理。
 
 ### 6.2 输入范围与请求预算
 
@@ -972,6 +977,8 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 | 事务锁冲突/可重试提交失败 | 准备结果；业务事务回滚 | 不留下半套 Memory/Support | 同一准备结果重试并重查 guards |
 | target/旧 Memory/Support 已改变 | 历史准备与审计 | 不使用过期判断提交 | 重新针对适用快照准备 |
 | 进程在 commit 前崩溃 | 持久 extraction staging 保留；部分生命周期准备仍可能只是内存 | 不保证所有生命周期模型结果都免重跑 | 已有恢复合同 |
+| 恢复暂存 derivation 时失败，且按 `failure_retryable` 不可重试（例如 `ProjectionIdentityConflict`、模型返回不合法） | 失败诊断 | 该 derivation 以 `DERIVATION_DETERMINISTIC_FAILURE` 标为 superseded，该 Document 在本次运行记为失败；身份冲突在暂存前检查，不发模型调用 | 恢复继续处理下一个 derivation；该 Unit 停在已提交 revision，provider 改动该文档后由增量同步重新推导，或由运维人员重新处理；被标为 superseded 的重新处理或全量同步 derivation 不会被之后的增量同步重试。失败记录在本次运行的失败文档里，也记录在该 derivation 的 `DERIVATION_DETERMINISTIC_FAILURE` 原因码上 |
+| 恢复暂存 derivation 时失败，且可重试（Source activity fence 失效、SQLite/HANA/对象存储错误、模型 provider 错误或超时；lifecycle 包装后的错误按其原因判断） | 暂存 derivation 与成功 batch 输出 | 本次运行停止，derivation 保持暂存 | 下次运行 |
 | 向量交付失败 | 已提交 Memory 与 outbox | Memory 保持已提交；报告索引待交付 | outbox，不重跑 extraction |
 | 关系发现失败 | 已提交 Memory 与 relation work | 不回滚已生成 Memory | relation work |
 
@@ -1027,7 +1034,7 @@ source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含
 | 步骤 | 实施前代码与可复用部分 | 目标差异及规模 | 必须验证的边界 |
 |---|---|---|---|
 | 1 Trigger/Worker | `admin_api` 的 Source sync 路由 → SyncService → SourceSyncWorker，已有 run/lease/coalescing | **小，已实现**：按当前 revision 重新处理是同一队列上的 `REPROCESS` run（`source_sync_runs.reprocess_document_ids_json`）；有活动运行时返回 409、不合并，重新处理期间请求的同步在它之后执行；失败不自动重试；`dry_run` 只读 | 只恢复失败工作；不新增调度器 |
-| 2 采集/快照（重新处理） | `pipeline/stored_document.py` 从 Document 行（含 Gene 的 item 元数据）、存储的原始内容和已提交 revision 的 Artifact 还原输入 | **小，已实现**：不访问 provider；Artifact 随 Unit 带回；存储输入不能重现已提交位置时该 Unit 失败；读取最新存储的输入 | 不推进游标、不做删除检测；存储缺失只影响该 Unit |
+| 2 采集/快照（重新处理） | `pipeline/stored_document.py`：能按 id 询问 provider 的 Source 由 Gene 重新发现并抓取当前内容；其他 Source 从 Document 行（含 Gene 的 item 元数据）、存储的原始内容和已提交 revision 的 Artifact 还原输入 | **小，已实现**（ADR 0040）：provider 不再返回的 Document 单独失败；存储输入的 Artifact 随 Unit 带回，不能重现已提交位置时该 Unit 失败 | 不推进游标、不做删除检测；缺失只影响该 Unit |
 | 2 采集/快照 | `pipeline/sync.py`、SourceProjectionAdapter、不可变 revisions、raw/normalized/Artifact 存储 | 无基础重构；资格问题单独见下表 | provider 部分覆盖、删除证明、稳定 Unit 身份 |
 | 3 工作准备 | `source_derivation.py`、`pipeline/projection_context.py` 与 Fragment compiler 已有暂存、结构授权和索引 | **中，已实现**：`plan_projection_evidence_work` 只算授权，`pipeline/extraction_requests.py` 按 ReadingGroup item 经 runner 规划请求；首次导入读每个 ReadingGroup、更新时只读变化结构及其 ReadingGroup（不做成本比较、不截断）；适用基线和工作合同身份 | 首次导入、contested Support、超限不可截断、旧输出不可复用到新合同 |
 | 4 L1 提取 | 已有结构目录与 Primary/Required selector；增量完整结构授权已实现 | **小到中**：消费上述读取范围；不放宽已实现的 Primary 授权 | 全文只是可读上下文；canonical 完整解析不等于全记录 Primary |
