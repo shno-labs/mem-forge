@@ -30,8 +30,12 @@ request is implemented as `claim-revision-v8-sparse-catalog`, described in
 [Sparse claim catalog](../design/sparse-claim-catalog.md). Relation runs
 concurrently with Support Assessment over every same-Unit old Memory, and
 [Support and Relation coordination](#support-and-relation-coordination) with its
-[Pending coordinator Review](#pending-coordinator-review) joins the two lines.
-Sections labelled "target" describe the contract that is not implemented yet.
+[Pending coordinator Review](#pending-coordinator-review) joins the two lines. The
+[Same-Unit identity backstop](#same-unit-identity-backstop),
+[Automated destructive validation](#automated-destructive-validation) and the
+commit order of a [Source Unit identity](#source-unit-identity-and-convergence)
+change are implemented. Sections labelled "target" describe the contract that is
+not implemented yet.
 
 ## Context
 
@@ -632,7 +636,8 @@ HANA adapter together with the pin upgrade.
 
 ### Same-Unit identity backstop
 
-Target contract, tracked by Cloud issue #505.
+Implemented for Cloud issue #505 (`identity_excluded_incumbent_ids` in
+`memory/lifecycle_planner.py`).
 
 Identity deduplication for this Unit's ADD Candidates excludes only the old
 Memories that this round's Plan will DELETE, SUPERSEDE or UPDATE (a revision
@@ -645,6 +650,13 @@ identity decides equivalence on its own, so the two do not conflict. One
 Lifecycle Plan can already rebind an old Memory's own Support and attach an
 identity-matched new Support to the same Memory: Plan validation, mutation order
 and stale guards accept both on one Memory in SQLite and HANA.
+
+The exclusion set is computed by the planner's own rules from this round's
+operations, after the round's Evidence Units are built: a DELETE, SUPERSEDE or
+UPDATE; a coordinator Review that is raised (a conflict a human already decided
+keeps the old Memory and is not raised); and, under the lifecycle gate, a rebind
+that removes Support. The Plan rejects an identity attach to an old Memory whose
+decision is not KEEP, so a disagreement fails the revision instead of committing.
 
 Known residue: when the old Memory is deleted this round and Relation also missed
 the equivalence, the Candidate becomes a Memory with a new ID. No duplicate
@@ -660,8 +672,7 @@ already implements `excluded_memory_ids`, so Cloud upgrades the pin.
 
 ### Automated destructive validation
 
-Target contract, tracked by Cloud issue #505; main has no `DestructiveValidation`
-code.
+Implemented for Cloud issue #505 in `memory/destructive_validation.py`.
 
 There is no human confirmation step. Before applying a proposed
 `REMOVE_SUPPORT`, `SUPERSEDE` or `RETIRE_MEMORY`, Lifecycle Reconciliation runs
@@ -688,9 +699,39 @@ revision uncommitted. Only zero remaining
 active Supports may retire a Memory. Another source's active Support always
 prevents retirement by the current source.
 
-Cloud impact: the Relation completeness check reads existing work records
-through the derivation store that HANA already implements; Cloud upgrades the
-pin with no HANA change.
+The validator runs on the coordinator's operations before identity and the
+Plan, and checks what the earlier steps recorded:
+
+- Checks 1 and 2: every Support the old Memory has in this Unit has a result and
+  none is `UNRESOLVED`. Exact correspondence already makes a part `REMOVED` only
+  under an explicit tombstone or coverage that proves absence, and routes any
+  `UNKNOWN` part to `UNRESOLVED(partial_coverage)` before a model call.
+- Check 4: a DELETE or SUPERSEDE rests on Supports that each read the whole
+  reading order and recorded the completion receipt. A Candidate-Evidence
+  re-check never counts. A revision with nothing to read records a program
+  receipt for its empty order.
+- Check 6: a SUPERSEDE or UPDATE rests on a Relation line whose completion rows
+  cover every admitted Candidate over the catalog of every old Memory decided by
+  Support and Relation.
+- Checks 3 and 5 stay where their facts are: the Plan's stale guard rejects a
+  commit whose Support sets, Memory versions or Observation revisions moved, and
+  the planner retires a Memory only when the removed Support was its last.
+
+A kept decision leaves the old Memory with its Support and validation baseline
+and consumes a replacing Candidate without an ADD, like a local unresolved
+relationship; statistics count each reason. Decisions held for Review are
+proposals, protected by their stale guard at approval. A revision whose content
+became empty is decided without a read: its claims lose their Support only where
+every Observation they rest on was returned or the coverage proves absence, and
+the others are `UNRESOLVED(partial_coverage)`. Partial coverage needs no guard of
+its own: a claim whose Evidence was returned and read completely can lose its
+Support, and a claim with an Evidence part that was not returned cannot.
+
+Cloud impact: the validator checks results the Support and Relation lines already
+hold in the OSS process and reads no store; Cloud upgrades the pin with no HANA
+change. Removing a Support under partial coverage now depends on the read of the
+returned Observations rather than on an affected-anchor proof, which changes
+Jira and Teams outcomes after the pin upgrade.
 
 ### Source Unit identity and convergence
 
@@ -703,13 +744,20 @@ rebind. Ordinary non-destructive identity matching may still attach a new
 equivalent Support to an active access-compatible Memory.
 
 Under `COMPLETE_SNAPSHOT`, disappearance may remove old Supports. Under
-`PARTIAL_PROJECTION`, absence is unknown and old Supports remain. Target
-(#505): when a Source Unit's identity changes, the new Unit's creation and its
+`PARTIAL_PROJECTION`, absence is unknown and old Supports remain. Implemented
+for #505: when a Source Unit's identity changes, the new Unit's creation and its
 identity attach commit before the old Unit is removed. Identity matching finds
 only Active Memories, so this order lets an equivalent Memory be reattached
 instead of retired with the old Unit and recreated under a new ID. This is an
 ordering constraint only; it adds no state, and Memory-ID continuity is still
-not promised. The operations must be idempotent and converge. A provider-declared stable move,
+not promised. The operations must be idempotent and converge. A sync commits
+this run's Units first, including a deferred commit that waits only on another
+Unit of the run, and detects deletions after that; a deferred commit that fails
+for good counts as a failed document, so absence stays unproven for that run. A
+deferred commit that waits on a Unit this run removes is retried after the
+removal, and one that waits on a Unit outside the run is not retried. A crash
+between the two steps leaves the old Unit, which the next complete sync removes.
+A provider-declared stable move,
 reply, quote or correction mapping may enlarge an explicit comparison scope,
 but text similarity alone never does so. Cloud impact: the ordering is shared
 OSS sync code; Cloud upgrades the pin with no HANA change.
