@@ -91,7 +91,7 @@ deterministic proposal]
     class XF failnote
 ```
 
-图中 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation 都经同一个 LLM batch runner 调用模型（见 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md)）。模型对每一项各返回一行，每行单独校验：合格的行立即采用，不再重发；不合格或缺失的行合在一起重问一次，只带这些项，并逐项写明错误（例如“NEW-0003 引用了 MEM-0037，不在它允许比较的列表里”）。所以一个请求里有几行出错，都只多一次调用。只有无法定位到具体哪一项时才对半拆分：多条目请求组超时、超出容量，或者整个输出无法按行读出（格式错乱、有歧义的 JSON、schema 不符）且整体纠正一次后仍读不出。失败按一条规则处理：某一项单独处理仍无法判断时，由所在阶段记录下来，revision 照常提交；其余失败统称执行错误，使该 Source Unit revision 不提交，下次同步重试。“无法判断”只有两种：这一项单独就超出容量；或模型确实返回了结果，但重问或纠正一次后仍通不过校验（包括格式错乱、有歧义的 JSON）。provider 错误、超时、被 provider 拒绝的请求（如 400）和意外异常（包括代码缺陷）都是执行错误。一项无法判断，不会挡住同一 Unit 的其他内容。Change Impact 用单独颜色标出，因为它是可以换成分类器 backend 的判断任务。Support 线与 Relation 线并行执行，只在 SupportRelationCoordinator 汇合。
+图中 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation 都经同一个 LLM batch runner 调用模型（见 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md)）。模型对每一项各返回一行。响应模型只检查一行的 JSON 结构（类型、必填字段、枚举值）；关于一行含义的规则都是行规则，由各阶段逐行单独检查。合格的行立即采用，不再重发；不合格或缺失的行合在一起重问一次，只带这些项，并逐项写明错误（例如“NEW-0003 引用了 MEM-0037，不在它允许比较的列表里”）。所以一个请求里有几行出错，都只多一次调用。如果某行用了本请求没有提供的 ID，说明整份回答的 ID 已经对不上（比如每个答案都挪到了下一项的 ID 下），整份回答按无法读出处理。只有无法定位到具体哪一项时才对半拆分：多条目请求组超时、超出容量，或者整个输出无法按行读出（格式错乱、有歧义的 JSON、schema 不符、出现本请求没有提供的 ID）且整体纠正一次后仍读不出。逐行校验适用于 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation（`claim_revision`）；同 Unit identity 的目录作为一个整体校验，仍是整体纠正一次后拆分。失败按一条规则处理：某一项单独处理仍无法判断时，由所在阶段记录下来，revision 照常提交；其余失败统称执行错误，使该 Source Unit revision 不提交，下次同步重试。“无法判断”只有两种：这一项单独就超出容量；或模型确实返回了结果，但重问或纠正一次后仍通不过校验（包括格式错乱、有歧义的 JSON）。provider 错误、超时、被 provider 拒绝的请求（如 400）和意外异常（包括代码缺陷）都是执行错误。一项无法判断，不会挡住同一 Unit 的其他内容。Change Impact 用单独颜色标出，因为它是可以换成分类器 backend 的判断任务。Support 线与 Relation 线并行执行，只在 SupportRelationCoordinator 汇合。
 
 执行器按任务类型选择，而不是按单条 confidence 分流：开放式生成和依赖多字段的 Evidence 计划使用 Structured LLM；封闭、输入完整、逐项独立的分类或排序使用分类器模型（Jev 或小参数 LLM）；exact 比较、完整性、权限和 lifecycle action 始终由程序负责。分类概率只用于离线评估和监控，不决定运行时是否换模型。Change Impact 在分类器 backend 通过 #506 的评估之前由现有 Structured LLM 执行；候选准入与 Sparse Relation 由 Structured LLM 执行，逐 pair 的分类器 backend 需要另立合同和评估。
 
@@ -374,7 +374,7 @@ Relation 漏报 equivalent 时，由现有 identity 去重兜底：identity 只�
 
 已知遗留：旧 Memory 本轮被删而 Relation 又漏报等价时，结果是换一个 Memory ID，不产生重复，可以接受。
 
-identity 对每一对 Candidate/Memory 经 LLM batch runner 判断；请求目录把每个 Candidate 允许比较的 Memory ID 直接列在该 Candidate 旁边（`memory-relation-v5-sparse`）。已证明等价的一对照常挂接，即使同一 Candidate 的另一对无法判断。没有证明等价、又有一对单独判断仍无法判断（超容量，或输出纠正一次后仍不合法）的 Candidate，可能与旧 Memory 重复：本轮消费它，不 ADD，写诊断，revision 照常提交。identity 的执行错误使该 revision 不提交。
+identity 对每一对 Candidate/Memory 经 LLM batch runner 判断；请求目录把每个 Candidate 允许比较的 Memory ID 直接列在该 Candidate 旁边（`memory-relation-v5-sparse`）。identity 目录作为一个整体校验：有任何不合格，整份回答纠正一次，仍不合格就拆分。已证明等价的一对照常挂接，即使同一 Candidate 的另一对无法判断。没有证明等价、又有一对单独判断仍无法判断（超容量，或输出纠正一次后仍不合法）的 Candidate，可能与旧 Memory 重复：本轮消费它，不 ADD，写诊断，revision 照常提交。identity 的执行错误使该 revision 不提交。
 
 当前实现：排除集合由 planner 的同一套规则算出（`memory/lifecycle_planner.py` 的 `identity_excluded_incumbent_ids`），在本轮 Evidence Unit 建好之后、identity 之前计算：DELETE、SUPERSEDE、UPDATE；本轮提出的协调器 Review（人已决定过的冲突不再提出，旧 Memory 保留，可以匹配）；lifecycle gate 下会移除 Support 的换绑。Plan 对决定不是 KEEP 的旧 Memory 拒绝 identity 挂接，两边不一致时 revision 失败，不会提交。
 

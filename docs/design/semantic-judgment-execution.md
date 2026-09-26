@@ -278,12 +278,20 @@ class ItemFailure:
    character caps. The only other limits are ones a backend adapter declares, such
    as Jev's Choice option count.
 2. Packing items, in order, into transport requests that fit.
-3. Per-row acceptance. The model returns one row per item, and the task's
-   decoder validates every row on its own, yielding either the item's result or
-   a rejected row whose message names the item by the ID the model sees and
-   states its exact error. The runner rejects an item with no row or with more
-   than one row, and ignores a row for an ID it did not request. Valid rows are
-   accepted at once and never sent again.
+3. Per-row acceptance. The model returns one row per item. The response model
+   checks only the JSON shape of a row (types, required fields, enums); every
+   rule about one row's meaning is a row rule that the task's decoder checks on
+   that row alone, yielding either the item's result or a rejected row whose
+   message names the item by the ID the model sees and states its exact error.
+   The runner rejects an item with no row or with more than one row. A row that
+   names an ID the request did not supply means the response's IDs cannot be
+   trusted to match their rows (an answer may sit under its neighbour's ID), so
+   the whole response is treated as unreadable (step 5). Valid rows are accepted
+   at once and never sent again. Claim Extraction, candidate admission, Change
+   Impact, Support Assessment, Sparse Relation (`claim_revision`), the
+   refinement comparison, cross-document relation, entity resolution and
+   agent-session authority work this way. The same-Unit identity catalog is
+   validated as one answer, so it keeps the whole-request correction and split.
 4. One re-ask. The rejected items are re-asked once, together, in one request
    that holds only them and lists each item's error, packed by capacity when
    they do not fit one request. In the chain form a re-asked item reads the same
@@ -606,7 +614,7 @@ Classifier backends begin with fixed, non-mutating evaluation cases. Acceptance 
 
 Sparse Relation acceptance includes one row per admitted Candidate, rejection of missing rows, unknown IDs and truncation, a Candidate whose row stays invalid alone left unresolved while the revision commits, the rule that omission means "no relation proposed", idempotent retries and identical results across legal partitions with a deterministic fixture client. Change Impact acceptance includes several changed groups combined into one bundle, multiple bundles OR-reduced by code, distant revocation/exception examples, a deleted distant qualifier, execution failure routing to Support Assessment, and source types represented by Markdown/Confluence, Jira and Teams. The global-scope rule has no dedicated cases; the generic #506 classifier evaluation applies. Complete Support Assessment is evaluated separately as Structured LLM generation/compound proposal work.
 
-LLM batch runner acceptance includes multi-item requests that hit each capacity failure (timeout, input capacity, provider 413, truncated output) and complete after halving with exactly one result per item, valid rows accepted once and never resent, rejected or missing rows re-asked once together with each item's error (item and chain form, the chain re-ask reading the same step and state), a 53-item request with two rejected rows completing in two calls and one with a persistently rejected row ending in two calls with one unjudgeable item, output that cannot be read into rows corrected once and then split (malformed output included), a retried run reusing accepted rows and re-asks without a call, a single-item failure returned as a typed failure with diagnostics, a single-Claim chain step that halves its ReadingGroups first, shared context chunked into per-item-and-chunk results, identical results across legal partitions and split points with a deterministic fixture client, rejection of missing and duplicate rows, rows for unrequested IDs ignored, and a Support chain in which an item that finds Support in the first part leaves only after the first part is read.
+LLM batch runner acceptance includes multi-item requests that hit each capacity failure (timeout, input capacity, provider 413, truncated output) and complete after halving with exactly one result per item, valid rows accepted once and never resent, rejected or missing rows re-asked once together with each item's error (item and chain form, the chain re-ask reading the same step and state), a 53-item request with two rejected rows completing in two calls and one with a persistently rejected row ending in two calls with one unjudgeable item, output that cannot be read into rows corrected once and then split (malformed output included), a retried run reusing accepted rows and re-asks without a call, a single-item failure returned as a typed failure with diagnostics, a single-Claim chain step that halves its ReadingGroups first, shared context chunked into per-item-and-chunk results, identical results across legal partitions and split points with a deterministic fixture client, rejection of missing and duplicate rows, a row for an unrequested ID voiding the whole response (an answer shifted onto its neighbour's ID is never accepted), one semantically invalid row costing one re-ask through the real client parse path, and a Support chain in which an item that finds Support in the first part leaves only after the first part is read.
 
 ## 9. Non-goals
 

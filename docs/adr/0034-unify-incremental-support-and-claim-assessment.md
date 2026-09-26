@@ -160,8 +160,10 @@ that owns the detail.
   ([Validation and version boundaries](#validation-and-version-boundaries)).
 - Every model call goes through the LLM batch runner of
   [ADR 0036](0036-separate-semantic-work-from-inference-executors.md) (decision
-  13). Every row is validated on its own: valid rows are accepted at once, and
-  the rejected rows are re-asked once, together, naming each item's error. A
+  13). Response models check only the JSON shape of a row, and each task checks
+  every row's meaning on that row alone: valid rows are accepted at once, and
+  the rejected rows are re-asked once, together, naming each item's error. A row
+  that names an ID the request did not supply voids the whole response. A
   request with several work items that fails for capacity, or whose output
   cannot be read into rows even after one correction, is split in half and
   resent; a Support chain step for a single Claim over several ReadingGroups
@@ -748,7 +750,9 @@ decision is not KEEP, so a disagreement fails the revision instead of committing
 
 Identity judges each Candidate/Memory pair through the LLM batch runner, and the
 catalog request lists each Candidate's allowed Memory IDs next to that Candidate
-(`memory-relation-v5-sparse`). A proven equivalent attaches even when another
+(`memory-relation-v5-sparse`). Unlike the per-row stages, the identity catalog
+is validated as one answer, so an invalid catalog gets one whole-request
+correction and is then split. A proven equivalent attaches even when another
 pair of the same Candidate could not be judged. A Candidate without a proven
 equivalent and with a pair that stays unjudgeable in isolation (capacity, or
 output still invalid after the one correction) may duplicate an old Memory: it
