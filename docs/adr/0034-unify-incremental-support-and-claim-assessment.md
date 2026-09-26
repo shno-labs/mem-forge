@@ -1147,19 +1147,23 @@ upgrade; the new Observation needs no HANA schema change.
 Both rules wait for a Unit's next revision, and a Unit that no longer changes (a
 closed Jira issue, an archived page) never gets one. An operator reprocesses such
 Units at their current revision: a `REPROCESS` Source sync run reprojects each
-named Document from its stored input (the item metadata its Gene discovered,
-kept with the Document, the raw content, and the Artifacts of its committed
-revision) with the current adapter and compiler, without contacting the provider.
+named Document with the current adapter and compiler. A Source that can ask its
+provider for one Document by id reads the Document's current state from the
+provider; any other Source reads its stored input (the item metadata its Gene
+discovered, kept with the Document, the raw content, and the Artifacts of its
+committed revision), which a sync keeps current with the committed revision
+([ADR 0040](0040-keep-stored-input-current-and-isolate-derivation-recovery.md)).
 The Unit then goes through the ordinary revision flow in one atomic commit, with
 two differences: extraction reads every ReadingGroup, under the run's reprocess
 authorization, and every Support is read over the whole Unit as if it had no
 usable baseline, so no Support is rebound or sent to Change Impact. The run
-keeps the sync cursor and infers no removal, and a stored input that no longer
-places the Unit where its committed revision does fails that Unit with
+keeps the sync cursor and infers no removal: a Document the provider no longer
+returns fails with `provider_document_missing`, and a stored input that no
+longer places the Unit where its committed revision does fails that Unit with
 `stored_input_incomplete`. A Document stored before its item metadata was kept
-can fail this way when the adapter places the Unit from that metadata (a
-Confluence child page, a GitHub file); an ordinary sync that stores the Document
-again makes it reprocessable. The run reads the latest stored input: raw content
+can fail this way when the adapter places the Unit from that metadata (a GitHub
+file); an ordinary sync that stores the Document again makes it
+reprocessable. The run reads the latest stored input: raw content
 that a sync stored but whose revision never committed is projected and committed
 as the next ordinary sync would. Like every run that holds the Source lease, a
 reprocess run first finishes derivations an earlier run left interrupted. A

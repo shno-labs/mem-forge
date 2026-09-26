@@ -218,7 +218,7 @@ PHASE 3: Sync Run (triggered by scheduler or manual)
 |----------|---------|----------|
 | **MUST implement** (abstract) | `metadata()`, `_gene_config_fields()`, `discover()`, `fetch()`, `normalize()` | Registration fails if missing |
 | **SHOULD override** (useful default) | `health_check()`, `close()`, `validate_config()` | Default works but gene-specific override is better |
-| **MAY implement** (optional extension) | `fetch_pdf()`, `migrate_config()` | Orchestrator uses capability detection |
+| **MAY implement** (optional extension) | `fetch_pdf()`, `migrate_config()`, `rediscovers_documents()` with `rediscover()` | Orchestrator uses capability detection; a Gene that can ask its provider for one stored Document by id rediscovers it for an operator reprocess ([ADR 0040](../adr/0040-keep-stored-input-current-and-isolate-derivation-recovery.md)) |
 
 ### 2.5 Timeout Expectations
 
