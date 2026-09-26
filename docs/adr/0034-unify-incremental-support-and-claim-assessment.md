@@ -160,11 +160,13 @@ that owns the detail.
   ([Validation and version boundaries](#validation-and-version-boundaries)).
 - Every model call goes through the LLM batch runner of
   [ADR 0036](0036-separate-semantic-work-from-inference-executors.md) (decision
-  13). A request with several work items that fails for capacity, or whose
-  output is still invalid after its one correction, is split in half and
+  13). Every row is validated on its own: valid rows are accepted at once, and
+  the rejected rows are re-asked once, together, naming each item's error. A
+  request with several work items that fails for capacity, or whose output
+  cannot be read into rows even after one correction, is split in half and
   resent; a Support chain step for a single Claim over several ReadingGroups
-  halves its ReadingGroups first on a capacity failure. A request down to one
-  item that still fails is a typed failure that each task maps to its own
+  halves its ReadingGroups first on a capacity failure. An item that still
+  fails is a typed failure that each task maps to its own
   outcome, by one rule: an execution error (a provider error, a timeout, a
   rejected request or an unexpected exception) leaves the Source Unit revision
   uncommitted, and an item that stays
@@ -253,10 +255,10 @@ Claim Extraction, Support Assessment, Change Impact, candidate admission and
 Relation send model work only through the LLM batch runner (ADR 0036, decision
 13; target, delivered as the first step of #505). The caller supplies fixed work
 items, shared context and the prompt and schema. The runner owns capacity fit
-from LiteLLM metadata, partitioning into transport requests, the split in half
-of a multi-item request that fails for capacity or whose output is still invalid
-after its correction, bounded concurrency, coverage and ID validation,
-per-request correction and typed failures. A truncated response is split, not
+from LiteLLM metadata, partitioning into transport requests, per-row acceptance
+with one re-ask of the rejected rows, the split in half of a multi-item request
+that fails for capacity or whose output cannot be read into rows after one
+correction, bounded concurrency, coverage and ID validation, and typed failures. A truncated response is split, not
 resent as JSON text at the same `max_tokens`. When shared context itself must be
 chunked, the runner returns one result per item and chunk and the caller merges
 them; the runner never receives merge rules. Support Assessment uses its
@@ -428,10 +430,10 @@ The output is one completion row per Candidate that lists only meaningful
 relations: equivalent, directional refines, contradicts or uncertain. Omitting an
 old Memory means "no relation proposed". A missing Candidate row, a duplicate row
 or edge, an unknown ID and a truncated response are execution failures, never
-"no relation" and cannot fall back to independent ADD. The LLM batch runner
-splits a request whose output is still invalid after its correction, so the
-failure narrows to the Candidate that causes it. A Candidate whose row stays
-invalid when judged alone is consumed without ADD and without a Review, with a
+"no relation" and cannot fall back to independent ADD. Each Candidate's row is
+validated on its own; the rejected rows are re-asked once, together, each with
+its exact error (for example "NEW-0003 names MEM-0037, which is not in its
+allowed list"). A Candidate whose row is still rejected after its re-ask is consumed without ADD and without a Review, with a
 diagnostic. Its row would have covered it against every old Memory of the Unit,
 so the gap cannot be localized: any old Memory may be the one it restates,
 refines or contradicts. The Relation line of the revision is therefore
@@ -1299,10 +1301,12 @@ fails for capacity (`deadline_exceeded`, `input_capacity_exceeded`, provider 413
 `payload_too_large` or output truncation with `finish_reason=length`), the runner
 splits the unfinished cohort in half and continues each half from the same
 position with its own state. When the step holds a single Claim over several
-ReadingGroups, the runner halves the ReadingGroups first. A chain step whose
-output is still invalid after its one correction is split the same way by
-Claims, not by ReadingGroups. A step down to one Claim that still fails is a
-typed failure. When that Claim's ReadingGroup alone exceeds capacity, Support
+ReadingGroups, the runner halves the ReadingGroups first. Every row of a step
+is validated on its own: a valid row advances its Claim, and the rejected Claims
+re-read the same step, from the same position with their unchanged state, in one
+re-ask that names each error, then rejoin the cohort. A step whose output cannot
+be read into rows even after one correction is split by Claims. A Claim that
+still fails is a typed failure. When that Claim's ReadingGroup alone exceeds capacity, Support
 maps it to `UNRESOLVED(capacity)`, and when its output alone stays invalid, to
 `UNRESOLVED(invalid_response)`, both KEEP; an execution error leaves the Source
 Unit revision uncommitted and the next sync retries it. A
@@ -1331,9 +1335,9 @@ only, and each ReadingGroup that holds authorized Primary is one LLM batch runne
 item, read with its reading context demoted to Required-only. The runner packs
 items into requests by actual capacity; each planned request is staged as one
 derivation batch and, when executed, is still split in half on a capacity or
-deadline failure, or on output still invalid after its correction. An item that
-alone exceeds capacity, or whose output alone stays invalid, is skipped with a
-diagnostic ([Capacity and non-goals](#capacity-and-non-goals)). Claim Extraction and Support Assessment share
+deadline failure, or on output the client cannot read even after its one
+repair. An item that alone exceeds capacity, or whose output alone stays
+invalid, is skipped with a diagnostic ([Capacity and non-goals](#capacity-and-non-goals)). Claim Extraction and Support Assessment share
 catalog, budget and durable execution primitives, while retaining distinct
 semantic duties. Cloud impact: extraction scope is shared OSS
 planning code; Cloud upgrades the pin with no configuration or HANA change.
@@ -1466,9 +1470,10 @@ runner.
 Support Assessment reads the reading order for the complete fixed-claim cohort
 under one validation baseline. Only a measured input, image, mandatory
 response-row, or cumulative-state capacity failure invokes transport
-partitioning. A request with several work items that fails for capacity, or
-whose output is still invalid after its correction, is split in half and resent,
-and a step for a single Claim over several ReadingGroups halves its
+partitioning. Rows are accepted one by one and the rejected ones re-asked once
+together; a request with several work items that fails for capacity, or whose
+output cannot be read into rows after one correction, is split in half and
+resent, and a step for a single Claim over several ReadingGroups halves its
 ReadingGroups first on a capacity failure (ADR 0036, decision 13). A work item
 whose single ReadingGroup alone exceeds capacity is `UNRESOLVED(capacity)`, and
 one whose output alone stays invalid is `UNRESOLVED(invalid_response)`, with
