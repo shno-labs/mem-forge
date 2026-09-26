@@ -418,6 +418,8 @@ Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 s
 | Jira Claim 写出 issue key | Claim 选了 Unit Title 为 Required 时，准入看得到 key 并可准入；Claim 把本 issue 的内容写成另一个 key 且所选 Evidence 没有给出它时 `REJECTED(evidence_incomplete)` |
 | 已有 Unit 升级后首次带 Unit Title | Unit Title 是新增内容，不产生抽取调用；`EXACT_UNCHANGED` 的 Support 经 Change Impact |
 | Jira summary 修改 | 选了 Unit Title 的 Support 为 `MODIFIED`，进入 Support Assessment；其他 Support 经 Change Impact |
+| 已关闭的 Jira issue 按当前 revision 重新处理 | 不访问 provider，从存储的原始内容和已提交 revision 的 Artifact 重新投影；抽取读每个 ReadingGroup；每条 Support 按没有可用基线整篇读取（带 Unit Title，不换绑、不走 Change Impact）；同步游标不变，不推断删除；其他 Unit 不受影响 |
+| 重新处理时存储内容缺失或不再重现 Unit 位置 | 该 Unit 以 `stored_raw_content_missing`、`stored_artifact_missing` 或 `stored_input_incomplete` 等原因失败、不提交，其他 Unit 照常处理 |
 | 更新的阅读上下文超过 20,000 字符 | 不截断：变化结构所在的整个 ReadingGroup 与其阅读上下文都被读到；单个 item 超出容量是类型化容量错误 |
 | Relation 漏报 equivalent | 同 Unit 不产生重复 Active Memory；同一 Plan 不对同一 Memory 既删除、替代或修订又挂接 |
 | Change Impact 判 `UNAFFECTED`，Relation 报 contradicts | 对该 Claim 补做一次 Support Assessment；仍冲突进入 Review |
@@ -590,6 +592,8 @@ Representation 为需要的固定 revision 构建一次索引；相同 base/targ
 | 新候选 Primary 授权 | 本次新增、修改的哪些完整结构/字段可以成为新知识依据 |
 
 小文档读全文也不能扩大第二个范围。旧片段可支持固定旧 claim；不能因为成为 revalidation Primary 就获得 extraction Primary 授权。Required 和辅助 Context 不自动产生新的提取权限。首次导入或明确全量 reprocess 使用其自身授权合同。
+
+明确的重新处理有两种：force-resync 重新抓取整个 Source，每个 Unit 按当前全部 Observation 授权，Support 走普通路由；运维人员按当前 revision 重新处理（`REPROCESS` sync run，`POST /sources/{id}/reprocess` 或 `memforge sources reprocess`）只读指定 Document 的存储内容，用当前 adapter 和编译器重新投影，同样按全部 Observation 授权，并在 derivation 上下文里记录 `support_without_baseline`，让每条 Support 按没有可用基线整篇读取。两种都以本次运行 id 作为 `reprocess_operation_id`，所以重新投影与已提交 revision 相同时也会重新执行，不复用旧 derivation 的完成工作。两种都对照已提交的 base 规划：需要语义工作的 Unit 不提前记录投影，投影由生命周期提交在同一事务里记录，因此只有位置变化的 Unit 也能按已提交 base 重新处理。
 
 ### 6.2 输入范围与请求预算
 
@@ -948,7 +952,7 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 | 当前标识 | 实际职责 | 本次升级原则 |
 |---|---|---|
 | `projection-extraction-v9` | L1 的提取合同，使用 Fragment catalog 与模型 selector；是 Source 抽取使用的唯一合同 | 保持现有 L1 selector/授权语义时不因 L3/L4 合并而自动命名 v10；若提取合同含义确实改变，再显式注册新提取合同 |
-| `COMPILER_CONTRACT_VERSION = 4` | 表示编译、片段边界、坐标和 catalog 身份合同 | 完整表格、列表、HTML 等结构语义已经由 compiler 4 固定；输入模式变化不重编译历史 Evidence。改变片段切分或文字表示时，已有 Evidence 可能无法再精确匹配，相关 Support 在其 Unit 下一次出现新 revision 时整体进入 Support Assessment；这类变更须在 PR 中说明此影响，不做版本迁移或放量机制 |
+| `COMPILER_CONTRACT_VERSION = 4` | 表示编译、片段边界、坐标和 catalog 身份合同 | 完整表格、列表、HTML 等结构语义已经由 compiler 4 固定；输入模式变化不重编译历史 Evidence。改变片段切分或文字表示时，已有 Evidence 可能无法再精确匹配，相关 Support 在其 Unit 下一次出现新 revision 时整体进入 Support Assessment；不再更新的 Unit 由运维人员按当前 revision 重新处理（第 6.1 节）。这类变更须在 PR 中说明 OSS 与 Cloud 的负载以及建议重新处理哪些 Unit，不做版本迁移或放量机制 |
 | authority policy / presentation policy（当前分别 6 / 5） | 增量结构授权及模型目录呈现规则 | 只有对应规划/呈现语义改变才调整，变化必须进入工作输入身份 |
 | L3/L4 的语义工作合同及输入身份 | 决定结果是否可复用 | **必须显式更新**：新输入模式、支持判断、可变 Required 与合并关系/修订响应不能复用旧合同结果；沿用现有 descriptor/hash/staging 机制，不新建版本账本 |
 | Source revision / Evidence Unit v2 | 前者是采集内容版本，后者是 Support 数据模型能力 | 都不因模型调用合并自动变化；本阶段没有新 Support schema 或历史内容迁移要求 |
@@ -970,7 +974,8 @@ source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含
 
 | 步骤 | 实施前代码与可复用部分 | 目标差异及规模 | 必须验证的边界 |
 |---|---|---|---|
-| 1 Trigger/Worker | `admin_api` 的 Source sync 路由 → SyncService → SourceSyncWorker，已有 run/lease/coalescing | 无行为改造 | 只恢复失败工作；不新增调度器 |
+| 1 Trigger/Worker | `admin_api` 的 Source sync 路由 → SyncService → SourceSyncWorker，已有 run/lease/coalescing | **小，已实现**：按当前 revision 重新处理是同一队列上的 `REPROCESS` run（`source_sync_runs.reprocess_document_ids_json`）；有活动运行时返回 409、不合并，重新处理期间请求的同步在它之后执行；失败不自动重试；`dry_run` 只读 | 只恢复失败工作；不新增调度器 |
+| 2 采集/快照（重新处理） | `pipeline/stored_document.py` 从 Document 行、存储的原始内容和已提交 revision 的 Artifact 还原输入 | **小，已实现**：不访问 provider；Artifact 随 Unit 带回；存储输入不能重现已提交位置时该 Unit 失败 | 不推进游标、不做删除检测；存储缺失只影响该 Unit |
 | 2 采集/快照 | `pipeline/sync.py`、SourceProjectionAdapter、不可变 revisions、raw/normalized/Artifact 存储 | 无基础重构；资格问题单独见下表 | provider 部分覆盖、删除证明、稳定 Unit 身份 |
 | 3 工作准备 | `source_derivation.py`、`pipeline/projection_context.py` 与 Fragment compiler 已有暂存、结构授权和索引 | **中，已实现**：`plan_projection_evidence_work` 只算授权，`pipeline/extraction_requests.py` 按 ReadingGroup item 经 runner 规划请求；首次导入读每个 ReadingGroup、更新时只读变化结构及其 ReadingGroup（不做成本比较、不截断）；适用基线和工作合同身份 | 首次导入、contested Support、超限不可截断、旧输出不可复用到新合同 |
 | 4 L1 提取 | 已有结构目录与 Primary/Required selector；增量完整结构授权已实现 | **小到中**：消费上述读取范围；不放宽已实现的 Primary 授权 | 全文只是可读上下文；canonical 完整解析不等于全记录 Primary |

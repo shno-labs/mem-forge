@@ -141,7 +141,8 @@ that owns the detail.
   attach commit before the old Unit is removed
   ([Source Unit identity and convergence](#source-unit-identity-and-convergence)).
 - A RepresentationCompiler change to segmentation or text representation is
-  absorbed by ordinary Support Assessment
+  absorbed by ordinary Support Assessment; a Unit that no longer changes is
+  reprocessed at its current revision by an operator
   ([Validation and version boundaries](#validation-and-version-boundaries)).
 - Every model call goes through the LLM batch runner of
   [ADR 0036](0036-separate-semantic-work-from-inference-executors.md) (decision
@@ -897,6 +898,24 @@ Observation as added content. It authorizes no extraction, and exact Supports go
 through Change Impact. Such a change states the one-time load in its PR. Cloud
 impact: Cloud reaches the same load as its Units are next fetched after the pin
 upgrade; the new Observation needs no HANA schema change.
+
+Both rules wait for a Unit's next revision, and a Unit that no longer changes (a
+closed Jira issue, an archived page) never gets one. An operator reprocesses such
+Units at their current revision: a `REPROCESS` Source sync run reprojects each
+named Document from its stored raw content and the Artifacts of its committed
+revision with the current adapter and compiler, without contacting the provider.
+The Unit then goes through the ordinary revision flow in one atomic commit, with
+two differences: extraction reads every ReadingGroup, under the run's reprocess
+authorization, and every Support is read over the whole Unit as if it had no
+usable baseline, so no Support is rebound or sent to Change Impact. The run
+keeps the sync cursor and infers no removal, and a stored input that no longer
+places the Unit where its committed revision does fails that Unit with
+`stored_input_incomplete`. A compiler or adapter change states in its PR the OSS
+and Cloud load and which Units, if any, should be reprocessed; `dry_run` reports
+each Unit's stored input and an upper bound on the model calls before the run.
+Cloud impact: the reprocess runs on the Source sync run queue, which gains one
+HANA column for its Documents and the reprocess enqueue rules, and
+`run_source_sync` passes `execution_mode` again.
 
 The input policy counts the exact fallback prompt with its response schema,
 actual supplied images and requested output allowance. Configured input,
