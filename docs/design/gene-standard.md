@@ -564,6 +564,7 @@ The unit of discovery. Every gene yields `ContentItem` from `discover()`.
 | `author` | `str \| None` | No | Primary human responsible ("who do I ask about this content?") |
 | `labels` | `list[str]` | No | Source-native labels, lowercased. Empty list if none. |
 | `extra` | `dict` | Yes | Source-specific metadata. See below. |
+| `stored_extra` | `dict` | No | Set by the sync pipeline, never by `discover()`: the `extra` recorded when the document was last synced, empty for a new document. `fetch()` may reuse a provider fact recorded for an unchanged provider revision (GitHub Repository reuses a file's commit time for an unchanged blob). |
 
 ### 7.2 `extra` Dict Minimum Schema
 

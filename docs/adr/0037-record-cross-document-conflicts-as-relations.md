@@ -108,6 +108,15 @@ the pair (either is unknown, or both fall on the same date), it is recorded as
 `contradicts`. Directional `REFINES` is no longer recorded for cross-document
 pairs.
 
+The source revision time belongs to the whole anchored Observation, so it can
+be later than the statement itself: a page, a file or an agent concept revised
+for another passage gives an unchanged older statement the new time, and that
+statement can then be ordered after a genuinely newer one instead of falling
+back to `contradicts`. Content that changes from A to B and back to A keeps the
+time of the first A, so the restored statement looks older than it is. Both are
+known limits of revision-level time. Agent concepts already record the time
+of the event that authorized each claim; ordering does not use it yet.
+
 ### Executor
 
 Cross-document relation is a classifier responsibility
@@ -237,7 +246,8 @@ applied counts. Deleting them is a separate approved step.
   Evidence time) and the document title (`get_document`), which the HANA adapter
   already implements. Discovery and the conversion build that input with the
   same methods. `record_source_projection` writes a missing `observed_at` once
-  when a later projection gives it, and the HANA adapter does the same.
+  when a later projection gives it; the HANA adapter must do the same, or
+  Cloud revisions recorded without a time keep an unknown Evidence time.
 - `proxy/external_runtime.py` call sites do not change.
 
 ## Related

@@ -420,26 +420,28 @@ COMPLETE_SNAPSHOT 证明 A 消失（B 提交之后）
 
 Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 summary，Confluence 的 space 和页面标题，GitHub 的仓库、路径和 ref，GitHub Pages 的标题和 URL，本地 Markdown 的 vault 和路径，Teams 的会话类型、team、频道、窗口标题和时间范围，agent session 的客户端、窗口类型和标题；扩展 Source 至少给出标题和 source type。Adapter 只写 payload 里有的值，不猜测，也不为某个 Source 写专用 prompt。Unit Title 投影为每个 live Unit 的第一条 Observation（类型 `unit_identity`，表示 `unit-identity`），每次投影都返回，部分投影下也不会成为 `UNKNOWN`；整个 Unit 被 tombstone 时不再有 Unit Title。它编译为一个 Fragment：永远不能作为 Primary，可以被选为 Required 并随 Evidence 持久化。Claim 写出或依赖 Unit 名称（例如 issue key）时应把它选为 Required，候选准入据此检查识别信息（第 0.6.1 节）。Unit Title 变化（Jira summary 修改、页面改名、文件移动）是普通的修改内容：不产生抽取工作，选了它的 Support 为 `MODIFIED`，其他 Support 经 Change Impact。Jira 应分别表达 core/comments/changelog coverage 并完成分页；Teams 应提供稳定 thread/window membership、reply pagination 和明确 edit/delete/tombstone。Adapter 无法证明时降级为 Partial，流程仍可处理 positive changes，但不会从缺失推断删除。
 
-**Observation 修订时间。** 每个 Observation Revision 的 `observed_at` 是来源自己记录的、这份内容形成的时间，不是 MemForge 发现、拉取、接收或同步它的时间。来源没有这样的时间时为空，任何路径都不用同步时间、提交时间或当前时间代替。时间是修订的属性，不参与修订身份：修订 id 只由 Observation 和语义哈希决定，Unit 修订、Evidence Unit 和 Lifecycle Plan 的身份也不含时间，所以纠正时间不会产生新修订或 Delta。已有修订的时间为空、本次投影给出时间时，存储补写一次；已写入的时间不再改。内容从 A 改成 B 再改回 A 时，第二次的 A 复用第一次的修订，时间仍是第一次 A 的时间。
+**Observation 修订时间。** 每个 Observation Revision 的 `observed_at` 是来源自己记录的、这份内容形成的时间，不是 MemForge 发现、拉取、接收或同步它的时间。来源没有这样的时间时为空，任何路径都不用同步时间、提交时间或当前时间代替。时间是修订的属性，不参与修订身份：修订 id 只由 Observation 和语义哈希决定，Unit 修订、Evidence Unit 和 Lifecycle Plan 的身份也不含时间，所以纠正时间不会产生新修订或 Delta。已有修订的时间为空、本次投影给出时间时，存储补写一次；已写入的时间不再改。内容从 A 改成 B 再改回 A 时，第二次的 A 复用第一次的修订，时间仍是第一次 A 的时间。Adapter 输出进入投影时，所有时间统一成 UTC ISO 8601；没有时区偏移或格式无法解析的值当作没有时间，不让整个投影失败。
 
 整篇正文只有一个 Observation 的来源（Confluence 页面、GitHub 文件、GitHub Pages 页面、本地文件、agent concept 文档、扩展 Source），由 Gene 在 `normalize()` 里通过 `source_semantics["source_updated_at"]`（带时区偏移的 ISO 时间）报告正文的时间，没有就不写。这个时间属于整篇正文，对其中某一段来说是上界。`ContentItem.last_modified` 只用于发现阶段的变化判断、`since` 过滤和文档的 `last_modified`，可以是发现或提交时间，从不当作内容时间读取；文档和 Memory 的 `source_updated_at` 也只取 Gene 报告的时间。Adapter 尽量从已经取得的数据里拿时间；确实需要多一次 provider 调用时，选最便宜的真实来源，并写明成本，不加轮询，也不加配置。
 
 | 来源 | Observation 时间 | 额外成本 |
 |---|---|---|
 | Confluence 页面正文 | 页面版本时间 `version.when`，发现时已取得 | 无 |
-| Jira `issue_core` | changelog 完整时，取改动 core 字段（summary、description、status、priority、assignee、labels、resolution）的最晚一条 history 的 `created`；没有这样的 history 时取 `fields.created`；changelog 被截断时为空。`fields.updated` 会被评论等其他变化推后，不用 | 无 |
+| Jira `issue_core` | changelog 完整时，取改动 core 字段（summary、description、status、priority、assignee、labels、resolution）的最晚一条 history 的 `created`；没有这样的 history 时取 `fields.created`；changelog 被截断或 payload 里没有 changelog 时为空。Issue 接口内嵌的 changelog 只有一页（通常 100 条），history 更多的 issue 被截断，core 时间为空。`fields.updated` 会被评论等其他变化推后，不用 | 无。以后如要补上，只对被截断的 issue 分页读 `/issue/{key}/changelog`，每个这样的 issue 多几次调用 |
 | Jira comment、changelog | 评论的 `updated`，没有则 `created`；history 的 `created`。Issue 的文档时间取 `fields.updated` | 无，local agent 不改 |
-| Teams message | `lastModifiedDateTime`，没有则 `time`。窗口的文档时间取窗口内最晚的消息时间 | 无 |
-| GitHub Repository（cloud pull） | 在本次集合的 commit 上，改动该文件的最后一次提交的 committer 时间；符号链接取链接和目标两者中较晚的一次 | 每个文件每次同步多 1 次 REST 调用（`commits?sha=&path=&per_page=1`，符号链接 2 次），和读取 blob 一样在 `fetch()` 里执行，文件数不超过 `max_files` |
-| GitHub Repository（local push） | 同上，由 local agent 用 `gh api` 查询，随请求的 `source_updated_at` 发送 | 只对有变化、需要上传的文件多 1 次调用；旧版 local agent 不发送，时间为空 |
+| Teams message | 编辑过的消息取 chatsvc 的 `properties.edittime`（毫秒时间戳，规范化消息里的 `edited_time`），否则取发送时间 `composetime`（`time`）。窗口的文档时间取窗口内最晚的一个。之前已记录的编辑消息修订保留当时的发送时间 | 无，时间在已取得的消息里；local agent 升级后才发送 `edited_time` |
+| GitHub Repository（cloud pull） | 在本次集合的 commit 上，改动该文件的最后一次提交的 committer 时间；符号链接取链接本身和最终目标两者中较晚的一次，中间的链接不计。blob 没变时沿用上次同步记录的时间（文档 `item_extra` 的 `last_commit_at`）。GitHub 拒绝请求时时间为空，文件照常同步，下次同步再查 | 只对新 blob 或还没有时间的文件多 1 次 REST 调用（`commits?sha=&path=&per_page=1`，符号链接 2 次），在 `fetch()` 里执行 |
+| GitHub Repository（local push） | 同上，由 local agent 用 `gh api` 查询，随请求的 `source_updated_at` 发送；查询失败时不带时间上传 | 只对需要上传的文件多 1 次调用；旧版 local agent 不发送，时间为空 |
 | GitHub Pages | repo 模式取页面文件在分支上的最后提交时间；sitemap 模式取 `lastmod`；HTTP 模式取 `Last-Modified`（GitHub Pages 给的是部署时间，可能晚于真正的修改）；都没有时为空 | 无 |
-| 本地 Markdown | 在 Git 里已跟踪、没有本地修改的文件取最后提交时间（checkout 和 clone 会把文件修改时间设成当时）；其他文件取文件修改时间（复制或部分同步工具可能重置它） | 有文件要上传时多 1 次本地 `git status`，每个上传文件 1 次 `git log -1`，没有网络调用；旧版 local agent 不发送，时间为空 |
-| agent session concept | 授权这次修改的 primary 事件的 `timestamp`；用户更正和退休取用户操作的时间 | 无，插件不改 |
+| 本地 Markdown | 在 Git 里已跟踪、没有本地修改的文件取最后提交时间（checkout 和 clone 会把文件修改时间设成当时）；其他文件取文件修改时间（复制或同步工具可能重置它，解压和可复现构建可能把它设成 1970 或 1980 年这样的固定值） | 有文件要上传时多 1 次本地 `git status`，每个上传文件 1 次 `git log -1`，没有网络调用；旧版 local agent 不发送，时间为空 |
+| agent session concept | 授权这次修改的 primary 事件的 `timestamp`；用户更正、退休和 maintenance operator 关闭 claim 都改了 concept 内容，取这次操作的时间 | 无，插件不改 |
 | Unit Title | 空；它不能作为 Primary | 无 |
 | Source Artifact | 继承同一投影里父 Observation 的时间 | 无 |
 | 扩展 Source | Gene 报告的时间，没有则为空 | 无 |
 
-Evidence Unit 的时间取 Primary 锚定的 Observation Revision 的时间；去重 Support 指向 Memory 而不是来源修订，没有时间。关系分类器的原文时间只读这个时间（第 14 节），不再按 Source 类型退回文档时间。
+**Local agent 文件包的来源时间。** GitHub Repository（local push）和本地 Markdown 的包带着文件的来源时间。文件包的输入身份（`raw_sha256`）由文档、内容和来源时间一起决定：同样的内容先不带时间、后带时间上传，是两个输入，带时间的那个会被保留和投影，不会并进旧输入；不带时间的包仍只由内容决定，所以已有的输入身份不变。Local agent 在 manifest 请求里声明包契约版本（`package_contract_version`，当前为 2）。版本 2 起，服务端对文件来源只复用带来源时间的已保留包，其余的列入 `required_doc_ids`，由 local agent 带时间重传。这是一次性成本：升级后的第一次集合重传所有已保留但没有时间的文件，之后只在内容变化或时间仍然查不到时重传。不声明版本的旧 local agent 照旧复用。Jira 和 Teams 的时间在 `raw_payload` 里，不受这条规则影响。
+
+Evidence Unit 的时间取 Primary 锚定的 Observation Revision 的时间；去重 Support 指向 Memory 而不是来源修订，没有时间。关系分类器的原文时间只读这个时间（第 14 节），不再按 Source 类型退回文档时间。Unit 修订的 `observed_at` 是创建时成员修订时间里最晚的一个，Evidence Unit 的 `observed_at` 是创建时 Primary 修订的时间；两者创建后不再更新，更早的数据里可能还是同步时间，只作记录，任何地方都不把它们当作来源时间读取。
 
 ### 0.10 验收案例
 
