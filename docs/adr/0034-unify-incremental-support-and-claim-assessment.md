@@ -217,9 +217,8 @@ support and does not use this definition.
 A change to the definition changes the meaning of both results, so it raises
 `REVISION_SUPPORT_CONTRACT`, the Support Assessment work contract and the
 candidate admission contract together; completed work under an earlier
-definition is never reused. The definition that requires every stated specific
-uses `revision-support-v6`, `support-ordered-reading-v4` and
-`candidate-admission-v2`.
+definition is never reused. The current contracts are `revision-support-v7`,
+`support-ordered-reading-v5` and `candidate-admission-v2`.
 
 Cloud impact: the definition is shared OSS prompt text. Cloud receives it by
 upgrading the pin; its HANA derivation work and reconciliation manifests carry
@@ -366,15 +365,12 @@ Each status is a per-part result, not proof that a multi-part Evidence Unit surv
 All Primary and Required parts must have valid current refs before deterministic
 REBIND can be proposed. If one part is modified, removed or ambiguous, retain
 the uniquely matched current parts as candidates and assess the fixed entire
-claim with a complete current Evidence Unit. The assessment must account for
-every exact-matched prior part: its current ref is either selected in the final
-Primary/Required set or listed in the result's omitted matched refs. That list
-carries refs only, with no explanation text. Absence from both is not an
-instruction to drop the part. Support validation rejects a supported result that leaves a
-matched part unaccounted for; it never silently replaces the entire old set
-with only the newly changed fragment. This is sparse accounting for omitted
-parts, not one model row per old/new Evidence pair. Never copy a missing old
-ref or promote one matching part to `SUPPORTED`. Missing legacy provenance cannot be
+claim with a complete current Evidence Unit. The matched parts are offered to
+the model as selectable current refs, like any other current ref. Whether the
+selected Primary/Required set is complete is judged by the
+[Complete support](#complete-support) definition; the program does not require
+the model to account for a matched part it does not select. Never copy a missing
+old ref or promote one matching part to `SUPPORTED`. Missing legacy provenance cannot be
 treated as `EXACT_UNCHANGED` and follows the existing limited-Evidence gate.
 The status and current-ref map are operation-local derived data; the committed
 Support/Evidence and target Projection retain the durable proof and provenance.
@@ -408,7 +404,7 @@ Support Assessment works at `(memory_id, independent_support_id)` granularity. A
 
 The final semantic wire result is `SUPPORTED(work_id, primary_ref, required_refs[]) | UNSUPPORTED(work_id)`. Only `SUPPORTED` admits selectors. Its selectable current pool is the current AssessmentContext catalog plus current refs grounded by earlier contexts and rehydrated with exact current text in `carried_witness_catalog`; historical refs are never selectable. Streamed model output carries only `witness_delta` additions. Application code validates and monotonically union-merges them into grounded supporting/opposing sets, so omission cannot erase an earlier witness; no cumulative status is model-owned. Steps inside the first part of the order return only `witness_delta`. The step that completes the first part, and any later step, may return `SUPPORTED` for a work item, which then exits; otherwise the step returns only its `witness_delta`. A work item exits only on a model-returned `SUPPORTED` that passes program validation. A non-empty opposing-witness set does not block that exit, because the opposing text is carried in the request through `carried_witness_catalog` and the model judged with it. The step that reads the last ReadingGroup of the order returns `SUPPORTED` or `UNSUPPORTED`. Partial coverage (an `UNKNOWN` part, which never reaches the model) becomes application-owned `UNRESOLVED(partial_coverage)`; a single ReadingGroup that alone exceeds the model's capacity for the work item becomes `UNRESOLVED(capacity)`; and a work item whose output alone stays invalid after the one correction (a schema, ID or selection failure) becomes `UNRESOLVED(invalid_response)`. All three KEEP, and the revision commits. A provider error or a timeout that remains after the LLM batch runner split the request down to that one item leaves the Source Unit revision uncommitted, and the next sync retries it.
 
-A `SUPPORTED` result must account for every exactly matched prior Evidence part: each is selected or listed in `omitted_matched_refs`. Only that accounting is validated. Listing a supplied ref that is not prior Evidence in `omitted_matched_refs` changes nothing and is accepted; a ref the request did not supply is still rejected, like any other unknown ref.
+Prior Evidence reaches the model as selectable candidates: each exactly matched prior part appears by its current ref in `prior_evidence`, and those refs stay in `carried_witness_catalog` for later requests. Whether the selected set is complete is judged only by [Complete support](#complete-support). The program validates that every selected ref was supplied by the request; it does not require the model to account for prior parts it leaves out.
 
 ### Sparse same-Unit Relation
 
@@ -1506,9 +1502,7 @@ status and cannot carry selectors. The final model wire result does not carry
 generated prose. During streamed assessment, the model returns only current
 `witness_delta` additions; application code validates and monotonically unions
 them into supporting/opposing sets. Each next call rehydrates that union with exact
-current text and Primary eligibility. When matched prior parts exist,
-`SUPPORTED` also lists the omitted matched refs, refs only, with no explanation
-text. Partial coverage, a single ReadingGroup beyond capacity and output that
+current text and Primary eligibility. Partial coverage, a single ReadingGroup beyond capacity and output that
 stays invalid for one item are application-owned `UNRESOLVED(reason)`, not a
 semantic model status; a transient execution failure leaves the Source Unit
 revision uncommitted. Application diagnostics may retain
@@ -1553,10 +1547,10 @@ DestructiveValidation. Reading per ReadingGroup with the shared reading context
 and the Unit Title uses `revision-input-v7`, `revision-support-v5`,
 `support-ordered-reading-v3`, `change-impact-v2`, authority policy 6 and model
 presentation policy 5; the extraction contract stays `projection-extraction-v9`
-and the compiler stays 4. [Complete support](#complete-support) then raises
-Support to `revision-support-v6` and the ordered read to
-`support-ordered-reading-v4`. Existing completed v6 work
-must never be reinterpreted under the amended contract. Exact successor numbers
+and the compiler stays 4. [Complete support](#complete-support), with prior
+Evidence offered only as selectable candidates, gives the current contracts
+`revision-support-v7` and `support-ordered-reading-v5`. Completed work under an
+earlier contract is never reinterpreted under a later one. Exact successor numbers
 are assigned with the implementation so they cannot collide with independently
 released work; no stored Evidence or lifecycle schema migration follows merely
 from this contract change.

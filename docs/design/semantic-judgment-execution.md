@@ -528,9 +528,9 @@ SUPPORTED(work_id, primary_ref, required_refs[])
 UNSUPPORTED(work_id)
 ```
 
-A `SUPPORTED` result also lists the omitted matched prior refs: each exact-matched
-prior part whose current ref is not in the final Primary/Required set. The list
-carries refs only, no explanation.
+The exactly matched prior parts are offered as selectable current refs. The
+complete support definition judges whether the selected set is complete; no
+field accounts for prior parts the selection leaves out.
 
 The application wraps execution separately:
 

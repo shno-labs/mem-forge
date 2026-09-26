@@ -181,11 +181,9 @@ Evidence rebind。原文唯一精确匹配即为 `EXACT_UNCHANGED`；所在 Read
 状态按旧 Evidence **每个 part** 计算，再汇总到完整 Evidence Unit。只有一个 Primary
 和全部 Required 都有明确合法的 current refs，才能走确定性 rebind；若其中一项
 修改、删除或对应不唯一，已精确对应的 part 只是本次可选的当前证据，仍需核对
-整条固定 Claim 并重建完整 Evidence Unit。评估结果必须交代每条精确匹配的旧
-part：其 current ref 要么进入最终 Primary/Required 集合，要么列入结果中的
-“省略的已匹配 ref”列表；该列表只列 ref，不附说明文字。**模型没输出某 ref 不等于
-允许丢弃**；程序拒绝未交代的 `supported` 结果，而不是用新读到的片段覆盖整组旧
-证据。只列被省略的匹配 part，不输出旧、新 Evidence 的笛卡尔积。
+整条固定 Claim 并重建完整 Evidence Unit。精确匹配的旧 part 以 current ref 的形式
+交给模型，和其他当前 ref 一样只是可选的候选；所选 Primary/Required 集合是否完整，
+按“完整支持的定义”判断（第 0.4 节），程序不要求模型逐条说明没有选中的旧 part。
 旧 excerpt 或旧 ref 不可补足缺口。
 缺少足够准确旧 provenance 的 legacy Evidence 也不能伪装成 `EXACT_UNCHANGED`，
 沿用已有 limited-Evidence 门禁。分类与 ref map 是每次操作的派生结果，不新建
@@ -231,7 +229,7 @@ changed ReadingGroups (added, modified; removed ones as read-only old text)
 
 Support Assessment 只有一条规则：按固定顺序流式读取当前全部内容，变化的 ReadingGroup（新增、修改和删除的；删除的读其旧文本）和该 Claim 自己的旧 Evidence 所在的 ReadingGroup 先读，其余在后；第一段按 Claim 划分，不同 Claim 的第一段终点可以不同；第一段还有未读的 ReadingGroup 时，Claim 不能退出；第一段读完后，每条 Claim 找到完整支持即退出，全部读完仍无支持才判 `UNSUPPORTED`。Delta 不是一种模式，只是读取顺序的第一段。Planner 只负责排读取顺序，不比较成本，不决定从哪里开始，也不让模型判断否定结果是否已经足够。`EXACT_UNCHANGED` 只贡献 current ref 和 compact state；`MODIFIED` 使用对应 current ReadingGroup；`AMBIGUOUS` 使用全部确定候选。
 
-**完整支持的定义。**Support Assessment 和候选准入判断的是同一件事：所选 Evidence 是否完整支持一条 Claim。两处模型请求使用同一段定义文本（`pipeline/complete_support.py`）：Claim 写出的每一项具体信息，包括人、系统和事物的名称、编号、数量、日期和时间、状态、条件和范围，都必须出现在所选 Evidence 中，或能从中直接得出；只要有一项具体信息与 Evidence 矛盾，或 Evidence 中没有，这条 Claim 就不被支持，即使其余部分都对得上。判断不使用 Evidence 以外的知识。所以话题、动作或大部分措辞相符都不够：Claim 写的编号与它选作 Required Evidence 的 Unit Title 不同，或写的人、数字、日期与 Primary Evidence 不同，在 Support Assessment 中判为 `UNSUPPORTED`，在候选准入中判为 `REJECTED(evidence_incomplete)`。Change Impact 不判断支持，不使用这条定义。定义改变时，`REVISION_SUPPORT_CONTRACT`、Support Assessment 工作合同和候选准入合同一起升级（当前为 `revision-support-v6`、`support-ordered-reading-v4` 和 `candidate-admission-v2`），旧合同下完成的工作不再复用。
+**完整支持的定义。**Support Assessment 和候选准入判断的是同一件事：所选 Evidence 是否完整支持一条 Claim。两处模型请求使用同一段定义文本（`pipeline/complete_support.py`）：Claim 写出的每一项具体信息，包括人、系统和事物的名称、编号、数量、日期和时间、状态、条件和范围，都必须出现在所选 Evidence 中，或能从中直接得出；只要有一项具体信息与 Evidence 矛盾，或 Evidence 中没有，这条 Claim 就不被支持，即使其余部分都对得上。判断不使用 Evidence 以外的知识。所以话题、动作或大部分措辞相符都不够：Claim 写的编号与它选作 Required Evidence 的 Unit Title 不同，或写的人、数字、日期与 Primary Evidence 不同，在 Support Assessment 中判为 `UNSUPPORTED`，在候选准入中判为 `REJECTED(evidence_incomplete)`。Change Impact 不判断支持，不使用这条定义。定义改变时，`REVISION_SUPPORT_CONTRACT`、Support Assessment 工作合同和候选准入合同一起升级（当前为 `revision-support-v7`、`support-ordered-reading-v5` 和 `candidate-admission-v2`），旧合同下完成的工作不再复用。
 
 **Cloud 影响：**这条定义是共享的 OSS prompt 文本，Cloud 升级 pin 即可生效；HANA 中的 derivation work 和 reconciliation manifest 带上新的合同版本，不需要改 schema，旧版本下完成的工作会重新计算，不会复用。
 
@@ -274,11 +272,11 @@ UNSUPPORTED(work_id)
 
 程序验证 `witness_delta` 的 membership 后，与此前 supporting/opposing sets 做单调 union；后一次模型输出不能通过省略删除早期 decisive witness。下一次调用必须同时收到这个程序持有的 union 中所有 current refs 的准确正文与 Primary 资格，形成 `carried_witness_catalog`；只传 ref 会让模型无法继续验证组合语义。例如读取顺序分为两个 AssessmentContexts：第一组找到“HR 审批”并把 `PRM-0012` 加入 supporting set；第二组收到该 union 及 `PRM-0012` 的 current 正文，找到“Finance 审批”的 `REQ-0041`。最后一个 `support_assess` 返回 `SUPPORTED(WRK-0001, PRM-0012, [REQ-0041])`；`support_finalize` 验证 selectors、manifest 与 coverage 后产生 `COMPLETED(SUPPORTED)` 收据。若第二组出现取消 Finance 审批的 current Evidence，则 ref 被 union 到 opposing set，最终不能被第一组的局部支持覆盖。
 
-第一段还没读完时，每一步对每条 work 只返回 `witness_delta`；从读完第一段的那一步起，Structured LLM 对仍未退出的 work 返回 `SUPPORTED(...)`（该 work 退出，不再进入后续请求）或 `witness_delta`；程序先将 delta 单调合并到累计 witnesses，下一步只读取尚未处理的 contexts。读完顺序中最后一组的调用，对仍未退出的 work 返回 `SUPPORTED(...)` 或 `UNSUPPORTED(work_id)`；`UNSUPPORTED` 还要求受影响对象的覆盖是权威的。`SUPPORTED` 同时带“省略的已匹配 ref”列表（见第 0.3 节），只列 ref。
+第一段还没读完时，每一步对每条 work 只返回 `witness_delta`；从读完第一段的那一步起，Structured LLM 对仍未退出的 work 返回 `SUPPORTED(...)`（该 work 退出，不再进入后续请求）或 `witness_delta`；程序先将 delta 单调合并到累计 witnesses，下一步只读取尚未处理的 contexts。读完顺序中最后一组的调用，对仍未退出的 work 返回 `SUPPORTED(...)` 或 `UNSUPPORTED(work_id)`；`UNSUPPORTED` 还要求受影响对象的覆盖是权威的。
 
 执行结果由程序另行包装为 `COMPLETED(SUPPORTED|UNSUPPORTED)` 或 `UNRESOLVED(reason)`。`UNRESOLVED` 有三个原因：`partial_coverage`（有 `UNKNOWN` part，不调用模型）、`capacity`（单个 ReadingGroup 单独就超出模型容量）和 `invalid_response`（这条 work 单独的输出纠正一次后仍不合法）。三者都 KEEP、不允许自动破坏性动作、不推进 Support baseline，revision 照常提交。拆到单条 work 后仍是 provider 错误或超时的，不算 `UNRESOLVED`：该 Source Unit revision 不提交，下次同步重试。
 
-`SUPPORTED` 必须交代每个精确匹配的旧 Evidence part：要么被选中，要么列入 `omitted_matched_refs`。程序只检查这一点。模型在 `omitted_matched_refs` 里多列了本请求提供过、但不是旧 Evidence 的 ref，不影响任何结果，照常接受；本请求没有提供过的 ref 仍按未知 ref 拒绝。完整 Support Assessment 是依赖多字段的 Evidence 计划，统一由 Structured LLM 完成，不拆成按 confidence 选择 backend 的 cascade。
+旧 Evidence 作为可选候选交给模型：每个精确匹配的旧 part 以 current ref 出现在 `prior_evidence` 中，之后的请求也把它带在 `carried_witness_catalog` 里。所选集合是否完整只按“完整支持的定义”判断。程序检查所选 ref 都是本请求提供过的，不要求模型交代没有选中的旧 part。完整 Support Assessment 是依赖多字段的 Evidence 计划，统一由 Structured LLM 完成，不拆成按 confidence 选择 backend 的 cascade。
 
 ### 0.6 候选准入、Sparse Relation 与两条线的汇合
 
@@ -794,7 +792,7 @@ fixed old claim
 
 `ReadingGroup` 是可理解结构，内部可有多条 EvidenceFragments；`AssessmentContext` 是一次调用实际读取的一个或多个 ReadingGroups；`AssessmentScope` 是整个 work 的逻辑覆盖。读取顺序对大文档按 contexts 流式覆盖完整 current Catalog，而不是一次传原始全文。
 
-第一段读完之前，每一步对每条 work 只输出 `witness_delta`；此后每一步对仍未退出的 work 输出 `SUPPORTED(primary_ref, required_refs[])`（该 work 退出）或 `witness_delta`。`witness_delta` 是本次观察到的 supporting/opposing current refs，程序校验后与已有 state 单调 union。读完最后一个 context 的调用，对仍未退出的 work 输出最终判别联合：`SUPPORTED` 必须带一 Primary 和零到多个 Required；`UNSUPPORTED` 禁止 selector 字段。`SUPPORTED` 附带省略的已匹配 ref 列表，只列 ref。部分覆盖、单组超容量和单项输出纠正后仍不合法由程序包装为 `UNRESOLVED(reason)`，不是模型的第三个语义状态；临时性失败使该 Source Unit revision 不提交。`UNSUPPORTED` 只提出 source-scoped Support removal，最终是否 supersede/retire 仍由 Lifecycle Planner 检查完整 coverage、其他 Active Supports 和 stale guards。
+第一段读完之前，每一步对每条 work 只输出 `witness_delta`；此后每一步对仍未退出的 work 输出 `SUPPORTED(primary_ref, required_refs[])`（该 work 退出）或 `witness_delta`。`witness_delta` 是本次观察到的 supporting/opposing current refs，程序校验后与已有 state 单调 union。读完最后一个 context 的调用，对仍未退出的 work 输出最终判别联合：`SUPPORTED` 必须带一 Primary 和零到多个 Required；`UNSUPPORTED` 禁止 selector 字段。部分覆盖、单组超容量和单项输出纠正后仍不合法由程序包装为 `UNRESOLVED(reason)`，不是模型的第三个语义状态；临时性失败使该 Source Unit revision 不提交。`UNSUPPORTED` 只提出 source-scoped Support removal，最终是否 supersede/retire 仍由 Lifecycle Planner 检查完整 coverage、其他 Active Supports 和 stale guards。
 
 程序解析选择并构造完整 current Evidence Unit；模型判断语义，程序验证 revision、selector membership、角色、digest 与 authority。`REBIND_SUPPORT` 在同一事务中附加 target-Revision Evidence 的新 Support assertion，并将被替换的旧 assertion 标为 inactive；Memory/claim 不变，旧行与历史不改写。
 
@@ -1024,8 +1022,9 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 能力及 authority/presentation 规则纳入可复用身份。未完成 derivation 按现有
 合同变更流程失效/重建，已提交 Memory 和历史 Evidence 不被批量改写。当前实现
 保持 `projection-extraction-v9` 和 compiler 4，使用 authority policy 6、presentation
-policy 5、`revision-support-v6`、`support-ordered-reading-v4`、`change-impact-v2`、
-`candidate-admission-v2`、`claim-revision-v8-sparse-catalog` 和 `memory-relation-v3`；
+policy 5、`revision-support-v7`、`support-ordered-reading-v5`、`change-impact-v2`、
+`candidate-admission-v2`、`claim-revision-v8-sparse-catalog`、`memory-relation-v3` 和
+`memory-relation-v5-sparse`；
 阅读范围与阅读上下文使用 `revision-input-v7`，并进入 inference capability hash 与
 source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含字段的 Relation
 请求和候选准入各自有新的合同版本，也进入生命周期操作输入身份。改变这些输入不能复用
