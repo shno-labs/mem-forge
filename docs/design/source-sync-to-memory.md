@@ -126,7 +126,7 @@ Support 与 Claim Extraction 共用同一个 ReadingGroup 划分：一个最外�
 
 阅读上下文只能被选为 Required，不设字符上限；单个 item 连同其上下文超出容量时按 LLM batch runner 的规则处理。Unit Title 不自成 ReadingGroup，也不是 Support 读取顺序里的一段，它在每一步都作为阅读上下文出现；Unit Title 变化时作为变化内容进入 ChangeBundle 和 Support 读取顺序的第一段。
 
-抽取时单个 ReadingGroup 连同阅读上下文就超出请求容量，该 revision 以 `input_capacity_exceeded` 失败、不提交；重试读的是同样的输入，所以在路由容量或 Unit 内容变化之前一直失败。这是已知限制：Support 有 `UNRESOLVED(capacity)` 让 revision 仍能提交，抽取没有对应规则，因为跳过这一组会让它的知识静默丢失。
+抽取时单个 ReadingGroup 连同阅读上下文就超出请求容量，该组被跳过：程序写诊断（Source Unit、ReadingGroup、`input_capacity_exceeded`），其余组照常抽取，revision 提交。规划时按容量判断放不下的组不进入任何请求；请求发出后 provider 仍对单独这一组报容量错误的，同样跳过。恢复 derivation 时规划得到同样的跳过，跳过的组数计入抽取统计（`skipped_reading_group_count`）。这是已知限制，与 Support 的 `UNRESOLVED(capacity)` 并列：因为更新时只抽取变化的结构，这一组的知识要等该结构再次变化才会重新抽取。
 
 #### `RepresentationCompiler` 只在 planner 内部暴露
 
@@ -370,7 +370,7 @@ Relation 漏报 equivalent 时，由现有 identity 去重兜底：identity 只�
 普通 KEEP、Evidence replacement 和非破坏性 ADD 不增加额外检查。准备 `REMOVE_SUPPORT`、`SUPERSEDE` 或 `RETIRE_MEMORY` 时，程序自动验证：
 
 1. affected object 有 authoritative coverage 或 explicit tombstone；
-2. Claim Extraction、Support Assessment 与 work manifest 完整且无技术失败；SUPERSEDE 或 UPDATE 还要求 Sparse Relation 完整；
+2. Claim Extraction、Support Assessment 与 work manifest 完整且无技术失败；抽取时因超容量跳过的 ReadingGroup 是已记录的覆盖事实，不算技术失败；SUPERSEDE 或 UPDATE 还要求 Sparse Relation 完整；
 3. decisive current witnesses 可重新解析，Support set 与 revision 未 stale；
 4. `UNSUPPORTED` proposal 是否绑定完整顺序读取的完成收据，且受影响对象的覆盖是权威的；
 5. 模拟 source-scoped removal 后，Memory 是否还有其他 Active Support。
@@ -423,7 +423,8 @@ Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 s
 | 已关闭的 Jira issue 按当前 revision 重新处理 | 不访问 provider，从存储的原始内容和已提交 revision 的 Artifact 重新投影；抽取读每个 ReadingGroup；每条 Support 按没有可用基线整篇读取（带 Unit Title，不换绑、不走 Change Impact）；同步游标不变，不推断删除；其他 Unit 不受影响 |
 | 已关闭的 Confluence 子页面按当前 revision 重新处理 | Document 行保存了 Gene 发现该页面时的 item 元数据（含父页面），重新投影得到与已提交 revision 相同的位置 |
 | 重新处理时存储内容缺失或不再重现 Unit 位置 | 该 Unit 以 `stored_raw_content_missing`、`stored_artifact_missing`、`stored_artifact_invalid` 或 `stored_input_incomplete` 等原因失败、不提交，其他 Unit 照常处理；保存 item 元数据之前存储的 Confluence 子页面和 GitHub 文件属于后者，普通同步重新存储该 Document 后即可重新处理 |
-| 更新的阅读上下文超过 20,000 字符 | 不截断：变化结构所在的整个 ReadingGroup 与其阅读上下文都被读到；单个 item 超出容量是类型化容量错误 |
+| 更新的阅读上下文超过 20,000 字符 | 不截断：变化结构所在的整个 ReadingGroup 与其阅读上下文都被读到；单个 item 超出容量时按下一行跳过 |
+| 抽取时单个 ReadingGroup 单独超出容量 | 跳过该组，诊断写明 Source Unit、ReadingGroup 和 `input_capacity_exceeded`；其余组的 Candidate 照常处理，revision 提交；恢复 derivation 得到同样的跳过 |
 | Relation 漏报 equivalent | 同 Unit 不产生重复 Active Memory；同一 Plan 不对同一 Memory 既删除、替代或修订又挂接 |
 | Change Impact 判 `UNAFFECTED`，Relation 报 contradicts | 对该 Claim 补做一次 Support Assessment；仍冲突进入 Review |
 | 同一冲突在下一 revision 再次出现 | 确定性 ID 指向原 Review，不新建：`pending` 的沿用并刷新 stale guard，`rejected` 的不再提出，`stale` 的重新打开；冲突消失时以 `stale` 关闭 |
@@ -687,6 +688,8 @@ Evidence-fixed、多 Memory cohorts 可使用 `REVISION_FIRST` cache layout；co
 
 **程序校验：**输出格式、真实引用、Primary 授权、角色、访问兼容性及证据完整性。通过后保存到本次 derivation 的成功输出，形成 RawMemory/Candidate。尚不创建正式 Memory。
 
+**容量：**单个 ReadingGroup 连同阅读上下文单独超出容量时，跳过该组并写诊断，其余组照常抽取，revision 提交（第 0.2 节）。
+
 本文按两个步骤描述：L1 找出本次变化带来的新知识候选；L3 检查已有知识是否仍被当前来源支持。L1 输出候选，不直接创建 Memory；L3 输出支持判断与证据调整方案，不直接修改旧 Memory。两种结果都交给后面的统一 reconciliation 和 Lifecycle Plan，决定最终如何提交。
 
 ## 8. 步骤五：候选准入【已实现，每个 Candidate 执行】
@@ -913,7 +916,7 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 | provider 抓取失败 | Run 与错误；可能有其他成功页面 | 本页不据此证明删除 | provider/本页采集 |
 | Artifact 不适合当前推理 | 准确原始 Artifact 与 eligibility | 依赖它的 Support 走明确未决保护；不伪造视觉验证 | eligibility/既有 Review |
 | 提取 schema/transport 失败 | 固定 target 与成功 sibling batch 输出 | 本页不以不完整提取覆盖提交新知识 | 失败工作；精确输出复用 |
-| 请求超容量，或多条目请求组超时、provider 413、输出截断 | 固定目标与成功阶段 | LLM batch runner 按容量拆分；多条目请求组遇到这些容量失败时对半拆分后重发，直到完成；不截断成“完整” | 精确复用成功阶段；拆到单条（Support 为单个 ReadingGroup）仍失败时：Support 的单组超容量为 `UNRESOLVED(capacity)`，其他失败使该 revision 不提交、下次同步重试；候选准入或 Sparse Relation 使该 revision 不提交、下次同步重试；Claim Extraction 报告该 Unit 的容量错误 |
+| 请求超容量，或多条目请求组超时、provider 413、输出截断 | 固定目标与成功阶段 | LLM batch runner 按容量拆分；多条目请求组遇到这些容量失败时对半拆分后重发，直到完成；不截断成“完整” | 精确复用成功阶段；拆到单条（Support 为单个 ReadingGroup）仍失败时：Support 的单组超容量为 `UNRESOLVED(capacity)`，其他失败使该 revision 不提交、下次同步重试；候选准入或 Sparse Relation 使该 revision 不提交、下次同步重试；Claim Extraction 的单组超容量跳过该组并写诊断，其余组照常抽取，revision 提交 |
 | Support 未决 (`UNRESOLVED`) | 原 Memory、Support、Evidence、验证基线 | 目标（#505）：部分覆盖（`partial_coverage`）和单个 ReadingGroup 单独超出容量（`capacity`）成为 `UNRESOLVED` 并 KEEP，本轮 NOOP，其他处理和 Source 提交继续；Support 结果只有 `SUPPORTED` 和 `UNSUPPORTED`，没有 insufficient。当前实现：模型返回 insufficient 时 `supported` 为 None，该 Memory 被跳过并保留，Unit 其余部分继续（`revision_work.py`、`engine.py`）；只有抛出的执行失败（容量、provider、schema）使整个 Unit 失败 | KEEP；记录 `partial_coverage` 或 `capacity` 原因，`capacity` 的诊断写明 Source Unit 和 ReadingGroup；不新增人工确认 |
 | Support 或定向复核执行失败 | 失败诊断（现有 failure trace） | 目标（#505）：拆到单条 work、单个 ReadingGroup 并纠错一次后仍是 provider 错误、超时或 schema/ID 错误时，该 Source Unit revision 不提交；Unit 内其他工作在重试时重新计算 | 下次同步重试该 revision；重复失败通过现有 sync 失败状态和 LLM failure trace 可见，不新增机制 |
 | Change Impact 执行失败 | 失败诊断 | 相关 Claim 进入 Support Assessment；不记 `AFFECTED` 标签 | 同一 revision 内由 Support Assessment 继续 |

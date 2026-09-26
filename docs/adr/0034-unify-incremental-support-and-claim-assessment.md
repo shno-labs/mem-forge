@@ -154,7 +154,9 @@ that owns the detail.
   exceeds capacity is `UNRESOLVED(capacity)` and KEEP, and any other failure
   leaves the Source Unit revision uncommitted. Change Impact sends the claim to
   Support Assessment. A candidate admission or Relation failure leaves the Source
-  Unit revision uncommitted.
+  Unit revision uncommitted. Claim Extraction skips a ReadingGroup that alone
+  exceeds capacity with a diagnostic and extracts the other groups
+  ([Capacity and non-goals](#capacity-and-non-goals)).
 
 Cloud impact: these are shared OSS contracts that Cloud consumes by upgrading its
 OSS pin. They add no configuration, no lifecycle state, no Review field and no
@@ -636,7 +638,8 @@ an automatic `DestructiveValidation` over the affected fixed claims. It verifies
 
 1. authoritative coverage or an explicit tombstone for every affected object;
 2. complete Claim Extraction and Support Assessment manifests with no technical
-   failure or unresolved independent Support;
+   failure or unresolved independent Support (an extraction ReadingGroup skipped
+   for capacity is a recorded coverage fact, not a technical failure);
 3. resolvable decisive current witnesses and non-stale Support-set hashes;
 4. every `UNSUPPORTED` proposal binds a completed receipt for the whole ordered
    read;
@@ -690,10 +693,20 @@ Target (#505): the LLM batch runner measures capacity fit. When an indivisible R
 still exceeds route capability, the outcome depends on the work: a Support work
 item that cannot fit is `UNRESOLVED(capacity)` and KEEP, with a diagnostic naming
 the Source Unit and the ReadingGroup, while other work continues and the Source
-revision may commit; a Claim Extraction capacity failure publishes no
-partial candidate or lifecycle mutation for that Unit. Cloud impact: capacity is
-measured from LiteLLM metadata and the existing `MEMFORGE_LLM_MAX_*` caps for
-Cloud's `sap/` routes; no configuration is added.
+revision may commit. A Claim Extraction ReadingGroup that cannot fit is skipped
+with a diagnostic naming the Source Unit, the ReadingGroup and
+`input_capacity_exceeded`; the other groups are extracted and the revision
+commits. Planning skips a group the capacity fit rejects, and execution skips a
+group the provider still rejects alone, so recovering a derivation plans the
+same skip; the skipped count is reported in the extraction statistics. Because an
+update extracts only its changed structures, the skipped group's knowledge is
+extracted again only when that structure changes again. A skipped group is a
+recorded coverage fact, not a technical failure of the extraction manifest, so it
+does not block a destructive action that
+[DestructiveValidation](#automated-destructive-validation) otherwise admits.
+Cloud impact: capacity is measured from LiteLLM metadata and the existing
+`MEMFORGE_LLM_MAX_*` caps for Cloud's `sap/` routes; no configuration is added,
+and the skip is shared OSS extraction code with no HANA change.
 
 This amendment deliberately does not add semantic Evidence retrieval, manual
 confirmation, a separate candidate-to-candidate deduplication pass, permanent Fragment
@@ -718,7 +731,8 @@ implemented contract is summarized in [Status](#status).
    Initial import streams its full authorized Primary work per ReadingGroup
    through the LLM batch runner. Support Assessment streams exact ReadingGroups
    under one complete work manifest. Oversized work never silently truncates
-   coverage or publishes a partial business result.
+   coverage: a ReadingGroup is read whole or, when it alone exceeds capacity,
+   reported with a diagnostic.
 2. Keep read scope separate from new-claim Primary authority. On an update,
    Claim Extraction reads only the changed structures, with their ReadingGroups
    as context, and Primary is limited to authorized added/changed complete
@@ -1127,7 +1141,8 @@ only, and each ReadingGroup that holds authorized Primary is one LLM batch runne
 item, read with its reading context demoted to Required-only. The runner packs
 items into requests by actual capacity; each planned request is staged as one
 derivation batch and, when executed, is still split in half on a capacity or
-deadline failure. Claim Extraction and Support Assessment share
+deadline failure. An item that alone exceeds capacity is skipped with a
+diagnostic ([Capacity and non-goals](#capacity-and-non-goals)). Claim Extraction and Support Assessment share
 catalog, budget and durable execution primitives, while retaining distinct
 semantic duties. Cloud impact: extraction scope is shared OSS
 planning code; Cloud upgrades the pin with no configuration or HANA change.
