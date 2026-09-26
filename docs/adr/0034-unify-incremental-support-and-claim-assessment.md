@@ -72,7 +72,7 @@ Cross-document discovery retains bounded retrieval followed by classification ov
 
 Exact prior Evidence is classified as `EXACT_UNCHANGED`, `MODIFIED`, `REMOVED`, `AMBIGUOUS` or `UNKNOWN`. Old exact excerpt is supplied only for `MODIFIED`, `REMOVED` and `AMBIGUOUS`; `UNKNOWN` is application-owned `UNRESOLVED(partial_coverage)` and KEEP with no model call. When every part of a Support is `EXACT_UNCHANGED` and the revision has changed content, the Change Impact judgment checks the claim against capacity-safe ChangeBundles and returns `AFFECTED` or `UNAFFECTED`; affected claims, claims whose Change Impact execution failed, and Supports with directly changed Evidence enter complete Structured-LLM Support Assessment.
 
-`AssessmentScope` is the complete effective current revision. `AssessmentContext` is one call's one-or-more ReadingGroups. A ReadingGroup may contain several selectable EvidenceFragments. Support Assessment reads the scope in one fixed order with per-work-item early exit after the first part ([Ordered current-revision reading](#ordered-current-revision-reading)). The semantic result is `SUPPORTED(primary_ref, required_refs[]) | UNSUPPORTED`, and `UNSUPPORTED` exists only after the whole order has been read. Partial coverage, a single ReadingGroup beyond the model's capacity and output that stays invalid for the work item alone are separately `UNRESOLVED(partial_coverage)`, `UNRESOLVED(capacity)` and `UNRESOLVED(invalid_response)`, which keep the Support; a transient execution failure leaves the Source Unit revision uncommitted. `REBIND_SUPPORT` atomically attaches target-Revision Support and marks the replaced assertion inactive without altering Memory identity or rewriting historical rows.
+`AssessmentScope` is the complete effective current revision. `AssessmentContext` is one call's one-or-more ReadingGroups. A ReadingGroup may contain several selectable EvidenceFragments. Support Assessment reads the scope in one fixed order with per-work-item early exit after the first part ([Ordered current-revision reading](#ordered-current-revision-reading)). The semantic result is `SUPPORTED(primary_ref, required_refs[]) | UNSUPPORTED`, and `UNSUPPORTED` exists only after the whole order has been read. Partial coverage, a single ReadingGroup beyond the model's capacity and output that stays invalid for the work item alone are separately `UNRESOLVED(partial_coverage)`, `UNRESOLVED(capacity)` and `UNRESOLVED(invalid_response)`, which keep the Support; an execution error leaves the Source Unit revision uncommitted. `REBIND_SUPPORT` atomically attaches target-Revision Support and marks the replaced assertion inactive without altering Memory identity or rewriting historical rows.
 
 ### Target contract overview
 
@@ -99,7 +99,8 @@ that owns the detail.
   failure). All three keep the Support unchanged, and the revision commits.
   `UNKNOWN` takes priority: a Support with any `UNKNOWN` part is `UNRESOLVED`
   with no model call. A Support Assessment or targeted re-check request that
-  ends in a transient failure (a provider error or a timeout) after the LLM
+  ends in an execution error (a provider error, a timeout, a rejected request or
+  an unexpected exception) after the LLM
   batch runner split it down to one work item and one ReadingGroup is not
   `UNRESOLVED`: the Source Unit revision is not committed and the next sync
   retries it.
@@ -127,11 +128,13 @@ that owns the detail.
   classifier backend for this task would be a separate contract with its own
   evaluation. Relation input excludes Support results, so Support Assessment and
   Relation run in parallel ([Sparse same-Unit Relation](#sparse-same-unit-relation)).
-- A transient execution failure of candidate admission or Relation leaves the
+- An execution error in candidate admission or Relation leaves the
   Source Unit revision uncommitted, and the next sync retries it, with no
   partial publish. A Candidate that stays unjudgeable in isolation is recorded
-  instead: candidate admission rejects it for this round, and Relation leaves it
-  unresolved locally, consumed without ADD.
+  instead: candidate admission rejects it for this round. In Relation the
+  Candidate is consumed without ADD, and because its row would cover every old
+  Memory of the Unit, the Relation line is incomplete: no DELETE, SUPERSEDE or
+  UPDATE of the Unit is executed this round.
 - `SupportRelationCoordinator` combines both results by one fixed table, with at
   most one targeted re-check per Claim per revision
   ([Support and Relation coordination](#support-and-relation-coordination)).
@@ -162,14 +165,15 @@ that owns the detail.
   resent; a Support chain step for a single Claim over several ReadingGroups
   halves its ReadingGroups first on a capacity failure. A request down to one
   item that still fails is a typed failure that each task maps to its own
-  outcome, by one rule: a transient failure (a provider error or a timeout)
-  leaves the Source Unit revision uncommitted, and an item that stays
+  outcome, by one rule: an execution error (a provider error, a timeout, a
+  rejected request or an unexpected exception) leaves the Source Unit revision
+  uncommitted, and an item that stays
   unjudgeable in isolation (capacity or invalid output) is recorded by its stage
   and the revision commits. Support records `UNRESOLVED(capacity)` or
   `UNRESOLVED(invalid_response)` and KEEP. Change Impact sends the claim to
   Support Assessment. Candidate admission rejects the Candidate for this round.
-  Relation leaves the Candidate unresolved locally, consumed without ADD. Claim
-  Extraction skips the ReadingGroup with a diagnostic and extracts the other
+  Relation consumes the Candidate without ADD and withholds every destructive
+  action of the Unit this round. Claim Extraction skips the ReadingGroup with a diagnostic and extracts the other
   groups ([Capacity and non-goals](#capacity-and-non-goals)).
 
 Cloud impact: these are shared OSS contracts that Cloud consumes by upgrading its
@@ -404,7 +408,7 @@ Support Assessment works at `(memory_id, independent_support_id)` granularity. A
 
 The final semantic wire result is `SUPPORTED(work_id, primary_ref, required_refs[]) | UNSUPPORTED(work_id)`. Only `SUPPORTED` admits selectors. Its selectable current pool is the current AssessmentContext catalog plus current refs grounded by earlier contexts and rehydrated with exact current text in `carried_witness_catalog`; historical refs are never selectable. Streamed model output carries only `witness_delta` additions. Application code validates and monotonically union-merges them into grounded supporting/opposing sets, so omission cannot erase an earlier witness; no cumulative status is model-owned. Steps inside the first part of the order return only `witness_delta`. The step that completes the first part, and any later step, may return `SUPPORTED` for a work item, which then exits; otherwise the step returns only its `witness_delta`. A work item exits only on a model-returned `SUPPORTED` that passes program validation. A non-empty opposing-witness set does not block that exit, because the opposing text is carried in the request through `carried_witness_catalog` and the model judged with it. The step that reads the last ReadingGroup of the order returns `SUPPORTED` or `UNSUPPORTED`. Partial coverage (an `UNKNOWN` part, which never reaches the model) becomes application-owned `UNRESOLVED(partial_coverage)`; a single ReadingGroup that alone exceeds the model's capacity for the work item becomes `UNRESOLVED(capacity)`; and a work item whose output alone stays invalid after the one correction (a schema, ID or selection failure) becomes `UNRESOLVED(invalid_response)`. All three KEEP, and the revision commits. A provider error or a timeout that remains after the LLM batch runner split the request down to that one item leaves the Source Unit revision uncommitted, and the next sync retries it.
 
-Prior Evidence reaches the model as selectable candidates: each exactly matched prior part appears by its current ref in `prior_evidence`, and those refs stay in `carried_witness_catalog` for later requests. Whether the selected set is complete is judged only by [Complete support](#complete-support). The program validates that every selected ref was supplied by the request; it does not require the model to account for prior parts it leaves out.
+Prior Evidence reaches the model as selectable candidates: each exactly matched prior part appears by its current ref in `prior_evidence`, and those refs stay in `carried_witness_catalog` for later requests. Whether the selected set is complete is judged only by [Complete support](#complete-support), and the program validates that every selected ref was supplied by the request.
 
 ### Sparse same-Unit Relation
 
@@ -427,11 +431,15 @@ or edge, an unknown ID and a truncated response are execution failures, never
 "no relation" and cannot fall back to independent ADD. The LLM batch runner
 splits a request whose output is still invalid after its correction, so the
 failure narrows to the Candidate that causes it. A Candidate whose row stays
-invalid when judged alone is unresolved locally: `SupportRelationCoordinator`
-consumes it without ADD, raises no Review for it and records a diagnostic, and
-the other Candidates are decided as usual. Because that Candidate has no
-completion row, DestructiveValidation keeps every SUPERSEDE and UPDATE of the
-revision. A transient Relation failure (a provider error or a timeout) leaves
+invalid when judged alone is consumed without ADD and without a Review, with a
+diagnostic. Its row would have covered it against every old Memory of the Unit,
+so the gap cannot be localized: any old Memory may be the one it restates,
+refines or contradicts. The Relation line of the revision is therefore
+incomplete, and DestructiveValidation withholds every DELETE, SUPERSEDE and
+UPDATE of the Unit this round: each such old Memory is kept with its Support and
+validation baseline, and a Candidate whose only effect was a withheld SUPERSEDE
+or UPDATE is not added. Non-destructive work still commits: rebinds, ADD of the
+other Candidates, identity attaches and Reviews. A Relation execution error (a provider error, a timeout, a rejected request or an unexpected exception) leaves
 the Source Unit revision uncommitted, and the next sync retries it. The LLM batch runner partitions a large catalog; when the catalog is
 chunked as shared context, the caller unions the relations returned for each
 chunk. Partitions create no lifecycle state and publish no partial mutation.
@@ -477,9 +485,9 @@ covers both duties, with no additional call round:
 | `REJECTED` (Evidence insufficient, or reason `low_value`) | not added this round; no Review |
 | same-round duplicate | merged; one Candidate continues to Sparse Relation |
 | Candidate that stays unjudgeable in isolation (it alone exceeds capacity, or its output stays invalid after the one correction) | `REJECTED` for this round with reason `capacity_exceeded` or `invalid_response`, recorded like any rejection; no ADD, no Review |
-| transient execution failure (provider error, timeout) | the Source Unit revision is not committed and the next sync retries it |
+| execution error (provider error, timeout, rejected request, unexpected exception) | the Source Unit revision is not committed and the next sync retries it |
 
-A transient admission failure adds no Candidate this round and publishes
+An admission execution error adds no Candidate this round and publishes
 nothing for that revision; it follows the existing extraction-failure contract.
 Each admission request is recorded as `candidate_admission` derivation work, so a
 retried sync reuses completed requests and the atomic commit requires them
@@ -505,12 +513,12 @@ no HANA schema or configuration change. The HANA commit gate must accept
 
 Implemented for Cloud issue #505 in `pipeline/support_relation_coordinator.py`.
 Support Assessment and Relation run concurrently; a failure raised on either line
-cancels the other, and the revision is not committed. A transient Relation
-failure or a contract failure is returned as the line's result rather than
-raised, so the Support line finishes its reads; the revision is still not
+cancels the other, and the revision is not committed. A Relation
+execution error or a contract failure is returned as the line's result rather
+than raised, so the Support line finishes its reads; the revision is still not
 committed, and the retry reuses that Support work from its journal. A Candidate
-that Relation could not judge even alone is part of a complete Relation result,
-listed as unjudged.
+that Relation could not judge even alone is part of the Relation result, listed
+as unjudged, and makes the Relation line incomplete.
 
 `SupportRelationCoordinator` is program code that runs after both lines finish and
 before Lifecycle Reconciliation. For each same-Unit old Memory it combines the
@@ -520,10 +528,12 @@ not be judged, `UNRESOLVED(capacity)` or `UNRESOLVED(invalid_response)` (keep),
 then the row for an old Memory with both an equivalent and a contradicts edge
 (Review, with the contradicting Candidate staged and supersession proposed),
 then all other rows, including the `UNRESOLVED(partial_coverage)` rows. A
-transient Support Assessment or re-check failure never reaches the coordinator,
+Support Assessment or re-check execution error never reaches the coordinator,
 because the revision is not committed. A Candidate that Relation could not judge
-has no edges; the coordinator consumes it without ADD and without a Review, like
-a local unresolved relationship, and counts it with the unresolved Candidates.
+has no edges; the coordinator consumes it without ADD and without a Review and
+counts it with the unresolved Candidates, and DestructiveValidation then
+withholds every destructive decision of the Unit, because the Relation line is
+incomplete.
 
 | Support result | Relation result | Action |
 | --- | --- | --- |
@@ -554,7 +564,7 @@ Re-check rules:
   re-check.
 - A conflict that remains after the re-check goes to Review; there is no second
   re-check.
-- A transient re-check failure leaves the Source Unit revision uncommitted, and
+- A re-check execution error leaves the Source Unit revision uncommitted, and
   the next sync retries it; it does not create a Review. A re-check whose
   ReadingGroup alone exceeds capacity, or whose output alone stays invalid, is
   `UNRESOLVED(capacity)` or `UNRESOLVED(invalid_response)` and follows that row.
@@ -599,8 +609,9 @@ correction. The Memory stays unchanged, a diagnostic names the Source Unit and
 the ReadingGroup, and the revision commits. Its related Candidates are consumed
 this round with no ADD and no destructive action; because an update extracts
 only changed structures, their knowledge returns only when that structure
-changes again. The same holds for a Candidate that Relation could not judge
-alone. Apart from the local unresolved relationship rule, these are the only
+changes again. A Candidate that Relation could not judge alone is consumed the
+same way, and while it lacks its row the Unit's old Memories are kept rather
+than deleted, superseded or updated. Apart from the local unresolved relationship rule, these are the only
 cases in which a Candidate is consumed without a decision.
 
 Cloud impact: the coordinator is shared OSS code. It needs no HANA schema
@@ -740,7 +751,7 @@ pair of the same Candidate could not be judged. A Candidate without a proven
 equivalent and with a pair that stays unjudgeable in isolation (capacity, or
 output still invalid after the one correction) may duplicate an old Memory: it
 is consumed without ADD, with a diagnostic, like a local unresolved
-relationship, and the revision commits. A transient identity failure leaves the
+relationship, and the revision commits. An identity execution error leaves the
 Source Unit revision uncommitted.
 
 Known residue: when the old Memory is deleted this round and Relation also missed
@@ -772,15 +783,15 @@ an automatic `DestructiveValidation` over the affected fixed claims. It verifies
 4. every `UNSUPPORTED` proposal binds a completed receipt for the whole ordered
    read;
 5. the aggregate active-Support count after simulating source-scoped removals;
-6. for any SUPERSEDE or UPDATE (a revision UPDATE emits `SUPERSEDE_MEMORY`),
-   complete Relation work: every admitted Candidate has its completion row over
-   the complete same-Unit old-Memory catalog.
+6. for every DELETE, SUPERSEDE or UPDATE (a revision UPDATE emits
+   `SUPERSEDE_MEMORY`), complete Relation work: every admitted Candidate has its
+   completion row over the complete same-Unit old-Memory catalog.
 
 The validator does not run another semantic scan. Support Assessment owns the
 single ordered read; DestructiveValidation verifies its receipt, manifests,
 witnesses, Support count, Relation completeness and stale guards. Unknown
 coverage, `UNRESOLVED` Support or stale input yields KEEP and leaves the
-validation baseline unchanged; a transient execution failure leaves the Source
+validation baseline unchanged; an execution error leaves the Source
 Unit revision uncommitted. Only zero remaining
 active Supports may retire a Memory. Another source's active Support always
 prevents retirement by the current source.
@@ -797,9 +808,11 @@ Plan, and checks what the earlier steps recorded:
   re-check never counts. A Support read whose order is empty records a program
   receipt for it; a revision whose content became empty is decided by coverage
   without a read, as described below.
-- Check 6: a SUPERSEDE or UPDATE rests on a Relation line whose completion rows
-  cover every admitted Candidate over the catalog of every old Memory decided by
-  Support and Relation. A Candidate carried by a pending Review was not
+- Check 6: every destructive decision rests on a Relation line whose completion
+  rows cover every admitted Candidate over the catalog of every old Memory
+  decided by Support and Relation. A missing row may be the Candidate that
+  restates an old Memory the table would delete, so an incomplete Relation line
+  withholds every destructive action of the Unit, a DELETE included. A Candidate carried by a pending Review was not
   extracted again, so its completion row is the one from the revision that
   raised the Review; the table may still supersede with it once the old Memory
   is read without Support.
@@ -920,7 +933,7 @@ implemented contract is summarized in [Status](#status).
    only after the whole order. Partial coverage, a single ReadingGroup that
    alone exceeds capacity and output that stays invalid for the one item return
    application-owned `UNRESOLVED(partial_coverage)`, `UNRESOLVED(capacity)` and
-   `UNRESOLVED(invalid_response)` and KEEP; a transient execution failure that
+   `UNRESOLVED(invalid_response)` and KEEP; an execution error that
    remains after the request was split down to one item leaves the Source Unit
    revision uncommitted. The
    application resolves
@@ -1259,7 +1272,7 @@ advance its validation baseline; the program emits a bare NOOP / KEEP unless an
 independent Support is unresolved, the incumbent takes no destructive action
 this round. Other incumbents and extraction candidates continue, and the Source
 revision may commit. The unresolved result itself needs no Review or hidden
-model substitution. A transient Support execution failure that remains after the
+model substitution. A Support execution error that remains after the
 runner split its request down to one item is not `UNRESOLVED`: the Source Unit
 revision is not committed, and the next sync retries it. The existing Plan
 records the exact preserved Support IDs on its KEEP decision under the usual
@@ -1291,7 +1304,7 @@ output is still invalid after its one correction is split the same way by
 Claims, not by ReadingGroups. A step down to one Claim that still fails is a
 typed failure. When that Claim's ReadingGroup alone exceeds capacity, Support
 maps it to `UNRESOLVED(capacity)`, and when its output alone stays invalid, to
-`UNRESOLVED(invalid_response)`, both KEEP; a transient failure leaves the Source
+`UNRESOLVED(invalid_response)`, both KEEP; an execution error leaves the Source
 Unit revision uncommitted and the next sync retries it. A
 frozen LiteLLM capacity snapshot budgets the actual transport, schema, images,
 per-claim output references, cumulative state and correction reserve. Neither
@@ -1459,7 +1472,7 @@ and a step for a single Claim over several ReadingGroups halves its
 ReadingGroups first on a capacity failure (ADR 0036, decision 13). A work item
 whose single ReadingGroup alone exceeds capacity is `UNRESOLVED(capacity)`, and
 one whose output alone stays invalid is `UNRESOLVED(invalid_response)`, with
-diagnostics and KEEP; a transient failure at one item leaves the Source Unit
+diagnostics and KEEP; an execution error at one item leaves the Source Unit
 revision uncommitted. There is no packing score and no
 mode selection. The order itself is defined in
 [Ordered current-revision reading](#ordered-current-revision-reading).
@@ -1504,7 +1517,7 @@ generated prose. During streamed assessment, the model returns only current
 them into supporting/opposing sets. Each next call rehydrates that union with exact
 current text and Primary eligibility. Partial coverage, a single ReadingGroup beyond capacity and output that
 stays invalid for one item are application-owned `UNRESOLVED(reason)`, not a
-semantic model status; a transient execution failure leaves the Source Unit
+semantic model status; an execution error leaves the Source Unit
 revision uncommitted. Application diagnostics may retain
 a bounded decisive basis outside the final wire result. This supersedes the
 assumption that every successful item needs a

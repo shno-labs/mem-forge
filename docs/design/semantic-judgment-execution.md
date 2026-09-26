@@ -292,34 +292,40 @@ class ItemFailure:
    A request holding one item that still fails returns a typed `ItemFailure`
    with diagnostics. Its category says whether the item alone exceeds the
    route's input capacity (`capacity_exceeded`: from the capacity fit,
-   `input_capacity_exceeded` or a provider 413), its output alone stays invalid
-   after the one correction (`invalid_response`), or the failure is transient
-   (`deadline_exceeded` or `provider_error`). The first two make the item
-   unjudgeable in isolation: sending it again would fail again.
+   `input_capacity_exceeded` or a provider 413), a model response for it was
+   received and still fails validation after the one correction
+   (`invalid_response`, malformed or ambiguous JSON included), the failure is
+   transient (`deadline_exceeded` or `provider_error`), or the request failed
+   without a response to validate (`request_error`: a provider rejection such as
+   400, or an unexpected exception). Only the first two make the item
+   unjudgeable in isolation; they are defined positively, and every other
+   error, a code defect included, is not.
 4. Bounded concurrency through the existing collector and Structured LLM
    semaphore.
 5. Complete coverage. Every submitted item ends with exactly one outcome, a
    result or an `ItemFailure`. Missing, unknown or duplicate IDs are rejected.
 6. One bounded correction per request for correctable decoder errors, with the
-   same input and allowed refs. JSON repair and transient provider retries stay
-   inside the client.
+   same input and allowed refs. The client repairs a response that fails schema
+   validation once, and retries transient provider errors, before the runner
+   sees the failure.
 7. Typed per-item failures. The runner never turns a failure into a label, never
    substitutes another model and never retries on a different backend.
 
 **What the caller decides**
 
-One rule governs every Source Unit task: a transient failure leaves the Source
-Unit revision uncommitted and the next sync retries it; an item that stays
-unjudgeable in isolation (capacity or invalid output) is recorded by its task,
-and the revision commits. One item the model cannot judge never blocks the rest
-of its Unit. The business meaning of an `ItemFailure` belongs to the task:
+One rule governs every Source Unit task: an item that stays unjudgeable in
+isolation (capacity or invalid output) is recorded by its task, and the revision
+commits; every other failure leaves the Source Unit revision uncommitted and the
+next sync retries it. One item the model cannot judge never blocks the rest of
+its Unit. The business meaning of an `ItemFailure` belongs to the task:
 
-| Task | Item unjudgeable in isolation (capacity or invalid output) | Transient failure |
+| Task | Item unjudgeable in isolation (capacity or invalid output) | Any other failure |
 | --- | --- | --- |
 | Support Assessment and its targeted re-check | `UNRESOLVED(capacity)` or `UNRESOLVED(invalid_response)`, KEEP, the Support baseline does not advance, and the diagnostic names the Source Unit and the ReadingGroup | the Source Unit revision is not committed and the next sync retries it |
 | Change Impact | the Claim enters Support Assessment; no `AFFECTED` label is recorded | the same |
 | Candidate admission | the Candidate is `REJECTED` for this round with reason `capacity_exceeded` or `invalid_response`, recorded like any rejection; no ADD | the Source Unit revision is not committed and the next sync retries it |
-| Sparse Relation and the same-Unit identity backstop | the Candidate is unresolved locally: consumed without ADD and without a Review, with a diagnostic; never read as "no relation proposed" | the Source Unit revision is not committed and the next sync retries it |
+| Sparse Relation | the Candidate is consumed without ADD and without a Review, with a diagnostic; never read as "no relation proposed". The Relation line is incomplete, so no DELETE, SUPERSEDE or UPDATE of the Unit is executed this round | the Source Unit revision is not committed and the next sync retries it |
+| Same-Unit identity backstop | the Candidate, which may duplicate an old Memory, is consumed without ADD, with a diagnostic | the Source Unit revision is not committed and the next sync retries it |
 | Claim Extraction | the ReadingGroup is skipped with a diagnostic naming the Source Unit, the ReadingGroup and the reason (`input_capacity_exceeded` or `invalid_response`); the other groups are extracted | the existing extraction failure for that Source Unit, with no partial candidates |
 | Rerank | baseline order, also on timeout or invalid output; a fixed code rule, not configuration | the same |
 
@@ -403,7 +409,7 @@ setting until a classifier backend passes evaluation and is configured.
 
 ChangeBundles contain all changed ReadingGroups that fit one shared state. Removed content counts as changed: a removed ReadingGroup enters the bundle as its old text, so a distant qualifier that was deleted is visible to Change Impact. Three groups plus 300 fixed claims therefore produce 300 questions, not 900. If they do not fit one request, the runner chunks them at ReadingGroup boundaries into several bundles and application code OR-reduces each claim's labels: any `AFFECTED` routes that claim to complete Support Assessment. When Change Impact execution fails for a claim, for example a single item that still fails after the runner's splitting, an indivisible bundle beyond the backend's capacity, or a bundle with images that a text-only backend cannot read, that claim enters Support Assessment. The failure is never recorded as an `AFFECTED` label.
 
-Sparse Relation consumes deterministic exact matches first. Catalog bodies occur once per request; the LLM batch runner packs and splits requests, and when the old Memory catalog must be chunked the program takes the union of each Candidate's relations. Every admitted Candidate must return exactly one row. A missing row, an unknown ID or a duplicate or contradictory relation is rejected, and truncated output is a capacity failure that the runner splits; none of them is read as "no relation proposed". The runner also splits a request whose output is still invalid after its correction, so a failure narrows to the Candidate that causes it. A Candidate whose row stays invalid when judged alone is unresolved locally: it is consumed without ADD and without a Review, the other Candidates are decided as usual, and because its completion row is missing, DestructiveValidation keeps every SUPERSEDE and UPDATE of the revision. A transient failure leaves the Source Unit revision uncommitted, and the next sync retries it. Partitioning cannot weaken coverage, introduce lifecycle state or publish partial results. Whole-workspace relation discovery remains retrieve-then-classify over bounded `K` because its Cartesian product is unbounded and non-destructive discovery accepts recall loss.
+Sparse Relation consumes deterministic exact matches first. Catalog bodies occur once per request; the LLM batch runner packs and splits requests, and when the old Memory catalog must be chunked the program takes the union of each Candidate's relations. Every admitted Candidate must return exactly one row. A missing row, an unknown ID or a duplicate or contradictory relation is rejected, and truncated output is a capacity failure that the runner splits; none of them is read as "no relation proposed". The runner also splits a request whose output is still invalid after its correction, so a failure narrows to the Candidate that causes it. A Candidate whose row stays invalid when judged alone is consumed without ADD and without a Review. Its row would cover it against every old Memory of the Unit, so the gap cannot be localized: while any row is missing, DestructiveValidation withholds every DELETE, SUPERSEDE and UPDATE of the Unit, and the non-destructive work of the revision commits. Any other failure leaves the Source Unit revision uncommitted, and the next sync retries it. Partitioning cannot weaken coverage, introduce lifecycle state or publish partial results. Whole-workspace relation discovery remains retrieve-then-classify over bounded `K` because its Cartesian product is unbounded and non-destructive discovery accepts recall loss.
 
 TypeSafe/Jev evaluates independent Choice, Noul or Score questions over shared text state. A small-model LLM adapter emits the same application-owned result schema. Jev's current 64k request limit, text-only input and Choice option limit are adapter capabilities, not domain semantics. Jev has no documented cross-request prompt cache; its efficiency comes from many questions sharing one state. See [Models](https://docs.typesafe.ai/models), [System One](https://docs.typesafe.ai/concepts/system-one.md) and [Parallel questions](https://docs.typesafe.ai/cookbooks/parallel_questions.md).
 
