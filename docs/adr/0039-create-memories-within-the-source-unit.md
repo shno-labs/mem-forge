@@ -20,7 +20,7 @@ and the Same-Unit identity backstop of ADR 0034). For each ADD Candidate it
 looked for an active Memory with the exact claim text in the same access
 context, and otherwise recalled up to `DEDUP_CANDIDATE_LIMIT` Memories of any
 Unit or Source by vector proximity and shared entities and asked a sparse
-relation catalog request (`memory-relation-v4-sparse`) whether one of them was
+relation catalog request (`memory-relation-v5-sparse`) whether one of them was
 equivalent. A match made the Plan attach the Candidate's Evidence Unit as
 Support to the matched Memory instead of creating one. Old Memories that the
 round deleted, superseded, updated or sent to Review were excluded from the
@@ -129,12 +129,13 @@ User-created Memories (`create_memory`) keep their own near-duplicate check in
   active Support remains.
 - A revision with ADD Candidates makes one model request and one embedding call
   fewer, and no recall queries.
-- `memory-relation-v4-sparse` leaves the lifecycle operation input manifest, so
+- `memory-relation-v5-sparse` leaves the lifecycle operation input manifest, so
   `operation_input_hash` changes for every revision. The `candidate_admission`
   and `claim_assess` work journals include that hash in their scope, so a
   revision that was prepared but not committed before the upgrade repeats those
-  requests once. Committed revisions are not affected. Relation runs stored
-  with `memory-relation-v4-sparse` remain readable history.
+  requests once. Committed revisions are not affected. Relation discovery work
+  recorded with the older `memory-relation-v4-sparse` version remains readable
+  history.
 
 ## Cloud impact
 
@@ -159,7 +160,7 @@ Cloud composes this package and takes these changes with one pin update:
   does not change. `MemoryEngine`'s constructor and `pair_classifier` do not
   change, so `proxy/external_runtime.py` needs no change. Test stubs that define
   `discover_memory_relations` drop it.
-- Contract strings: `memory-relation-v4-sparse` is no longer produced and no
+- Contract strings: `memory-relation-v5-sparse` is no longer produced and no
   longer part of the lifecycle operation input manifest. The error text
   "lifecycle plan exact claim stale guard failed" and "identity attach targets an
   old Memory this Plan deletes, replaces or reviews" disappear, and a Plan that
