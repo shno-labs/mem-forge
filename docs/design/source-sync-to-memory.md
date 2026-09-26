@@ -642,7 +642,7 @@ Worker 领取租约并续约，使用固定的 Source 配置与访问范围执�
 4. Source Projection Adapter 建立稳定 SourceUnit 和 SourceObservation。页面 body 通常是一个 Observation，附件可以是其他 Observation；Markdown 段落是后续 Fragment，不能把每段都当作一个新 Observation。
 5. 建立目标 SourceObservationRevision，并由 SourceUnitRevision 固定有效成员集合。读取上一成功提交的快照，计算变化事实。
 
-原始文件、规范化文件及准确 Artifact 可提前保存。此时只有“数据已抓取并保存”，不等于目标已成为当前投影，更不等于 Memory 已更新。投影把 Unit 推到新 revision 时，同步保存这次投影用的原始内容，规范化 markdown 没变也保存；指向它的 Document 行随 revision 提交。所以存储的原始内容不会比已提交 revision 旧：它是已提交 revision 的输入，或者是之后一次已保存输入、尚未提交的同步的输入。投影保持已提交 revision 且 markdown 不变时，原始内容不重写。访问变化、tombstone、Partial Projection 与 Artifact eligibility 必须作为确定性事实处理。
+原始文件、规范化文件及准确 Artifact 可提前保存。此时只有“数据已抓取并保存”，不等于目标已成为当前投影，更不等于 Memory 已更新。投影把 Unit 推到新 revision 时，同步保存这次投影用的原始内容，规范化 markdown 没变也保存。所有路径用同一个顺序：先保存原始内容（以及规范化内容和 PDF），再记录 Unit revision（需要语义工作时由生命周期提交记录，只有位置或访问变化时由投影记录），Document 行随后或同时写入。原始内容保存失败时该 Document 失败，什么都不提交。所以存储的原始内容不会比已提交 revision 旧：它是已提交 revision 的输入，或者是之后一次已保存输入、尚未提交的同步的输入。投影保持已提交 revision 且 markdown 不变时，原始内容不重写。访问变化、tombstone、Partial Projection 与 Artifact eligibility 必须作为确定性事实处理。
 
 ## 6. 步骤三：暂存目标、准备工作【已实现，无 LLM】
 
@@ -659,7 +659,7 @@ Representation 为需要的固定 revision 构建一次索引；相同 base/targ
 
 小文档读全文也不能扩大第二个范围。旧片段可支持固定旧 claim；不能因为成为 revalidation Primary 就获得 extraction Primary 授权。Required 和辅助 Context 不自动产生新的提取权限。首次导入或明确全量 reprocess 使用其自身授权合同。
 
-明确的重新处理有两种：force-resync 重新抓取整个 Source，每个 Unit 按当前全部 Observation 授权，Support 走普通路由；运维人员按当前 revision 重新处理（`REPROCESS` sync run，`POST /sources/{id}/reprocess` 或 `memforge sources reprocess`）处理指定 Document：Source 能按 id 向 provider 询问单个 Document 时（Jira 服务端 API、Confluence；见 `Gene.rediscovers_documents`），Gene 重新发现该 Document 并抓取其当前内容，provider 不再返回的 Document 以 `provider_document_missing` 失败；其他 Source（local agent 采集、上传或推送的内容，GitHub Repository、GitHub Pages、Teams）读存储输入（Document 行保存的 Gene item 元数据、原始内容和已提交 revision 的 Artifact）。两种输入都用当前 adapter 和编译器重新投影，同样按全部 Observation 授权，并在 derivation 上下文里记录 `support_without_baseline`，让每条 Support 按没有可用基线整篇读取。两种都以本次运行 id 作为 `reprocess_operation_id`，所以重新投影与已提交 revision 相同时也会重新执行，不复用旧 derivation 的完成工作。两种都对照已提交的 base 规划：需要语义工作的 Unit 不提前记录投影，投影由生命周期提交在同一事务里记录，因此只有位置变化的 Unit 也能按已提交 base 重新处理。
+明确的重新处理有两种：force-resync 重新抓取整个 Source，每个 Unit 按当前全部 Observation 授权，Support 走普通路由；运维人员按当前 revision 重新处理（`REPROCESS` sync run，`POST /sources/{id}/reprocess` 或 `memforge sources reprocess`）处理指定 Document：Source 能按 id 向 provider 询问单个 Document 时（Jira 服务端 API、Confluence；见 `Gene.rediscovers_documents`），Gene 用发现时的表示重新发现该 Document 并抓取其当前内容。重新发现只在全量同步也不会再列出该 Document 时判定它不存在，不比同步更严格：Jira 按 id 读取，只有 404/410 算不存在，不套用 Source 的 JQL（JQL 常带 `updated >= -30d` 这类滑动窗口，移出窗口的 issue 仍然存在）；Confluence 在 404/410、带排除标签，以及全量发现不会列出时算不存在（空间模式下页面不是 current 或不在配置的空间；页面树模式下非根页面不是 current、不在根页面之下，或只能经过非 current 或带排除标签的页面到达，或者不包含子页面）。不存在的 Document 以 `provider_document_missing` 失败；其他 Source（local agent 采集、上传或推送的内容，GitHub Repository、GitHub Pages、Teams）读存储输入（Document 行保存的 Gene item 元数据、原始内容和已提交 revision 的 Artifact）。两种输入都用当前 adapter 和编译器重新投影，同样按全部 Observation 授权，并在 derivation 上下文里记录 `support_without_baseline`，让每条 Support 按没有可用基线整篇读取。两种都以本次运行 id 作为 `reprocess_operation_id`，所以重新投影与已提交 revision 相同时也会重新执行，不复用旧 derivation 的完成工作。两种都对照已提交的 base 规划：需要语义工作的 Unit 不提前记录投影，投影由生命周期提交在同一事务里记录，因此只有位置变化的 Unit 也能按已提交 base 重新处理。
 
 ### 6.2 输入范围与请求预算
 
@@ -977,9 +977,8 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 | 事务锁冲突/可重试提交失败 | 准备结果；业务事务回滚 | 不留下半套 Memory/Support | 同一准备结果重试并重查 guards |
 | target/旧 Memory/Support 已改变 | 历史准备与审计 | 不使用过期判断提交 | 重新针对适用快照准备 |
 | 进程在 commit 前崩溃 | 持久 extraction staging 保留；部分生命周期准备仍可能只是内存 | 不保证所有生命周期模型结果都免重跑 | 已有恢复合同 |
-| 恢复暂存 derivation 时确定性失败（异常不可重试，例如 `ProjectionIdentityConflict`） | 失败诊断 | 该 derivation 以 `DERIVATION_DETERMINISTIC_FAILURE` 标为 superseded，该 Document 在本次运行记为失败；身份冲突在暂存前检查，不发模型调用 | 恢复继续处理下一个 derivation；该 Unit 等下一次同步重新投影 |
-| 恢复暂存 derivation 时其他单 Unit 失败（例如模型调用失败） | 暂存 derivation 与成功 batch 输出 | 该 Document 在本次运行记为失败，derivation 保持暂存 | 恢复继续处理下一个 derivation；下次运行再恢复它 |
-| 恢复时存储或网络不可用（`OSError`、SQLite `OperationalError`），或 Source activity fence 已失效 | 暂存 derivation 不变 | 本次运行停止 | 下次运行 |
+| 恢复暂存 derivation 时失败，且按 `failure_retryable` 不可重试（例如 `ProjectionIdentityConflict`、模型返回不合法） | 失败诊断 | 该 derivation 以 `DERIVATION_DETERMINISTIC_FAILURE` 标为 superseded，该 Document 在本次运行记为失败；身份冲突在暂存前检查，不发模型调用 | 恢复继续处理下一个 derivation；该 Unit 等下一次同步或重新处理再推导 |
+| 恢复暂存 derivation 时失败，且可重试（Source activity fence 失效、SQLite/HANA/对象存储错误、模型 provider 错误或超时；lifecycle 包装后的错误按其原因判断） | 暂存 derivation 与成功 batch 输出 | 本次运行停止，derivation 保持暂存 | 下次运行 |
 | 向量交付失败 | 已提交 Memory 与 outbox | Memory 保持已提交；报告索引待交付 | outbox，不重跑 extraction |
 | 关系发现失败 | 已提交 Memory 与 relation work | 不回滚已生成 Memory | relation work |
 

@@ -16,7 +16,7 @@ interrupted run are finished by the next run of the Source before it reads the
 provider ([ADR 0017](0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md)).
 
 On 2026-09-26 nine reprocess runs over 314 Jira Documents in the EU12 dev
-workspace showed that these three parts did not fit together:
+workspace showed four problems in how these parts fit together:
 
 - **The stored raw content was older than the committed revision.** The raw
   payload was stored again only when the normalized markdown hash changed.
@@ -49,28 +49,36 @@ workspace showed that these three parts did not fit together:
 ### Stored input is current
 
 A sync that commits a new Unit revision stores the raw content that revision was
-projected from, whether or not the normalized markdown changed. The Document row
-that points at the stored raw content commits with the revision. The stored raw
-content is therefore never older than the committed revision: it is the input of
-that revision, or of a later sync that stored its input and has not committed
-yet. A sync whose projection keeps the committed revision and whose markdown is
-unchanged keeps the stored raw content as it is.
+projected from, whether or not the normalized markdown changed. Every path uses
+one order: the raw content (with the normalized markdown and any PDF export) is
+stored first, then the Unit revision is recorded, by the lifecycle commit when
+the revision needs semantic work and by the projection record when it only moves
+the Unit (location or access), and the Document row that points at the stored
+raw content is written with or right after it. A failed raw save therefore fails
+the Document before anything commits. The stored raw content is never older than
+the committed revision: it is the input of that revision, or of a later sync
+that stored its input and has not committed yet. A sync whose projection keeps
+the committed revision and whose markdown is unchanged keeps the stored raw
+content as it is.
 
 ### Reprocess reads the provider when the Source has one to ask
 
 A Gene declares whether a Source with a given configuration can ask its provider
 for one Document by id (`Gene.rediscovers_documents(config)`), and implements
 `Gene.rediscover(item)`: given the item rebuilt from the stored Document, it
-returns the item discovery would yield for that Document now, or `None` when the
-provider no longer returns it. The ordinary `fetch` then reads the Document's
-current state. A reprocess of such a Source authenticates the Gene, rediscovers
+returns the item discovery would yield for that Document now, in the
+representation discovery uses, or `None` when the provider no longer has it.
+Rediscovery answers exactly the question an ordinary sync answers about presence:
+it returns `None` only in the cases where a full sync would stop listing the
+Document, and it is never stricter. The ordinary `fetch` then reads the
+Document's current state. A reprocess of such a Source authenticates the Gene, rediscovers
 each named Document and processes it like a sync of that one Document, with the
 reprocess authorization and Support reading of ADR 0034.
 
 | Source | Reprocess reads |
 |---|---|
-| Jira (server API) | The provider: the issue by its numeric id, with the fields and changelog discovery requests |
-| Confluence | The provider: the page by its id, with the metadata discovery requests; a page now carrying an excluded label counts as not returned |
+| Jira (server API) | The provider: the issue by its numeric id, with the fields and changelog discovery requests. The issue is missing only when Jira answers 404 or 410. The Source's JQL is not applied: real JQLs carry moving windows (`updated >= -30d`), and an issue that ages out of the window still exists |
+| Confluence | The provider: the page by its id, with the page representation every discovery mode reads (`version,metadata.labels,space`). The page is missing when Jira answers 404 or 410, when it carries an excluded label, and when full discovery would not list it: in space mode a page that is not current (archived, trashed) or not in a configured space; in page tree mode a page other than the root that is not current, not below the root, or reached only through a page that is not current or carries an excluded label, or any page other than the root when children are not included |
 | Jira collected by a local agent | Stored input |
 | GitHub Repository (cloud pull) | Stored input. Its fetch reads the blob SHA pinned at discovery, and the current file at a path is only known from a tree walk; a single-path rediscovery can be added to the Gene later without changing this contract |
 | GitHub Pages | Stored input. Its fetch requires the SHA or content hash discovery recorded |
@@ -123,28 +131,41 @@ idempotent. The other metadata keys need no backfill:
   appears on a row that a projection reuses.
 - `provider_key` has been written with every revision since projections
   existed.
-- Artifact revision metadata is determined by the Artifact's content hash,
-  which is the semantic hash. An image summary added after extraction is a
-  selection hint; the stored row keeps the summary it was committed with.
+- Artifact revision metadata is not determined by the semantic hash, which is
+  the Artifact's SHA-256. `sha256`, `size_bytes` and `media_type` follow from
+  the bytes, and `artifact_id` from the Source Unit and the provider key. The
+  other keys describe how the bytes were delivered: `provider_revision`,
+  `filename`, `uri`, `inference_eligible`, `inference_ineligible_reason` and
+  `parent_observation_id`. When a projection reuses a stored Artifact revision,
+  these keep the values stored with it, as reuse of the current revision always
+  did; a later delivery of the same bytes under another filename or provider
+  revision does not change them. They are recorded facts, not annotations
+  derived by code, so there is nothing to backfill. An image summary added after
+  extraction is a selection hint; the stored row keeps the summary it was
+  committed with.
 
 ### Recovery isolates Source Units
 
-A staged derivation that fails during recovery no longer stops the run:
+Recovery classifies a failure with the rule every sync stage already uses
+(`failure_retryable`): a model failure is retryable when it is transient
+(provider error or timeout), and any other failure states it with its
+`retryable` property, retryable by default. The lifecycle engine carries that
+rule on the `SourceUnitLifecycleExecutionError` it wraps a failure in, so a
+wrapped failure is classified by its cause.
 
-- A failure that repeats on every attempt (an exception whose `retryable` is
-  false, `ProjectionIdentityConflict` included) supersedes the staged derivation
-  with the new reason code `DERIVATION_DETERMINISTIC_FAILURE`. None of the
-  existing codes fits: `DERIVATION_INPUT_SUPERSEDED` means newer input replaced
-  the derivation, and `CONTRACT_SUPERSEDED` means the extraction contract
-  changed.
-- Any other per-Unit failure, such as a model call that failed, leaves the
-  derivation staged for the next run.
-- In both cases the Document counts as failed in this run unless the run's
-  provider pass processes the same Unit again, and recovery continues with the
-  next staged derivation.
-- Only infrastructure failures stop the run: failed storage or network I/O
-  (`OSError`, SQLite `OperationalError`) and a Source activity fence the run no
-  longer holds (`SourceActivityConflict`).
+- A failure that is not retryable repeats on every attempt. It supersedes the
+  staged derivation with the new reason code `DERIVATION_DETERMINISTIC_FAILURE`,
+  the Document counts as failed in this run unless the run's provider pass
+  processes the same Unit again, and recovery continues with the next staged
+  derivation. `ProjectionIdentityConflict` and an invalid model response are
+  such failures. None of the existing codes fits: `DERIVATION_INPUT_SUPERSEDED`
+  means newer input replaced the derivation, and `CONTRACT_SUPERSEDED` means the
+  extraction contract changed.
+- A retryable failure stops the run and leaves the derivation staged for the
+  next run. This covers a Source activity fence the run no longer holds,
+  storage errors (SQLite, HANA, the object store), a provider error or timeout
+  of a model call, and any exception that does not declare itself not
+  retryable.
 
 Source Unit derivation checks projection identity before it stages anything:
 `SourceUnitDeriver.derive` reads the stored rows of the projection's revision
@@ -167,21 +188,28 @@ call. The store still checks identity when it records the projection.
 - Stored raw content that is stale from before this decision stays stale until
   the Unit's next revision; for rediscovering Sources this no longer matters to
   reprocess, and for the others a sync that commits a new revision refreshes it.
+- Confluence page tree discovery now reads the page space for child pages, as
+  space discovery and the root page already did. A child page whose Document
+  had an empty `space_or_project` gets its space key on its next sync, and a
+  Project binding that reads that field (`by_field`) now resolves for it. The
+  Unit Title and the Unit revision do not change: the fetch already reported the
+  space.
 - A value that returns to an earlier one (A, B, then A) reuses the stored
   revision of A and its metadata. After migration 102 that metadata is complete.
 - A staged derivation built from stale stored input before this decision is
   not detected by recovery, because its revisions no longer conflict with the
-  stored rows. It regresses the Unit to the stale input if applied. Only a
-  reprocess sets `support_without_baseline` in a derivation context, so before
-  deploying, operators supersede the unapplied derivations that carry it. In
-  SQLite:
-  `UPDATE source_derivation_attempts SET status = 'superseded',
-  terminal_reason_code = 'DERIVATION_INPUT_SUPERSEDED' WHERE status IN
-  ('pending', 'retryable_failure', 'completed') AND
-  json_extract(context_payload_json, '$.support_without_baseline') = 1`.
-- A per-Unit failure in recovery that is not deterministic, such as a model
-  outage, now counts as a failed Document instead of failing the run; the run
-  status becomes `partial` or `failed` by the ordinary counting.
+  stored rows; applied, it would regress the Unit to the stale input. Only a
+  reprocess sets `support_without_baseline` in a derivation context, so
+  migration 103, a one-time startup migration, supersedes every unapplied
+  derivation (`pending`, `retryable_failure`, `completed`) that carries it, with
+  `DERIVATION_INPUT_SUPERSEDED` and the current `updated_at`. It runs once with
+  its version record, so reprocess derivations staged after the upgrade are
+  untouched. Self-hosted installations get it on their next start. The Unit
+  keeps its committed revision, and the next reprocess or sync that changes it
+  derives again.
+- A retryable failure in recovery still stops the run, as before; the next run
+  resumes the staged derivation. Only failures that cannot succeed on retry are
+  taken out of the way.
 
 ## Cloud impact
 
@@ -210,26 +238,26 @@ Cloud composes this package through its HANA store and the OSS admin app.
   with `jira_changelog_semantic_class`, and updates `METADATA_JSON` through
   `_apply_schema_migration_once`. In EU12 dev this covers at least 317 rows
   (2 in src-e47815b5, 315 in src-70cb236e).
+- **Superseding stale reprocess derivations.** A second one-time HANA
+  migration (`stored-input-reprocess-derivations-v1`) runs the same update as
+  OSS migration 103 on `SOURCE_DERIVATION_ATTEMPTS`: `STATUS = 'superseded'`,
+  `TERMINAL_REASON_CODE = 'DERIVATION_INPUT_SUPERSEDED'` and `UPDATED_AT`, for
+  unapplied rows whose `CONTEXT_PAYLOAD_JSON` has `support_without_baseline`
+  true, through `_apply_schema_migration_once`. No manual step remains.
 - **Recovery.** `supersede_source_derivation` already stores any reason code
   (`TERMINAL_REASON_CODE NVARCHAR(255)`); no constraint changes. HANA driver
-  errors (`hdbcli.dbapi.Error`) are not infrastructure failures in the shared
-  classification, so a HANA outage during recovery is recorded per Unit: the
-  derivation stays staged, nothing is superseded, and the run fails at its next
-  store call.
+  errors (`hdbcli.dbapi.Error`) do not declare themselves not retryable, so a
+  HANA outage during recovery stops the run and leaves the derivation staged.
 - **Raw content.** Cloud's `ObjectDocumentStore.store_raw` is unchanged; it is
-  called once more per changed Unit whose markdown did not change.
+  called once more per changed Unit whose markdown did not change, and always
+  before the revision is recorded.
 - **Reprocess.** Cloud's Jira and Confluence Sources rediscover through the OSS
   Genes and need provider credentials at reprocess time; the route shape is
   unchanged. `reprocess_preview` gains the keyword `rediscovers`, called only by
   the OSS admin app.
-- **Before deploying**, supersede the unapplied derivations that reprocess runs
-  staged from stored input:
-  `UPDATE SOURCE_DERIVATION_ATTEMPTS SET STATUS = 'superseded',
-  TERMINAL_REASON_CODE = 'DERIVATION_INPUT_SUPERSEDED' WHERE STATUS IN
-  ('pending', 'retryable_failure', 'completed') AND JSON_VALUE(CONTEXT_PAYLOAD_JSON,
-  '$.support_without_baseline') = 'true'`. After deploying, reprocess the 36
-  Documents that lost changelog entries, which now reads Jira, and check whether
-  the 11 retired Memories were extracted again.
+- **After deploying**, reprocess the 36 Documents that lost changelog entries,
+  which now reads Jira, and check whether the 11 retired Memories were
+  extracted again.
 - No change to LLM configuration, `sap/` routes or environment-only
   configuration. `proxy/external_runtime.py` needs no change.
 
