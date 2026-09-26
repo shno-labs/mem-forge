@@ -329,7 +329,7 @@ claim with a complete current Evidence Unit. The assessment must account for
 every exact-matched prior part: its current ref is either selected in the final
 Primary/Required set or listed in the result's omitted matched refs. That list
 carries refs only, with no explanation text. Absence from both is not an
-instruction to drop the part. The reducer rejects a supported result that leaves a
+instruction to drop the part. Support validation rejects a supported result that leaves a
 matched part unaccounted for; it never silently replaces the entire old set
 with only the newly changed fragment. This is sparse accounting for omitted
 parts, not one model row per old/new Evidence pair. Never copy a missing old
@@ -461,7 +461,10 @@ no HANA schema or configuration change. The HANA commit gate must accept
 
 Implemented for Cloud issue #505 in `pipeline/support_relation_coordinator.py`.
 Support Assessment and Relation run concurrently; a failure raised on either line
-cancels the other, and the revision is not committed.
+cancels the other, and the revision is not committed. A Relation model or
+contract failure is returned as the line's result rather than raised, so the
+Support line finishes its reads; the revision is still not committed, and the
+retry reuses that Support work from its journal.
 
 `SupportRelationCoordinator` is program code that runs after both lines finish and
 before Lifecycle Reconciliation. For each same-Unit old Memory it combines the
@@ -515,10 +518,13 @@ A rebound `UNAFFECTED` Support with no contradicts edge follows the `SUPPORTED`
 rows. REFINES and uncertain Relation results follow the revision-proof and local
 unresolved rules in [Local unresolved claim relationships](#local-unresolved-claim-relationships).
 When one Candidate receives different treatments across several old Memories,
-the same local unresolved component rule applies: the whole related component is
-consumed this round, with no ADD and no destructive action. The treatments are
-consumed as an equivalent, staged in a Review, and replacing an old Memory; a
-Candidate that only refines without revising has none.
+or is staged in the Reviews of more than one old Memory, the same local
+unresolved component rule applies: the whole related component is consumed this
+round, with no ADD and no destructive action. The treatments are consumed as an
+equivalent, staged in a Review, and replacing an old Memory; a Candidate that
+only refines without revising has none. A Candidate staged twice has no single
+decision: each approval would apply it again, creating it a second time or
+rebinding a second Memory to the same claim.
 
 An old Memory can have several Supports in one Source Unit. Their results combine
 by the table's precedence into one Memory-level result: any `UNRESOLVED(capacity)`
@@ -545,7 +551,7 @@ returns only when that structure changes again. Apart from the local
 unresolved relationship rule, this is the only case in which a Candidate is
 consumed without a decision.
 
-Cloud impact: the coordinator is shared OSS reducer code. It needs no HANA schema
+Cloud impact: the coordinator is shared OSS code. It needs no HANA schema
 change. Reviews from the `UNRESOLVED(partial_coverage)` rows use the same Plan
 apply as the other coordinator Reviews, and an uncommitted revision is reported
 through the existing sync failure status and LLM failure trace, which HANA
@@ -585,9 +591,10 @@ Reviews keep their existing rules.
   old Memory to an equivalent Candidate's Evidence is a Plan too:
   `RESOLVE_REVIEW(rejected)` with that rebind, under the same guard.
 - Identity: the Review ID is deterministic, derived from the Source Unit, the
-  old Memory and a hash of the normalized Candidate claim. It does not include
-  the per-run scope, so the same conflict always names the same Review. Reviews
-  raised from an equivalent edge use the same ID inputs.
+  old Memory, the proposal (supersede or rebind) and a hash of the normalized
+  Candidate claim. It does not include the per-run scope, so the same conflict
+  always names the same Review, and a rejected rebind of a claim never silences
+  a later proposal to supersede with it.
 - Recurrence: when a new revision raises the same conflict, the existing Review
   is reused according to its status, and a second record is never created:
   - `pending`: reused; this revision's `CREATE_REVIEW` for the same ID refreshes
@@ -611,13 +618,24 @@ Reviews keep their existing rules.
   again with its Candidate and edge, is not re-checked again, and follows the
   table like a new edge: it is refreshed, or resolved by the rows, for example
   superseded normally once the old Memory is read without Support. If the
-  conflict is gone, the revision's Plan closes the Review with the existing
-  `stale` status, before any destructive mutation of the Plan. A different
-  conflict has a different Candidate claim hash and therefore its own Review.
-  A reviewer cannot refresh a stale coordinator Review by hand; the next
-  revision that raises its conflict reopens it.
-- A review decision applies only while the related Memory and Support are
-  unchanged, through the existing stale guards.
+  revision decides the old Memory and no longer raises the conflict, the
+  conflict is gone and the revision's Plan closes the Review with the existing
+  `stale` status, before any destructive mutation of the Plan. An old Memory the
+  revision keeps unchanged without a decision (an unresolved component,
+  `UNRESOLVED(capacity)`, or a destructive decision DestructiveValidation kept)
+  keeps its pending Reviews as they are; a later revision that decides it
+  refreshes or closes them. A different conflict has a different Candidate claim
+  hash or proposal and therefore its own Review. A reviewer cannot refresh a
+  stale coordinator Review by hand; the next revision that raises its conflict
+  reopens it.
+- A review decision applies only while the related Memory, its Support and its
+  Source Unit revision are unchanged, through the existing stale guards. A
+  decision whose guard no longer holds is refused (409) and leaves a coordinator
+  Review pending, because `stale` means only that its conflict is gone; the next
+  revision of its Source Unit raises the conflict again against the current state.
+- Lifecycle gate: approval and a rejection that rebinds are Plans, so both need
+  the source's lifecycle gate enabled and are refused (409) under the gate. A
+  rejection without a rebind only resolves the Review and works under the gate.
 
 Cloud impact: the ID derivation, the Review's own stale guard and the
 recurrence decision live in the OSS planner and review code. Reuse, reopen and
@@ -630,7 +648,9 @@ the `CREATE_REVIEW` and `RESOLVE_REVIEW` branches of
 `_apply_lifecycle_mutation_unlocked` in OSS `storage/database.py` and of
 `_apply_lifecycle_mutation_on_connection` in Cloud's HANA adapter
 `packages/adapters/store/hana/.../workspace.py`. Plan apply also records each
-created Review's own guard after the Plan's mutations, `RESOLVE_REVIEW` accepts
+created Review's own guard after the Plan's mutations (the incumbent's Unit
+Support-set hash and its Memory version, the digest of `status`, `content_hash`
+and `updated_at` that the Plan stale guard uses), `RESOLVE_REVIEW` accepts
 `rejected` for the rejection Plan, and `list_lifecycle_reviews` takes
 `incumbent_memory_ids` so a revision reads the Reviews of its own old Memories.
 No field, status, migration or mutation type is added, but Cloud changes the
@@ -710,11 +730,15 @@ Plan, and checks what the earlier steps recorded:
   `UNKNOWN` part to `UNRESOLVED(partial_coverage)` before a model call.
 - Check 4: a DELETE or SUPERSEDE rests on Supports that each read the whole
   reading order and recorded the completion receipt. A Candidate-Evidence
-  re-check never counts. A revision with nothing to read records a program
-  receipt for its empty order.
+  re-check never counts. A Support read whose order is empty records a program
+  receipt for it; a revision whose content became empty is decided by coverage
+  without a read, as described below.
 - Check 6: a SUPERSEDE or UPDATE rests on a Relation line whose completion rows
   cover every admitted Candidate over the catalog of every old Memory decided by
-  Support and Relation.
+  Support and Relation. A Candidate carried by a pending Review was not
+  extracted again, so its completion row is the one from the revision that
+  raised the Review; the table may still supersede with it once the old Memory
+  is read without Support.
 - Checks 3 and 5 stay where their facts are: the Plan's stale guard rejects a
   commit whose Support sets, Memory versions or Observation revisions moved, and
   the planner retires a Memory only when the removed Support was its last.
@@ -756,8 +780,11 @@ not promised. The operations must be idempotent and converge. A sync commits
 this run's Units first, including a deferred commit that waits only on another
 Unit of the run, and detects deletions after that; a deferred commit that fails
 for good counts as a failed document, so absence stays unproven for that run. A
-deferred commit that waits on a Unit this run removes is retried after the
-removal, and one that waits on a Unit outside the run is not retried. A crash
+deferred commit that still waits after that convergence has failed for good
+unless it waits, directly or through another deferred commit, on a Unit outside
+the run: only the removal of such a Unit can still unblock it. It is retried
+after the removal, and one that waits on a Unit outside the run that this run
+does not remove is not retried. A crash
 between the two steps leaves the old Unit, which the next complete sync removes.
 A provider-declared stable move,
 reply, quote or correction mapping may enlarge an explicit comparison scope,
@@ -1065,7 +1092,7 @@ candidate admission ([Sparse same-Unit Relation](#sparse-same-unit-relation),
 auditing, conditional exact comparisons between competing refiners and
 destructive revision proof are unchanged.
 
-The material changes concentrate in input preparation, L3, L4, and reducer/Plan
+The material changes concentrate in input preparation, L3, L4, and coordinator/Plan
 integration. Entity resolution stays a bounded retrieval helper, not a truth or
 identity authority. No new scheduler, persistent Fragment model, MemoryRevision
 entity, or historical-document browser is required.
@@ -1230,7 +1257,7 @@ planning code; Cloud upgrades the pin with no configuration or HANA change.
 
 ## Local unresolved claim relationships
 
-Target contract, tracked by Cloud issue #505.
+Implemented for Cloud issue #505 in `pipeline/support_relation_coordinator.py`.
 
 Claim Reconciliation returns one completion row per admitted Candidate and does
 not repeat Support or Evidence selectors. Equivalent and contradicts edges are
@@ -1250,7 +1277,7 @@ from conditional refinement work; independent candidates and incumbents continue
 The existing skipped-Support proof and stale guards remain the only Plan mechanism.
 The coordinator's single re-check and the pending coordinator Review rules are the
 only additions; there is no new Review state and atomic commit ownership is
-unchanged. Cloud impact: shared OSS reducer code; Cloud upgrades the pin.
+unchanged. Cloud impact: shared OSS coordinator code; Cloud upgrades the pin.
 
 
 ## References
@@ -1308,7 +1335,7 @@ Unsupported old claims need not be negated: loss of universal coverage alone doe
 not establish contradiction with a compatible subset rule.
 
 Acceptance must evaluate the complete revision conjunction and the resulting
-reducer action. Correct Support, relation and preservation fields alone do not
+coordinator action. Correct Support, relation and preservation fields alone do not
 prove an eligible UPDATE. Frozen failed results remain evidence even when a later
 prompt/schema version corrects them.
 

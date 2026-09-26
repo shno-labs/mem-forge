@@ -324,7 +324,7 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 | `UNRESOLVED(partial_coverage)` | 无关系 | 保留原状 |
 | 任意 | 同一旧 Memory 同时有 equivalent 边和 contradicts 边 | 进入 Review |
 
-已换绑的 `UNAFFECTED` 且无 contradicts 边，按 `SUPPORTED` 行处理；REFINES 与不确定关系沿用局部 unresolved 规则（reducer 与 revision proof 规则）。同一 Candidate 对不同旧 Memory 得到不同处理时，同样沿用局部 unresolved 的连通组件规则：整个相关组件在本轮被消费，不 ADD，也不做破坏性动作。`UNAFFECTED` × contradicts 补做的那次 Support 即该 Claim 唯一的一次复核，结果重新查表。
+已换绑的 `UNAFFECTED` 且无 contradicts 边，按 `SUPPORTED` 行处理；REFINES 与不确定关系沿用局部 unresolved 规则（协调器与 revision proof 规则），未决组件内的旧 Memory 不做 refinement 两两比较。同一 Candidate 对不同旧 Memory 得到不同处理，或者同时暂存在多个旧 Memory 的 Review 里时，同样沿用局部 unresolved 的连通组件规则：整个相关组件在本轮被消费，不 ADD，也不做破坏性动作。同一 Candidate 暂存两次时没有唯一决定：每次批准都会再执行一遍，要么再建一次同一条 Memory，要么把第二个旧 Memory 也换绑到同一 Claim。`UNAFFECTED` × contradicts 补做的那次 Support 即该 Claim 唯一的一次复核，结果重新查表。
 
 已知限制：某条 Claim 的单个 ReadingGroup 单独就超出模型容量时，其 Support 为 `UNRESOLVED(capacity)`：旧 Memory 保持不变，诊断写明 Source Unit 和 ReadingGroup，revision 照常提交。相关 Candidate 在本轮被消费，不 ADD，也不做破坏性动作；因为更新时只提取变化的结构，这些新知识要等该结构再次变化才会重新提取。除局部 unresolved 关系规则外，这是 Candidate 未经判定就被消费的唯一情况。
 
@@ -348,7 +348,7 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 
 - 存储：协调器 Review 就是 Lifecycle Plan 现有的 `CREATE_REVIEW` 变更，写入 `lifecycle_reviews`。引发 Review 的 Candidate（矛盾的 Candidate；`UNSUPPORTED` × equivalent 和 `UNRESOLVED(partial_coverage)` × equivalent 两行是那条等价 Candidate）连同拟执行的动作一起保存在 Review 的 staged evidence 中，不为它新建 Memory。批准时执行 Review 中记录的动作，拒绝则维持现状。`UNSUPPORTED` × equivalent 或 `UNRESOLVED(partial_coverage)` × equivalent 复核后仍不支持时，记录的动作是保留旧 Memory 并换绑到该 Candidate 的 Evidence；`SUPPORTED` × contradicts 和 `UNRESOLVED(partial_coverage)` × contradicts 记录的动作是用暂存的矛盾 Candidate 新建 Memory 并替代（SUPERSEDE）旧 Memory。同一旧 Memory 同时有 equivalent 边和 contradicts 边时，暂存的是矛盾的 Candidate，记录的动作同样是替代；拒绝时保留旧 Memory，并换绑到等价 Candidate 的 Evidence。
 - stale guard：Review 在 staged evidence 中保存自己的 stale guard，取自创建它的 Plan 执行完本身变更之后的状态。因此同一 Plan 中的换绑（`SUPPORTED` × contradicts 行）已经计入 guard，批准时检查的是这份 guard，而不是创建它的 Plan 在执行前记录的 guard。Plan apply 在执行完全部变更后写入这份 guard，planner 把新的协调器 Review 排在最后。拒绝时需要换绑到等价 Candidate 的 Evidence，这次拒绝同样是一个 Plan：`RESOLVE_REVIEW(rejected)` 加上换绑，受同一份 guard 保护。
-- ID：Review ID 由 Source Unit、旧 Memory 和规范化后 Candidate Claim 的 hash 确定性生成，不包含每次运行都会变的 scope ID，所以同一冲突始终对应同一条 Review。由 equivalent 边引发的 Review 使用相同的 ID 规则。
+- ID：Review ID 由 Source Unit、旧 Memory、提案类型（替代或换绑）和规范化后 Candidate Claim 的 hash 确定性生成，不包含每次运行都会变的 scope ID，所以同一冲突始终对应同一条 Review；人工拒绝某条 Claim 的换绑，不会压下之后用它替代的提案。
 - 再次出现：新 revision 又得出同一冲突时，按原 Review 的状态处理，任何情况下都不新建第二条记录：
   - `pending`：沿用；本 revision 对同一 ID 的 `CREATE_REVIEW` 刷新它的 staged evidence 和 stale guard，guard 取本 revision 的 Support 集合（包括本轮换绑后的 Support）；
   - `rejected`：不再提出同一冲突，尊重人工决定；
@@ -357,7 +357,9 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 
   已决定的冲突再次出现时维持现状：旧 Memory 按本轮结果处理、不再进 Review，Candidate 被消费。
 - 可见性：待审期间旧 Memory 保持 Active、检索可见、状态不变。暂不增加“有冲突”标注。source 处于 lifecycle gate 时，要移除 Support 的换绑也随 Review 等待，Review 按当前 Support 提出动作；该旧 Memory 只有一个 Review 决定。
-- 新 revision：照常处理，由协调器重新判断。更新时只抽取变化的结构，Candidate 所在结构没变时本 revision 不会再抽取它，Relation 也就无法再次提出这个冲突。因此待审 Review 暂存的 Candidate Evidence 仍全部精确对应当前内容时，程序把这条 Candidate 和原来的边重新交给协调器，不再复核，按表处理：通常刷新 Review；旧 Memory 本轮读完仍不支持时，按行正常替代，Review 随之关闭。冲突消失时，由本 revision 的 Plan 用现有的 `stale` 状态关闭 Review，关闭排在 Plan 的破坏性变更之前；变成不同冲突时，Candidate Claim 的 hash 不同，对应另一条 Review。协调器 Review 不提供手动刷新，下一次提出同一冲突的 revision 会重新打开它。审核结果只在相关 Memory/Support 未变化时生效，沿用现有 stale guard。
+- 新 revision：照常处理，由协调器重新判断。更新时只抽取变化的结构，Candidate 所在结构没变时本 revision 不会再抽取它，Relation 也就无法再次提出这个冲突。因此待审 Review 暂存的 Candidate Evidence 仍全部精确对应当前内容时，程序把这条 Candidate 和原来的边重新交给协调器，不再复核，按表处理：通常刷新 Review；旧 Memory 本轮读完仍不支持时，按行正常替代，Review 随之关闭。本 revision 对旧 Memory 作出了决定、却不再提出这个冲突时，冲突已消失，由本 revision 的 Plan 用现有的 `stale` 状态关闭 Review，关闭排在 Plan 的破坏性变更之前。本 revision 没有对旧 Memory 作出决定、只是保留原状时（局部未决组件、`UNRESOLVED(capacity)`，或被 DestructiveValidation 保留的破坏性决定），它的待审 Review 原样保留，等之后对它作出决定的 revision 刷新或关闭。变成不同冲突时，Candidate Claim 的 hash 或提案类型不同，对应另一条 Review。协调器 Review 不提供手动刷新，下一次提出同一冲突的 revision 会重新打开它。
+- 审核结果只在相关 Memory、Support 和 Source Unit revision 未变化时生效，沿用现有 stale guard。guard 不再成立时拒绝这次决定（409），协调器 Review 保持待审，因为 `stale` 只表示冲突已消失；该 Source Unit 的下一个 revision 会按当前状态重新提出这个冲突。
+- lifecycle gate：批准和需要换绑的拒绝都是 Plan，要求该来源的 lifecycle gate 已启用，gate 状态下返回 409；不需要换绑的拒绝只改 Review 状态，gate 状态下也可以执行。
 
 #### 0.6.5 同 Unit identity 兜底
 
@@ -388,8 +390,8 @@ Relation 漏报 equivalent 时，由现有 identity 去重兜底：identity 只�
 当前实现：协调器之后、identity 之前，对 DELETE、SUPERSEDE、UPDATE 逐条检查：
 
 - 第 1、2 条：该旧 Memory 在本 Unit 的每个 Support 都有结果，且没有 `UNRESOLVED`。exact correspondence 只在显式 tombstone 或覆盖能证明缺失时给出 `REMOVED`，`UNKNOWN` part 在调用模型之前就路由为 `UNRESOLVED(partial_coverage)`。
-- 第 4 条：DELETE 与 SUPERSEDE 依赖的每个 Support 都读完了整个读取顺序并写了完成收据；只读 Candidate Evidence 的复核不算。当前 revision 没有可读内容时，读取顺序为空，也写一条程序收据（`coverage.total = 0`）。
-- SUPERSEDE 与 UPDATE 还要求 Relation 线给每个准入 Candidate 都返回了完成行，覆盖本轮由 Support 与 Relation 决定的全部旧 Memory。
+- 第 4 条：DELETE 与 SUPERSEDE 依赖的每个 Support 都读完了整个读取顺序并写了完成收据；只读 Candidate Evidence 的复核不算。Support 读取的顺序为空时，也写一条程序收据（`coverage.total = 0`）；内容变为空的 revision 不做读取，按下文由覆盖决定。
+- SUPERSEDE 与 UPDATE 还要求 Relation 线给每个准入 Candidate 都返回了完成行，覆盖本轮由 Support 与 Relation 决定的全部旧 Memory。由待审 Review 携带的 Candidate 本轮没有再抽取，它的完成行是提出该 Review 的那个 revision 给出的；旧 Memory 读完仍不支持时，表仍可以用它替代。
 - 第 3、5 条由原有位置负责：Plan 的 stale guard 在提交时拒绝 Support 集合、Memory 版本或 Observation revision 已变化的结果；planner 只在移除的是最后一个 Support 时 retire。
 
 不通过的决定改为保留：旧 Memory 保留 Support 和验证基线，替代它的 Candidate 被消费、不 ADD，与局部未决相同；统计按原因计数（`destructive_validation_kept_<reason>_count`）。进入 Review 的决定是提案，审批时由 stale guard 保护。内容变为空的 revision 不做读取：Evidence 所在的每个 Observation 都已返回（现在为空），或覆盖能证明缺失时，才移除 Support；否则为 `UNRESOLVED(partial_coverage)`。部分投影不需要单独的保护：已返回、已读完的 Observation 可以移除 Support，未返回的不能。
@@ -410,7 +412,7 @@ COMPLETE_SNAPSHOT 证明 A 消失（B 提交之后）
 
 `PARTIAL_PROJECTION` 中 A 未返回只代表 UNKNOWN，必须保留 A Support。提交顺序固定：先提交 B 的创建与 identity 挂接，再移除 A，因此不会出现空档，只可能短暂并存；这只是顺序约束，不新增状态。两步都必须幂等并最终收敛。
 
-当前实现（`pipeline/sync.py` 的 `sync_gene` 第 5 步）：先让本 run 被推迟、且只等待本 run 其他 Unit 的提交收敛，再做删除检测；最终失败的推迟提交算作失败文档，本 run 不据此证明缺失。等待本 run 删除的 Unit 的推迟提交在删除之后再重试；等待本 run 以外 Unit 的推迟提交不重试，直接记为失败。B 提交后、A 删除前中断时，下一次完整同步删除 A。Provider 明确的 move/reply/quote/corrects mapping 可以扩大确定比较范围；文本相似度不能。
+当前实现（`pipeline/sync.py` 的 `sync_gene` 第 5 步）：先让本 run 被推迟、且只等待本 run 其他 Unit 的提交收敛，再做删除检测；最终失败的推迟提交算作失败文档，本 run 不据此证明缺失。收敛后仍在推迟的提交，只要没有直接或经另一个推迟提交等待本 run 以外的 Unit，就已经没有机会再提交，同样算作失败。等待本 run 删除的 Unit 的推迟提交在删除之后再重试；等待本 run 以外、且本 run 没有删除的 Unit 的推迟提交不重试，直接记为失败。B 提交后、A 删除前中断时，下一次完整同步删除 A。Provider 明确的 move/reply/quote/corrects mapping 可以扩大确定比较范围；文本相似度不能。
 
 ### 0.9 Source adapter 前置合同
 
@@ -768,7 +770,7 @@ fixed old claim
 
 本阶段只比较本 Unit 的 `ADMITTED` Candidates 与同 Unit Active 旧 Memory。程序先处理 exact duplicate；其余由 Structured LLM 读取 Candidate、其当前 Evidence 和同 Unit 全部 Active 旧 Memory 的 Claim，为每个 Candidate 输出一行，只列有意义的关系。输入不含 Support 结论，也不检查 Candidate 的证据。合同细节见第 0.6.2 节，请求形状见 [Sparse claim catalog](sparse-claim-catalog.md)。
 
-Relation 与 Support Assessment 并行执行，两条线都完成后由 SupportRelationCoordinator 按第 0.6.3 节的组合表汇合；任一条线抛出执行失败时取消另一条，该 revision 不提交。
+Relation 与 Support Assessment 并行执行，两条线都完成后由 SupportRelationCoordinator 按第 0.6.3 节的组合表汇合；任一条线抛出执行失败时取消另一条，该 revision 不提交。Relation 的模型或合同失败作为该线的结果返回，不抛出，所以 Support 线会读完；revision 同样不提交，重试时从 journal 复用这些 Support 结果。
 
 | 关系 | 含义 |
 | --- | --- |
@@ -1036,7 +1038,7 @@ source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含
   容量不足不能通过丢弃必需图片变成可执行；摘要、长度或资格错误不会触发整篇
   文档重试。
 
-主要代码入口见第 20 节；上表不是新执行 backlog。此次目标集中在输入准备、L3、L4 和它们与 reducer/Plan 的接线，不是重写整套 Sync。
+主要代码入口见第 20 节；上表不是新执行 backlog。此次目标集中在输入准备、L3、L4 和它们与协调器/Plan 的接线，不是重写整套 Sync。
 
 ### 既有审查风险与本次设计的关系
 
