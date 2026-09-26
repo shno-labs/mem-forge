@@ -116,7 +116,7 @@
 
 ## Memory review
 
-- **Review** — An auditable request for a human-authorized decision when MemForge cannot safely complete or classify a Memory change on its own. Review status records whether that request is pending or terminal; it is not a Memory lifecycle state.
+- **Review** — An auditable request for a human-authorized decision when MemForge cannot safely complete or classify a Memory change on its own. Review status records whether that request is pending or terminal; it is not a Memory lifecycle state. A conflict between Support and Relation has exactly one coordinator Review, named by its Source Unit, old Memory, proposal and staged Candidate claim, which every revision that raises the conflict again reuses.
 - **Review Decision** — One action allowed by a Review's kind and presentation, together with its exact lifecycle postcondition. The same approve or reject storage result can represent different user-facing decisions only when the presentation states those consequences explicitly.
 - **Decision Fingerprint** — A deterministic digest of the Review identity, pinned participants, and proposed decision input. A caller must present the current fingerprint when applying a decision so analysis of an older Review cannot mutate newer state.
 - **Decision Manifest** — A bounded, caller-supplied set of Review Decisions and Decision Fingerprints proposed for validation or confirmed application. It is request data, not a durable workflow, lifecycle state, or all-or-nothing transaction.

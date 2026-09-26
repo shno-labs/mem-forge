@@ -312,7 +312,7 @@ The business meaning of an `ItemFailure` belongs to the task:
 | Candidate admission | extraction-side failure: the Source Unit revision is not committed, so the Candidate is not added this round, and the next sync retries the revision |
 | Sparse Relation | extraction-side failure: the Source Unit revision is not committed and the next sync retries it; never read as "no relation proposed" |
 | Rerank | baseline order, also on timeout or invalid output; a fixed code rule, not configuration |
-| Claim Extraction | the existing extraction failure for that Source Unit; no partial candidates |
+| Claim Extraction | a ReadingGroup that alone exceeds capacity: skipped with a diagnostic naming the Source Unit, the ReadingGroup and `input_capacity_exceeded`, the other groups are extracted and the revision commits; any other failure: the existing extraction failure for that Source Unit, with no partial candidates |
 
 **What it does not add**
 
