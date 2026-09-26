@@ -63,6 +63,9 @@ Memory creation in source sync depends only on the Source Unit being processed.
   the planner keep as an ADD creates its own Memory with its own Evidence Unit
   Support. Source sync never attaches a Candidate to a Memory of another Source
   Unit, whether the match is semantic or exact text.
+- Candidates of one round with the same claim text share one Memory, because the
+  round's Evidence is grouped by claim text (`pipeline/projection_evidence.py`)
+  and a new Memory's ID derives from its type and content.
 - Duplicates within the Unit are decided only by candidate admission's same-round
   deduplication and by Sparse Relation, which reads every active old Memory of
   the Unit. A Relation omission is not repaired by a later step.
@@ -158,8 +161,10 @@ Cloud composes this package and takes these changes with one pin update:
   the agent claim apply call one Plan apply. Without this change a Cloud Unit
   that states a claim already active in another Unit fails its commit with
   "lifecycle plan exact claim stale guard failed" on every sync.
-- `VectorStore.query_many` and `within_dedup_threshold` stay: the retrieval
-  evaluation runner and user-created Memory deduplication use them.
+- `VectorStore.query_many` and `within_dedup_threshold` stay: every vector
+  adapter implements `query` through `query_many`, the retrieval evaluation
+  runner forwards `query_many`, and user-created Memory deduplication uses
+  `within_dedup_threshold`.
 - `LiteLlmStructuredClient` loses `discover_memory_relations`. Its constructor
   does not change. `MemoryEngine`'s constructor and `pair_classifier` do not
   change, so `proxy/external_runtime.py` needs no change. Test stubs that define

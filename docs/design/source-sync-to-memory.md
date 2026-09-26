@@ -24,7 +24,7 @@
 
 ### 0.1 目标与取舍
 
-本方案优先保证两件事：当前 Memory 拥有完整、可解析的当前 Evidence；系统不会因 Partial 采集、输入分组或模型漏判而错误删除仍然有效的知识。产品接受跨 Source Unit 关系发现的少量漏判、不同 Source Unit 各自保存同一知识（由关系发现标注 `equivalent`）、陈旧 Support 暂时保留，以及跨 Source Unit 后 Memory ID 不延续。同一 Source Unit 的 Candidate/Memory 关系不依赖语义 top-k：确定性 exact match 由程序处理，其余由 Sparse Relation 读取同 Unit 全部 Active 旧 Memory 的 Claim，每个 Candidate 输出一行，只列有意义的关系，省略表示“未提出关系”。
+本方案优先保证两件事：当前 Memory 拥有完整、可解析的当前 Evidence；系统不会因 Partial 采集、输入分组或模型漏判而错误删除仍然有效的知识。产品接受跨 Source Unit 关系发现的少量漏判、不同 Source Unit 各自保存同一知识（由关系发现标注 `equivalent`）、陈旧 Support 暂时保留，以及跨 Source Unit 后 Memory ID 不延续。同一 Source Unit 的 Candidate/Memory 关系不依赖语义 top-k：Sparse Relation 读取每个准入的 Candidate 和同 Unit 全部 Active 旧 Memory 的 Claim，每个 Candidate 输出一行，只列有意义的关系，省略表示“未提出关系”。
 
 目标流程是（带颜色图例的完整版见 [revision-update-flow.png](images/revision-update-flow.png)，源文件 [revision-update-flow.excalidraw](images/revision-update-flow.excalidraw)，可用 Excalidraw 打开编辑）：
 
@@ -303,7 +303,7 @@ UNSUPPORTED(work_id)
 
 #### 0.6.2 Sparse Relation
 
-Sparse Relation（同 Unit 的 claim revision）只接收 `ADMITTED` Candidate，只判断它们与同 Unit 旧 Memory 的关系。程序先消费 exact duplicate；模型输入只有三类内容：Candidate 的 Claim、该 Candidate 的当前 Evidence、同 Unit 全部 Active 旧 Memory 的 Claim。输入不含 Support 结论和理由；Support 结果只在 SupportRelationCoordinator 中由程序使用，所以 Relation 与 Support Assessment 并行执行。旧 Memory 目录包含全部 Active 旧 Memory，因为 Relation 运行时还不知道哪些 Support 会得到 `UNRESOLVED`。
+Sparse Relation（同 Unit 的 claim revision）只接收 `ADMITTED` Candidate，只判断它们与同 Unit 旧 Memory 的关系。全部准入的 Candidate 都进入模型请求，文本与旧 Memory 完全相同的 Candidate 也不例外；模型输入只有三类内容：Candidate 的 Claim、该 Candidate 的当前 Evidence、同 Unit 全部 Active 旧 Memory 的 Claim。输入不含 Support 结论和理由；Support 结果只在 SupportRelationCoordinator 中由程序使用，所以 Relation 与 Support Assessment 并行执行。旧 Memory 目录包含全部 Active 旧 Memory，因为 Relation 运行时还不知道哪些 Support 会得到 `UNRESOLVED`。
 
 输出为每个 Candidate 一行完成记录，只列有意义的关系：等价、矛盾、带方向的细化，或明确列出的不确定旧 Memory。某条旧 Memory 未被列出表示“未提出关系”，不是判定无关。缺少 Candidate 行、未知 ID、同一对重复或矛盾的关系都会被拒绝；输出被截断属于容量失败，由 LLM batch runner 拆分重发；这些都不能当作“未提出关系”。每个 Candidate 的行单独校验，不合格的行合在一起重问一次，逐项写明错误。某个 Candidate 重问后仍不合法，SupportRelationCoordinator 消费它，不 ADD，不建 Review，写诊断。它的完成行本应覆盖本 Unit 的全部旧 Memory，缺了这一行，就无法确定它和哪条旧 Memory 有关：它可能正是某条旧 Memory 的新说法。所以本 revision 的 Relation 不完整，DestructiveValidation 本轮不执行本 Unit 的任何 DELETE、SUPERSEDE 或 UPDATE：这些旧 Memory 保留原 Support，不推进验证基线；只因被拦下的 SUPERSEDE 或 UPDATE 才起作用的 Candidate 也不 ADD。不带破坏性的工作照常提交：换绑、其他 Candidate 的 ADD 和 Review。遇到执行错误时，该 Source Unit revision 不提交，下次同步重试，不部分发布。Relation 不检查证据是否完整支持 Candidate，这由候选准入负责。
 
@@ -477,7 +477,7 @@ Evidence Unit 的时间取 Primary 锚定的 Observation Revision 的时间；�
 | 重新处理时存储内容缺失或不再重现 Unit 位置 | 该 Unit 以 `stored_raw_content_missing`、`stored_artifact_missing`、`stored_artifact_invalid` 或 `stored_input_incomplete` 等原因失败、不提交，其他 Unit 照常处理；保存 item 元数据之前存储的 Confluence 子页面和 GitHub 文件属于后者，普通同步重新存储该 Document 后即可重新处理 |
 | 更新的阅读上下文超过 20,000 字符 | 不截断：变化结构所在的整个 ReadingGroup 与其阅读上下文都被读到；单个 item 超出容量时按下一行跳过 |
 | 抽取时单个 ReadingGroup 单独超出容量 | 跳过该组，诊断写明 Source Unit、ReadingGroup 和 `input_capacity_exceeded`；其余组的 Candidate 照常处理，revision 提交；恢复 derivation 得到同样的跳过 |
-| Relation 漏报 equivalent | 同 Unit 不产生重复 Active Memory；同一 Plan 不对同一 Memory 既删除、替代或修订又挂接 |
+| Relation 漏报 equivalent | Candidate 按 ADD 新建自己的 Memory，本 Unit 多出一条内容相同的 Active Memory；ADR 0039 接受这一结果，后续步骤不补救 |
 | Change Impact 判 `UNAFFECTED`，Relation 报 contradicts | 对该 Claim 补做一次 Support Assessment；仍冲突进入 Review |
 | 同一冲突在下一 revision 再次出现 | 确定性 ID 指向原 Review，不新建：`pending` 的沿用并刷新 stale guard，`rejected` 的不再提出，`stale` 的重新打开；冲突消失时以 `stale` 关闭 |
 | Jira 完整删除 Comment | authoritative comments coverage 允许移除对应 Support |
@@ -800,7 +800,7 @@ fixed old claim
 
 ## 10. 步骤七：Sparse Relation【已实现，与 Support 并行】
 
-本阶段只比较本 Unit 的 `ADMITTED` Candidates 与同 Unit Active 旧 Memory。程序先处理 exact duplicate；其余由 Structured LLM 读取 Candidate、其当前 Evidence 和同 Unit 全部 Active 旧 Memory 的 Claim，为每个 Candidate 输出一行，只列有意义的关系。输入不含 Support 结论，也不检查 Candidate 的证据。合同细节见第 0.6.2 节，请求形状见 [Sparse claim catalog](sparse-claim-catalog.md)。
+本阶段只比较本 Unit 的 `ADMITTED` Candidates 与同 Unit Active 旧 Memory。Structured LLM 读取每个 Candidate、其当前 Evidence 和同 Unit 全部 Active 旧 Memory 的 Claim，为每个 Candidate 输出一行，只列有意义的关系。输入不含 Support 结论，也不检查 Candidate 的证据。合同细节见第 0.6.2 节，请求形状见 [Sparse claim catalog](sparse-claim-catalog.md)。
 
 Relation 与 Support Assessment 并行执行，两条线都完成后由 SupportRelationCoordinator 按第 0.6.3 节的组合表汇合；任一条线抛出执行失败时取消另一条，该 revision 不提交。Relation 的执行错误或合同失败作为该线的结果返回，不抛出，所以 Support 线会读完；revision 同样不提交，重试时从 journal 复用这些 Support 结果。Relation 单独判断仍无法判断的 Candidate 属于完整结果的一部分，标为未判断，由协调器消费，并使 Relation 不完整。
 
@@ -1086,10 +1086,10 @@ Sparse Relation 在同 Unit 内读取全部 Active 旧 Memory，每个 Candidate
 - 三个例子分别得到证据更新、替代、无损修订；任何新增条件不能藏在 Required 中而保留错误 claim。
 - Sparse Relation 为每个 `ADMITTED` Candidate 输出一行；覆盖等价、细化双向、同范围新增要求、仅缩小范围、冲突和不确定。缺 Candidate 行、非法引用、重复或矛盾关系均为执行失败，不能被静默当作未提出关系；单个 Candidate 仍无法判断时，该 Candidate 被消费、不 ADD，本 Unit 本轮不执行任何破坏性决定，revision 照常提交。
 - 第 0.6.3 节组合表每行一个 fixture；每条 Claim 至多复核 1 次，复核的执行错误使 revision 不提交、下次同步重试。
-- Relation 漏报 equivalent 的 fixture 下，同 Unit 不产生重复 Active Memory；同一 Plan 内不出现对同一 Memory 既删除、替代或修订又挂接。
+- Relation 漏报 equivalent 的 fixture 下，Candidate 新建自己的 Memory，本 Unit 多出一条 Active Memory（ADR 0039 接受的结果，见 `test_an_add_restating_a_kept_old_memory_creates_its_own_memory`）；Lifecycle Plan 拒绝给本 Plan 旧 Memory 和新建 Memory 以外的 Memory 挂 Support。
 - 候选准入：证据不完整支持的 Candidate 为 `REJECTED`，记录拒绝事件；同轮重复被合并；每个 revision 报告 admitted/rejected/merged 数量。
 - 合格的行立即采用、不再重发；不合格的行合在一起重问一次：53 项的请求里 2 行出错共 2 次调用，1 行持续出错也是 2 次调用、该项无法判断。多条目请求组超时、输入超限、provider 413、输出截断，或整个输出纠正后仍无法按行读出时对半拆分直到完成，每条 work 恰一个结果；单条 work 仍失败时保留诊断：单项无法判断（超容量或输出仍不合法）由各阶段记录、revision 提交，执行错误使该 revision 不提交，重试成功后 Candidate 不丢失。
-- 等价候选不重复 ADD；跨文档等价可追加 Support；跨文档的 `updates` / `contradicts` 只写关系标注，不生成 Review，不退休任何一方。
+- 同 Unit 内与旧 Memory 等价的 Candidate 由 Sparse Relation 判定，不再 ADD；跨文档的同一知识各自保留 Memory，由关系发现标注 `equivalent`；跨文档的 `equivalent` / `updates` / `contradicts` 都只写关系标注，不生成 Review，不退休、不合并任何一方。
 - Required 拆分/合并、移动+改写、重复原文、新增远处例外都进入同一个合同测试。
 - 每个 incumbent 有明确结果；模型未判到的事实风险与程序丢失完整输入/非法引用分开评价。
 - 一个失败 batch、一次 stale commit、一次 vector failure 分别从正确位置恢复，不能放大成重跑整个 Source。

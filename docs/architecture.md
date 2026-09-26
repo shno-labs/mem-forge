@@ -1279,7 +1279,7 @@ Agent receives a question
 |-------------|----------------|
 | Atomic fact extraction via LLM | One bounded structured Source Unit extraction with exact Evidence localization |
 | ADD/UPDATE/DELETE/NOOP operations | Plus SUPERSEDE (mem0 conflates with UPDATE) |
-| Semantic dedup via embedding similarity | Cosine < 0.08 threshold before insert |
+| Semantic dedup via embedding similarity | Cosine < 0.08 threshold before inserting a user-created Memory; source sync creates Memories per Source Unit and records cross-source sameness as an `equivalent` relation |
 | Confidence scoring | Per-memory, from LLM + corroboration boosting |
 | Separate vector collection for memories | "memories" collection in ChromaDB |
 
@@ -1304,7 +1304,7 @@ The fundamental mismatch:
 | Who remembers | One user's personal facts | Entire team's collective knowledge |
 | Update signal | User corrects in conversation | Source document is edited |
 | Provenance | Optional | Critical (doc, version, passage) |
-| Deduplication | Same user repeats | Same fact in 3+ source systems |
+| Deduplication | Same user repeats | Same fact in 3+ source systems: one Memory per Source Unit, linked by `equivalent` relations |
 | Scoping | user/session/agent | team/project/source |
 
 ---
