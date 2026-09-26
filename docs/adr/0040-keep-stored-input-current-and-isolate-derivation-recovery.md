@@ -254,7 +254,9 @@ Cloud composes this package through its HANA store and the OSS admin app.
 - **Reprocess.** Cloud's Jira and Confluence Sources rediscover through the OSS
   Genes and need provider credentials at reprocess time; the route shape is
   unchanged. `reprocess_preview` gains the keyword `rediscovers`, called only by
-  the OSS admin app.
+  the OSS admin app. The HANA sync run queue's reprocess wording ("stored
+  Documents") changes with the OSS wording, including the error "a reprocess run
+  names its Documents only".
 - **After deploying**, reprocess the 36 Documents that lost changelog entries,
   which now reads Jira, and check whether the 11 retired Memories were
   extracted again.
