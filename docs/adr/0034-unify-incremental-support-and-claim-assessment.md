@@ -25,7 +25,7 @@ update, every ReadingGroup on a first import, one runner item per ReadingGroup,
 with no cost comparison and no truncation. Every reading carries the Unit Title
 ([One deep context-planning module](#one-deep-context-planning-module)).
 [Candidate admission](#candidate-admission) is implemented as
-`candidate-admission-v1`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
+`candidate-admission-v2`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
 request is implemented as `claim-revision-v8-sparse-catalog`, described in
 [Sparse claim catalog](../design/sparse-claim-catalog.md). Relation runs
 concurrently with Support Assessment over every same-Unit old Memory, and
@@ -185,6 +185,38 @@ The durable design uses responsibility names rather than model-stage numbers:
 
 Historical implementation notes may retain L1/L3/L4 labels, but public types,
 methods, result states and new documentation must use the domain names above.
+
+### Complete support
+
+Support Assessment and Candidate Admission judge the same relation: whether
+selected Evidence completely supports a claim. It has one definition, and both
+model requests carry the same text of it (`pipeline/complete_support.py`).
+
+Selected Evidence completely supports a claim only when every specific the claim
+states appears in that Evidence or follows directly from it. Specifics include
+names of people, systems and things, identifiers, quantities, dates and times,
+statuses, conditions and scope. A claim that states any specific the Evidence
+contradicts or does not contain is not supported, even when the rest of the
+claim matches, and no knowledge outside the Evidence counts.
+
+Matching the topic, the action or most of the wording is therefore not enough:
+a claim that names a different identifier than the Unit Title it selects as
+Required Evidence, or a different person, number or date than its Primary
+Evidence, is `UNSUPPORTED` in Support Assessment and `REJECTED` with
+`evidence_incomplete` in Candidate Admission. Change Impact does not judge
+support and does not use this definition.
+
+A change to the definition changes the meaning of both results, so it raises
+`REVISION_SUPPORT_CONTRACT`, the Support Assessment work contract and the
+candidate admission contract together; completed work under an earlier
+definition is never reused. The definition that requires every stated specific
+uses `revision-support-v6`, `support-ordered-reading-v4` and
+`candidate-admission-v2`.
+
+Cloud impact: the definition is shared OSS prompt text. Cloud receives it by
+upgrading the pin; its HANA derivation work and reconciliation manifests carry
+the new contract identities without a schema change, and completed work under
+the earlier identities is recomputed rather than reused.
 
 ### Backend-neutral context and judgment execution
 
@@ -352,7 +384,7 @@ Target contract, tracked by Cloud issue #505.
 
 `ReadingGroup` is a coherent current structure containing one or more selectable EvidenceFragments. `AssessmentContext` is one call's one-or-more ReadingGroups and prompt-local Evidence Catalog. `AssessmentScope` is the complete effective current revision.
 
-Support Assessment follows one rule. It streams the complete current content in a fixed order: first every changed ReadingGroup (added, modified and removed) and the ReadingGroups that contain that work item's own prior Evidence, then every remaining ReadingGroup. The first part is therefore per work item, and the LLM batch runner's chain task carries each item's first-part boundary. The first part carries the fixed claims, compact Support metadata and historical excerpts exactly for `MODIFIED`, `REMOVED` and `AMBIGUOUS`; "Delta" names only this first part of the order, not a mode. A work item cannot exit while any ReadingGroup of the first part is unread, because a later changed group may revoke or qualify the Support. After the first part has been read, each work item leaves the read as soon as it has complete Support. A work item becomes `UNSUPPORTED` only after the whole order has been read without complete Support. The planner derives the order deterministically from exact correspondence, CatalogDiff, coverage and manifest. It makes no Delta/Full cost comparison and no start decision, and it never asks a model whether a partial read is conclusive. The rule requires that the read streams per ReadingGroup (an AssessmentContext holds whole ReadingGroups) and permits a work item to exit between contexts once the first part is read.
+Support Assessment follows one rule. It streams the complete current content in a fixed order: first every changed ReadingGroup (added, modified and removed) and the ReadingGroups that contain that work item's own prior Evidence, then every remaining ReadingGroup. The first part is therefore per work item, and the LLM batch runner's chain task carries each item's first-part boundary. The first part carries the fixed claims, compact Support metadata and historical excerpts exactly for `MODIFIED`, `REMOVED` and `AMBIGUOUS`; "Delta" names only this first part of the order, not a mode. A work item cannot exit while any ReadingGroup of the first part is unread, because a later changed group may revoke or qualify the Support. After the first part has been read, each work item leaves the read as soon as it has complete Support, as defined in [Complete support](#complete-support). A work item becomes `UNSUPPORTED` only after the whole order has been read without complete Support. The planner derives the order deterministically from exact correspondence, CatalogDiff, coverage and manifest. It makes no Delta/Full cost comparison and no start decision, and it never asks a model whether a partial read is conclusive. The rule requires that the read streams per ReadingGroup (an AssessmentContext holds whole ReadingGroups) and permits a work item to exit between contexts once the first part is read.
 
 Reading the whole order means all eligible effective-current Catalog contexts are processed. A small document may fit one AssessmentContext; a large one streams several contexts under one manifest and grounded previous state. `UNSUPPORTED` additionally requires authoritative coverage of every object the Support's Evidence belongs to; the read never upgrades a partial Projection. For example, when a Jira issue's description was fetched completely and rewritten while its comment pagination is partial, a Support whose Evidence is in the description can reach `UNSUPPORTED`, because that object's coverage is authoritative and the carried-forward comments are still read. A Support whose Evidence is in a comment the provider did not return is `UNKNOWN`.
 
@@ -404,7 +436,7 @@ schema changes; Cloud upgrades the pin with no HANA or configuration change.
 
 ### Candidate admission
 
-Implemented as `candidate-admission-v1`; execution through the LLM batch runner.
+Implemented as `candidate-admission-v2`; execution through the LLM batch runner.
 
 Candidate admission runs between Claim Extraction and Sparse Relation, for
 every Candidate, whether or not the Unit has old Memories. One admission request
@@ -412,8 +444,8 @@ covers both duties, with no additional call round:
 
 1. Complete evidence support: the Candidate's selected Primary and Required
    Evidence completely support its Claim, including scope, exceptions and
-   table-header qualifiers. Identifying details the Claim states, such as a
-   name, key or subject, are part of the Claim and need Evidence too.
+   table-header qualifiers, as defined in [Complete support](#complete-support):
+   every specific the Claim states needs that Evidence.
 2. Same-round deduplication: the Candidate states the same knowledge as another
    Candidate of this round. Every admission request carries all of this round's
    Candidate claims (Candidate ID and claim text, no Evidence) as shared context,
@@ -1469,13 +1501,16 @@ it does not migrate stored Evidence or create a lifecycle version.
 Implementing the target contract must allocate
 successor semantic-work and input-policy identities for exact correspondence,
 witness state, the ordered Support read, changed-structure and first-import
-streaming extraction, candidate admission (`candidate-admission-v1`), the Relation
+streaming extraction, candidate admission (`candidate-admission-v1`, and
+`candidate-admission-v2` under [Complete support](#complete-support)), the Relation
 input change (`claim-revision-v8-sparse-catalog`), the coordinator and
 DestructiveValidation. Reading per ReadingGroup with the shared reading context
 and the Unit Title uses `revision-input-v7`, `revision-support-v5`,
 `support-ordered-reading-v3`, `change-impact-v2`, authority policy 6 and model
 presentation policy 5; the extraction contract stays `projection-extraction-v9`
-and the compiler stays 4. Existing completed v6 work
+and the compiler stays 4. [Complete support](#complete-support) then raises
+Support to `revision-support-v6` and the ordered read to
+`support-ordered-reading-v4`. Existing completed v6 work
 must never be reinterpreted under the amended contract. Exact successor numbers
 are assigned with the implementation so they cannot collide with independently
 released work; no stored Evidence or lifecycle schema migration follows merely
