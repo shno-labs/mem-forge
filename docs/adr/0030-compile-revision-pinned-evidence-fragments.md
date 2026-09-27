@@ -6,6 +6,10 @@ judgment. Its L3/L4 orchestration supersedes the earlier matching and separate-c
 mechanics below; preserved authority,
 coverage, representation and transaction invariants still apply.
 
+Amended 2026-09-27 by [ADR 0042](0042-fence-source-writes-with-activity-leases-alone.md): recovery
+and the authority-plan identity carry no Source activity epoch; the epoch named
+below is removed.
+
 Support validation progress is owned exclusively by ADR 0034's baseline
 contract. Evidence creation revisions and extraction run identifiers are
 provenance, not mutable validation checkpoints.

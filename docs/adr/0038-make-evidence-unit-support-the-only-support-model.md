@@ -76,9 +76,9 @@ Evidence Unit Support is the only Support model.
 - Every Support read and write has one path and one invariant check.
 - There is no operator path that rebuilds a Source's Memories. If one is needed,
   it is a new feature built on Evidence Unit Support.
-- The Source activity epoch is still compared on every fenced write, but no
-  operation advances it now that lifecycle maintenance jobs are gone. Whether to
-  keep this fence is a separate decision.
+- No operation advances the Source activity epoch now that lifecycle
+  maintenance jobs are gone. [ADR 0042](0042-fence-source-writes-with-activity-leases-alone.md)
+  removes it.
 - Lifecycle Plan payloads no longer carry a Support scope version or Evidence
   Reference ids, so the payload hash for a given Plan id changes. Derivation
   recovery and tombstones read an already applied Plan instead of applying it

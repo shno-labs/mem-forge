@@ -2,6 +2,10 @@
 
 Status: Accepted
 
+Amended: 2026-09-27 by [ADR 0042](0042-fence-source-writes-with-activity-leases-alone.md): manifests
+and reusable members are bound to the job attempt and configuration revision;
+the Source activity epoch named below is removed.
+
 ## Context
 
 Local daemon sources currently discover provider state and transfer complete

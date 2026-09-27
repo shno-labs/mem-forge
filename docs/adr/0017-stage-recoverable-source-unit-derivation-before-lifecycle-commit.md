@@ -2,6 +2,12 @@
 
 Status: Accepted (2026-07-27)
 
+Amended: 2026-09-27 by [ADR 0042](0042-fence-source-writes-with-activity-leases-alone.md): derivation
+context and identity no longer carry a source-activity epoch, and recovery no
+longer supersedes derivations by epoch. The commit checks the Source activity
+lease, base revision, and projection, context and Document identities. The
+epoch statements below are superseded.
+
 Amended: 2026-09-05 to make derivation creation runtime events and deterministic
 assessments first-write facts. Exact manifest replay validates and returns the
 stored attempt without rebinding those facts to the current deployment.

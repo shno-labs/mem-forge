@@ -151,10 +151,10 @@ plan_projection_evidence_work(
 ```
 
 `SourceUnitDeriver` binds this plan to the access-context and inference-
-capability hashes. `SourceUnitDerivationContext` carries the source-activity
-epoch and, for an all-current reprocess, the explicit source-sync operation ID.
-Those values participate in derivation identity without creating another
-public request hierarchy or persistent business state.
+capability hashes. `SourceUnitDerivationContext` carries, for an all-current
+reprocess, the explicit source-sync operation ID. It participates in derivation
+identity without creating another public request hierarchy or persistent
+business state.
 
 The supported extraction transitions mean:
 
@@ -190,7 +190,6 @@ ProjectionEvidenceWorkPlan(
     required_only_ranges=(EvidenceCandidateRange(..., primary_eligible=False), ...),
     display_context=(...),
     access_context_hash=...,
-    source_activity_epoch=...,
     inference_capability_hash=...,
     authority_policy_version=...,
     digest=...,
@@ -373,8 +372,7 @@ different hash.
 Pending or rejected removal Review does not silently delete old Support. Pending
 Review preserves the existing active/contested Support according to the accepted
 lifecycle contract. Review approval is stale if the Source revision, any selected
-Evidence Unit, affected Memory, Support topology, access authority, or source
-activity epoch changed. Multiple independent Supports are evaluated separately;
+Evidence Unit, affected Memory, Support topology, or access authority changed. Multiple independent Supports are evaluated separately;
 removing one does not retire a Memory still supported elsewhere.
 
 `SourceUnitRevision.access_hash` is a provider projection fact.
@@ -435,7 +433,7 @@ latest downloaded artifact, failed derivation target, or an older revision
 chosen only because it last changed Memory state.
 
 The lifecycle baseline is separate: current Support topology and hashes, Memory
-versions, gate state, access authority, and source-activity epoch. The target is
+versions, gate state, and access authority. The target is
 the immutable staged projection for the current attempt. Before apply, the store
 must prove that the committed current revision and lifecycle baseline still
 equal the captured base; then target Projection and the complete Lifecycle Plan
@@ -448,7 +446,7 @@ The existing derivation/batch identity must include:
 - ordered base and target Observation Revision IDs;
 - complete representation profile and canonical schema versions;
 - ordered Primary and Required-only candidate ranges;
-- access context hash, source-activity epoch, and operation/authorization identity;
+- access context hash and operation/authorization identity;
 - versioned inference capability hash used for Artifact selectability;
 - authority policy version;
 - Context/presentation policy version already required by ADR 0030;
@@ -470,7 +468,7 @@ ordinary Source progress remain distinct:
 - the same immutable base/target/stable scope but authority, presentation,
   extractor or compiler contract changed: `COMMIT_POLICY_REPLACEMENT`; the old
   attempt receives `DERIVATION_INPUT_SUPERSEDED`;
-- target, base, source-activity epoch or access scope changed: create an ordinary
+- target, base or access scope changed: create an ordinary
   new derivation and supersede the old attempt under the existing newer
   target/activity rules, not policy replacement;
 - a representation profile/schema change that creates a new immutable Revision
@@ -533,7 +531,7 @@ The event contains enough identity for deterministic Online Evaluation:
 - work transition, representation profile/schema, authority policy, active
   extraction contract and inference capability identity;
 - changed/authorized/unmappable structure counts and a bounded reason category;
-- trace, deployment and source-activity epoch needed for runtime correlation;
+- trace and deployment needed for runtime correlation;
 - whether LLM invocation and lifecycle mutation were skipped.
 
 It does not store raw source content, Evidence text, credentials, access tokens,

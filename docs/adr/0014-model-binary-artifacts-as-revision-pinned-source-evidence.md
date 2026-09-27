@@ -7,7 +7,10 @@ Amended: 2026-07-27 by [ADR 0017](0017-stage-recoverable-source-unit-derivation-
 normalization; 2026-08-27 by
 [ADR 0030](0030-compile-revision-pinned-evidence-fragments.md) to attach
 non-supporting Context through a separate current association rather than as a
-member of the immutable supporting Evidence Unit.
+member of the immutable supporting Evidence Unit; 2026-09-27 by
+[ADR 0042](0042-fence-source-writes-with-activity-leases-alone.md) to resolve raw Artifact inputs
+within the source, workspace and Source Unit under the current local-agent
+lease, without a Source activity epoch.
 
 ## Context
 
