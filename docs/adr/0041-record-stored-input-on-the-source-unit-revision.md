@@ -78,8 +78,8 @@ an earlier state (A, B, then A) reuses the stored row of A, and objects are
 written in place per Source and Document, so the input of any revision but the
 latest recorded one is no longer readable. The row names the revision it
 belongs to instead. When a new input no longer names an object the replaced
-input named (the Document was renamed or moved), that object is queued for
-cleanup unless another Unit's input names it. `raw_content_sha256` identifies
+input named (the Document was renamed or moved), that object is released for
+cleanup (see below). `raw_content_sha256` identifies
 the bytes the revision was projected from; the object at the URI can hold a
 later uncommitted sync's input, as ADR 0040 describes.
 
@@ -132,18 +132,19 @@ holds, stores or may reprocess a Document.
 `/artifacts/{kind}` serve the stored input of that Unit's current revision,
 when the caller can discover its Source. Memory Evidence and review details
 link through the Unit that supports the Memory, so `get_resource` reads that
-Source's copy. `GET /api/v1/documents/{doc_id}/...` keeps its paths and serves
-the most recently recorded input among the Sources that hold the Document and
-that the caller can discover; its manifest reports `source_id` and
-`source_unit_id`. The plugin proxies accept both path families.
+Source's copy. `GET /api/v1/documents/{doc_id}/...` keeps its paths. Among
+the Sources that hold the Document and that the caller can discover, it serves
+the most recently recorded input whose requested object is still stored, so a
+copy whose object is missing falls back to the next one; the manifest lists
+the newest copy that still has any object. The manifest reports `source_id`
+and `source_unit_id`. The plugin proxies accept both path families.
 
 ### Removal and object lifecycle are per Source
 
 `delete_projected_document(doc_id, *, source_id)` removes one Source's copy:
 it requires that no `memory_sources` edge of that Source names the Document,
-deletes the input of that Source's Units that no longer hold it, and queues
-their objects for cleanup. Objects are keyed per Source, so no other Source's
-input names them. The Document row stays while another Source holds the
+deletes the input of that Source's Units that no longer hold it, and releases
+their objects for cleanup. The Document row stays while another Source holds the
 Document or any Memory names it, and its `source` is re-pointed to a Source
 that still holds it; otherwise the row and its side tables are deleted.
 `rebind_projected_document_support(old, new, *, source_id)` moves only that
@@ -153,6 +154,21 @@ Document keeps its edges.
 Deleting a Source keeps its Units and their input as history, as before, and
 deletes no objects. A Document row that named it is re-pointed to a Source
 that still holds the Document.
+
+Whether a released object is deleted is decided when cleanup runs, not when it
+is released. Keys are written in place per Source, Document and title, so the
+same key can be written and named again before cleanup runs: a Document
+renamed and renamed back, or removed and listed again. Releasing only queues
+the URI in `source_artifact_cleanup_tasks`. `SourceArtifactCleanupService`
+processes a Source's tasks while holding that Source's activity lease
+(`MAINTENANCE`), the lease every sync of the Source holds while it writes
+objects and records the input that names them. Under the lease it checks
+`source_artifact_uri_is_referenced` (any Source Unit input, or a retained
+sync input `raw_uri`) and deletes only an object nothing names; a named one
+completes its task without deletion, and its next release queues it again.
+A Source with an active activity keeps its tasks for a later run. The URI
+columns of `source_unit_inputs` and `source_sync_inputs.raw_uri` are indexed
+for this lookup.
 
 ### Upgrade
 
@@ -199,6 +215,8 @@ of this decision.
 - A Document row that names a Source without a current Unit for it (a row
   written before Source Units existed) no longer counts as that Source's
   Document: a sync neither removes it nor fails on it.
+- A released object waits in the cleanup queue while its Source has an
+  active sync or other activity; the next cleanup run after it ends deletes it.
 - When a tombstone leaves another Source's Memory on the Document,
   `can_delete_document` is false and the removing Source's input and objects
   stay until a later removal succeeds; they are never read, because the Unit
@@ -230,9 +248,13 @@ sync orchestrator.
   `apply_source_projection_lifecycle` take `unit_input`;
   `delete_projected_document` and `rebind_projected_document_support` take a
   required `source_id`; new `get_source_unit_input` and
-  `list_document_source_unit_inputs`; `count_missing_pdf_uris`, which the OSS
-  orchestrator now calls on the store, joins the protocol. `WorkspaceDatabase`,
-  `WORKSPACE_SYNC_RUNTIME_METHODS` and `HanaRelationalStore` change with it.
+  `list_document_source_unit_inputs` (these are on the OSS `RelationalStore`
+  protocol). The OSS orchestrator calls `list_indexed_doc_ids` and
+  `count_missing_pdf_uris` on its `Database`, not through `RelationalStore`;
+  on Cloud, `count_missing_pdf_uris` joins `WorkspaceDatabase` and
+  `WORKSPACE_SYNC_RUNTIME_METHODS`, where `list_indexed_doc_ids` already is.
+  `WorkspaceDatabase`, `WORKSPACE_SYNC_RUNTIME_METHODS` and
+  `HanaRelationalStore` change with the rest.
   `get_content_hash` is removed. `DocumentRecord` loses `raw_content_uri`,
   `raw_content_type`, `normalized_content_uri` and `pdf_content_uri`.
 - **Readers.** `count_documents(source=)`, `list_indexed_doc_ids`,
@@ -241,10 +263,14 @@ sync orchestrator.
   direct-write gate and `_source_id_for_doc_sync` read Source Units and their
   input. `CloudGeneSyncOrchestrator` drops its `_get_indexed_doc_ids` and
   `_count_missing_pdf_uris` overrides, which now equal the OSS ones.
-- **Object store.** `ObjectDocumentStore` keys are already per Source and
-  Document; no change. Cleanup still runs through
-  `SOURCE_ARTIFACT_CLEANUP_TASKS` and the worker's
-  `SourceArtifactCleanupService`.
+- **Object store and cleanup.** `ObjectDocumentStore` keys are already per
+  Source and Document; no change. The worker's `SourceArtifactCleanupService`
+  now needs `source_artifact_uri_is_referenced`, `get_source`,
+  `acquire_source_activity` and `release_source_activity` on the workspace
+  database; HANA implements the first (new) and has the others. HANA indexes
+  `SOURCE_UNIT_INPUTS` on each URI column and `SOURCE_SYNC_INPUTS` on
+  `RAW_URI`. Releasing objects no longer checks references, so a batch that
+  releases two inputs naming one URI queues it once.
 - **Routes.** The admin app mounted by `proxy/workspace_proxy.py` gains the
   `/api/v1/source-units/...` routes; Evidence links use them. No proxy change.
 - **Call sites.** `proxy/external_runtime.py` constructs the orchestrator and
