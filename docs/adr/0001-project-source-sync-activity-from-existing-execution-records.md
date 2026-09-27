@@ -14,6 +14,11 @@ Amended: 2026-09-26 by [ADR 0038](0038-make-evidence-unit-support-the-only-suppo
 lifecycle-maintenance jobs are removed, so Source Sync Activity projects only
 local collection jobs and server processing runs. The maintenance statements
 below describe the removed projection.
+Amended: 2026-09-27 by [ADR 0042](0042-fence-source-writes-with-activity-leases-alone.md):
+there is no Source activity epoch. Source writes are fenced by the activity
+lease identity, capability and expiry, and a local collection job by its lease,
+attempt and configuration revision. The heartbeat no longer terminally fails
+jobs for an epoch mismatch; the epoch statements below are superseded.
 
 Local collection jobs, server processing runs, and lifecycle-maintenance jobs keep their independent durable lifecycles because they have different owners, leases, retries, and storage transactions. The Sources UI consumes one Source Sync Activity read model projected from those records, rather than introducing a cross-store master operation or extending one execution record to own the others.
 
