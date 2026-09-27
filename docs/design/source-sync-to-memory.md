@@ -440,7 +440,7 @@ COMPLETE_SNAPSHOT 证明 A 消失（B 提交之后）
 
 统一流程依赖 Adapter 提供：稳定 Unit/Observation identity、coherent provider checkpoint、细粒度 coverage、Added/Changed/Removed/Tombstoned facts、结构/顺序/回复关系、exact selectable ranges，以及 Unit Title。
 
-Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 summary，Confluence 的 space 和页面标题，GitHub 的仓库、路径和 ref，GitHub Pages 的标题和 URL，本地 Markdown 的 vault 和路径，Teams 的会话类型、team、频道、窗口标题和时间范围，agent session 的客户端、窗口类型和标题；扩展 Source 至少给出标题和 source type。Adapter 只写 payload 里有的值，不猜测，也不为某个 Source 写专用 prompt。Unit Title 投影为每个 live Unit 的第一条 Observation（类型 `unit_identity`，表示 `unit-identity`），每次投影都返回，部分投影下也不会成为 `UNKNOWN`；整个 Unit 被 tombstone 时不再有 Unit Title。它编译为一个 Fragment：永远不能作为 Primary，可以被选为 Required 并随 Evidence 持久化。Claim 写出或依赖 Unit 名称（例如 issue key）时应把它选为 Required，候选准入据此检查识别信息（第 0.6.1 节）。Unit Title 变化（Jira summary 修改、页面改名、文件移动）是普通的修改内容：不产生抽取工作，选了它的 Support 为 `MODIFIED`，其他 Support 经 Change Impact。Jira 应分别表达 core/comments/changelog coverage 并完成分页；Teams 应提供稳定 thread/window membership、reply pagination 和明确 edit/delete/tombstone。Adapter 无法证明时降级为 Partial，流程仍可处理 positive changes，但不会从缺失推断删除。
+Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 summary，Confluence 的 space 和页面标题，GitHub 的仓库、路径和 ref，GitHub Pages 的标题和 URL，本地 Markdown 的 vault 和路径，Teams 的会话类型、team、频道、窗口标题和时间范围，agent session 的客户端、窗口类型和标题；扩展 Source 至少给出标题和 source type。Adapter 只写 payload 里有的值，不猜测，也不为某个 Source 写专用 prompt。Unit Title 投影为每个 live Unit 的第一条 Observation（类型 `unit_identity`，表示 `unit-identity`），每次投影都返回，部分投影下也不会成为 `UNKNOWN`；整个 Unit 被 tombstone 时不再有 Unit Title。它编译为一个 Fragment：永远不能作为 Primary，可以被选为 Required 并随 Evidence 持久化。Claim 写出或依赖 Unit 名称（例如 issue key）时应把它选为 Required，候选准入据此检查识别信息（第 0.6.1 节）。Unit Title 变化（Jira summary 修改、页面改名、文件移动）是普通的修改内容：不产生抽取工作，选了它的 Support 为 `MODIFIED`，其他 Support 经 Change Impact。Jira 按 Jira Data Center 的接口读取：issue 和搜索结果内嵌的 changelog 就是完整历史（Data Center 没有分页的 changelog 接口，不需要也无法再读），评论少于 `total` 时再读一页 `/issue/{key}/comment`；changelog 或评论仍少于 `total` 时整个 issue 为 Partial；Teams 应提供稳定 thread/window membership、reply pagination 和明确 edit/delete/tombstone。Adapter 无法证明时降级为 Partial，流程仍可处理 positive changes，但不会从缺失推断删除。
 
 **Observation 修订时间。** 每个 Observation Revision 的 `observed_at` 是来源自己记录的、这份内容形成的时间，不是 MemForge 发现、拉取、接收或同步它的时间。来源没有这样的时间时为空，任何路径都不用同步时间、提交时间或当前时间代替。时间是修订的属性，不参与修订身份：修订 id 只由 Observation 和语义哈希决定，Unit 修订、Evidence Unit 和 Lifecycle Plan 的身份也不含时间，所以纠正时间不会产生新修订或 Delta。已有修订的时间为空、本次投影给出时间时，存储补写一次；已写入的时间不再改。内容从 A 改成 B 再改回 A 时，第二次的 A 复用第一次的修订，时间仍是第一次 A 的时间。
 
@@ -451,7 +451,7 @@ Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 s
 | 来源 | Observation 时间 | 额外成本 |
 |---|---|---|
 | Confluence 页面正文 | 页面版本时间 `version.when`，发现时已取得 | 无 |
-| Jira `issue_core` | changelog 完整时，取改动 core 字段（summary、description、status、priority、assignee、labels、resolution）的最晚一条 history 的 `created`；没有这样的 history 时取 `fields.created`；changelog 被截断或 payload 里没有 changelog 时为空。Issue 接口内嵌的 changelog 只有一页（通常 100 条），history 更多的 issue 被截断，core 时间为空。`fields.updated` 会被评论等其他变化推后，不用 | 无。以后如要补上，只对被截断的 issue 分页读 `/issue/{key}/changelog`，每个这样的 issue 多几次调用 |
+| Jira `issue_core` | changelog 完整时，取改动 core 字段（summary、description、status、priority、assignee、labels、resolution）的最晚一条 history 的 `created`；没有这样的 history 时取 `fields.created`；changelog 被截断或 payload 里没有 changelog 时为空。Jira Data Center 在 issue 和搜索结果里内嵌完整 changelog，只有管理员设置了响应上限、返回的 history 少于 `total` 时才算截断。`fields.updated` 会被评论等其他变化推后，不用 | 无。Data Center 没有分页的 changelog 接口，被截断的 changelog 无法补全，不另发请求 |
 | Jira comment、changelog | 评论的 `updated`，没有则 `created`；history 的 `created`。Issue 的文档时间取 `fields.updated` | 无，local agent 不改 |
 | Teams message | 编辑过的消息取 chatsvc 的 `properties.edittime`（毫秒时间戳，规范化消息里的 `edited_time`），否则取发送时间 `composetime`（`time`）。窗口的文档时间取窗口内最晚的一个。之前已记录的编辑消息修订保留当时的发送时间 | 无，时间在已取得的消息里；local agent 升级后才发送 `edited_time` |
 | GitHub Repository（cloud pull） | 在本次集合的 commit 上，改动该文件的最后一次提交的 committer 时间；符号链接取链接本身和最终目标两者中较晚的一次，中间的链接不计。blob 没变时沿用上次同步记录的时间（文档 `item_extra` 的 `last_commit_at`）。GitHub 拒绝请求时时间为空，文件照常同步，下次同步再查 | 只对新 blob 或还没有时间的文件多 1 次 REST 调用（`commits?sha=&path=&per_page=1`，符号链接 2 次），在 `fetch()` 里执行 |
@@ -536,7 +536,7 @@ Jira Issue 使用 immutable numeric issue ID；core、每个 comment 和每个 c
 history 是独立 Observation。Core 由注册 canonical fields 比较，description/comment
 正文再按 Markdown structures 比较。新增 comment/changelog 不使其他 Observation 的
 Evidence 失效；comment edit 只重评该 comment 的 Supports。Comments 或 changelog
-分页不完整时 Projection 必须为 Partial，未返回的旧 Evidence 保留，不能退休。
+返回条数少于 `total` 时 Projection 必须为 Partial，未返回的旧 Evidence 保留，不能退休。
 
 这些规则不能证明模型语义召回。上线前必须在不执行 lifecycle mutation 的固定
 revision-pair cohort 上 shadow 运行，并按 source type 与 Evidence 状态记录：direct
