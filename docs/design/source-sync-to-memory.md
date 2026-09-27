@@ -833,7 +833,7 @@ Relation 与 Support Assessment 并行执行，两条线都完成后由 SupportR
 | contradicts | 同一主体、重叠范围和时间内不能同时为真 |
 | 不确定 | 明确列出无法判断的旧 Memory ID |
 
-未列出的旧 Memory 表示“未提出关系”。缺少 Candidate 行、未知 ID、重复或矛盾的关系或模型拒绝都是执行失败；输出截断先由 LLM batch runner 拆分重发；不合格的行先重问一次。这些都不能当作“未提出关系”。某个 Candidate 单独判断仍无法判断时，按第 0.6.2 节消费它，并拦下本 Unit 的全部破坏性决定；执行错误时该 Source Unit revision 不提交，下次同步重试。
+未列出的旧 Memory 表示“未提出关系”。缺少 Candidate 行、重复或矛盾的关系是这一行不合格，先重问一次；回答里出现请求没有提供的 ID，整份回答作废，整体纠正一次；输出截断先由 LLM batch runner 拆分重发。这些都不能当作“未提出关系”。某个 Candidate 单独判断仍无法判断时，按第 0.6.2 节消费它，并拦下本 Unit 的全部破坏性决定；执行错误时该 Source Unit revision 不提交，下次同步重试。
 
 Relation 结果不是 lifecycle action。等价和矛盾如何处理由第 0.6.3 节的组合表决定；任何 REMOVE、SUPERSEDE 或 RETIRE 仍需要 Support Assessment 与 DestructiveValidation。跨文档关系继续由 bounded retrieval 产生 `K` pairs 后分类，不做全工作区 N×M。
 
@@ -1110,7 +1110,7 @@ Sparse Relation 在同 Unit 内读取全部 Active 旧 Memory，每个 Candidate
 
 - 首次导入的流式读取和更新时只读变化结构，都只改变供应内容，不能改变同一变化的新知识授权。
 - 三个例子分别得到证据更新、替代、无损修订；任何新增条件不能藏在 Required 中而保留错误 claim。
-- Sparse Relation 为每个 `ADMITTED` Candidate 输出一行；覆盖等价、细化双向、同范围新增要求、仅缩小范围、冲突和不确定。缺 Candidate 行、非法引用、重复或矛盾关系均为执行失败，不能被静默当作未提出关系；单个 Candidate 仍无法判断时，该 Candidate 被消费、不 ADD，本 Unit 本轮不执行任何破坏性决定，revision 照常提交。
+- Sparse Relation 为每个 `ADMITTED` Candidate 输出一行；覆盖等价、细化双向、同范围新增要求、仅缩小范围、冲突和不确定。缺 Candidate 行、非法引用、重复或矛盾关系先重问一次，不能被静默当作未提出关系；单个 Candidate 仍无法判断时，该 Candidate 被消费、不 ADD，本 Unit 本轮不执行任何破坏性决定，revision 照常提交。
 - 第 0.6.3 节组合表每行一个 fixture；每条 Claim 至多复核 1 次，复核的执行错误使 revision 不提交、下次同步重试。
 - Relation 漏报 equivalent 的 fixture 下，Candidate 新建自己的 Memory，本 Unit 多出一条 Active Memory（ADR 0039 接受的结果，见 `test_an_add_restating_a_kept_old_memory_creates_its_own_memory`）；Lifecycle Plan 拒绝给本 Plan 旧 Memory 和新建 Memory 以外的 Memory 挂 Support。
 - 候选准入：证据不完整支持的 Candidate 为 `REJECTED`，记录拒绝事件；同轮重复被合并；每个 revision 报告 admitted/rejected/merged 数量。
