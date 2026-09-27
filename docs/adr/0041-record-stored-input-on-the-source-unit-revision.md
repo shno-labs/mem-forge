@@ -163,12 +163,40 @@ the URI in `source_artifact_cleanup_tasks`. `SourceArtifactCleanupService`
 processes a Source's tasks while holding that Source's activity lease
 (`MAINTENANCE`), the lease every sync of the Source holds while it writes
 objects and records the input that names them. Under the lease it checks
-`source_artifact_uri_is_referenced` (any Source Unit input, or a retained
-sync input `raw_uri`) and deletes only an object nothing names; a named one
-completes its task without deletion, and its next release queues it again.
-A Source with an active activity keeps its tasks for a later run. The URI
-columns of `source_unit_inputs` and `source_sync_inputs.raw_uri` are indexed
-for this lookup.
+`source_artifact_uri_is_referenced(uri, source_id=)` and deletes only an
+object nothing names. A reference is any Source Unit input, a retained sync
+input `raw_uri`, or the `unit_input` of a derivation of that Source that is
+staged and not yet applied or superseded (`pending`, `retryable_failure`,
+`completed`): a sync that writes its objects and stages its derivation but
+fails before the commit has released its lease, and the next run resumes the
+derivation and commits exactly those objects. A named object completes its
+task without deletion, and its next release queues it again. The URI columns
+of `source_unit_inputs` and `source_sync_inputs.raw_uri` are indexed for this
+lookup; the derivation part is bounded by the `(source_id, status)` index on
+`source_derivation_attempts`.
+
+Cleanup processes tasks per Source, the Source with the oldest task first. A
+Source whose lease another activity holds is skipped without using up the
+batch, so one long sync does not hold back other Sources' cleanup. Cleanup
+runs periodically: every minute from the OSS `SyncScheduler`
+(`ARTIFACT_CLEANUP_JOB_ID`, `ARTIFACT_CLEANUP_BATCH_SIZE` tasks per run) and
+on every pass of the Cloud workspace worker. A path that releases objects only
+queues them; the Source deletion route still runs a batch right after
+retiring the Source.
+
+Two writers do not hold the Source lease: local-agent Artifact uploads and
+local-agent package pushes. Each of their attempts writes a key of its own
+(the attempt id is part of the Artifact id or the package file name), so a
+task queued by an earlier failed or duplicate attempt names only the object
+that attempt abandoned, and no later attempt writes it again. Taking the lease
+does not fit these uploads: one collection pushes many inputs of the same
+Source in parallel, and uploads run while the server syncs the Source, so an
+exclusive lease would serialize them and reject uploads during every sync.
+Recording the reference before the write does not fit either: the object store
+chooses the key, and a package is built and written in one step before its
+sync input is recorded. Deduplication is unchanged, because it keys on the
+input hash recorded in `source_sync_inputs`, not on the object key; the
+duplicate object of a lost race is queued for cleanup.
 
 ### Upgrade
 
@@ -217,6 +245,8 @@ of this decision.
   Document: a sync neither removes it nor fails on it.
 - A released object waits in the cleanup queue while its Source has an
   active sync or other activity; the next cleanup run after it ends deletes it.
+- A duplicate or failed local-agent upload leaves its own object until the
+  next periodic cleanup run, instead of being deleted in the request.
 - When a tombstone leaves another Source's Memory on the Document,
   `can_delete_document` is false and the removing Source's input and objects
   stay until a later removal succeeds; they are never read, because the Unit
@@ -267,7 +297,11 @@ sync orchestrator.
   Source and Document; no change. The worker's `SourceArtifactCleanupService`
   now needs `source_artifact_uri_is_referenced`, `get_source`,
   `acquire_source_activity` and `release_source_activity` on the workspace
-  database; HANA implements the first (new) and has the others. HANA indexes
+  database, plus `list_source_artifact_cleanup_source_ids` and a `source_id`
+  filter on `list_source_artifact_cleanup_tasks`; HANA implements the new ones
+  and has the others. `source_artifact_uri_is_referenced` also reads unapplied
+  `SOURCE_DERIVATION_ATTEMPTS` of the Source through
+  `JSON_VALUE(CONTEXT_PAYLOAD_JSON, '$.unit_input...')`. HANA indexes
   `SOURCE_UNIT_INPUTS` on each URI column and `SOURCE_SYNC_INPUTS` on
   `RAW_URI`. Releasing objects no longer checks references, so a batch that
   releases two inputs naming one URI queues it once.
