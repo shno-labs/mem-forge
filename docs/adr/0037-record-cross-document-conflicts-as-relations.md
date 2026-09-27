@@ -96,6 +96,17 @@ no time, the time is unknown, never a sync or submission time. The title, time
 and Evidence are the inputs for deciding whether two statements are about the
 same situation.
 
+A Memory can hold several current Evidence Units, several of them in one Source
+Unit: an `equivalent` Sparse Relation attaches a Candidate's Evidence Unit to an
+existing Memory. The classifier reads one of them, the current Evidence Unit
+with the newest source revision time, which is the time `updates` is ordered
+by. An unknown time ranks below every known one, and Units with the same time go
+to the lowest Evidence Unit id, so every read makes the same choice
+(`newest_evidence_unit_id`). The challenger is read from its current Evidence
+Units in the work's Source Unit; that Evidence Unit is also the one the run is
+recorded against and the completion guard checks. A candidate is read from all
+its current Evidence Units.
+
 The Evidence text is only as narrow as the stored Anchor. A whole-Observation
 Anchor shows the whole Observation, so a page or file Primary shows the whole
 page or file, up to the Fragment catalog limits (`DEFAULT_MAX_FRAGMENTS`,
@@ -190,7 +201,12 @@ not a work queue, and has no pending state.
 
 ### Failed and exhausted work
 
-Bounded exponential retry stays as in ADR 0009. Exhausted discovery work is
+Bounded exponential retry stays as in ADR 0009 for a failure that can succeed
+when it is tried again. A failure that repeats on every attempt, by the one rule
+every stage uses (`failure_retryable`; for example a model request error or an
+invalid response), finishes the work at once with its error code instead of
+spending the remaining attempts. Exhausted discovery work is failed work with no retry
+left: it used every attempt, or its failure repeats on every attempt. It is
 visible: the admin API lists it with its last error, and a count is exported
 with the worker metrics. An operator can re-run exhausted or completed
 discovery work selected by error code, time range or classifier version, for
@@ -253,6 +269,15 @@ applied counts. Deleting them is a separate approved step.
   same methods. `record_source_projection` writes a missing `observed_at` once
   when a later projection gives it; the HANA adapter must do the same, or
   Cloud revisions recorded without a time keep an unknown Evidence time.
+- The HANA `get_current_relation_evidence_unit` returns the Evidence Unit
+  `newest_evidence_unit_id` chooses among the Memory's current ones in the
+  Source Unit, reading each Primary's revision `observed_at` through
+  `source_evidence_time`, so SQLite and HANA make the same choice. The HANA
+  lease and readiness queries lease failed work only when its retry is due, so
+  failed work without a scheduled retry stays exhausted, and
+  `fail_relation_discovery_work` refuses non-exhausted work without a retry
+  time. Exhausted work is selected by the shared
+  `relation_discovery_work_selection_sql`, which HANA already uses.
 - `proxy/external_runtime.py` call sites do not change.
 
 ## Related
