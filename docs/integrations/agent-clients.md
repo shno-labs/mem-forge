@@ -81,7 +81,7 @@ sequenceDiagram
   Proxy->>Service: GET /api/memories/{memory_id}
   Service-->>Proxy: memory detail + source artifact URLs
   Agent->>Proxy: MCP stdio tools/call get_resource(mode=file)
-  Proxy->>Service: GET /api/documents/{doc_id}/pdf
+  Proxy->>Service: GET /api/source-units/{source_unit_id}/pdf
   Service-->>Proxy: artifact bytes
   Proxy->>Cache: write ~/.memforge-agent/artifacts/...
   Proxy-->>Agent: local_path + metadata
