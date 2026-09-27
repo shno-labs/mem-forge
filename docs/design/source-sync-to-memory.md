@@ -33,15 +33,21 @@ flowchart TD
     A[Provider payload] --> B[Source Adapter
 identity + coverage + change facts]
     B --> C[immutable base + staged target Projection]
-    C --> R[RepresentationCompiler
-Fragments + ReadingGroups + exact coordinates]
+    C --> SI[先存本 Source 的原始输入
+raw / markdown / PDF]
+    SI --> R[RepresentationCompiler
+Fragments + ReadingGroups + exact coordinates
+Unit Title 为第一条 Observation]
     R --> D[RevisionContextPlanner + CatalogDiff]
     D --> E[Claim Extraction
-Structured LLM]
+Structured LLM
+单项无法判断的 ReadingGroup 跳过并记录]
     E --> G[LLM · 候选准入
-证据完整支持 + 同轮去重]
+证据完整支持 + 同轮去重
+单项无法判断按 REJECTED 记录]
     G -->|ADMITTED| H[Sparse Relation
-Structured LLM]
+Structured LLM
+单项无法判断：Relation 不完整]
     D --> P[旧 Evidence 精确对应
 按整个 Support 路由]
     P -->|全部 EXACT_UNCHANGED 且无变化内容| RB[REBIND_SUPPORT
@@ -64,6 +70,8 @@ AFFECTED / UNAFFECTED]
     F1 -->|执行错误| XF[本 revision 不提交
 下次同步重试]
     F2 -->|执行错误| XF
+    E -->|执行错误| XF
+    G -->|执行错误| XF
     RB --> CO[SupportRelationCoordinator
 程序：组合表]
     F1 -->|SUPPORTED| CO
@@ -82,13 +90,19 @@ AFFECTED / UNAFFECTED]
 deterministic proposal]
     I --> J{destructive action?}
     J -- no --> L[aggregate Active Supports]
-    J -- yes --> K[automatic DestructiveValidation]
+    J -- yes --> K[automatic DestructiveValidation
+Support UNRESOLVED 或 Relation 不完整：KEEP]
     K --> L
-    L --> M[stale-guarded atomic commit]
+    L --> M[stale-guarded atomic commit
+Unit revision 与本 Source 的输入记录同一事务]
+    M -.->|提交后异步| XD[跨文档关系分类器
+none / equivalent / updates / contradicts
+只写标注，不合并、不退休]
     classDef classifier fill:#fef3c7,stroke:#b45309,color:#1f2937
     class Y classifier
     classDef failnote fill:#f3f4f6,stroke:#9ca3af,stroke-dasharray:4 3,color:#4b5563
     class XF failnote
+    class XD classifier
 ```
 
 图中 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation 都经同一个 LLM batch runner 调用模型（见 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md)）。模型对每一项各返回一行。响应模型只检查一行的 JSON 结构（类型、必填字段、枚举值）；关于一行含义的规则都是行规则，由各阶段逐行单独检查。合格的行立即采用，不再重发；不合格或缺失的行合在一起重问一次，只带这些项，并逐项写明错误（例如“NEW-0003 引用了 MEM-0037，不在它允许比较的列表里”）。所以一个请求里有几行出错，都只多一次调用。如果某行用了本请求没有提供的 ID，说明整份回答的 ID 已经对不上（比如每个答案都挪到了下一项的 ID 下），整份回答按无法读出处理。只有无法定位到具体哪一项时才对半拆分：多条目请求组超时、超出容量，或者整个输出无法按行读出（格式错乱、有歧义的 JSON、schema 不符、出现本请求没有提供的 ID）且整体纠正一次后仍读不出。逐行校验适用于 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation（`claim_revision`）；同 Unit identity 的目录作为一个整体校验，仍是整体纠正一次后拆分。失败按一条规则处理：某一项单独处理仍无法判断时，由所在阶段记录下来，revision 照常提交；其余失败统称执行错误，使该 Source Unit revision 不提交，下次同步重试。“无法判断”只有两种：这一项单独就超出容量；或模型确实返回了结果，但重问或纠正一次后仍通不过校验（包括格式错乱、有歧义的 JSON）。provider 错误、超时、被 provider 拒绝的请求（如 400）和意外异常（包括代码缺陷）都是执行错误。一项无法判断，不会挡住同一 Unit 的其他内容。Change Impact 用单独颜色标出，因为它是可以换成分类器 backend 的判断任务。Support 线与 Relation 线并行执行，只在 SupportRelationCoordinator 汇合。
@@ -565,8 +579,9 @@ flowchart TD
     A[触发 Sync] --> B[SourceSyncRun 入队 / Worker 租约]
     B --> C[ContentItem → RawContent → NormalizedContent]
     C --> D[固定 SourceUnit / Observation revisions / target Projection]
-    D --> F[RevisionContextPlanner：Fragments、ReadingGroups、读取顺序与 manifest]
-    F --> E[保存原始文件与 SourceDerivationAttempt 工作清单]
+    D --> W[保存本 Source 的原始输入：raw、markdown、PDF]
+    W --> F[RevisionContextPlanner：Fragments、ReadingGroups、读取顺序与 manifest]
+    F --> E[SourceDerivationAttempt 工作清单]
     E --> G[Claim Extraction：新候选]
     G --> H[候选准入：证据完整支持 + 同轮去重]
     H --> J[Sparse Relation：ADMITTED Candidate 与同 Unit 旧 Memory]
@@ -578,9 +593,10 @@ flowchart TD
     S --> K
     I --> K
     J --> K
-    K --> L[L5 实体解析：条件性 LLM]
+    K --> V[DestructiveValidation：程序]
+    V --> L[L5 实体解析：条件性 LLM]
     L --> M[Evidence Resolver + Lifecycle Planner：程序]
-    M --> N[单个 Source Unit 数据库事务]
+    M --> N[单个 Source Unit 数据库事务：Unit revision 与本 Source 的输入记录]
     N --> O[Memory + Evidence Unit + Support / 或 Review]
     N --> P[Vector Outbox：Embedding 与索引交付]
     N --> Q[RelationDiscoveryWork：L7 提交后跨文档关系，只写关系标注]
@@ -817,7 +833,7 @@ Relation 与 Support Assessment 并行执行，两条线都完成后由 SupportR
 | contradicts | 同一主体、重叠范围和时间内不能同时为真 |
 | 不确定 | 明确列出无法判断的旧 Memory ID |
 
-未列出的旧 Memory 表示“未提出关系”。缺少 Candidate 行、未知 ID、重复或矛盾的关系或模型拒绝都是执行失败；输出截断先由 LLM batch runner 拆分重发；不合格的行先重问一次。这些都不能当作“未提出关系”。某个 Candidate 单独判断仍无法判断时，按第 0.6.2 节消费它，并拦下本 Unit 的全部破坏性决定；执行错误时该 Source Unit revision 不提交，下次同步重试。
+未列出的旧 Memory 表示“未提出关系”。缺少 Candidate 行、重复或矛盾的关系是这一行不合格，先重问一次；回答里出现请求没有提供的 ID，整份回答作废，整体纠正一次；输出截断先由 LLM batch runner 拆分重发。这些都不能当作“未提出关系”。某个 Candidate 单独判断仍无法判断时，按第 0.6.2 节消费它，并拦下本 Unit 的全部破坏性决定；执行错误时该 Source Unit revision 不提交，下次同步重试。
 
 Relation 结果不是 lifecycle action。等价和矛盾如何处理由第 0.6.3 节的组合表决定；任何 REMOVE、SUPERSEDE 或 RETIRE 仍需要 Support Assessment 与 DestructiveValidation。跨文档关系继续由 bounded retrieval 产生 `K` pairs 后分类，不做全工作区 N×M。
 
@@ -1094,7 +1110,7 @@ Sparse Relation 在同 Unit 内读取全部 Active 旧 Memory，每个 Candidate
 
 - 首次导入的流式读取和更新时只读变化结构，都只改变供应内容，不能改变同一变化的新知识授权。
 - 三个例子分别得到证据更新、替代、无损修订；任何新增条件不能藏在 Required 中而保留错误 claim。
-- Sparse Relation 为每个 `ADMITTED` Candidate 输出一行；覆盖等价、细化双向、同范围新增要求、仅缩小范围、冲突和不确定。缺 Candidate 行、非法引用、重复或矛盾关系均为执行失败，不能被静默当作未提出关系；单个 Candidate 仍无法判断时，该 Candidate 被消费、不 ADD，本 Unit 本轮不执行任何破坏性决定，revision 照常提交。
+- Sparse Relation 为每个 `ADMITTED` Candidate 输出一行；覆盖等价、细化双向、同范围新增要求、仅缩小范围、冲突和不确定。缺 Candidate 行、非法引用、重复或矛盾关系先重问一次，不能被静默当作未提出关系；单个 Candidate 仍无法判断时，该 Candidate 被消费、不 ADD，本 Unit 本轮不执行任何破坏性决定，revision 照常提交。
 - 第 0.6.3 节组合表每行一个 fixture；每条 Claim 至多复核 1 次，复核的执行错误使 revision 不提交、下次同步重试。
 - Relation 漏报 equivalent 的 fixture 下，Candidate 新建自己的 Memory，本 Unit 多出一条 Active Memory（ADR 0039 接受的结果，见 `test_an_add_restating_a_kept_old_memory_creates_its_own_memory`）；Lifecycle Plan 拒绝给本 Plan 旧 Memory 和新建 Memory 以外的 Memory 挂 Support。
 - 候选准入：证据不完整支持的 Candidate 为 `REJECTED`，记录拒绝事件；同轮重复被合并；每个 revision 报告 admitted/rejected/merged 数量。
