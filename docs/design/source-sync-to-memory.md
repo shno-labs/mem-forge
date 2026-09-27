@@ -903,6 +903,8 @@ RelationDiscoveryWork 固定 Memory 的身份、预期内容 hash 和来源。Wo
 
 分类器对每条 Memory 看到：陈述、Memory 类型、来源类型、文档标题、Primary Evidence 的原文时间（未知时为空），以及支撑该陈述的 Evidence 原文。Evidence 原文是 Primary 和 Required Evidence 锚定范围内的 Fragment 呈现文本，与 Support Assessment 读到的相同；记录类来源按原文顺序给出字段内容，每个字段标上 JSON pointer，同一数组项的字段排在一起（如 Jira 评论正文，changelog 每一项的字段、旧值和新值），不给原始 JSON。原文时间取 Primary 锚定的 Observation Revision 的 `observed_at`，即来源给这份内容的时间（第 0.9 节），锚定的 revision 已不是当前 revision 或来源没有时间时为空；所有 Source 用同一条规则，不把同步或提交时间当作原文时间。标题、时间和 Evidence 就是判断是否同一情境的依据。
 
+一条 Memory 可以有多个当前 Evidence Unit，同一个 Source Unit 里也可以有多个：Sparse Relation 判为 `equivalent` 时，会把 Candidate 的 Evidence Unit 挂到已有 Memory 上。分类器只读其中一个：原文时间最新的当前 Evidence Unit，也就是 `updates` 排序用的那个时间；时间未知的排在任何已知时间之后，时间相同时取 id 最小的，所以每次读到的都是同一个（`newest_evidence_unit_id`）。挑战方只在任务所属 Source Unit 的当前 Evidence Unit 中选，选中的也就是这次运行记录的 Evidence Unit 和完成守卫检查的那个；候选方在它所有当前 Evidence Unit 中选。
+
 Evidence 原文只能和存储的锚点一样窄：whole-Observation 锚点给出整个 Observation，页面或文件就是整页、整个文件，上限是 Fragment catalog 的 `DEFAULT_MAX_FRAGMENTS` 和 `DEFAULT_MAX_PRESENTATION_CHARS`；超过上限、锚定的 revision 已不是当前 revision、或 Primary 不是文本（如图片附件）时，没有 Evidence 原文。更窄的 Evidence 要靠抽取和 Support 产生更窄的锚点，不在分类器里裁剪。
 
 拿不准时判 `none`：误报会打扰每一个读到这两条 Memory 的人，漏报只是少一条提示。`updates` 的方向由程序按分类器看到的同一个原文时间（`RelationSubject.evidence_time`）决定，不由模型决定；关系连同两边的原文时间一起存储，读取时显示的先后和日期就是判断时的。任一方时间未知或两边是同一天时，记为 `contradicts`。分类器按标签使用经过评估的阈值，低于阈值即 `none`；分类器评估通过之前，由现有 Structured LLM 按同一合同给出同样四个标签。任何 prompt、标签定义、后端或阈值的改动，先在人工标注过的 Memory 对上评估，再上线。
@@ -911,9 +913,9 @@ L7 只写关系，不生成 Review，不合并 Memory，也不退休任何一方
 
 人在使用时处理，不设待审队列：在搜索结果、Memory 详情或 agent 会话里看到关系的人，可以把它标为不成立（对这一对和两边当前内容生效，任一方变化后失效，可撤销，不带任何 lifecycle 权限），或者通过现有的 Memory Correction Proposal / 退休流程处理过时的一方。管理界面可以筛选带关系的 Memory，它是视图，不是待办。
 
-**异步边界已接受。** 有效来源支持的新 Memory 可以先提交、被读取，跨文档冲突关系随后由 L7 发现；用户接受短时间尚未标注冲突的窗口。这是收录策略，不是数据库禁止提交前做模型判断。任务与业务状态同事务登记，现有 worker 负责重试与 stale guards；失败或耗尽重试必须可见，不能承诺固定时限完成。L7 是有界发现，不是全库无冲突证明，也不是持续重审所有历史冲突的扫描器。
+**异步边界已接受。** 有效来源支持的新 Memory 可以先提交、被读取，跨文档冲突关系随后由 L7 发现；用户接受短时间尚未标注冲突的窗口。这是收录策略，不是数据库禁止提交前做模型判断。任务与业务状态同事务登记，现有 worker 负责重试与 stale guards；失败或耗尽重试必须可见，不能承诺固定时限完成。每次都会同样失败的错误（按各阶段共用的 `failure_retryable` 规则判断，例如模型请求错误或无效响应）立即以其错误码结束任务，记为耗尽，不再用完剩余次数；重试有可能成功的错误才按退避重试。L7 是有界发现，不是全库无冲突证明，也不是持续重审所有历史冲突的扫描器。
 
-L7 使用实体图、语义向量与内容 BM25 的独立候选渠道召回候选，经 RRF 和访问/来源过滤后判断。完成时的守卫是：挑战方和每个被判断的候选都还是判断时的内容，候选仍 active、可见且 Support 未变，读到的 Evidence Unit 仍是挑战方在该 Source Unit 的当前证据；Source Unit 出了新 revision 而这份证据仍然当前时，任务照常完成。耗尽重试的任务在管理 API（`GET /api/v1/relation-discovery/work`）中列出并计数，worker 指标输出耗尽数；运维可以按错误类型、时间段或分类器版本重新执行已耗尽或已完成的任务（`POST /api/v1/relation-discovery/work/rerun`，需要 maintenance operator），例如修复缺陷或新分类器版本评估通过后。重新执行前把原状态和错误写入审计事件，任务以新的 generation 重新排队，是否仍然有效由原有的内容、Support 与访问检查决定。
+L7 使用实体图、语义向量与内容 BM25 的独立候选渠道召回候选，经 RRF 和访问/来源过滤后判断。完成时的守卫是：挑战方和每个被判断的候选都还是判断时的内容，候选仍 active、可见且 Support 未变，读到的 Evidence Unit 仍是按上述规则为挑战方在该 Source Unit 选出的证据；Source Unit 出了新 revision 而这份证据仍然当前时，任务照常完成。耗尽的任务（用完全部次数，或因每次都会同样失败而提前结束）在管理 API（`GET /api/v1/relation-discovery/work`）中列出并计数，worker 指标输出耗尽数；运维可以按错误类型、时间段或分类器版本重新执行已耗尽或已完成的任务（`POST /api/v1/relation-discovery/work/rerun`，需要 maintenance operator），例如修复缺陷或新分类器版本评估通过后。重新执行前把原状态和错误写入审计事件，任务以新的 generation 重新排队，是否仍然有效由原有的内容、Support 与访问检查决定。
 
 旧的 Cross-Source Conflict Review 由一次性转换处理（`/api/v1/memories/cross-source-review-conversion/report|apply|delete`，都需要 maintenance operator）：已确认的 Review 标签为 `contradicts`，已驳回的为 `none`，report 和 apply 可以用与评估种子相同的 `label_overrides` 按 Review id 改标（只能改已决的 Review，否则 400）。两边未变时，标签为 `contradicts`、`updates` 或 `equivalent` 的转为该标签的关系（`decided_by='review'`），标签为 `none` 的转为 `contradicts` 和 `updates` 两条撤销记录（`none` 的意思是两条都成立，这两个标签都说它们不能同时成立；人已经撤回过的撤销不会再写）；标签为 `none` 且有一边已变的丢弃，其余已变或待定的重跑挑战方的发现；耗尽的任务一并重跑，旧发现流程写进 Evidence Unit 关系投影的行被清除。报告、应用和删除 Review 行分三步分别批准；删除要求应用的写入数与报告一致，并且评估用例已固定为 cohort。
 
