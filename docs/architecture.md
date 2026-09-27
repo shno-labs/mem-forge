@@ -1180,6 +1180,15 @@ read files, or returned as base64 when that is more practical. The cache file is
 created by the local plugin proxy, not by the MemForge service, so `local_path`
 remains valid for Docker and future SaaS deployments.
 
+Several Sources can include the same provider Document, and each stores its own
+copy as the input of its Source Unit revision
+([ADR 0041](adr/0041-record-stored-input-on-the-source-unit-revision.md)).
+`get_memory` therefore links content through the Source Unit that supports the
+Memory (`/api/v1/source-units/{source_unit_id}/content`, `/pdf`,
+`/artifacts/{kind}`), so `get_resource` reads that Source's copy. The
+`/api/v1/documents/{doc_id}/...` routes serve the newest copy stored by a
+Source the caller can read.
+
 ### Agent Decision Tree
 
 ```
