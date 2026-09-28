@@ -6,7 +6,7 @@
 
 **阅读约定：**第 0 节是已接受的目标合同，已在 OSS 全部实现（见下一段）。实现不代表已经部署：上线前仍要通过第 0.11 节的 shadow 门禁，Cloud 的 HANA 部分随 pin 升级实现；第 18 节继续记录实现差异。后文历史段落中的 L1–L7 只是旧模型职责编号，不能进入新的类型、方法或状态名称。新设计统一使用 Claim Extraction、候选准入（Candidate Admission）、Support Assessment、Sparse Relation（同 Unit 的 Claim Reconciliation）、SupportRelationCoordinator 和 Lifecycle Reconciliation。若旧段落与第 0 节冲突，以第 0 节和 [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md#target-contract-tracked-by-cloud-issue-505)（Support 与 Relation 的汇合见[该 ADR 的目标合同概览](../adr/0034-unify-incremental-support-and-claim-assessment.md#target-contract-overview)）为准。
 
-**当前实现：**Support 一侧的第 0.3-0.5 节已经实现：精确 Evidence 对应、按整个 Support 路由、Change Impact、顺序读取和 witness 累积，不再比较成本；第 0.6.1 节的候选准入（`candidate-admission-v2`）和第 0.6.2 节的 Sparse Relation 请求（`claim-revision-v8-sparse-catalog`，不带 Support 结论和证据蕴含状态）已经实现；Relation 与 Support Assessment 并行，由 SupportRelationCoordinator 汇合，冲突进入待审 Review（第 0.6.3、0.6.4 节）；每个准入的 ADD Candidate 各自新建 Memory（第 0.6.5 节）、自动 DestructiveValidation（第 0.7 节）和 Source Unit identity 改变时的提交顺序（第 0.8 节）已经实现。第 6.2 节的 Claim Extraction 读取范围已经实现（`revision-input-v7`）：更新只读获授权的变化结构及其 ReadingGroup，首次导入读每个 ReadingGroup，每个含授权 Primary 的 ReadingGroup 是 LLM batch runner 的一个 item，不比较成本、不截断。每个 Unit 的 Unit Title（第 0.9 节）投影为一条 Observation，出现在每一次模型读取中（第 0.2 节）。
+**当前实现：**Support 一侧的第 0.3-0.5 节已经实现：精确 Evidence 对应、按整个 Support 路由、Change Impact、顺序读取和 witness 累积，不再比较成本；第 0.6.1 节的候选准入（`candidate-admission-v3`）和第 0.6.2 节的 Sparse Relation 请求（`claim-revision-v8-sparse-catalog`，不带 Support 结论和证据蕴含状态）已经实现；Relation 与 Support Assessment 并行，由 SupportRelationCoordinator 汇合，冲突进入待审 Review（第 0.6.3、0.6.4 节）；每个准入的 ADD Candidate 各自新建 Memory（第 0.6.5 节）、自动 DestructiveValidation（第 0.7 节）和 Source Unit identity 改变时的提交顺序（第 0.8 节）已经实现。第 6.2 节的 Claim Extraction 读取范围已经实现（`revision-input-v7`）：更新只读获授权的变化结构及其 ReadingGroup，首次导入读每个 ReadingGroup，每个含授权 Primary 的 ReadingGroup 是 LLM batch runner 的一个 item，不比较成本、不截断。每个 Unit 的 Unit Title（第 0.9 节）投影为一条 Observation，出现在每一次模型读取中（第 0.2 节）。
 
 ## 文档职责与阅读入口
 
@@ -243,7 +243,7 @@ changed ReadingGroups (added, modified; removed ones as read-only old text)
 
 Support Assessment 只有一条规则：按固定顺序流式读取当前全部内容，变化的 ReadingGroup（新增、修改和删除的；删除的读其旧文本）和该 Claim 自己的旧 Evidence 所在的 ReadingGroup 先读，其余在后；第一段按 Claim 划分，不同 Claim 的第一段终点可以不同；第一段还有未读的 ReadingGroup 时，Claim 不能退出；第一段读完后，每条 Claim 找到完整支持即退出，全部读完仍无支持才判 `UNSUPPORTED`。Delta 不是一种模式，只是读取顺序的第一段。Planner 只负责排读取顺序，不比较成本，不决定从哪里开始，也不让模型判断否定结果是否已经足够。`EXACT_UNCHANGED` 只贡献 current ref 和 compact state；`MODIFIED` 使用对应 current ReadingGroup；`AMBIGUOUS` 使用全部确定候选。
 
-**完整支持的定义。**Support Assessment 和候选准入判断的是同一件事：所选 Evidence 是否完整支持一条 Claim。两处模型请求使用同一段定义文本（`pipeline/complete_support.py`）：Claim 写出的每一项具体信息，包括人、系统和事物的名称、编号、数量、日期和时间、状态、条件和范围，都必须出现在所选 Evidence 中，或能从中直接得出；只要有一项具体信息与 Evidence 矛盾，或 Evidence 中没有，这条 Claim 就不被支持，即使其余部分都对得上。判断不使用 Evidence 以外的知识。所以话题、动作或大部分措辞相符都不够：Claim 写的编号与它选作 Required Evidence 的 Unit Title 不同，或写的人、数字、日期与 Primary Evidence 不同，在 Support Assessment 中判为 `UNSUPPORTED`，在候选准入中判为 `REJECTED(evidence_incomplete)`。Change Impact 不判断支持，不使用这条定义。定义改变时，`REVISION_SUPPORT_CONTRACT`、Support Assessment 工作合同和候选准入合同一起升级（当前为 `revision-support-v7`、`support-ordered-reading-v5` 和 `candidate-admission-v2`），旧合同下完成的工作不再复用。
+**完整支持的定义。**Support Assessment 和候选准入判断的是同一件事：所选 Evidence 是否完整支持一条 Claim。两处模型请求使用同一段定义文本（`pipeline/complete_support.py`）：Claim 写出的每一项具体信息，包括人、系统和事物的名称、编号、数量、日期和时间、状态、条件和范围，都必须出现在所选 Evidence 中，或能从中直接得出；只要有一项具体信息与 Evidence 矛盾，或 Evidence 中没有，这条 Claim 就不被支持，即使其余部分都对得上。判断不使用 Evidence 以外的知识。所以话题、动作或大部分措辞相符都不够：Claim 写的编号与它选作 Required Evidence 的 Unit Title 不同，或写的人、数字、日期与 Primary Evidence 不同，在 Support Assessment 中判为 `UNSUPPORTED`，在候选准入中判为 `REJECTED(evidence_incomplete)`。Change Impact 不判断支持，不使用这条定义。定义改变时，`REVISION_SUPPORT_CONTRACT`、Support Assessment 工作合同和候选准入合同一起升级（当前为 `revision-support-v7`、`support-ordered-reading-v5` 和 `candidate-admission-v3`），旧合同下完成的工作不再复用。
 
 **Cloud 影响：**这条定义是共享的 OSS prompt 文本，Cloud 升级 pin 即可生效；HANA 中的 derivation work 和 reconciliation manifest 带上新的合同版本，不需要改 schema，旧版本下完成的工作会重新计算，不会复用。
 
@@ -1029,7 +1029,7 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 
 | 当前标识 | 实际职责 | 本次升级原则 |
 |---|---|---|
-| `projection-extraction-v9` | L1 的提取合同，使用 Fragment catalog 与模型 selector；是 Source 抽取使用的唯一合同 | 保持现有 L1 selector/授权语义时不因 L3/L4 合并而自动命名 v10；若提取合同含义确实改变，再显式注册新提取合同 |
+| `projection-extraction-v10` | L1 的提取合同，使用 Fragment catalog 与模型 selector；是 Source 抽取使用的唯一合同 | 保持现有 L1 selector/授权语义时不因 L3/L4 合并而自动升版本；提取合同含义改变时（例如不再要求模型自报置信度）显式升版本 |
 | `COMPILER_CONTRACT_VERSION = 4` | 表示编译、片段边界、坐标和 catalog 身份合同 | 完整表格、列表、HTML 等结构语义已经由 compiler 4 固定；输入模式变化不重编译历史 Evidence。改变片段切分或文字表示时，已有 Evidence 可能无法再精确匹配，相关 Support 在其 Unit 下一次出现新 revision 时整体进入 Support Assessment；不再更新的 Unit 由运维人员按当前 revision 重新处理（第 6.1 节）。这类变更须在 PR 中说明 OSS 与 Cloud 的负载以及建议重新处理哪些 Unit，不做版本迁移或放量机制 |
 | authority policy / presentation policy（当前分别 6 / 5） | 增量结构授权及模型目录呈现规则 | 只有对应规划/呈现语义改变才调整，变化必须进入工作输入身份 |
 | L3/L4 的语义工作合同及输入身份 | 决定结果是否可复用 | **必须显式更新**：新输入模式、支持判断、可变 Required 与合并关系/修订响应不能复用旧合同结果；沿用现有 descriptor/hash/staging 机制，不新建版本账本 |
@@ -1038,9 +1038,9 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 现有 `source_derivation.py` 将 extraction contract、base/target、权限、inference
 能力及 authority/presentation 规则纳入可复用身份。未完成 derivation 按现有
 合同变更流程失效/重建，已提交 Memory 和历史 Evidence 不被批量改写。当前实现
-保持 `projection-extraction-v9` 和 compiler 4，使用 authority policy 6、presentation
+保持 `projection-extraction-v10` 和 compiler 4，使用 authority policy 6、presentation
 policy 5、`revision-support-v7`、`support-ordered-reading-v5`、`change-impact-v2`、
-`candidate-admission-v2`、`claim-revision-v8-sparse-catalog` 和 `memory-relation-v3`；
+`candidate-admission-v3`、`claim-revision-v8-sparse-catalog` 和 `memory-pair-review-v1`；
 阅读范围与阅读上下文使用 `revision-input-v7`，并进入 inference capability hash 与
 source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含字段的 Relation
 请求和候选准入各自有新的合同版本，也进入生命周期操作输入身份。改变这些输入不能复用
@@ -1057,7 +1057,7 @@ source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含
 | 2 采集/快照 | `pipeline/sync.py`、SourceProjectionAdapter、不可变 revisions、raw/normalized/Artifact 存储 | 无基础重构；资格问题单独见下表 | provider 部分覆盖、删除证明、稳定 Unit 身份 |
 | 3 工作准备 | `source_derivation.py`、`pipeline/projection_context.py` 与 Fragment compiler 已有暂存、结构授权和索引 | **中，已实现**：`plan_projection_evidence_work` 只算授权，`pipeline/extraction_requests.py` 按 ReadingGroup item 经 runner 规划请求；首次导入读每个 ReadingGroup、更新时只读变化结构及其 ReadingGroup（不做成本比较、不截断）；适用基线和工作合同身份 | 首次导入、contested Support、超限不可截断、旧输出不可复用到新合同 |
 | 4 L1 提取 | 已有结构目录与 Primary/Required selector；增量完整结构授权已实现 | **小到中**：消费上述读取范围；不放宽已实现的 Primary 授权 | 全文只是可读上下文；canonical 完整解析不等于全记录 Primary |
-| 5 候选准入 | 实施前为 `candidate_ledger.py`，确定性去重与条件性模型选择 | **已实现**（`memory/candidate_admission.py`，`candidate-admission-v2`）：每个 Candidate 执行证据完整支持 + 同轮去重（请求带本轮全部 Candidate Claim，程序合并）；`DROP_LOW_VALUE` 并入 `REJECTED(low_value)`；单项无法判断时本轮拒绝该 Candidate，执行错误时 revision 不提交；`REJECTED` 事件与 admitted/rejected/merged 计数 | `REJECTED` 不进 Review；Relation 只接收 `ADMITTED` |
+| 5 候选准入 | 实施前为 `candidate_ledger.py`，确定性去重与条件性模型选择 | **已实现**（`memory/candidate_admission.py`，`candidate-admission-v3`）：每个 Candidate 执行证据完整支持 + 同轮去重（请求带本轮全部 Candidate Claim，程序合并）；`DROP_LOW_VALUE` 并入 `REJECTED(low_value)`；单项无法判断时本轮拒绝该 Candidate，执行错误时 revision 不提交；`REJECTED` 事件与 admitted/rejected/merged 计数 | `REJECTED` 不进 Review；Relation 只接收 `ADMITTED` |
 | 6 Support Assessment | 早期合并判断与 current Evidence 解析可复用 | **大，主要改动**：接入 exact correspondence（无容器状态）、按整个 Support 路由、明确 excerpt 规则、ChangeBundle 分类、固定顺序读取与提前退出、判别联合和 automated DestructiveValidation（已实现） | UNKNOWN 不调用模型；读完全部内容且覆盖权威才能 unsupported；REBIND 不重写历史 |
 | 7 Sparse Relation | 现有 sparse claim revision 合同与 revision proof 类型可复用 | **中**：请求删除 Support 结论与证据蕴含字段并更新合同版本（已实现，`claim-revision-v8-sparse-catalog`）；只接收 `ADMITTED` Candidate（已实现）；与 Support 并行（已实现） | 每个 Candidate 恰一行；省略即未提出关系；分片不能改变覆盖或原子提交 |
 | 7 程序归约/未决 | `reduce_relation_ledger` 与现有单提案 Review 可复用；proof 技术失败目前可退回 KEEP+ADD，多互斥 refiner 会抛错 | **中到大**：禁止把合并响应失败当独立新增；明确单提案可表达范围和失败出口；增加 SupportRelationCoordinator 组合表、至多一次复核与待审 Review 的确定性 ID、按状态复用和以 `stale` 关闭（已实现，`pipeline/support_relation_coordinator.py`，取代 `reduce_relation_ledger`）；SQLite 的 Plan apply 支持 Review 按 ID upsert 和 `stale` 关闭（已实现），HANA 随 pin 升级同改 | ADD/NOOP 不因 flag 自动产生 Review；多候选竞争不自动选后继；不顺带实现多选提案 UI |
@@ -1066,7 +1066,7 @@ source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含
 | 9 Evidence/Plan | `pipeline/projection_fragments.py`、`lifecycle_planner.py`、Evidence Unit v2 与 Source Authority/gates | **中**：消费 L3 的继承/重组结果与 L4 结果；保留既有存储实体 | 每组完整，一 Primary、多 Required；其他 Support 不被本 Unit 擅自改写；不新增版本域模型 |
 | 10 原子提交 | MemoryEngine prepare/commit、MemoryStore、SQLite/HANA、causal stale guards 与既有同 run deferred commit | **小到中**：接口/fixture parity；不因 prompt 合并改事务所有权 | 模型在事务外；输入变更拒绝旧结果；复用既有 Deferred，不另建 checkpoint/依赖图 |
 | 11 向量交付 | 现有 `lifecycle_vector_outbox` 与 worker | **无必需改造** | 重试当前关系事实，不重新提取，不复活终态 Memory |
-| 11 L7 关系发现 | 现有 durable work、RRF 候选发现、跨文档关系分类器（Structured LLM，`cross-document-relation-v2`）、关系表和原子完成；耗尽任务列表与重跑 | **已实现（ADR 0037）**：只写关系，不建 Review；读取、撤销和一次性转换已接入 | 可见冲突窗口已接受；关系是标注，不改变 lifecycle；不穷尽全库 |
+| 11 L7 关系发现 | 现有 durable work、RRF 候选发现、跨文档关系分类器（Structured LLM，`cross-document-relation-v3`）、关系表和原子完成；耗尽任务列表与重跑 | **已实现（ADR 0037）**：只写关系，不建 Review；读取、撤销和一次性转换已接入 | 可见冲突窗口已接受；关系是标注，不改变 lifecycle；不穷尽全库 |
 | 12 Run 完成/恢复 | 已有 Run、derivation、模型 typed errors、work/outbox 重试与活动进度 | **中**：新语义合同版本和错误分类接入既有恢复/指标 | 单次 selector correction、技术失败和业务 Review 分开；不是所有模型结果都已持久缓存 |
 
 实际落点：
