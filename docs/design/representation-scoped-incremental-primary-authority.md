@@ -35,8 +35,8 @@ revision, the immutable staged target projection, the authorized work
 transition, and the access identity. It returns exact current-revision candidate
 ranges with deterministic Primary eligibility.
 
-`projection-extraction-v9` is the currently affected contract, not the dispatch
-condition. A future v10 or later fragment-catalog contract inherits this seam
+`projection-extraction-v10` is the currently affected contract, not the dispatch
+condition. Any later fragment-catalog contract inherits this seam
 automatically through its active contract descriptor. Historical exact replay
 continues to use the authority policy recorded by that historical contract.
 
@@ -384,7 +384,7 @@ the existing scope-transition/lifecycle rules.
 ## 7. Source-type coverage
 
 All currently specialized Source types and the extension seam are covered
-below. Tests must enter through the active Support-v2/v9 derivation interface,
+below. Tests must enter through the active Support-v2/v10 derivation interface,
 not only call a private compiler helper.
 
 | Source / Observation | Representation | Incremental Primary rule | Required acceptance case |
@@ -405,7 +405,7 @@ not only call a private compiler helper.
 | Reserved `agent_concept` observation contract | registered `markdown-structural`, but no current normal producer | no new runtime behavior in this fix | keep dormant/legacy contract readable; do not migrate stable Observation identity |
 | Extension fallback `document_content` | declared normalized `markdown-structural`, partial coverage | changed complete structures only; omission cannot prove deletion | unknown Source type gets identical Markdown behavior without a new Evidence branch |
 | Binary Artifact from any Source | `binary-artifact` | same whole-object rule | SQLite/HANA parity across at least two provider paths |
-| Direct User create/correction | no normal v9 Source extraction | explicit user authority; this planner is not called | existing Virtual Document provenance remains unchanged |
+| Direct User create/correction | no normal v10 Source extraction | explicit user authority; this planner is not called | existing Virtual Document provenance remains unchanged |
 | Consolidated/read-model projection | no claim-authoring extraction | never becomes a new Primary source | no re-extraction of derived Memory text |
 
 ### Future Slack, email, HTML-only, PDF, and other types
@@ -621,7 +621,7 @@ The minimum deterministic suite is:
   Source emits it;
 - Jira changelog `attachment_event`/`operational_transition` continues through
   the existing deterministic quality gate instead of duplicating that policy;
-- `evidence-unit-set-v2` Support with `projection-extraction-v9` selection;
+- `evidence-unit-set-v2` Support with `projection-extraction-v10` selection;
 - repeated planning/compilation produces byte-identical ranges, refs and digest;
 - changing the inference capability hash changes Artifact plan/catalog identity
   and prevents cross-model batch reuse;
