@@ -1533,6 +1533,10 @@ Supported environment overrides include:
 - `MEMFORGE_STORAGE_DB_PATH`, `MEMFORGE_STORAGE_CHROMA_PATH`, `MEMFORGE_STORAGE_DOCS_PATH`
 - `MEMFORGE_ENRICHMENT_MODEL`, `MEMFORGE_ENRICHMENT_BASE_URL`, `MEMFORGE_ENRICHMENT_API_KEY`
   (legacy setting names for the provider-neutral structured LLM runtime)
+- `MEMFORGE_DECISION_MODEL` (optional, environment only): the model for the
+  Decision tasks registered in `memforge.llm.decision_model` after they pass
+  their evaluation; empty runs every task on the enrichment model
+  ([ADR 0043](adr/0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md))
 - `MEMFORGE_EMBEDDING_MODEL`, `MEMFORGE_EMBEDDING_BASE_URL`, `MEMFORGE_EMBEDDING_API_KEY`
 - `MEMFORGE_ADMIN_API_PORT`, `MEMFORGE_CORS_ORIGINS`, `MEMFORGE_JWT_SECRET`
 - `MEMFORGE_SECRET_KEY` optionally overrides the app-managed local key for encrypting stored source secrets and shared auth sessions, including Atlassian PATs and Jira browser-session cookies. This must be a 32-byte url-safe base64 Fernet key when set.
