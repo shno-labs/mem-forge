@@ -32,7 +32,7 @@ update, every ReadingGroup on a first import, one runner item per ReadingGroup,
 with no cost comparison and no truncation. Every reading carries the Unit Title
 ([One deep context-planning module](#one-deep-context-planning-module)).
 [Candidate admission](#candidate-admission) is implemented as
-`candidate-admission-v2`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
+`candidate-admission-v3`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
 request is implemented as `claim-revision-v8-sparse-catalog`, described in
 [Sparse claim catalog](../design/sparse-claim-catalog.md). Relation runs
 concurrently with Support Assessment over every same-Unit old Memory, and
@@ -245,7 +245,7 @@ A change to the definition changes the meaning of both results, so it raises
 `REVISION_SUPPORT_CONTRACT`, the Support Assessment work contract and the
 candidate admission contract together; completed work under an earlier
 definition is never reused. The current contracts are `revision-support-v7`,
-`support-ordered-reading-v5` and `candidate-admission-v2`.
+`support-ordered-reading-v5` and `candidate-admission-v3`.
 
 Cloud impact: the definition is shared OSS prompt text. Cloud receives it by
 upgrading the pin; its HANA derivation work and reconciliation manifests carry
@@ -481,7 +481,7 @@ schema changes; Cloud upgrades the pin with no HANA or configuration change.
 
 ### Candidate admission
 
-Implemented as `candidate-admission-v2`; execution through the LLM batch runner.
+Implemented as `candidate-admission-v3`; execution through the LLM batch runner.
 
 Candidate admission runs between Claim Extraction and Sparse Relation, for
 every Candidate, whether or not the Unit has old Memories. One admission request
