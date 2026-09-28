@@ -965,7 +965,7 @@ SourceSyncRun/SyncState 汇总页面处理结果，报告成功、局部失败�
 
 Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证据完整支持 + 同轮去重） → 跳过旧 Support 与 Relation 工作 → 实体解析 → Plan 创建 M1、EU1、Support(M1, EU1) → 提交 → 索引与关系工作。
 
-若 Jira 已有等价 M0，仍创建 M1；提交后的关系发现把 M0 与 M1 标为 `equivalent`，搜索只返回其中一条。
+若 Jira 已有等价 M0，仍创建 M1；提交后的关系发现把 M0 与 M1 标为 `equivalent`，搜索两条都返回，各自注明另一来源说法相同。
 
 ### v2-A：只重组表达
 

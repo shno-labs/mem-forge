@@ -267,19 +267,24 @@ relation notices stay as ADR 0037 specifies.
 A completed discovery run replaces every relation the classifier recorded for
 its discovery work: pairs it judges receive its labels, and a relation the work
 recorded for a pair it no longer judges, because the pair is no longer a
-candidate, is removed. Relations a person confirmed for the current contents,
-relations another challenger's work recorded, and dismissals stay. Re-running
-all completed work (`POST /api/v1/relation-discovery/work/rerun` with
-`{"state": "completed"}`, and `{"state": "exhausted"}` for exhausted work)
-therefore leaves exactly the relations `v4` decides.
+candidate, is removed. A run that finds its work obsolete, because the
+challenger or its evidence in the work's Source Unit is no longer current,
+removes the work's classifier relations the same way. Relations a person
+confirmed for the current contents, relations another challenger's work
+recorded, and dismissals stay. Re-running all completed work
+(`POST /api/v1/relation-discovery/work/rerun` with `{"state": "completed"}`,
+and `{"state": "exhausted"}` for exhausted work) therefore leaves exactly the
+relations `v4` decides.
 
 ### Cloud impact
 
 Cloud reads this contract through its pinned OSS version; the prompt, rules
 and search change arrive with the pin. The HANA
 `complete_relation_discovery_work` must remove the classifier relations of the
-completing work before it applies the run's labels, as SQLite does, or a re-run
-leaves relations from pairs it no longer judges; an index on
+completing work before it applies the run's labels, and
+`obsolete_relation_discovery_work` must remove them in the same transaction
+that marks the work obsolete, as SQLite does, or a re-run leaves relations from
+pairs it no longer judges; an index on
 `CROSS_DOCUMENT_RELATIONS.DISCOVERY_WORK_ID` keeps that removal cheap. No
 storage protocol signature, configuration or `proxy/external_runtime.py` call
 site changes. Existing relations are re-run by an operator.

@@ -223,8 +223,9 @@ The re-run records the previous status and error in an audit event before the
 work is leased again; the normal content, Support and access guards still
 decide whether the work is current or obsolete. A completed run replaces every
 relation the classifier recorded for its work, so a pair that is no longer a
-candidate keeps no relation from an earlier run; relations a person confirmed
-and dismissals stay.
+candidate keeps no relation from an earlier run, and a run that finds its work
+obsolete removes those relations; relations a person confirmed and dismissals
+stay.
 
 ### Migration
 
