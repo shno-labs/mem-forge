@@ -115,11 +115,12 @@ User-created Memories (`create_memory`) keep their own near-duplicate check in
 
 - A revision reads and writes only its own Unit's Memories, its new Memories and
   its own Evidence. It makes no model call about other Units.
-- Search can return the same knowledge once per Source Unit. Search already
-  leaves out a Memory that is `equivalent` to a higher-ranked returned Memory
-  (ADR 0037), so a duplicate is visible until discovery labels the pair, or
-  when discovery misses the pair. Further folding of search results is out of
-  scope until duplicates are shown to matter.
+- Search can return the same knowledge once per Source Unit. Search returns
+  both Memories of an `equivalent` pair, each naming the other (ADR 0037, as
+  amended by [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md#search-annotates-an-equivalent-pair)),
+  so a duplicate stays visible and is marked once discovery labels the pair.
+  Folding search results waits until the measured precision of `equivalent`
+  justifies it.
 - A duplicate within one Unit that Sparse Relation misses becomes a second
   Memory. Discovery compares a Memory only with Memories of other documents, so
   the pair stays unlabeled.

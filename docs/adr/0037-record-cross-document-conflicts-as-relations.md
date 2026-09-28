@@ -4,6 +4,8 @@ Status: Accepted
 
 Amended by [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md) (proposed 2026-09-28): the cross-document classifier returns only the label, with no reason and no per-label confidence threshold, and runs on the decision model once it passes its evaluation, otherwise on the main model. `CROSS_DOCUMENT_RELATION_RULES` gains the additions listed there.
 
+Amended by [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md#amendment-2026-09-29-shared-context-and-equivalent-results) (2026-09-29): every classifier request states one challenger once as its subject and asks one question per candidate; search returns both Memories of an `equivalent` pair, each naming the other; and a completed re-run replaces every relation its discovery work recorded.
+
 Date: 2026-09-25
 
 ## Context
@@ -144,7 +146,7 @@ same four labels under the same contract and is instructed to return `none`
 when unsure. A classifier backend applies a per-label confidence threshold below
 which the pair is `none`. The threshold is a named contract constant whose
 value and evaluation run are recorded with the classifier version; it is not a
-configuration knob. [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md) supersedes the threshold and the classifier backend:
+configuration knob. [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md) supersedes the threshold and the classifier backend (its amendment "calibrated probabilities" defines calibrated cutoffs for backends that report calibrated probabilities):
 the task returns only the label and moves to the decision model after it passes
 its evaluation.
 
@@ -167,10 +169,11 @@ reason, so failure analysis reads the input and the two labels.
 
 A completed discovery run writes relations only. It creates no Review.
 
-- `equivalent`: search returns one of the pair and names the other Memory's
-  Source as agreeing. Neither Memory changes; merging identities stays the
-  pre-creation identity step's job (amended by [ADR 0039](0039-create-memories-within-the-source-unit.md): no step merges
-  Memories across Source Units).
+- `equivalent`: search returns both Memories, and each names the other and its
+  Source as agreeing (amended by [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md#search-annotates-an-equivalent-pair):
+  a false `equivalent` must not remove a different Memory from the results).
+  Neither Memory changes, and no step merges Memories across Source Units
+  ([ADR 0039](0039-create-memories-within-the-source-unit.md)).
 - `updates`: when both are retrieved, the newer Memory ranks ahead, and the
   older one carries a note naming the newer Memory, its Source and date.
   Neither Memory is retired or hidden.
@@ -218,7 +221,11 @@ discovery work selected by error code, time range or classifier version, for
 example after a defect is fixed or a new classifier version passes evaluation.
 The re-run records the previous status and error in an audit event before the
 work is leased again; the normal content, Support and access guards still
-decide whether the work is current or obsolete.
+decide whether the work is current or obsolete. A completed run replaces every
+relation the classifier recorded for its work, so a pair that is no longer a
+candidate keeps no relation from an earlier run, and a run that finds its work
+obsolete removes those relations; relations a person confirmed and dismissals
+stay.
 
 ### Migration
 

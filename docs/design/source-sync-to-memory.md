@@ -385,7 +385,7 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 协调器和 Lifecycle Planner 保留为 ADD 的每个准入 Candidate，都新建自己的 Memory 和 Evidence Unit Support，不挂到其他 Source Unit 的 Memory 上；文本完全相同也不合并。规范性决策见 [ADR 0039](../adr/0039-create-memories-within-the-source-unit.md)。
 
 - 同 Unit 的重复只由候选准入的同轮去重和 Sparse Relation 判断。Sparse Relation 漏报 equivalent 时，本 Unit 多出一条 Memory，后续步骤不补救；提交后的关系发现只比较不同文档的 Memory，这一对也不会被标注。
-- 跨 Source Unit（包括跨 Source）的同一知识，只由提交后的关系发现标注为 `equivalent`（第 14 节）。关系不合并、不退休、不改写任何一方；搜索时只返回排名较高的一条，并注明另一来源说法相同。
+- 跨 Source Unit（包括跨 Source）的同一知识，只由提交后的关系发现标注为 `equivalent`（第 14 节）。关系不合并、不退休、不改写任何一方；搜索时两条都返回，各自注明另一来源说法相同。
 - Lifecycle Plan 只给本 Plan 新建的 Memory 和本 Unit 的旧 Memory 挂 Support，Plan 校验拒绝其他 `ATTACH_SUPPORT`。提交时不按文本查找已有的 Active Memory，两个 Unit 可以各有一条文本相同的 Active Memory。
 - 因此同步处理只依赖本 Unit：一次 revision 只读写本 Unit 的旧 Memory、本次新建的 Memory 和自己的 Evidence，不为其他 Unit 调用模型。每条新建的 Memory 都登记提交后关系发现。
 
@@ -509,7 +509,7 @@ Evidence Unit 的时间取 Primary 锚定的 Observation Revision 的时间；�
 | Teams 跨 window correction | 不自动破坏旧 window Memory；只走普通新增与提交后的关系发现 |
 | Page A identity 消失、Page B 新增 | Complete 时允许 delete-and-recreate，先提交 B 的创建，再移除 A；Partial 时保留 A；不保证 Memory ID |
 | B 的提交被推迟，只等待本 run 的其他 Unit | 先收敛 B，再移除 A；B 最终失败时本 run 不证明缺失，A 保留 |
-| Jira 与 Confluence 写着同一条规则 | 各自新建 Memory；提交后关系发现标注 `equivalent`，搜索只返回排名较高的一条 |
+| Jira 与 Confluence 写着同一条规则 | 各自新建 Memory；提交后关系发现标注 `equivalent`，搜索两条都返回并互相注明 |
 | 存量 Memory 另有 Jira Support | Confluence Support 删除后 Memory 仍 Active，不能由 Confluence retire |
 
 ### 0.11 Support 稳定性合同
@@ -853,7 +853,7 @@ L5 是检索辅助，不是知识真实性或生命周期授权检查。其现�
 
 | 场景 | 当前 Lifecycle | 提交后 L7 |
 |---|---|---|
-| Jira 已有“两人审批”，Confluence 新候选表达相同规则 | 新建 Confluence 自己的 Memory 与 Support，不挂到 Jira 的 Memory 上 | 标注 `equivalent`，搜索只返回其中一条并注明另一来源说法相同；之后任一方变化，由各自的 Unit 处理 |
+| Jira 已有“两人审批”，Confluence 新候选表达相同规则 | 新建 Confluence 自己的 Memory 与 Support，不挂到 Jira 的 Memory 上 | 标注 `equivalent`，搜索两条都返回，各自注明另一来源说法相同；之后任一方变化，由各自的 Unit 处理 |
 | Jira 为“两人审批”，Confluence 新候选明确改为“三人审批”，此前二者没有共享 Memory | 不属于等价，不能把支持三人的 Evidence 附到两人 claim；候选按其合法来源进入独立创建 | 两者适用于同一情境、不能同时成立，且原文显示随时间变化：标注 `updates`，按两边 Primary Evidence 的原文时间（`evidence_time`，第 14 节）确定较新一方，搜索时较新一条靠前、较旧一条附提示；时间分不出先后则标注 `contradicts`。都不覆盖或退休 Jira 的知识 |
 | 存量 Memory 已同时有 Jira/Confluence 的 Support，之后 Confluence 改为三人审批 | 当前 Unit 已能通过 scoped Support 找到这条共享 Memory；完整评估 Confluence 的支持变化。其他 Source 仍有 Support 时，替代受 external-support Review gate 约束 | 可补充跨文档关系标注；不能接管当前 Unit 的原子 Support 更新 |
 
@@ -913,7 +913,7 @@ RelationDiscoveryWork 固定 Memory 的身份、预期内容 hash 和来源。Wo
 | 标签 | 含义 | 读取时的表现 |
 |---|---|---|
 | `none` | 不是同一情境，或是同一情境、两条都能成立但说的不是同一知识（例如一条比另一条更具体） | 无 |
-| `equivalent` | 同一情境，两条说的是同一知识 | 只返回其中一条，注明另一来源说法相同 |
+| `equivalent` | 同一情境，两条说的是同一知识 | 两条都返回，各自注明另一来源说法相同（误判的 `equivalent` 不能让另一条 Memory 从结果中消失） |
 | `updates` | 同一情境，现在不能同时成立，较晚的一条取代较早的一条 | 较新一条靠前；较旧一条附提示，指向较新的 Memory、来源和日期 |
 | `contradicts` | 同一情境，不能同时成立，且不是随时间的取代 | 返回任一条时附上另一条和警告 |
 
@@ -923,15 +923,15 @@ RelationDiscoveryWork 固定 Memory 的身份、预期内容 hash 和来源。Wo
 
 Evidence 原文只能和存储的锚点一样窄：whole-Observation 锚点给出整个 Observation，页面或文件就是整页、整个文件，上限是 Fragment catalog 的 `DEFAULT_MAX_FRAGMENTS` 和 `DEFAULT_MAX_PRESENTATION_CHARS`；超过上限、锚定的 revision 已不是当前 revision、或 Primary 不是文本（如图片附件）时，没有 Evidence 原文。更窄的 Evidence 要靠抽取和 Support 产生更窄的锚点，不在分类器里裁剪。
 
-拿不准时判 `none`：误报会打扰每一个读到这两条 Memory 的人，漏报只是少一条提示。`updates` 的方向由程序按分类器看到的同一个原文时间（`RelationSubject.evidence_time`）决定，不由模型决定；关系连同两边的原文时间一起存储，读取时显示的先后和日期就是判断时的。任一方时间未知或两边是同一天时，记为 `contradicts`。分类器按标签使用经过评估的阈值，低于阈值即 `none`；分类器评估通过之前，由现有 Structured LLM 按同一合同给出同样四个标签。任何 prompt、标签定义、后端或阈值的改动，先在人工标注过的 Memory 对上评估，再上线。
+拿不准时判 `none`：误报会打扰每一个读到这两条 Memory 的人，漏报只是少一条提示。`updates` 的方向由程序按分类器看到的同一个原文时间（`RelationSubject.evidence_time`）决定，不由模型决定；关系连同两边的原文时间一起存储，读取时显示的先后和日期就是判断时的。任一方时间未知或两边是同一天时，记为 `contradicts`。分类器只返回标签，没有按标签的阈值。每个请求只包含一个挑战方的候选：挑战方作为 subject 只写一次，每个候选一个问题，问的都是这个候选与 subject 的关系；说明里写明候选之间彼此重复不说明它们与 subject 的关系（ADR 0043 2026-09-29 修订）。任何 prompt、标签定义或后端的改动，先在人工标注过的 Memory 对上评估，再上线。
 
-L7 只写关系，不生成 Review，不合并 Memory，也不退休任何一方。只有调用者能看到两条 Memory 时才附上关系。关系只绑定两边的内容：任一方内容变化后，关系不再有效，下次该 Memory 的 L7 重新判断。Support 变化不会让关系失效，因为标签描述的是两条陈述；`updates` 的先后和显示的日期仍是判断时的，直到 L7 再次判断这一对。L7 不是去重：同一知识在不同 Source Unit 各有一条 Memory，`equivalent` 只影响读取时的展示。
+L7 只写关系，不生成 Review，不合并 Memory，也不退休任何一方。只有调用者能看到两条 Memory 时才附上关系。关系只绑定两边的内容：任一方内容变化后，关系不再有效，下次该 Memory 的 L7 重新判断。Support 变化不会让关系失效，因为标签描述的是两条陈述；`updates` 的先后和显示的日期仍是判断时的，直到 L7 再次判断这一对。L7 不是去重：同一知识在不同 Source Unit 各有一条 Memory，`equivalent` 只是读取时的标注。
 
 人在使用时处理，不设待审队列：在搜索结果、Memory 详情或 agent 会话里看到关系的人，可以把它标为不成立（对这一对和两边当前内容生效，任一方变化后失效，可撤销，不带任何 lifecycle 权限），或者通过现有的 Memory Correction Proposal / 退休流程处理过时的一方。管理界面可以筛选带关系的 Memory，它是视图，不是待办。
 
 **异步边界已接受。** 有效来源支持的新 Memory 可以先提交、被读取，跨文档冲突关系随后由 L7 发现；用户接受短时间尚未标注冲突的窗口。这是收录策略，不是数据库禁止提交前做模型判断。任务与业务状态同事务登记，现有 worker 负责重试与 stale guards；失败或耗尽重试必须可见，不能承诺固定时限完成。每次都会同样失败的错误（按各阶段共用的 `failure_retryable` 规则判断，例如模型请求错误或无效响应）立即以其错误码结束任务，记为耗尽，不再用完剩余次数；重试有可能成功的错误才按退避重试。L7 是有界发现，不是全库无冲突证明，也不是持续重审所有历史冲突的扫描器。
 
-L7 使用实体图、语义向量与内容 BM25 的独立候选渠道召回候选，经 RRF 和访问/来源过滤后判断。完成时的守卫是：挑战方和每个被判断的候选都还是判断时的内容，候选仍 active、可见且 Support 未变，读到的 Evidence Unit 仍是按上述规则为挑战方在该 Source Unit 选出的证据；Source Unit 出了新 revision 而这份证据仍然当前时，任务照常完成。耗尽的任务（用完全部次数，或因每次都会同样失败而提前结束）在管理 API（`GET /api/v1/relation-discovery/work`）中列出并计数，worker 指标输出耗尽数；运维可以按错误类型、时间段或分类器版本重新执行已耗尽或已完成的任务（`POST /api/v1/relation-discovery/work/rerun`，需要 maintenance operator），例如修复缺陷或新分类器版本评估通过后。重新执行前把原状态和错误写入审计事件，任务以新的 generation 重新排队，是否仍然有效由原有的内容、Support 与访问检查决定。
+L7 使用实体图、语义向量与内容 BM25 的独立候选渠道召回候选，经 RRF 和访问/来源过滤后判断。完成时的守卫是：挑战方和每个被判断的候选都还是判断时的内容，候选仍 active、可见且 Support 未变，读到的 Evidence Unit 仍是按上述规则为挑战方在该 Source Unit 选出的证据；Source Unit 出了新 revision 而这份证据仍然当前时，任务照常完成。耗尽的任务（用完全部次数，或因每次都会同样失败而提前结束）在管理 API（`GET /api/v1/relation-discovery/work`）中列出并计数，worker 指标输出耗尽数；运维可以按错误类型、时间段或分类器版本重新执行已耗尽或已完成的任务（`POST /api/v1/relation-discovery/work/rerun`，需要 maintenance operator），例如修复缺陷或新分类器版本评估通过后。重新执行前把原状态和错误写入审计事件，任务以新的 generation 重新排队，是否仍然有效由原有的内容、Support 与访问检查决定。任务完成时，这次运行替换分类器以前为该任务记录的全部关系：已不再是候选的一对不保留该任务以前的关系；人确认过的关系和撤销记录保留。
 
 旧的 Cross-Source Conflict Review 由一次性转换处理（`/api/v1/memories/cross-source-review-conversion/report|apply|delete`，都需要 maintenance operator）：已确认的 Review 标签为 `contradicts`，已驳回的为 `none`，report 和 apply 可以用与评估种子相同的 `label_overrides` 按 Review id 改标（只能改已决的 Review，否则 400）。两边未变时，标签为 `contradicts`、`updates` 或 `equivalent` 的转为该标签的关系（`decided_by='review'`），标签为 `none` 的转为 `contradicts` 和 `updates` 两条撤销记录（`none` 的意思是两条都成立，这两个标签都说它们不能同时成立；人已经撤回过的撤销不会再写）；标签为 `none` 且有一边已变的丢弃，其余已变或待定的重跑挑战方的发现；耗尽的任务一并重跑，旧发现流程写进 Evidence Unit 关系投影的行被清除。报告、应用和删除 Review 行分三步分别批准；删除要求应用的写入数与报告一致，并且评估用例已固定为 cohort。
 
@@ -965,7 +965,7 @@ SourceSyncRun/SyncState 汇总页面处理结果，报告成功、局部失败�
 
 Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证据完整支持 + 同轮去重） → 跳过旧 Support 与 Relation 工作 → 实体解析 → Plan 创建 M1、EU1、Support(M1, EU1) → 提交 → 索引与关系工作。
 
-若 Jira 已有等价 M0，仍创建 M1；提交后的关系发现把 M0 与 M1 标为 `equivalent`，搜索只返回其中一条。
+若 Jira 已有等价 M0，仍创建 M1；提交后的关系发现把 M0 与 M1 标为 `equivalent`，搜索两条都返回，各自注明另一来源说法相同。
 
 ### v2-A：只重组表达
 
@@ -1066,7 +1066,7 @@ source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含
 | 9 Evidence/Plan | `pipeline/projection_fragments.py`、`lifecycle_planner.py`、Evidence Unit v2 与 Source Authority/gates | **中**：消费 L3 的继承/重组结果与 L4 结果；保留既有存储实体 | 每组完整，一 Primary、多 Required；其他 Support 不被本 Unit 擅自改写；不新增版本域模型 |
 | 10 原子提交 | MemoryEngine prepare/commit、MemoryStore、SQLite/HANA、causal stale guards 与既有同 run deferred commit | **小到中**：接口/fixture parity；不因 prompt 合并改事务所有权 | 模型在事务外；输入变更拒绝旧结果；复用既有 Deferred，不另建 checkpoint/依赖图 |
 | 11 向量交付 | 现有 `lifecycle_vector_outbox` 与 worker | **无必需改造** | 重试当前关系事实，不重新提取，不复活终态 Memory |
-| 11 L7 关系发现 | 现有 durable work、RRF 候选发现、跨文档关系分类器（Structured LLM，`cross-document-relation-v3`）、关系表和原子完成；耗尽任务列表与重跑 | **已实现（ADR 0037）**：只写关系，不建 Review；读取、撤销和一次性转换已接入 | 可见冲突窗口已接受；关系是标注，不改变 lifecycle；不穷尽全库 |
+| 11 L7 关系发现 | 现有 durable work、RRF 候选发现、跨文档关系分类器（Structured LLM，`cross-document-relation-v4`）、关系表和原子完成；耗尽任务列表与重跑 | **已实现（ADR 0037）**：只写关系，不建 Review；读取、撤销和一次性转换已接入 | 可见冲突窗口已接受；关系是标注，不改变 lifecycle；不穷尽全库 |
 | 12 Run 完成/恢复 | 已有 Run、derivation、模型 typed errors、work/outbox 重试与活动进度 | **中**：新语义合同版本和错误分类接入既有恢复/指标 | 单次 selector correction、技术失败和业务 Review 分开；不是所有模型结果都已持久缓存 |
 
 实际落点：

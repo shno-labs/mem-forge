@@ -630,9 +630,9 @@ independently supported conflicting Memories may be active before a relation
 is annotated; this window is accepted. Each pair of Memories from different
 Source Units receives one label, `none`, `equivalent`, `updates` or
 `contradicts`, and discovery writes relations only, never a Review. It is the
-only record of the same knowledge across Source Units. Search returns one Memory
-of an `equivalent` pair and attaches a relation when the caller can see both
-Memories; a person may dismiss
+only record of the same knowledge across Source Units. Search returns both
+Memories of an `equivalent` pair and attaches a relation when the caller can see
+both Memories; a person may dismiss
 it or correct the outdated Memory through the existing correction paths.
 Neither similarity nor source recency is destructive authority.
 
