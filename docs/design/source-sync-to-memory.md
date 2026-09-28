@@ -1,6 +1,6 @@
 # 单篇文档从 Sync 到 Memory 的完整设计
 
-日期：2026-09-07，最近更新：2026-09-27。本文描述共享代码的 Sync→Memory 合同；上一版紧凑 catalog 与可恢复分批的验收记录在已关闭的 [Cloud #473](https://github.com/dodoman-sun/memforge-cloud/issues/473)，第 0 节优化的实现与部署由 [Cloud #505](https://github.com/dodoman-sun/memforge-cloud/issues/505) 跟踪，其第一步是所有模型调用共用的 LLM batch runner：#505 的第一个 PR 交付它并把现有调用点迁移过去。[Cloud #506](https://github.com/dodoman-sun/memforge-cloud/issues/506) 在此基础上增加分类器 backend、Jev 评估与 prompt caching。
+日期：2026-09-07，最近更新：2026-09-27。本文描述共享代码的 Sync→Memory 合同；上一版紧凑 catalog 与可恢复分批的验收记录在已关闭的 [Cloud #473](https://github.com/dodoman-sun/memforge-cloud/issues/473)，第 0 节优化的实现与部署由 [Cloud #505](https://github.com/dodoman-sun/memforge-cloud/issues/505) 跟踪，其第一步是所有模型调用共用的 LLM batch runner：#505 的第一个 PR 交付它并把现有调用点迁移过去。[Cloud #506](https://github.com/dodoman-sun/memforge-cloud/issues/506) 在此基础上增加决策合同、按任务的决策模型评估与 prompt caching。
 
 本文以一篇 Confluence 页面为主线，覆盖首次导入和后续更新。Jira、Markdown 和带附件的文档复用相同领域流程，差异集中在源解析与表示方式。实施前评审基线为 OSS main `abdbdf18a3c1100289051c289046c0c07092fa76`：基线核对的相关路径与固定复核工作树 `3b8b1fc4` 一致。Cloud 对照基线为 `11338e0235ab23df3199b8024a05c1b17ed71d10`。这里不宣称线上 Cloud 已部署目标设计。
 
@@ -15,7 +15,7 @@
 - [Document Memory Lifecycle](document-memory-lifecycle.md) 只定义 Evidence/Support、动作与 Review 的领域约束，不再重复完整 Sync 流程。
 - [Source-Agnostic Memory Extraction](source-agnostic-memory-extraction.md) 负责当前提取、角色和 selector 合同；[增量 Primary authority](representation-scoped-incremental-primary-authority.md) 负责表示级差量算法。本文不另造 compiler 或授权规则。
 - [ADR 0009](../adr/0009-bound-cross-document-relation-discovery.md)、[0017](../adr/0017-stage-recoverable-source-unit-derivation-before-lifecycle-commit.md)、[0030](../adr/0030-compile-revision-pinned-evidence-fragments.md) 分别拥有异步关系发现、可恢复推导、不可变 Evidence 的详细合同；[ADR 0040](../adr/0040-keep-stored-input-current-and-isolate-derivation-recovery.md) 拥有存储输入、按当前 revision 重新处理的输入来源、修订复用和恢复隔离的合同；[ADR 0041](../adr/0041-record-stored-input-on-the-source-unit-revision.md) 拥有存储输入归属于 Source Unit revision、Document 行只保存共享描述的合同。
-- [Semantic judgment execution](semantic-judgment-execution.md) 说明生成与分类调用如何共享 ContextBundle、如何使用 prompt cache，以及哪些判断可以选择 Structured LLM 或 TypeSafe/Jev；[ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md) 记录该共享决策。
+- [Semantic judgment execution](semantic-judgment-execution.md) 说明各模型步骤如何共享 ContextBundle、如何使用 prompt cache，以及哪些步骤属于 Decision、可以交给决策模型；[ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md) 和 [ADR 0043](../adr/0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md) 记录这些共享决策。
 - [大文档恢复分析](large-document-reconciliation-recovery.md) 是历史问题与未批准选项的记录，不是另一份当前主流程或执行 backlog。
 
 读取范围只决定文档语义材料的供应，不是对所有模型职责一律传全文：候选准入看候选及其所选 Evidence，Sparse Relation 看 Candidate、其当前 Evidence 与同 Unit 旧 Memory 的 Claim（不看 Support 结论），Entity Resolution 看名称语境，提交后的跨文档关系发现只看知识及范围。直接用户创建/纠正、managed agent commands 有各自的授权入口，复用后段 Evidence/Lifecycle，但不强制绕回 provider Sync。
@@ -98,16 +98,16 @@ Unit revision 与本 Source 的输入记录同一事务]
     M -.->|提交后异步| XD[跨文档关系分类器
 none / equivalent / updates / contradicts
 只写标注，不合并、不退休]
-    classDef classifier fill:#fef3c7,stroke:#b45309,color:#1f2937
-    class Y classifier
+    classDef decision fill:#fef3c7,stroke:#b45309,color:#1f2937
+    class Y decision
     classDef failnote fill:#f3f4f6,stroke:#9ca3af,stroke-dasharray:4 3,color:#4b5563
     class XF failnote
-    class XD classifier
+    class XD decision
 ```
 
-图中 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation 都经同一个 LLM batch runner 调用模型（见 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md)）。模型对每一项各返回一行。响应模型只检查一行的 JSON 结构（类型、必填字段、枚举值）；关于一行含义的规则都是行规则，由各阶段逐行单独检查。合格的行立即采用，不再重发；不合格或缺失的行合在一起重问一次，只带这些项，并逐项写明错误（例如“NEW-0003 引用了 MEM-0037，不在它允许比较的列表里”）。所以一个请求里有几行出错，都只多一次调用。如果某行用了本请求没有提供的 ID，说明整份回答的 ID 已经对不上（比如每个答案都挪到了下一项的 ID 下），整份回答按无法读出处理。只有无法定位到具体哪一项时才对半拆分：多条目请求组超时、超出容量，或者整个输出无法按行读出（格式错乱、有歧义的 JSON、schema 不符、出现本请求没有提供的 ID）且整体纠正一次后仍读不出。逐行校验适用于 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation（`claim_revision`）；同 Unit identity 的目录作为一个整体校验，仍是整体纠正一次后拆分。失败按一条规则处理：某一项单独处理仍无法判断时，由所在阶段记录下来，revision 照常提交；其余失败统称执行错误，使该 Source Unit revision 不提交，下次同步重试。“无法判断”只有两种：这一项单独就超出容量；或模型确实返回了结果，但重问或纠正一次后仍通不过校验（包括格式错乱、有歧义的 JSON）。provider 错误、超时、被 provider 拒绝的请求（如 400）和意外异常（包括代码缺陷）都是执行错误。一项无法判断，不会挡住同一 Unit 的其他内容。Change Impact 用单独颜色标出，因为它是可以换成分类器 backend 的判断任务。Support 线与 Relation 线并行执行，只在 SupportRelationCoordinator 汇合。
+图中 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation 都经同一个 LLM batch runner 调用模型（见 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md)）。模型对每一项各返回一行。响应模型只检查一行的 JSON 结构（类型、必填字段、枚举值）；关于一行含义的规则都是行规则，由各阶段逐行单独检查。合格的行立即采用，不再重发；不合格或缺失的行合在一起重问一次，只带这些项，并逐项写明错误（例如“NEW-0003 引用了 MEM-0037，不在它允许比较的列表里”）。所以一个请求里有几行出错，都只多一次调用。如果某行用了本请求没有提供的 ID，说明整份回答的 ID 已经对不上（比如每个答案都挪到了下一项的 ID 下），整份回答按无法读出处理。只有无法定位到具体哪一项时才对半拆分：多条目请求组超时、超出容量，或者整个输出无法按行读出（格式错乱、有歧义的 JSON、schema 不符、出现本请求没有提供的 ID）且整体纠正一次后仍读不出。逐行校验适用于 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation（`claim_revision`）；同 Unit identity 的目录作为一个整体校验，仍是整体纠正一次后拆分。失败按一条规则处理：某一项单独处理仍无法判断时，由所在阶段记录下来，revision 照常提交；其余失败统称执行错误，使该 Source Unit revision 不提交，下次同步重试。“无法判断”只有两种：这一项单独就超出容量；或模型确实返回了结果，但重问或纠正一次后仍通不过校验（包括格式错乱、有歧义的 JSON）。provider 错误、超时、被 provider 拒绝的请求（如 400）和意外异常（包括代码缺陷）都是执行错误。一项无法判断，不会挡住同一 Unit 的其他内容。Change Impact 和跨文档关系分类器用单独颜色标出，因为它们是 Decision 任务，通过评估后可以改由决策模型执行。Support 线与 Relation 线并行执行，只在 SupportRelationCoordinator 汇合。
 
-执行器按任务类型选择，而不是按单条 confidence 分流：开放式生成和依赖多字段的 Evidence 计划使用 Structured LLM；封闭、输入完整、逐项独立的分类或排序使用分类器模型（Jev 或小参数 LLM）；exact 比较、完整性、权限和 lifecycle action 始终由程序负责。分类概率只用于离线评估和监控，不决定运行时是否换模型。Change Impact 在分类器 backend 通过 #506 的评估之前由现有 Structured LLM 执行；候选准入与 Sparse Relation 由 Structured LLM 执行，逐 pair 的分类器 backend 需要另立合同和评估。
+每个模型步骤按模型要做的事归为三类之一，而不是按输出形状或单条 confidence 分流（[ADR 0043](../adr/0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md)）。Generation 写出输入里没有的文本：Claim Extraction 和 managed agent patch。Reasoning 虽然只做选择，但要在程序无法缩小的列表里找出相关项、跨项携带状态或依赖前面的答案，或者判断几段 Evidence 合起来是否完整支持一条 claim：候选准入、Support Assessment 和 Sparse Relation。Decision 对程序完整给出的一项回答一个固定问题，选项封闭，各项互不依赖：Change Impact、同一旧 Memory 的两个 refinement 之间的 pair review、跨文档关系、实体裁决和 agent-session authority。Generation 和 Reasoning 始终由主模型执行；Decision 任务通过评估后才改由决策模型执行，之前也由主模型执行。模型只返回知识本身或程序定义的选项，不返回理由，也不返回自报的 confidence。exact 比较、完整性、权限和 lifecycle action 始终由程序负责。后端给出的概率只用于离线评估和监控，不决定运行时是否换模型。
 
 ### 0.2 `RevisionContextPlanner` 是唯一对外上下文接口
 
@@ -165,7 +165,7 @@ Planner 输出 backend-neutral `ContextBundle`，按稳定性排列：
 CONTRACT → REVISION_SHARED → COHORT → CARRIED_STATE → ATTEMPT
 ```
 
-Structured LLM adapter 将其渲染为稳定前缀在前的 prompt，并在实际 route 支持时请求 prompt caching；分类器 adapter 将同一判断上下文渲染为共享 state 和独立的封闭标签问题。分类器实现可以是 Jev，也可以是通过同一任务评估的小参数 LLM。Claim Extraction、候选准入与完整 Support Assessment 使用 `GenerationExecutor`；Change Impact、Sparse Relation 和 rerank 使用 `JudgmentExecutor`，其中 Change Impact 与 Sparse Relation 目前由 Structured LLM adapter 执行。两类 executor 都经同一个 LLM batch runner 发送请求。executor 只负责推理调用，不能改变 ReadingGroups、selectable refs、work manifest 或 lifecycle authority。
+Structured LLM adapter 将其渲染为稳定前缀在前的 prompt，并在实际 route 支持时请求 prompt caching；可选的 Jev adapter（仅用于 OSS）把 Decision 任务渲染为共享 state 加每项一个问题，返回与 LLM adapter 相同的答案。Claim Extraction 是 Generation，候选准入、完整 Support Assessment 与 Sparse Relation 是 Reasoning，都由主模型执行；Change Impact 是 Decision，通过评估之前同样由主模型执行。所有任务都经同一个 LLM batch runner 发送请求。adapter 只负责推理调用，不能改变 ReadingGroups、selectable refs、work manifest 或 lifecycle authority。
 
 ### 0.3 旧 Evidence 的确定性对应
 
@@ -218,9 +218,9 @@ RepresentationCompiler 若改变片段切分或文字表示，已有 Evidence �
 
 `EXACT_UNCHANGED` 只证明原句仍在，不证明远处没有新增例外。Planner 将全部新增、修改的 ReadingGroups（只删掉了其中几项的列表也算修改，整组连同引导句进入），以及被删除 Fragment 的旧文本（作为删除内容，带它在基线中的标题路径或记录字段），组合成 `ChangeBundle`，这样远处被删掉的限定条件也能被 Change Impact 看到；Change Impact 对每条 exact-rebound fixed claim 输出 `AFFECTED` 或 `UNAFFECTED`。一个 bundle 对 300 条 claims 是 300 个分类问题，不是 `300 × group_count`。一次请求放不下时，LLM batch runner 按 ReadingGroup 边界分成多个 bundle，程序对每条 claim 的各 bundle 结果作 OR 归约；任一 `AFFECTED` 进入完整 Support Assessment，全部 `UNAFFECTED` 才完成 KEEP+REBIND。变化中出现作用范围不明确的全局性说法（如“以上流程”“本文档”“自某日起停用”）时判为 `AFFECTED`；不为这条规则单独设计评估用例。某条 claim 的 Change Impact 执行失败（对半拆分到单条仍失败、不可分超限、输出纠错后仍不合法等）时，该 claim 进入 Support Assessment；程序不把执行失败记成 `AFFECTED` 标签。
 
-Change Impact 在分类器 backend（Jev 或小参数 LLM）通过 #506 的通用评估之前，由现有 Structured LLM 执行。backend 是否接管该任务由固定评估集整体决定，不按单条 confidence fallback。
+Change Impact 是 Decision 任务，安全选项是 `AFFECTED`：`UNAFFECTED` 会跳过 Support Assessment 直接 REBIND，所以拿不准时判 `AFFECTED`。它在通过决策模型评估之前由主模型执行；是否改由决策模型执行由固定评估集对整个任务决定，不按单条 confidence fallback。
 
-**Cloud 影响：**精确对应、按整个 Support 路由和 Change Impact 规则都是 OSS 共享代码，不改存储协议，Cloud 升级 pin 即可。Change Impact 默认由现有 Structured LLM 执行，Cloud 继续经 LiteLLM 的 `sap/` 路由和 `AICORE_*` 环境变量调用，不新增配置。编译器变更引起的重新评估同样发生在 Cloud，相关 PR 的影响说明要覆盖 Cloud 的重新评估负载。
+**Cloud 影响：**精确对应、按整个 Support 路由和 Change Impact 规则都是 OSS 共享代码，不改存储协议，Cloud 升级 pin 即可。Change Impact 默认由主模型执行，Cloud 继续经 LiteLLM 的 `sap/` 路由和 `AICORE_*` 环境变量调用。决策模型是 `MEMFORGE_AICORE_ENRICHMENT_MODEL` 旁边的一个部署变量，默认为空，不需要数据库行；Change Impact 通过 Cloud 自己标注用例上的评估、并且设置了这个变量之后，才改由决策模型执行。编译器变更引起的重新评估同样发生在 Cloud，相关 PR 的影响说明要覆盖 Cloud 的重新评估负载。
 
 ### 0.4 按固定顺序读取当前全文
 
@@ -321,7 +321,7 @@ Sparse Relation（同 Unit 的 claim revision）只接收 `ADMITTED` Candidate�
 
 输出为每个 Candidate 一行完成记录，只列有意义的关系：等价、矛盾、带方向的细化，或明确列出的不确定旧 Memory。某条旧 Memory 未被列出表示“未提出关系”，不是判定无关。缺少 Candidate 行、未知 ID、同一对重复或矛盾的关系都会被拒绝；输出被截断属于容量失败，由 LLM batch runner 拆分重发；这些都不能当作“未提出关系”。每个 Candidate 的行单独校验，不合格的行合在一起重问一次，逐项写明错误。某个 Candidate 重问后仍不合法，SupportRelationCoordinator 消费它，不 ADD，不建 Review，写诊断。它的完成行本应覆盖本 Unit 的全部旧 Memory，缺了这一行，就无法确定它和哪条旧 Memory 有关：它可能正是某条旧 Memory 的新说法。所以本 revision 的 Relation 不完整，DestructiveValidation 本轮不执行本 Unit 的任何 DELETE、SUPERSEDE 或 UPDATE：这些旧 Memory 保留原 Support，不推进验证基线；只因被拦下的 SUPERSEDE 或 UPDATE 才起作用的 Candidate 也不 ADD。不带破坏性的工作照常提交：换绑、其他 Candidate 的 ADD 和 Review。遇到执行错误时，该 Source Unit revision 不提交，下次同步重试，不部分发布。Relation 不检查证据是否完整支持 Candidate，这由候选准入负责。
 
-Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batch runner 切分，旧 Memory 目录被分块时，程序对每个 Candidate 各块的关系取并集。切分只是传输细节，不产生业务状态，不改变覆盖，也不部分提交。该步骤由 Structured LLM 执行；逐 pair 输出标签的分类器 backend 需要另立合同和评估。
+Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batch runner 切分，旧 Memory 目录被分块时，程序对每个 Candidate 各块的关系取并集。切分只是传输细节，不产生业务状态，不改变覆盖，也不部分提交。Sparse Relation 是 Reasoning，始终由主模型执行：它要在同 Unit 全部旧 Memory 里找出少数相关的几条，同一文档内无法靠相似度缩小范围。每行只返回关系标签、旧 Memory ID 和细化时的蕴含判断（`revision_assessment` 的布尔值），不返回理由，也不写矛盾的证明文字；待审 Review 和被替换的 Memory 显示程序生成的理由文本、两条 Memory、标签和 Evidence。逐 pair 输出标签的形式是另一个任务，需要另立合同和评估。
 
 跨 Source Unit/全工作区关系发现仍先由现有 hybrid retrieval 产生有限 `K`，再做分类，因为全工作区笛卡尔积没有界；该发现路径的漏判不能授权破坏性 lifecycle action。
 
@@ -789,7 +789,7 @@ Evidence-fixed、多 Memory cohorts 可使用 `REVISION_FIRST` cache layout；co
 
 程序使用 fragment digest、结构 locator 与 coverage 将 prior Evidence 分类为 `EXACT_UNCHANGED`、`MODIFIED`、`REMOVED`、`AMBIGUOUS` 或 `UNKNOWN`，再按第 0.3 节对整个 Support 路由。`UNKNOWN` 由程序直接产生 `UNRESOLVED(partial_coverage)` 并 KEEP。`MODIFIED`、`REMOVED`、`AMBIGUOUS` 固定携带一次 old exact excerpt；其他状态禁止携带 old excerpt。
 
-全部 part 为 `EXACT_UNCHANGED` 且本次有变化内容的 fixed claims，与合并后的 ChangeBundles 做 Change Impact；本次没有变化内容时直接 REBIND，不调用模型。Change Impact 在分类器 backend 通过 #506 评估之前由现有 Structured LLM 执行，每个 claim 对每个 capacity-safe bundle 输出 `AFFECTED` 或 `UNAFFECTED`；程序对多个 bundles 做 OR。没有 confidence fallback。`UNAFFECTED` 完成 KEEP+REBIND；`AFFECTED`、Change Impact 执行失败与所有直接受影响状态进入 Structured LLM Support Assessment。
+全部 part 为 `EXACT_UNCHANGED` 且本次有变化内容的 fixed claims，与合并后的 ChangeBundles 做 Change Impact；本次没有变化内容时直接 REBIND，不调用模型。Change Impact 在通过决策模型评估之前由主模型执行，每个 claim 对每个 capacity-safe bundle 输出 `AFFECTED` 或 `UNAFFECTED`；程序对多个 bundles 做 OR。没有 confidence fallback。`UNAFFECTED` 完成 KEEP+REBIND；`AFFECTED`、Change Impact 执行失败与所有直接受影响状态进入 Structured LLM Support Assessment。
 
 程序先生成 Support 读取顺序，不调用模型：
 
@@ -945,13 +945,13 @@ SourceSyncRun/SyncState 汇总页面处理结果，报告成功、局部失败�
 |---|---|---|---|---|
 | Claim Extraction | 有获授权 Primary 工作 | 含授权 Primary 的 current ReadingGroups、阅读上下文（含 Unit Title）、实际图片 | Candidate + 当前 Evidence selection | 否 |
 | 候选准入 | 每个 Candidate | 候选、所选 Evidence 与同轮其他候选 | `ADMITTED` / `REJECTED` / 合并；Structured LLM | 否 |
-| Change Impact | 全部 part 为 `EXACT_UNCHANGED` 且本次有变化内容 | fixed claims + capacity-safe ChangeBundle | 每 claim 的 `AFFECTED` / `UNAFFECTED`；现有 Structured LLM，分类器 backend 通过 #506 评估后可替换 | 否 |
+| Change Impact | 全部 part 为 `EXACT_UNCHANGED` 且本次有变化内容 | fixed claims + capacity-safe ChangeBundle | 每 claim 的 `AFFECTED` / `UNAFFECTED`；Decision，安全选项 `AFFECTED`，通过评估前由主模型执行，之后由决策模型执行 | 否 |
 | Support 读取顺序 | Support work 已建立 | exact correspondence、CatalogDiff、coverage、完整 current manifest | 固定读取顺序；程序 | 否 |
 | Support Assessment | `AFFECTED`、Change Impact 执行失败，或 Evidence 为 modified/removed/ambiguous | fixed claim、明确 old excerpt 规则、AssessmentContext、current Evidence Catalog、previous witness state | 每步：supported 即退出；读完：supported / unsupported；Structured LLM | 否 |
 | Sparse Relation | 存在 `ADMITTED` Candidates 与同 Unit 旧 Memory | Candidate + 其当前 Evidence + 同 Unit 旧 Memory 的 Claim | 每个 Candidate 一行，只列有意义的关系；Structured LLM | 否 |
 | SupportRelationCoordinator | 两条线都完成后 | Support 结果 + Relation 结果 | 动作草案或 Review；冲突组每条 Claim 至多复核 1 次；程序 | 否 |
 | Entity Resolution | 精确名称/别名不足以确定 | mention、实体候选、必要局部语境 | 匹配/不匹配 | 否；实体字典可准备写入 |
-| Post-commit Relation Discovery | 有关系候选且没有有效已分类结果 | 已提交 Memory 对及范围 | 每对一个标签：`none` / `equivalent` / `updates` / `contradicts`；分类器（评估通过前为 Structured LLM） | 否；只写关系标注，不生成 Review |
+| Post-commit Relation Discovery | 有关系候选且没有有效已分类结果 | 已提交 Memory 对及范围 | 每对一个标签：`none` / `equivalent` / `updates` / `contradicts`，只返回标签；Decision，安全选项 `none`，通过评估前由主模型执行，之后由决策模型执行 | 否；只写关系标注，不生成 Review |
 
 程序归约、资格检查、delta 计算、Evidence Resolver、Lifecycle Planner、数据库提交不新增语义 LLM。Embedding、token counting、provider API 单独计量，不混算为“revalidation 调用”。可选 Artifact 摘要复用提取响应，不额外规定一个必需的摘要模型阶段。
 
@@ -1066,7 +1066,7 @@ source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含
 | 9 Evidence/Plan | `pipeline/projection_fragments.py`、`lifecycle_planner.py`、Evidence Unit v2 与 Source Authority/gates | **中**：消费 L3 的继承/重组结果与 L4 结果；保留既有存储实体 | 每组完整，一 Primary、多 Required；其他 Support 不被本 Unit 擅自改写；不新增版本域模型 |
 | 10 原子提交 | MemoryEngine prepare/commit、MemoryStore、SQLite/HANA、causal stale guards 与既有同 run deferred commit | **小到中**：接口/fixture parity；不因 prompt 合并改事务所有权 | 模型在事务外；输入变更拒绝旧结果；复用既有 Deferred，不另建 checkpoint/依赖图 |
 | 11 向量交付 | 现有 `lifecycle_vector_outbox` 与 worker | **无必需改造** | 重试当前关系事实，不重新提取，不复活终态 Memory |
-| 11 L7 关系发现 | 现有 durable work、RRF 候选发现、跨文档关系分类器（Structured LLM，`cross-document-relation-v1`）、关系表和原子完成；耗尽任务列表与重跑 | **已实现（ADR 0037）**：只写关系，不建 Review；读取、撤销和一次性转换已接入 | 可见冲突窗口已接受；关系是标注，不改变 lifecycle；不穷尽全库 |
+| 11 L7 关系发现 | 现有 durable work、RRF 候选发现、跨文档关系分类器（Structured LLM，`cross-document-relation-v2`）、关系表和原子完成；耗尽任务列表与重跑 | **已实现（ADR 0037）**：只写关系，不建 Review；读取、撤销和一次性转换已接入 | 可见冲突窗口已接受；关系是标注，不改变 lifecycle；不穷尽全库 |
 | 12 Run 完成/恢复 | 已有 Run、derivation、模型 typed errors、work/outbox 重试与活动进度 | **中**：新语义合同版本和错误分类接入既有恢复/指标 | 单次 selector correction、技术失败和业务 Review 分开；不是所有模型结果都已持久缓存 |
 
 实际落点：

@@ -142,9 +142,7 @@ Example:
   "claim_text": "Workspace schedulers must start during app startup so overdue source schedules run without UI traffic.",
   "memory_type": "procedure",
   "tags": ["scheduler", "source-sync"],
-  "confidence": 0.86,
-  "citations": ["agent-window://codex/session-123/sha256-..."],
-  "reason": "The new window corrects and confirms the existing scheduler startup claim."
+  "citations": ["agent-window://codex/session-123/sha256-..."]
 }
 ```
 
@@ -176,7 +174,7 @@ agent_concepts
 
 agent_claims
   id, concept_id, display_anchor, claim_text, memory_type,
-  tags_json, confidence, memory_id, timestamps
+  tags_json, memory_id, timestamps
 
 agent_claim_citations
   id, claim_id, citation_url, timestamps

@@ -1,0 +1,204 @@
+# Assign model judgments by task shape and share one decision contract
+
+Status: Accepted
+
+Date: 2026-09-28
+
+## Context
+
+Every model step in the Source lifecycle runs on one Structured LLM. The
+[semantic judgment design](../design/semantic-judgment-execution.md) and
+[ADR 0036](0036-separate-semantic-work-from-inference-executors.md) separate
+`GenerationWork` from `JudgmentWork` and allow a classifier adapter
+(TypeSafe/Jev or a small-parameter LLM) for closed-label judgments. They sort
+steps by output shape, which files candidate admission and Support Assessment
+as generation although both return only choices, and several contracts still
+ask the model for text or a self-reported confidence:
+
+- candidate admission returns a `reason` that nothing reads;
+- same-Unit Sparse Relation returns a `reason`, stored as the Lifecycle Review
+  planner reason and a Memory's replacement reason, and
+  `incompatible_assertions`, checked only for being non-empty;
+- the same-Unit pair review returns a direction, a proof text and a `reason`,
+  and only its `contradicts` label is used;
+- cross-document relations return a `reason` stored with the relation and shown
+  in the admin UI, the API and MCP `relations[]`;
+- entity adjudication returns a `reason` and a `confidence` that must reach 0.9;
+  the prompt never asks for the confidence, so a match without one is dropped;
+- agent-session authority returns a required `reason` that nothing reads, and an
+  `is_authoritative` flag that repeats its `authority_kind`;
+- Claim Extraction and managed agent patches return a `confidence`, and patches
+  a `reason` stored as the replacement reason.
+
+`Memory.confidence` is read only for display, hashing and one unused query
+(`get_source_support_candidates`); no lifecycle, ranking, filtering or hook
+decision reads it. Admission reserves about 250 output tokens per Candidate for
+its unread reason.
+
+Evaluating the cross-document relation classifier on EU12 dev showed that the
+definition in `CROSS_DOCUMENT_RELATION_RULES` is already general and that the
+errors come from the model not applying it. Two points the definition leaves
+open (partial overlap and inferred conflict) are settled here.
+
+## Decision
+
+### Three kinds of model work
+
+Every model step is one kind, decided by what the model must do, not by the
+shape of its output.
+
+| Kind | The model must | Runs on |
+|---|---|---|
+| Generation | write text that does not exist in the input | the main model |
+| Reasoning | choose, but find the relevant items in a list the program cannot narrow, carry state or dependent answers across items, or decide whether several Evidence parts together entail a claim | the main model |
+| Decision | answer one fixed question about one item the program supplied in full, with closed options, independently of every other item | the decision model once the task passes its evaluation, otherwise the main model |
+
+| Step | Kind | Why |
+|---|---|---|
+| Claim Extraction (with selector correction) | Generation | writes the claim, its dates and entity names |
+| Managed agent patch | Generation | writes the replacement claim |
+| Candidate admission | Reasoning | complete support over the selected Evidence parts uses the same definition as Support Assessment (`COMPLETE_SUPPORT_DEFINITION`), and same-round duplicates are found by scanning every Candidate of the round |
+| Support Assessment | Reasoning | ordered reading with carried witnesses; Primary and Required are one dependent choice |
+| Same-Unit Sparse Relation | Reasoning | finds the few related old Memories among all of the Unit's, which similarity cannot narrow inside one document; refinement is decided by entailment and drives SUPERSEDE, DELETE and UPDATE |
+| Same-Unit pair review | Decision | the program supplies two refinements of the same old Memory; do they contradict |
+| Change Impact | Decision | one ChangeBundle and one fixed claim; `affected` or `unaffected` |
+| Cross-document relation | Decision | the program retrieves each pair; one label per pair |
+| Entity adjudication | Decision | one mention and its supplied candidates; pick one or none |
+| Agent-session authority | Decision | one user message with its context; one authority kind |
+
+Admission and Support Assessment run on the same model: a Candidate admitted
+under one reading of complete support must not be retired by a different
+reading at the next revision.
+
+Out of scope: retrieval rerank, a ranking task for a dedicated reranker that
+stays disabled by default and unused by Cloud, and the offline semantic judge,
+which is evaluation tooling rather than a product step.
+
+### Model outputs are the knowledge or the choice, nothing else
+
+A Generation contract returns text only in the fields that are the generated
+knowledge (the claim, its validity dates, entity names). A Reasoning or
+Decision contract returns only values the program defined: labels, booleans,
+and refs or IDs from lists the request supplied. No contract returns an
+explanation or a model-reported confidence. Records that used a model reason
+keep their program-owned text (for example the fallback replacement reason);
+people read the Memories and the Evidence.
+
+`Memory.confidence` is removed with its API, MCP, admin UI and storage fields,
+and with the unused `get_source_support_candidates`.
+
+### One decision contract
+
+Every Decision step implements the same contract, whatever model answers it:
+
+- **Task.** A task has a name, a contract version that is part of its work
+  identity, one fixed question and a closed list of options. One option is the
+  task's safe answer, which is also the answer for an uncertain case: `none`
+  for cross-document relations, no candidate for entity adjudication,
+  `not_authoritative` for agent-session authority, `contradicts` for the pair
+  review (it blocks the refinement) and `affected` for Change Impact (it sends
+  the claim to Support Assessment).
+- **Item.** One item is the complete input the program supplies for one
+  question. Items are independent. When an item's input is too large for one
+  request and the task allows it, the program splits the input and combines the
+  answers by the task's rule (Change Impact: any `affected` wins).
+- **Answer.** Exactly one option per item, nothing else. An ID outside the
+  supplied candidates is a rejected row, not the safe answer.
+- **Meaning.** What each option means and what the program does with it belong
+  to the task. Relation direction (`updates` needs known Evidence dates that
+  order the pair) stays a program rule
+  ([ADR 0037](0037-record-cross-document-conflicts-as-relations.md)).
+- **Execution.** Requests go through the LLM batch runner. How items are packed
+  is the adapter's concern: an LLM adapter asks for many items per request; a
+  Jev adapter sends one state with one question per item. A probability a
+  backend reports is diagnostic telemetry and never changes the answer
+  ([ADR 0036](0036-separate-semantic-work-from-inference-executors.md)).
+- **Failure.** An item without a valid answer after the runner's re-ask is an
+  execution failure that the task routes as today. A failure is never an
+  option.
+
+### Cross-document relation rules
+
+`CROSS_DOCUMENT_RELATION_RULES` keeps its four same-situation conditions and
+adds:
+
+- decide whether the statements are about the same situation before deciding
+  whether both can hold;
+- when statements overlap only in part, compare only the overlapping part;
+- compare only what the statements state; a conflict that has to be inferred
+  from either statement is not a relation;
+- the kind of a statement (what should be, what happened, what was planned or
+  decided) is read from what it says, not from its memory type.
+
+The classifier returns only the label. There is no per-label confidence
+threshold.
+
+### Decision model
+
+A Decision task moves to the decision model only after it passes its
+evaluation; the passed tasks are registered with their contract versions in
+code. The decision model is one setting, applied to every registered task; when
+it is not set, every task runs on the main model. There is no per-task backend
+setting, no per-item routing and no fallback between models.
+
+A task is evaluated on held-out labeled cases and passes when, against the main
+model on the same cases, its safe-answer recall and its precision on every
+other option are no lower. A contract change that alters behaviour on any model
+needs its own evaluation before it ships: removing the entity confidence
+cutoff turns every returned candidate into a persistent alias, and removing
+Sparse Relation's reason removes text written before `revision_assessment`.
+
+On Cloud the decision model is a small model on a `sap/` route, for example
+Claude Haiku 4.5 once SAP AI Core offers it. TypeSafe/Jev is an optional OSS
+adapter behind the same contract; Cloud does not send Source content to it.
+
+## Consequences
+
+- Admission, Sparse Relation, the pair review, cross-document relations, entity
+  adjudication, agent-session authority and managed patches lose their text and
+  confidence fields, and each bumps its contract version. Entity adjudication
+  and agent-session authority gain a version; the pair review's version joins
+  its work identity. Derivations use a new version at their next processing;
+  existing cross-document relations are re-run by an operator.
+- Admission's output shrinks from about 320 to about 70 tokens per Candidate.
+- Agent-session authority returns only `authority_kind`.
+- A pending Review and a replaced Memory no longer show a model reason; they
+  show the Memories, the label and the Evidence.
+- Unused per-task model settings (`RetrievalConfig.entity_model`,
+  `entity_timeout_s`, the unused `rerank_model` default) and `entity_filter.py`
+  are deleted, and no per-task backend setting is introduced.
+
+## Cloud impact
+
+- HANA drops `CROSS_DOCUMENT_RELATIONS.REASON` (it also holds reasons converted
+  from human Reviews, which are dropped with it), `MEMORIES.CONFIDENCE` and
+  `AGENT_CLAIMS.CONFIDENCE` through migrations, and the column lists, MERGE,
+  join-back queries and row mappings that name them. The storage protocol
+  method `apply_agent_claim_source_projection_lifecycle` loses its `confidence`
+  argument, and Cloud's `get_source_support_candidates` is deleted. Columns that
+  also hold program text (`LIFECYCLE_REVIEWS.REASON`,
+  `MEMORIES.REPLACEMENT_REASON`) stay and stop receiving model text.
+- The decision model is one deployment variable next to
+  `MEMFORGE_AICORE_ENRICHMENT_MODEL`, read by `prepare-deploy.sh` and the
+  `sap-internal` profile, exported by `cf_env_aicore.py` and passed through
+  `proxy/external_runtime.py`. It is empty by default and needs no database
+  row. The `sap/` transport choice applies to it as it does to the main model.
+  It is the one configuration addition this ADR allows beyond LiteLLM metadata,
+  `MEMFORGE_LLM_MAX_*` and `request_timeout_s`.
+- Nothing runs on a second model until a task passes evaluation on Cloud's own
+  labeled cases and the variable is set.
+- The admin UI relation card and MCP relation output drop `reason`; search and
+  Memory output drop `confidence`. An older plugin ignores the missing fields.
+
+## Alternatives considered
+
+- **Per-question answers for relations** (same object, same scope, same kind,
+  same occurrence, both can hold). Rejected: more output per pair and a second
+  place that restates the rules.
+- **Keep a reason for readers.** Rejected: no program rule reads it, a decision
+  model cannot produce it, and readers see both Memories and the Evidence.
+- **Per-task backend settings.** Rejected: settings grow with every task, while
+  eligibility is a property of the evaluated contract.
+- **Jev as Cloud's decision model.** Rejected for Cloud: it is not reachable
+  through SAP AI Core and would send SAP Source content to an external service
+  hosted in the US.

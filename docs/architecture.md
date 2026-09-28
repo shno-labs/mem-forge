@@ -296,8 +296,7 @@ class Memory:
     # Entity linkage
     entity_refs: list[str]           # Canonical entity names referenced
 
-    # Confidence and lifecycle
-    confidence: float                # 0.0 - 1.0 (LLM extraction confidence)
+    # Corroboration and lifecycle
     corroboration_count: int         # Independent sources confirming this
     valid_from: datetime | None      # When this fact became true
     valid_until: datetime | None     # When this fact expires
@@ -712,7 +711,6 @@ CREATE TABLE IF NOT EXISTS memories (
     content_hash        TEXT NOT NULL,           -- SHA-256 for dedup
     scope               TEXT NOT NULL DEFAULT 'team',
     project_key         TEXT,
-    confidence          REAL NOT NULL DEFAULT 0.7,
     corroboration_count INTEGER NOT NULL DEFAULT 1,
     valid_from          TEXT,
     valid_until         TEXT,
@@ -876,15 +874,15 @@ Query + explicit filters -> [Query Analyzer] -> extracts entities
     Source Artifact (Level 2: via get_resource on content_url/pdf_url)
 ```
 
-### Query Analysis (Two-Tier Entity Detection)
+### Query Analysis (Entity Detection)
 
 Entity detection, not a 7-type classifier and not temporal-intent inference.
 The agent explicitly passes `memory_types`, `source_filter`, and date-only
 `time_range` via the tool schema — the analyzer doesn't need to guess intent.
 
-**Entity mentions (regex → LLM fallback)**
+**Entity mentions (deterministic)**
 
-*Tier 1 — Regex (< 5ms):* The query is canonicalized with `canonicalize_entity_name()`
+The query is canonicalized with `canonicalize_entity_name()`
 (hyphens/underscores → spaces) to match the canonicalized entity names in the database.
 Then matched against known entity canonical names **and aliases** (both loaded into the
 detection dict at search startup). Word boundaries use `[^a-zA-Z0-9]` (any non-alphanumeric
@@ -892,12 +890,8 @@ character). Longest names matched first to prevent sub-matches. Matched characte
 tracked to prevent overlapping detections. Each entity ID appears at most once (deduplicated
 across canonical name and aliases).
 
-*Tier 2 — LLM fallback (~ 200ms):* When regex finds nothing, the full entity list (with
-aliases grouped under canonical names) is sent to Claude Haiku along with the query. The LLM
-identifies entities referenced directly, by abbreviation, or semantically (e.g., "the service
-that handles payments" → payment-gateway). Returns a JSON array of entity IDs, validated
-against the known entity set. Hard timeout of 1 second. Retry on transient API errors
-(max 1 retry). Falls back silently to no entities on any failure.
+Query entity detection makes no model call. When no entity matches, the query runs
+without the Entity Graph channel and without alias expansion.
 
 Detected entity IDs feed two channels: **Entity Graph** (direct links + 1-hop expansion)
 and **BM25** (alias expansion of the keyword query). This means entity detection runs
@@ -922,7 +916,8 @@ final_score = 0.85 * rrf_normalized + 0.15 * recency
 Where `recency = exp(-0.693 * age_days / 90)` (half-life of 90 days).
 
 > **Simplified from earlier design:** The original formula had 6 weighted parameters
-> (confidence, source_authority, corroboration, access_frequency). These are deferred.
+> (confidence, source_authority, corroboration, access_frequency). Memories carry no
+> confidence, so it is not a signal; the others are deferred.
 > Add one signal at a time with A/B evaluation only when retrieval tests show the need.
 
 ### Reciprocal Rank Fusion (RRF)
@@ -1108,7 +1103,6 @@ rejects the request and tells the agent to omit the filter for a broader search.
   "memory_id": "mem-a7f3b2c1",
   "memory_type": "decision",
   "summary": "Team chose gRPC over REST for inter-service calls...",
-  "confidence": 0.90,
   "relevance_score": 0.87,
   "corroborated_by": 2,
   "last_observed_at": "2026-03-15T10:30:00Z",
@@ -1153,7 +1147,7 @@ contract. They expose service artifact URLs, not service-local storage paths.
 ```
 
 Returns: full content, context, all source documents with service artifact URLs,
-related memories, entity links, confidence, and lifecycle metadata.
+related memories, entity links, and lifecycle metadata.
 
 Use `get_memory` when an agent needs source documents for a memory,
 corroboration, cross-document relations, entities, lifecycle metadata, or artifact URLs.
@@ -1238,7 +1232,7 @@ Agent receives a question
 - SearchEngine: multi-channel (vector + BM25/FTS5 + entity-graph) plus authoritative relational filters
 - Query analyzer (rule-based classification)
 - RRF fusion implementation
-- Ranking formula with all signals (recency, confidence, authority, corroboration, access)
+- Ranking formula with all signals (recency, authority, corroboration, access)
 - Progressive disclosure (Level 0/1/2)
 - Unified `search` MCP tool
 - `get_memory` MCP tool
@@ -1289,7 +1283,6 @@ Agent receives a question
 | Atomic fact extraction via LLM | One bounded structured Source Unit extraction with exact Evidence localization |
 | ADD/UPDATE/DELETE/NOOP operations | Plus SUPERSEDE (mem0 conflates with UPDATE) |
 | Semantic dedup via embedding similarity | Cosine < 0.08 threshold before inserting a user-created Memory; source sync creates Memories per Source Unit and records cross-source sameness as an `equivalent` relation |
-| Confidence scoring | Per-memory, from LLM + corroboration boosting |
 | Separate vector collection for memories | "memories" collection in ChromaDB |
 
 ### What We Skip and Why
@@ -1599,7 +1592,7 @@ truth for the session.
 |--------|------|-------------|
 | GET | `/api/memories` | List memories with pagination, filters (type, status, source, project, entity) |
 | GET | `/api/memories/{id}` | Get memory detail with provenance, current cross-document relations, `relation_notice`, and the caller's undoable Relation Dismissals |
-| PUT | `/api/memories/{id}` | Update memory (admin edit content, confidence, status) |
+| PUT | `/api/memories/{id}` | Update memory (admin edit content, status) |
 | DELETE | `/api/memories/{id}` | Hide a memory (set status=retired) |
 | GET | `/api/memories/stats` | Memory counts by type, source, status |
 | GET | `/api/memories/relations` | List current cross-document relations the caller can see, filtered by label; a view, not a queue |
@@ -1704,7 +1697,6 @@ logger.info("memory_extracted", extra={
 | Extraction success rate | Source Unit lifecycle logs | < 90% |
 | Structured LLM calls and latency per Source Unit | lifecycle metrics | Regression from accepted baseline |
 | Relation candidates checked per Source Unit | relation-run metrics | Unbounded growth |
-| Average confidence | SQLite aggregate | < 0.6 |
 | Dedup hit rate | MemoryStore logs | -- (informational) |
 | Exhausted relation discovery work | `exhausted_total` in the relation worker log, `GET /api/relation-discovery/work?state=exhausted` | Any growth |
 | Search latency p50/p95/p99 | retrieval logs | p95 > 300ms |
