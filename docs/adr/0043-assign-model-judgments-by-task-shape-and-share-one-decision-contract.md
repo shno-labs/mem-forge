@@ -113,9 +113,10 @@ Every Decision step implements the same contract, whatever model answers it:
 - **Execution.** Requests go through the LLM batch runner. How items are packed
   is the adapter's concern, within the shared context rule of the amendment
   below: an LLM adapter asks for many items per request; a Jev adapter sends
-  one state with one question per item. A probability a
-  backend reports is diagnostic telemetry and never changes the answer
-  ([ADR 0036](0036-separate-semantic-work-from-inference-executors.md)).
+  one state with one question per item. A backend without calibrated
+  probabilities answers with its option as returned. A backend that reports
+  calibrated probabilities applies the calibrated cutoffs of the amendment
+  below and otherwise returns its highest-probability option.
 - **Failure.** An item without a valid answer after the runner's re-ask is an
   execution failure that the task routes as today. A failure is never an
   option.
@@ -288,6 +289,30 @@ pairs it no longer judges; an index on
 `CROSS_DOCUMENT_RELATIONS.DISCOVERY_WORK_ID` keeps that removal cheap. No
 storage protocol signature, configuration or `proxy/external_runtime.py` call
 site changes. Existing relations are re-run by an operator.
+
+## Amendment 2026-09-29: calibrated probabilities
+
+A backend that reports calibrated option probabilities, such as TypeSafe Jev
+(trained for calibration; TypeSafe asks for thresholds calibrated on the
+user's own domain and a pinned model version), may apply a cutoff per task and
+option: when the probability of the highest option is below that option's
+cutoff, the answer is the task's safe answer. The contract output is unchanged,
+one option per item, and a backend without calibrated probabilities (the LLM
+adapter) answers as before.
+
+- A cutoff is a named contract constant bound to the task, its contract
+  version and the backend model version. It is set on a calibration set and
+  verified on a held-out set that took no part in setting it; a change of any of
+  the three means calibrating again.
+- A cutoff never routes an item to another model and never turns a failure
+  into an option.
+- No cutoff is set yet. On EU12 dev, Jev with the v4 rules answered 13
+  relations on 282 labelled pairs with 6 correct; a cutoff of 0.7 on the same
+  pairs kept 6 with 5 correct. Eight true relations are too few to both set and
+  verify a cutoff, so cutoffs wait for a Jev adapter and a larger labelled set.
+
+Cloud impact: none. Cloud's Decision tasks run on `sap/` LLM routes, which
+report no calibrated probabilities.
 
 ## Alternatives considered
 

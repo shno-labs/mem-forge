@@ -146,7 +146,7 @@ same four labels under the same contract and is instructed to return `none`
 when unsure. A classifier backend applies a per-label confidence threshold below
 which the pair is `none`. The threshold is a named contract constant whose
 value and evaluation run are recorded with the classifier version; it is not a
-configuration knob. [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md) supersedes the threshold and the classifier backend:
+configuration knob. [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md) supersedes the threshold and the classifier backend (its amendment "calibrated probabilities" defines calibrated cutoffs for backends that report calibrated probabilities):
 the task returns only the label and moves to the decision model after it passes
 its evaluation.
 

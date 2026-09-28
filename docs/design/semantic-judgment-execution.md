@@ -63,8 +63,11 @@ people read the Memories and the Evidence.
 
 Every Decision task implements one decision contract (section 5), whatever model
 answers it. A task moves to the decision model as a whole, after it passes its
-evaluation; a probability a backend reports is diagnostic telemetry, never
-changes the answer and never switches an item to another model.
+evaluation. A backend that reports calibrated probabilities may apply a
+calibrated cutoff per task and option, below which the answer is the task's
+safe answer ([ADR 0043](../adr/0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md)
+amendment "calibrated probabilities"); a probability never switches an item to
+another model.
 
 Every task sends its requests through one LLM batch runner (section 4). No
 call site checks context capacity, splits requests or handles timeouts on its
@@ -412,8 +415,9 @@ task implements one decision contract, whatever model answers it:
 - **Execution.** Requests go through the LLM batch runner. How items are packed
   is the adapter's concern within the shared context rule: the LLM adapter asks
   for many items per request; the Jev adapter sends one state with one question
-  per item. A probability a backend reports is diagnostic telemetry and offline
-  calibration data; it never changes the answer.
+  per item. A backend without calibrated probabilities answers with its option
+  as returned; a backend with calibrated probabilities returns its highest
+  option unless that option's calibrated cutoff turns it into the safe answer.
 - **Failure.** An item without a valid answer after the runner's re-ask is an
   execution failure that the task routes as section 4 describes. A failure is
   never an option, not even the safe answer.
