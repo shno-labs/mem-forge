@@ -3,9 +3,11 @@
 Date: 2026-09-24. The LLM batch runner (section 4) is implemented and every
 model call goes through it
 ([Cloud issue #505](https://github.com/dodoman-sun/memforge-cloud/issues/505)).
+The decision model setting and the task registration of section 7 are
+implemented; no task is registered yet, so every task runs on the main model.
 The rest of this document is a target design: it does not claim that
-TypeSafe/Jev, provider prompt caching, the decision contract or the decision
-model are implemented or deployed.
+TypeSafe/Jev, provider prompt caching or the decision contract are implemented
+or deployed.
 [Cloud issue #506](https://github.com/dodoman-sun/memforge-cloud/issues/506)
 builds on the runner with the decision contract, the per-task decision-model
 evaluation and prompt caching. The assignment of model steps to kinds, the
@@ -674,9 +676,21 @@ decision model   one setting, empty by default, applied to every registered
                  Decision task
 ```
 
+The decision model is `MEMFORGE_DECISION_MODEL`, read from the environment only.
+It reaches the Structured LLM client as `StructuredLlmConfig.decision_model` and
+shares the main model's gateway, credentials and `MEMFORGE_LLM_MAX_*` caps; its
+request capacity is resolved for its own route like the main model's.
+
 A Decision task moves to the decision model only after it passes its evaluation
 (section 8). The passed tasks are registered in code with their contract
-versions; a new contract version is not registered until it passes on its own.
+versions (`EVALUATED_DECISION_TASKS` in `memforge.llm.decision_model`, keyed by
+task name); a new contract version is not registered until it passes on its
+own. Every Decision call site chooses its model through one helper,
+`decision_task_model`, and the chosen model is the one the call's diagnostics
+and, for Change Impact, its work journal record. The source lifecycle operation
+identity names the model of each Decision task the operation runs (Change Impact
+and same-Unit pair review), so the operation's outcome bindings and evaluation
+records tell which model answered its Decision steps.
 When the decision model is not set, every task runs on the main model. There is
 no per-task backend setting, no per-item routing, no `jev_with_llm_fallback`
 profile and no fallback between models. Provider failure produces typed
