@@ -531,7 +531,8 @@ Each snapshot is the classifier input for that Memory: statement, memory type,
 source type, document title, Evidence time and Evidence text. A case also pins
 the classifier contract version whose input it holds. A case is replayed under
 the current contract while that contract reads the same input
-(`cross-document-relation-v2` and `v3` differ only in rules and output); a
+(`cross-document-relation-v2`, `v3` and `v4` differ only in rules, output and
+how a request presents the pairs); a
 contract that changes the input is evaluated on a set seeded again under it. The case kind `cross_document_relation_v1` names the
 case structure (a Memory pair and one accepted label), not the classifier
 version; the classifier version is the manifest's `classifier_version`.

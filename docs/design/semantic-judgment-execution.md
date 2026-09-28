@@ -402,11 +402,18 @@ task implements one decision contract, whatever model answers it:
   to the task. Relation direction (`updates` needs known Evidence dates that
   order the pair) stays a program rule
   ([ADR 0037](../adr/0037-record-cross-document-conflicts-as-relations.md)).
+- **Shared context.** A task may declare a shared context that every item of a
+  request is judged against. A request holds exactly one shared context, stated
+  once, and one question per item; items with different shared contexts never
+  share a request. Every question asks only for the relation between its own
+  item and the shared context, and the instruction states that items repeating
+  one another say nothing about the shared context. This is the TypeSafe/Jev
+  state-and-questions shape, and the LLM adapter renders the same shape.
 - **Execution.** Requests go through the LLM batch runner. How items are packed
-  is the adapter's concern: the LLM adapter asks for many items per request; the
-  Jev adapter sends one state with one question per item. A probability a
-  backend reports is diagnostic telemetry and offline calibration data; it never
-  changes the answer.
+  is the adapter's concern within the shared context rule: the LLM adapter asks
+  for many items per request; the Jev adapter sends one state with one question
+  per item. A probability a backend reports is diagnostic telemetry and offline
+  calibration data; it never changes the answer.
 - **Failure.** An item without a valid answer after the runner's re-ask is an
   execution failure that the task routes as section 4 describes. A failure is
   never an option, not even the safe answer.
@@ -415,7 +422,7 @@ task implements one decision contract, whatever model answers it:
 | --- | --- | --- | --- | --- |
 | Change Impact | can this ChangeBundle affect this fixed claim | `AFFECTED`, `UNAFFECTED` | `AFFECTED`: it sends the claim to Support Assessment | ChangeBundles chunked at ReadingGroup boundaries; any `AFFECTED` wins |
 | Same-Unit pair review | do these two refinements of the same old Memory contradict | a memory relation label; only `contradicts` is acted on | `contradicts`: it blocks the refinement | not split |
-| Cross-document relation | how do these two Memories from different Source Units relate | `none`, `equivalent`, `updates`, `contradicts` | `none` | not split |
+| Cross-document relation | what is the relation of this candidate to the subject; the shared context is the subject, the challenger Memory, and each candidate from another Source Unit is one item | `none`, `equivalent`, `updates`, `contradicts` | `none` | not split; one challenger's candidates are packed by capacity, and every request states the challenger once |
 | Entity adjudication | which supplied candidate, if any, is this mention | one supplied candidate ID, or no candidate | no candidate | not split |
 | Agent-session authority | which authority kind does this user message carry, read in its window | the closed list of authority kinds | `not_authoritative` | not split |
 
@@ -442,6 +449,21 @@ CandidateAdmission (Reasoning, main model)
   shared context: every Candidate claim of the revision (ID + claim text only)
   -> ADMITTED | REJECTED(reject reason) per Candidate, plus reported same-round duplicates
 ```
+
+The cross-document relation request (`cross-document-relation-v4`) states the
+challenger once as the subject, followed by one question per candidate with the
+fixed wording "What is the relation of this candidate to the subject?". The
+instruction says that each question asks only for the relation between that
+candidate and the subject, that many candidates repeat one another, and that two
+candidates stating the same thing tell nothing about the subject. On EU12 dev
+with Claude Sonnet 4.6 (3,537 pairs; 282 pairs two reviewers labeled the same, 8
+of them true relations) this rendering produced 2 false relations among the 274
+`none` pairs, against 149 when each challenger's candidates were listed under it
+in one group (under the `v3` rules) and 16 when every item was a self-contained
+pair (under a draft of the `v4` rules), at the input token cost of the grouped
+rendering. It found 4 of the 8 reviewed relations, against 6 for the other two;
+the task's safe answer is `none` ([ADR
+0043](../adr/0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md#shared-context)).
 
 Change Impact runs on the main model until it passes its decision evaluation
 and is registered (section 7). Its safe answer is `AFFECTED`, because
@@ -655,7 +677,7 @@ The current `LiteLlmStructuredClient` serves every model step through one interf
 | Sparse Relation (same Unit) | Reasoning | one row per admitted Candidate; only meaningful relations to same-Unit old Memories, found among all of the Unit's; refinement decided by entailment | independent items | main model |
 | Same-Unit pair review | Decision, safe answer `contradicts` | two supported refinements of the same old Memory; one memory relation label per pair | independent items | decision model once the task passes its evaluation, otherwise main model |
 | Change Impact | Decision, safe answer `AFFECTED` | one fixed claim vs one shared ChangeBundle; `AFFECTED/UNAFFECTED` | independent items; chunked bundles OR-reduced by code | decision model once the task passes its evaluation, otherwise main model |
-| Cross-document relation | Decision, safe answer `none` | bounded retrieved `K` pairs; one closed label per pair: `none`, `equivalent`, `updates`, `contradicts` ([ADR 0037](../adr/0037-record-cross-document-conflicts-as-relations.md)); the classifier returns only the label and has no per-label confidence threshold | independent items | decision model once the task passes its evaluation on the labeled pair set, otherwise main model; contract version `cross-document-relation-v3` |
+| Cross-document relation | Decision, safe answer `none` | bounded retrieved `K` pairs; one closed label per pair: `none`, `equivalent`, `updates`, `contradicts` ([ADR 0037](../adr/0037-record-cross-document-conflicts-as-relations.md)); the classifier returns only the label and has no per-label confidence threshold | independent items that share their challenger as context | decision model once the task passes its evaluation on the labeled pair set, otherwise main model; contract version `cross-document-relation-v4` |
 | Entity adjudication | Decision, safe answer no candidate | one mention and its supplied candidates; pick one or none | independent items | decision model once the task passes its evaluation, otherwise main model |
 | Agent-session authority | Decision, safe answer `not_authoritative` | one user message with its window as context; one `authority_kind` | independent items | decision model once the task passes its evaluation, otherwise main model |
 

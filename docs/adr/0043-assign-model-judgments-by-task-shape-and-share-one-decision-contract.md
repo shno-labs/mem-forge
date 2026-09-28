@@ -4,6 +4,8 @@ Status: Accepted
 
 Date: 2026-09-28
 
+Amended: 2026-09-29, see [Amendment: shared context and equivalent results](#amendment-2026-09-29-shared-context-and-equivalent-results).
+
 ## Context
 
 Every model step in the Source lifecycle runs on one Structured LLM. The
@@ -109,8 +111,9 @@ Every Decision step implements the same contract, whatever model answers it:
   order the pair) stays a program rule
   ([ADR 0037](0037-record-cross-document-conflicts-as-relations.md)).
 - **Execution.** Requests go through the LLM batch runner. How items are packed
-  is the adapter's concern: an LLM adapter asks for many items per request; a
-  Jev adapter sends one state with one question per item. A probability a
+  is the adapter's concern, within the shared context rule of the amendment
+  below: an LLM adapter asks for many items per request; a Jev adapter sends
+  one state with one question per item. A probability a
   backend reports is diagnostic telemetry and never changes the answer
   ([ADR 0036](0036-separate-semantic-work-from-inference-executors.md)).
 - **Failure.** An item without a valid answer after the runner's re-ask is an
@@ -124,7 +127,8 @@ adds:
 
 - decide whether the statements are about the same situation before deciding
   whether both can hold;
-- when statements overlap only in part, compare only the overlapping part;
+- when statements overlap only in part, they conflict if the part they share
+  cannot hold for both, and a shared part never makes them equivalent;
 - compare only what the statements state; a conflict that has to be inferred
   from either statement is not a relation;
 - the kind of a statement (what should be, what happened, what was planned or
@@ -189,6 +193,96 @@ adapter behind the same contract; Cloud does not send Source content to it.
   labeled cases and the variable is set.
 - The admin UI relation card and MCP relation output drop `reason`; search and
   Memory output drop `confidence`. An older plugin ignores the missing fields.
+
+## Amendment 2026-09-29: shared context and equivalent results
+
+### Shared context
+
+A Decision task may declare a shared context: input that every item of one
+request is judged against. For cross-document relations the shared context is
+the subject, the challenger Memory, and each item is one candidate.
+
+- A request holds exactly one shared context, stated once, and one question per
+  item. Items with different shared contexts never share a request; the batch
+  runner still packs and splits one context's items by capacity, and every
+  split request states the context again.
+- Every question asks only for the relation between its own item and the
+  shared context, with one fixed wording.
+- The instruction states that items repeating one another say nothing about
+  the shared context: two candidates that state the same thing tell nothing
+  about the subject, and a candidate is `equivalent` only when it and the
+  subject state the same knowledge.
+
+This is the TypeSafe/Jev shape (one state, one question per item), and the LLM
+adapter renders the same shape. A model that sees several statements side by
+side without this rule reads similarity among the candidates as similarity to
+the subject.
+
+Measured on EU12 dev with Claude Sonnet 4.6 (3,537 pairs of 60 challengers in
+two workspaces; 282 pairs labeled the same by two reviewers, 8 of them true
+relations):
+
+| Rendering | False relations among 274 `none` pairs | True relations found (of 8) | Input tokens vs grouped |
+|---|---|---|---|
+| Grouped: each challenger with its candidates listed under it (v3 rules) | 149 | 6 | 1.00 |
+| One self-contained pair per item, many items per request (a draft of the v4 rules without the illustrated kinds and occurrences and with the v3 `contradicts` wording) | 16 | 6 | 1.54 |
+| Subject stated once, one question per candidate (v4 rules) | 2 | 4 | 1.01 |
+
+The subject rendering removes nearly all false relations at the grouped token
+cost. It finds fewer of the 8 reviewed relations; the contract prefers `none`
+when unsure because a false relation warns every reader of both Memories, while
+a missed one only omits a hint.
+
+### Relation rules
+
+Contract `cross-document-relation-v4` renders the subject and questions above
+and sharpens `CROSS_DOCUMENT_RELATION_RULES`:
+
+- the kinds of statement are illustrated (what should be: a requirement,
+  design, rule or expected behaviour; what happened: a reported defect, test
+  result, incident or observed behaviour);
+- different events, tickets, incidents, test runs or cases are different
+  occurrences. They illustrate what an occurrence is; they are not scope
+  dimensions, and the contract still lists none;
+- partial overlap follows the rule above;
+- `none` includes a statement that adds a fact, condition, step or outcome the
+  other does not state; `equivalent` requires each statement as a whole to state
+  everything the other states, differing only in wording; `contradicts` requires
+  the two statements to directly state incompatible things.
+
+The input is unchanged, so evaluation cases pinned under `v2` and `v3` are
+replayed under `v4` (`CROSS_DOCUMENT_RELATION_INPUT_VERSIONS`).
+
+### Search annotates an equivalent pair
+
+Search returns both Memories of an `equivalent` pair, and each carries the
+relation that names the other; neither is left out of the results. A false
+`equivalent` would remove a different Memory from the results, which costs far
+more than showing a repeated statement. Hiding one of the pair waits until the
+measured precision of `equivalent` justifies it. `updates` ordering and the
+relation notices stay as ADR 0037 specifies.
+
+### Re-running discovery
+
+A completed discovery run replaces every relation the classifier recorded for
+its discovery work: pairs it judges receive its labels, and a relation the work
+recorded for a pair it no longer judges, because the pair is no longer a
+candidate, is removed. Relations a person confirmed for the current contents,
+relations another challenger's work recorded, and dismissals stay. Re-running
+all completed work (`POST /api/v1/relation-discovery/work/rerun` with
+`{"state": "completed"}`, and `{"state": "exhausted"}` for exhausted work)
+therefore leaves exactly the relations `v4` decides.
+
+### Cloud impact
+
+Cloud reads this contract through its pinned OSS version; the prompt, rules
+and search change arrive with the pin. The HANA
+`complete_relation_discovery_work` must remove the classifier relations of the
+completing work before it applies the run's labels, as SQLite does, or a re-run
+leaves relations from pairs it no longer judges; an index on
+`CROSS_DOCUMENT_RELATIONS.DISCOVERY_WORK_ID` keeps that removal cheap. No
+storage protocol signature, configuration or `proxy/external_runtime.py` call
+site changes. Existing relations are re-run by an operator.
 
 ## Alternatives considered
 
