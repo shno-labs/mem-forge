@@ -687,7 +687,10 @@ versions (`EVALUATED_DECISION_TASKS` in `memforge.llm.decision_model`, keyed by
 task name); a new contract version is not registered until it passes on its
 own. Every Decision call site chooses its model through one helper,
 `decision_task_model`, and the chosen model is the one the call's diagnostics
-and, for Change Impact, its work journal record.
+and, for Change Impact, its work journal record. The source lifecycle operation
+identity names the model of each Decision task the operation runs (Change Impact
+and same-Unit pair review), so the operation's outcome bindings and evaluation
+records tell which model answered its Decision steps.
 When the decision model is not set, every task runs on the main model. There is
 no per-task backend setting, no per-item routing, no `jev_with_llm_fallback`
 profile and no fallback between models. Provider failure produces typed
