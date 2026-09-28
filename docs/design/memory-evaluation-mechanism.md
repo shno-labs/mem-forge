@@ -539,7 +539,10 @@ version; the classifier version is the manifest's `classifier_version`.
 A maintenance operator seeds the set with
 `POST /api/v1/agent-evaluations/relation-cases/seed`: confirmed Cross-Source
 Conflict Reviews become `contradicts` cases and dismissed ones `none`, unless the
-request relabels a Review by id. A decision is pinned only while both Memories
+request relabels a Review by id. A case accepts the label the program records
+for the decision, the same label the one-time Review conversion stores: an
+`updates` relabel on a pair whose pinned Evidence times do not order it is
+pinned as `contradicts`. A decision is pinned only while both Memories
 still hold the version it was made for and both are shown from active workspace
 Sources. The route counts every decision it does not pin by reason
 (`memory_changed`, `private_memory`, `source_unavailable`,
