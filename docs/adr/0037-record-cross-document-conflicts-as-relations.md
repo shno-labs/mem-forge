@@ -2,6 +2,8 @@
 
 Status: Accepted
 
+Amended by [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md) (proposed 2026-09-28): the cross-document classifier returns only the label, with no reason and no per-label confidence threshold, and runs on the decision model once it passes its evaluation, otherwise on the main model. `CROSS_DOCUMENT_RELATION_RULES` gains the additions listed there.
+
 Date: 2026-09-25
 
 ## Context
@@ -142,7 +144,9 @@ same four labels under the same contract and is instructed to return `none`
 when unsure. A classifier backend applies a per-label confidence threshold below
 which the pair is `none`. The threshold is a named contract constant whose
 value and evaluation run are recorded with the classifier version; it is not a
-configuration knob.
+configuration knob. [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md) supersedes the threshold and the classifier backend:
+the task returns only the label and moves to the decision model after it passes
+its evaluation.
 
 Evaluation uses a fixed set of human-labeled pairs: the confirmed and dismissed
 Cross-Source Conflict Reviews of the workspace in which they were decided,
@@ -156,7 +160,8 @@ both Memories and the classifier contract version
 (`cross-document-relation-v2`); a contract that changes the input is evaluated
 on a set seeded again under it. The run report stays content-free, and a
 maintenance operator reads each case's input, accepted label and the model's
-label and reason for failure analysis.
+label and reason for failure analysis. Under [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md) the model returns no
+reason, so failure analysis reads the input and the two labels.
 
 ### Relations are the output
 

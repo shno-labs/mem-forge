@@ -93,7 +93,7 @@ Human triage -> prompt, threshold, lifecycle, normalizer, retrieval, or test cha
 It should own execution for:
 
 - memory insert
-- memory content or confidence update
+- memory content update
 - deduplication and corroboration
 - source support add, update, and removal
 - supersede
@@ -163,7 +163,7 @@ Suggested fields:
 | `model` | LLM model when relevant |
 | `prompt_hash` | Prompt version hash when relevant |
 | `config_hash` | Runtime config hash when relevant |
-| `thresholds` | Dedup, confidence, quality, or retrieval thresholds |
+| `thresholds` | Dedup, quality, or retrieval thresholds |
 | `status` | `attempted`, `committed`, `failed`, `repaired`, `skipped` |
 | `error` | Redacted error details |
 
@@ -423,7 +423,6 @@ Sample normal events by:
 
 - source
 - memory type
-- confidence band
 - dedup distance band
 - support kind
 - retrieval frequency
@@ -550,11 +549,12 @@ cases as one cohort and returns its id, which an evaluation run uses and which
 the one-time Review conversion requires before it deletes the converted Review
 rows. The set holds workspace content, so it lives in that workspace's
 evaluation store, not in this repository. A change of relation prompt, label
-definition, classifier backend or threshold reports precision and recall per
-label on this set, and the threshold recorded with the classifier version comes
-from that report. The run report stays content-free; a maintenance operator
-reads each case's pinned input, accepted label and the model's label and reason
-through `GET /api/v1/agent-evaluations/runs/{run_id}/case-outputs`.
+definition or model reports precision and recall per label on this set against
+the main model on the same cases; the task moves to the decision model only when
+its `none` recall and its precision on every other label are no lower
+([ADR 0043](../adr/0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md)). The classifier returns only the label and has no confidence
+threshold. The run report stays content-free; a maintenance operator reads each
+case's pinned input, accepted label and the model's label through `GET /api/v1/agent-evaluations/runs/{run_id}/case-outputs`.
 
 ```yaml
 case: later-ticket-decision-changes-earlier-design-page

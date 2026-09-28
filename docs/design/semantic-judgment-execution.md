@@ -1,15 +1,16 @@
 # Semantic judgment execution and context reuse
 
-Date: 2026-09-24. This document is a target design. It does not claim
-that TypeSafe/Jev, provider prompt caching, the LLM batch runner or the
-described executor interfaces are implemented or deployed. The LLM batch runner
-is the first step of
-[Cloud issue #505](https://github.com/dodoman-sun/memforge-cloud/issues/505):
-its first PR delivers the runner and moves the existing call sites onto it. #505
-also tracks the Support, Relation and coordination semantics the runner carries.
+Date: 2026-09-24. The LLM batch runner (section 4) is implemented and every
+model call goes through it
+([Cloud issue #505](https://github.com/dodoman-sun/memforge-cloud/issues/505)).
+The rest of this document is a target design: it does not claim that
+TypeSafe/Jev, provider prompt caching, the decision contract or the decision
+model are implemented or deployed.
 [Cloud issue #506](https://github.com/dodoman-sun/memforge-cloud/issues/506)
-builds on the runner with the executor interfaces, classifier backends, their
-evaluation (Jev included) and prompt caching.
+builds on the runner with the decision contract, the per-task decision-model
+evaluation and prompt caching. The assignment of model steps to kinds, the
+decision contract and the decision model are decided in
+[ADR 0043](../adr/0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md).
 
 The complete Source lifecycle remains defined by
 [Source sync to Memory](source-sync-to-memory.md). Exact Fragment and
@@ -20,48 +21,56 @@ incremental Support and claim reconciliation remain governed by
 
 ## 1. Decision summary
 
-MemForge will separate application-owned semantic work from provider-specific
-inference transport:
+MemForge separates application-owned semantic work from provider-specific
+inference transport, and gives every model step one of three kinds, decided by
+what the model must do rather than by the shape of its output:
 
 ```text
 domain planner
-  -> ContextBundle + GenerationWork or JudgmentWork
-  -> capability-checked executor
+  -> ContextBundle + task (Generation, Reasoning or Decision)
+  -> model: the main model, or the decision model for a registered Decision task
      -> LLM batch runner (capacity, partitioning, per-row acceptance, one re-ask
         of rejected rows, split when the failing item cannot be named,
         concurrency, coverage, typed failures)
-        -> Structured LLM adapter
-        -> classifier adapter: TypeSafe/Jev or a small-model LLM
+        -> LLM adapter (main model or decision model, through LiteLLM)
+        -> Jev adapter (optional OSS adapter, Decision tasks only)
   -> application-owned validation and reducer
   -> existing Lifecycle Plan / retrieval / evaluation consumer
 ```
 
-There are two interfaces rather than one universal model interface:
+| Kind | The model must | Runs on |
+| --- | --- | --- |
+| Generation | write text that does not exist in the input | the main model |
+| Reasoning | choose, but find the relevant items in a list the program cannot narrow, carry state or dependent answers across items, or decide whether several Evidence parts together entail a claim | the main model |
+| Decision | answer one fixed question about one item the program supplied in full, with closed options, independently of every other item | the decision model once the task passes its evaluation, otherwise the main model |
 
-```python
-class GenerationExecutor(Protocol):
-    async def generate(self, work: GenerationWork) -> GenerationResult: ...
+Candidate admission and Support Assessment return only choices, yet they are
+Reasoning: complete support over several Evidence parts is one entailment
+judgment, and they share one definition of it (`COMPLETE_SUPPORT_DEFINITION`).
+They therefore run on the same model, so a Candidate admitted under one reading
+of complete support is not retired by a different reading at the next revision.
+The step-by-step assignment is in section 6.
 
-class JudgmentExecutor(Protocol):
-    async def judge(self, work: JudgmentWork) -> JudgmentResult: ...
-```
+Model outputs are the knowledge or the choice, nothing else. A Generation
+contract returns text only in the fields that are the generated knowledge (the
+claim, its validity dates, entity names). A Reasoning or Decision contract
+returns only values the program defined: labels, booleans, and refs or IDs from
+lists the request supplied. No contract returns an explanation or a
+model-reported confidence. Records that show a reason carry program-owned text;
+people read the Memories and the Evidence.
 
-`GenerationWork` may create open-vocabulary text such as a new claim or one
-dependent multi-field structured proposal such as a complete Support Assessment.
-`JudgmentWork` independently chooses, scores or verifies values already defined
-by application code. A Structured LLM may implement both interfaces. A classifier
-adapter, backed by TypeSafe/Jev or a small-parameter LLM, implements only the
-second. Backend admission is granted for an entire task contract from a fixed
-evaluation set; runtime confidence does not switch individual items between
-backends.
+Every Decision task implements one decision contract (section 5), whatever model
+answers it. A task moves to the decision model as a whole, after it passes its
+evaluation; a probability a backend reports is diagnostic telemetry, never
+changes the answer and never switches an item to another model.
 
-Both executors send every request through one LLM batch runner (section 4). No
+Every task sends its requests through one LLM batch runner (section 4). No
 call site checks context capacity, splits requests or handles timeouts on its
 own.
 
 The model never owns Source authority, exact offsets, allowed selectors,
 complete work coverage, lifecycle verbs, stale guards or atomic commit. Those
-remain application facts and validators regardless of executor.
+remain application facts and validators regardless of model.
 
 ## 2. Context is a domain plan, not a prompt string
 
@@ -89,19 +98,20 @@ Every segment has:
 - a deterministic order within its stability class.
 
 The bundle contains structured application state, not provider messages,
-TypeSafe questions or a serialized prompt. Executor adapters render it:
+TypeSafe questions or a serialized prompt. Adapters render it:
 
-- the Structured LLM adapter creates system/user content, response schema,
-  images and provider cache breakpoints;
-- a classifier adapter creates shared state plus independent closed-label
-  questions; a Jev adapter uses Choice/Noul/Score while a small-model LLM adapter
-  returns the same application-owned schema;
+- the LLM adapter creates system/user content, response schema,
+  images and provider cache breakpoints, for the main model and the decision
+  model alike;
+- the optional Jev adapter renders a Decision task as shared state plus one
+  Choice/Noul/Score question per item and returns the same application-owned
+  answers;
 - tests can inspect the same canonical bundle without parsing either wire
   format.
 
-The domain planner, not either executor, decides which AssessmentScope, AssessmentContexts, ReadingGroups, fixed claims,
+The domain planner, not the adapter, decides which AssessmentScope, AssessmentContexts, ReadingGroups, fixed claims,
 candidates, Evidence catalogs, historical excerpts and cumulative witnesses are
-logically required. Switching executor cannot silently widen or
+logically required. Switching model or adapter cannot silently widen or
 narrow the context.
 
 ## 3. Cache-aware Structured LLM layout
@@ -210,16 +220,13 @@ extra single-flight mechanism. Leader failure must never strand followers.
 
 ## 4. LLM batch runner
 
-**Status: target design. The runner is the first step of Cloud issue #505: its
-first PR delivers the runner and moves the existing call sites onto it, and
-Support Assessment uses the ordered-chain form. Cloud issue #506 adds the
-executor interfaces, classifier backends and prompt caching on top. Current code
-checks capacity, partitions requests and validates coverage separately at each
-call site.**
+**Status: implemented. Support Assessment uses the ordered-chain form. Cloud
+issue #506 adds the decision contract, the decision-model evaluation and prompt
+caching on top.**
 
 Batching is a transport detail. Every path that sends work to a model, whether
-Structured LLM generation, Structured LLM judgment or a classifier model, goes
-through one LLM batch runner. No call site handles input-context overflow or
+Generation, Reasoning or Decision and whether on the main model or the decision
+model, goes through one LLM batch runner. No call site handles input-context overflow or
 timeouts on its own.
 
 ```python
@@ -373,68 +380,127 @@ reuses store methods that HANA already implements; no protocol in
 expose `get_model_info` and `token_counter` for its configured routes, which the
 client already uses today. Cloud upgrades the OSS pin.
 
-## 5. Classifier-model execution
+## 5. Decision-model execution
 
-A classifier task has complete bounded input, application-defined labels and independent per-item answers. The runtime name is **classifier model (Jev or small-parameter LLM)**; Jev is one adapter, not a domain stage. A task is admitted to this interface only as a whole after a fixed evaluation set meets its label-quality and coverage criteria. Raw probabilities remain diagnostic telemetry and offline calibration data; they do not create per-item confidence fallback branches.
+A Decision task answers one fixed question about one item the program supplied
+in full, with closed options, independently of every other item. Every Decision
+task implements one decision contract, whatever model answers it:
 
-The Source-lifecycle judgment contracts (classifier or Structured LLM) are:
+- **Task.** A task has a name, a contract version that is part of its work
+  identity, one fixed question and a closed list of options. One option is the
+  task's safe answer, which is also the answer for an uncertain case.
+- **Item.** One item is the complete input the program supplies for one
+  question. Items are independent. When an item's input is too large for one
+  request and the task allows it, the program splits the input and combines the
+  answers by the task's rule.
+- **Answer.** Exactly one option per item, nothing else: no explanation and no
+  confidence. An ID outside the supplied candidates is a rejected row, not the
+  safe answer.
+- **Meaning.** What each option means and what the program does with it belong
+  to the task. Relation direction (`updates` needs known Evidence dates that
+  order the pair) stays a program rule
+  ([ADR 0037](../adr/0037-record-cross-document-conflicts-as-relations.md)).
+- **Execution.** Requests go through the LLM batch runner. How items are packed
+  is the adapter's concern: the LLM adapter asks for many items per request; the
+  Jev adapter sends one state with one question per item. A probability a
+  backend reports is diagnostic telemetry and offline calibration data; it never
+  changes the answer.
+- **Failure.** An item without a valid answer after the runner's re-ask is an
+  execution failure that the task routes as section 4 describes. A failure is
+  never an option, not even the safe answer.
+
+| Task | Question | Options | Safe answer | Split and combine |
+| --- | --- | --- | --- | --- |
+| Change Impact | can this ChangeBundle affect this fixed claim | `AFFECTED`, `UNAFFECTED` | `AFFECTED`: it sends the claim to Support Assessment | ChangeBundles chunked at ReadingGroup boundaries; any `AFFECTED` wins |
+| Same-Unit pair review | do these two refinements of the same old Memory contradict | a memory relation label; only `contradicts` is acted on | `contradicts`: it blocks the refinement | not split |
+| Cross-document relation | how do these two Memories from different Source Units relate | `none`, `equivalent`, `updates`, `contradicts` | `none` | not split |
+| Entity adjudication | which supplied candidate, if any, is this mention | one supplied candidate ID, or no candidate | no candidate | not split |
+| Agent-session authority | which authority kind does this user message carry, read in its window | the closed list of authority kinds | `not_authoritative` | not split |
+
+The Source-lifecycle contracts of the Support and Relation lines are:
 
 ```text
-ChangeImpact (JudgmentWork)
+ChangeImpact (Decision, safe answer AFFECTED)
   fixed claim + capacity-safe ChangeBundle
   (added and modified ReadingGroups, plus the old text of removed ones)
   -> AFFECTED | UNAFFECTED
 
-SparseRelation (JudgmentWork, Structured LLM)
+PairReview (Decision, safe answer contradicts)
+  two supported refinements of the same old Memory
+  -> one memory relation label; contradicts blocks the refinement
+
+SparseRelation (Reasoning, main model)
   admitted Candidates + each Candidate's current Evidence
   + Claims of all Active same-Unit old Memories
-  -> one row per Candidate listing only meaningful relations
+  -> one row per Candidate listing only meaningful relations, and for a
+     refinement its entailment booleans (`revision_assessment`)
 
-CandidateAdmission (GenerationWork, Structured LLM)
+CandidateAdmission (Reasoning, main model)
   items: Candidates of one revision + their selected Primary/Required Evidence
   shared context: every Candidate claim of the revision (ID + claim text only)
-  -> ADMITTED | REJECTED(reason) per Candidate, plus reported same-round duplicates
+  -> ADMITTED | REJECTED(reject reason) per Candidate, plus reported same-round duplicates
 ```
 
-Change Impact runs on the existing Structured LLM until a classifier backend
-(Jev or a small-parameter LLM) passes the #506 evaluation for that task. Its
-instruction includes one fixed rule: a change containing a global statement with
-unclear scope, such as "the process above", "this document" or "discontinued
-from a given date", is `AFFECTED`. The rule has no dedicated evaluation cases;
-the generic #506 classifier evaluation applies.
+Change Impact runs on the main model until it passes its decision evaluation
+and is registered (section 7). Its safe answer is `AFFECTED`, because
+`UNAFFECTED` rebinds the claim without Support Assessment while `AFFECTED` sends
+it there; an uncertain case is therefore `AFFECTED`. Its instruction includes
+one fixed rule: a change containing a global statement with unclear scope, such
+as "the process above", "this document" or "discontinued from a given date", is
+`AFFECTED`. The rule has no dedicated evaluation cases; the Change Impact
+decision evaluation applies.
 
-`REJECTED` has two reasons: `evidence_incomplete`, when the selected Evidence
-does not completely support the Claim, including identifying details such as a
-name or key that the Claim states, or `low_value`. Every admission request
-carries all of this round's Candidate claims as shared context, so the model can
-report a duplicate that sits in another request. Candidates with the same
-normalized claim, type and validity are duplicates without the model saying so,
-but each is judged on its own Evidence. The program merges duplicates
-deterministically, only among admitted Candidates, and keeps the most specific
-Candidate of each group; a Candidate rejected in any context chunk is
-rejected.
+Candidate admission is Reasoning and always runs on the main model, the same
+model as Support Assessment: it judges complete support over the selected
+Evidence parts with the same definition (`COMPLETE_SUPPORT_DEFINITION`), and it
+finds same-round duplicates by scanning every Candidate of the round. Its row
+holds the verdict, a program-defined reject reason and a reported duplicate,
+and no text. `REJECTED` has two reasons: `evidence_incomplete`, when the
+selected Evidence does not completely support the Claim, including identifying
+details such as a name or key that the Claim states, or `low_value`. Every
+admission request carries all of this round's Candidate claims as shared
+context, so the model can report a duplicate that sits in another request.
+Candidates with the same normalized claim, type and validity are duplicates
+without the model saying so, but each is judged on its own Evidence. The program
+merges duplicates deterministically, only among admitted Candidates, and keeps
+the most specific Candidate of each group; a Candidate rejected in any context
+chunk is rejected.
 
-Sparse Relation never receives Support results or their reasons and does not
-check whether Evidence supports the Candidate; candidate admission owns that
-check. Omitting an old Memory means "no relation proposed". A pairwise
-classifier backend that returns one label per Candidate/old Memory pair would
-need its own contract and evaluation before it could replace the sparse
-contract.
+Sparse Relation is Reasoning and always runs on the main model: it finds the few
+related old Memories among all of the Unit's, which similarity cannot narrow
+inside one document, and a refinement is decided by entailment. It never
+receives Support results and does not check whether Evidence supports the
+Candidate; candidate admission owns that check. Omitting an old Memory means
+"no relation proposed". A row returns only relation labels, old Memory IDs and
+the refinement booleans, with no explanation and no written proof of a
+contradiction. A pending Review and a replaced Memory show the Memories, the
+label, the Evidence and program-owned reason text. A pairwise form that returns
+one label per Candidate/old Memory pair would be a separate task that needs its
+own contract and evaluation before it could replace the sparse contract.
 
-Cloud impact: Change Impact, Sparse Relation and candidate admission run on the
-Structured LLM that Cloud already reaches through LiteLLM `sap/` routes and
-`AICORE_*` environment variables, so Cloud needs no classifier route or new
-setting until a classifier backend passes evaluation and is configured.
+The pair review runs when two or more supported Candidates refine the same old
+Memory. The program supplies each pair of those refinements in full, so the
+question is a Decision. `contradicts`, the safe answer, turns the refinement
+uncertain and blocks the UPDATE; any other label lets it proceed. Its contract
+version is part of its work identity.
 
-ChangeBundles contain all changed ReadingGroups that fit one shared state. Removed content counts as changed: a removed ReadingGroup enters the bundle as its old text, so a distant qualifier that was deleted is visible to Change Impact. Three groups plus 300 fixed claims therefore produce 300 questions, not 900. If they do not fit one request, the runner chunks them at ReadingGroup boundaries into several bundles and application code OR-reduces each claim's labels: any `AFFECTED` routes that claim to complete Support Assessment. When Change Impact execution fails for a claim, for example a single item that still fails after the runner's splitting, an indivisible bundle beyond the backend's capacity, or a bundle with images that a text-only backend cannot read, that claim enters Support Assessment. The failure is never recorded as an `AFFECTED` label.
+Cloud impact: every task runs on the main model that Cloud reaches through
+LiteLLM `sap/` routes and `AICORE_*` environment variables. The decision model
+is one deployment variable next to `MEMFORGE_AICORE_ENRICHMENT_MODEL`, empty by
+default and needing no database row. Nothing runs on a second model until a
+task passes evaluation on Cloud's own labeled cases and the variable is set.
+Cloud's decision model is a small model on a `sap/` route, for example Claude
+Haiku 4.5 once SAP AI Core offers it; Cloud does not send Source content to Jev.
+
+ChangeBundles contain all changed ReadingGroups that fit one shared state. Removed content counts as changed: a removed ReadingGroup enters the bundle as its old text, so a distant qualifier that was deleted is visible to Change Impact. Three groups plus 300 fixed claims therefore produce 300 questions, not 900. If they do not fit one request, the runner chunks them at ReadingGroup boundaries into several bundles and application code OR-reduces each claim's labels: any `AFFECTED` routes that claim to complete Support Assessment. When Change Impact execution fails for a claim, for example a single item that still fails after the runner's splitting, an indivisible bundle beyond the model's capacity, or a bundle with images that a text-only adapter cannot read, that claim enters Support Assessment. The failure is never recorded as an `AFFECTED` label.
 
 Sparse Relation sends every admitted Candidate to the model, including one whose text equals an old Memory. Catalog bodies occur once per request; the LLM batch runner packs and splits requests, and when the old Memory catalog must be chunked the program takes the union of each Candidate's relations. Every admitted Candidate must return exactly one row. A missing row, an unknown ID or a duplicate or contradictory relation is rejected, and truncated output is a capacity failure that the runner splits; none of them is read as "no relation proposed". Each Candidate's row is validated on its own, and the rejected rows are re-asked once, together, naming each Candidate's error. A Candidate whose row is still rejected after its re-ask is consumed without ADD and without a Review. Its row would cover it against every old Memory of the Unit, so the gap cannot be localized: while any row is missing, DestructiveValidation withholds every DELETE, SUPERSEDE and UPDATE of the Unit, and the non-destructive work of the revision commits. Any other failure leaves the Source Unit revision uncommitted, and the next sync retries it. Partitioning cannot weaken coverage, introduce lifecycle state or publish partial results. Whole-workspace relation discovery remains retrieve-then-classify over bounded `K` because its Cartesian product is unbounded and non-destructive discovery accepts recall loss.
 
-TypeSafe/Jev evaluates independent Choice, Noul or Score questions over shared text state. A small-model LLM adapter emits the same application-owned result schema. Jev's current 64k request limit, text-only input and Choice option limit are adapter capabilities, not domain semantics. Jev has no documented cross-request prompt cache; its efficiency comes from many questions sharing one state. See [Models](https://docs.typesafe.ai/models), [System One](https://docs.typesafe.ai/concepts/system-one.md) and [Parallel questions](https://docs.typesafe.ai/cookbooks/parallel_questions.md).
+TypeSafe/Jev is an optional OSS adapter behind the same decision contract. It evaluates independent Choice, Noul or Score questions over shared text state and returns the same one-option-per-item answers as the LLM adapter. Jev's current 64k request limit, text-only input and Choice option limit are adapter capabilities, not domain semantics. Jev has no documented cross-request prompt cache; its efficiency comes from many questions sharing one state. See [Models](https://docs.typesafe.ai/models), [System One](https://docs.typesafe.ai/concepts/system-one.md) and [Parallel questions](https://docs.typesafe.ai/cookbooks/parallel_questions.md).
 
-Complete Support Assessment remains `GenerationWork`, even though its final semantic result is a small union. One Primary, zero or more Required refs, opposing witnesses and streamed previous state form one dependent Evidence-plan proposal. Splitting them into independent classifier questions would recreate a second Support engine in application code.
+Complete Support Assessment is Reasoning, even though its final semantic result is a small union. One Primary, zero or more Required refs, opposing witnesses and streamed previous state form one dependent Evidence-plan proposal read in order with carried witnesses. Splitting them into independent Decision questions would recreate a second Support engine in application code.
 
-Missing answers, unknown IDs, incomplete manifests, unsupported modality, capacity failure or provider failure are technical work failures. The LLM batch runner accepts every valid row, re-asks the rejected rows once and splits a multi-item request only on a capacity failure or output it cannot read into rows; only a failure that remains for a single item is reported. Failures never become labels and do not trigger a hidden backend fallback. Retry uses the configured backend and exact work identity; changing backend is an explicit operation policy/configuration change.
+Missing answers, unknown IDs, incomplete manifests, unsupported modality, capacity failure or provider failure are technical work failures. The LLM batch runner accepts every valid row, re-asks the rejected rows once and splits a multi-item request only on a capacity failure or output it cannot read into rows; only a failure that remains for a single item is reported. Failures never become labels and do not trigger a fallback to another model. Retry uses the same model and exact work identity; moving a task to the decision model is an explicit registration and configuration change (section 7).
 
 ### Support planning and execution contract
 
@@ -444,13 +510,13 @@ The boundary is task-shaped rather than confidence-shaped:
 | --- | --- | --- | --- |
 | Exact Evidence correspondence | application code | prior Evidence metadata + current Fragment catalog + provider coverage | per part `EXACT_UNCHANGED / MODIFIED / REMOVED / AMBIGUOUS / UNKNOWN`; route per whole Support |
 | Support reading order | application code | correspondence + CatalogDiff + ReadingGroups + complete current manifest | ordered context list (first part: changed groups, removed ones as old text, and prior-Evidence groups) + coverage receipt |
-| Change Impact | existing Structured LLM until a classifier backend passes #506 evaluation | fixed claims + one shared capacity-safe ChangeBundle | exactly one `AFFECTED / UNAFFECTED` per claim, or an execution failure that routes the claim to Support Assessment |
-| Ordered semantic scan | Structured LLM | fixed claims + current AssessmentContext catalog + rule-governed historical excerpt + carried current witnesses | per step next witness state, or `SUPPORTED` (item exits) once the first part is read; after the last context `SUPPORTED / UNSUPPORTED` |
+| Change Impact (Decision) | the decision model once the task passes its evaluation, otherwise the main model | fixed claims + one shared capacity-safe ChangeBundle | exactly one `AFFECTED / UNAFFECTED` per claim, or an execution failure that routes the claim to Support Assessment |
+| Ordered semantic scan (Reasoning) | the main model | fixed claims + current AssessmentContext catalog + rule-governed historical excerpt + carried current witnesses | per step next witness state, or `SUPPORTED` (item exits) once the first part is read; after the last context `SUPPORTED / UNSUPPORTED` |
 | Final validation and lifecycle reduction | application code | model proposal + complete manifest + allowed refs + current Support set + stale guards | `COMPLETED` or `UNRESOLVED`; guarded KEEP/REBIND/REMOVE proposal |
 
-The classifier is used only for an independent closed-label question whose full
+The decision model answers only an independent closed question whose full
 input is already supplied: “can this changed bundle affect this fixed claim?” It
-does not search for or compose Evidence. The Structured LLM is used where several
+does not search for or compose Evidence. The main model is used where several
 current fragments may jointly support a claim and one Primary plus Required refs
 must be selected as a coherent unit.
 
@@ -576,56 +642,96 @@ revision is not committed and the next sync retries it.
 
 ## 6. Current semantic-call inventory
 
-The current `LiteLlmStructuredClient` mixes generation, classification and ranking. Target design migrates semantic responsibilities to the two executor interfaces rather than copying every historical wrapper.
+The current `LiteLlmStructuredClient` serves every model step through one interface. The target design gives each step one kind (section 1), and the kind decides which model may run it.
 
-| Responsibility | Shape | Batch shape | Target executor |
-| --- | --- | --- | --- |
-| Claim Extraction / managed patch | open-vocabulary claim or patch generation; on an update only the changed structures with their ReadingGroups as context, on a first import every ReadingGroup; each request reads its items with their reading context and the Unit Title | independent items, one per ReadingGroup that holds authorized Primary | Structured LLM `GenerationExecutor` |
-| Complete Support Assessment | dependent status + Primary/Required + carried witnesses | ordered chain | Structured LLM `GenerationExecutor` |
-| Change Impact | fixed claim vs shared ChangeBundle; `AFFECTED/UNAFFECTED` | independent items | existing Structured LLM until a classifier backend (Jev or small-parameter LLM) passes #506 evaluation |
-| Sparse Relation (same Unit) | one row per admitted Candidate; only meaningful relations to same-Unit old Memories | independent items | Structured LLM; a pairwise classifier needs its own contract and evaluation |
-| Cross-document relation | bounded retrieved `K` pairs; one closed label per pair: `none`, `equivalent`, `updates`, `contradicts` ([ADR 0037](../adr/0037-record-cross-document-conflicts-as-relations.md)) | independent items | classifier model (Jev or small-parameter LLM) with an evaluated per-label threshold; until a backend passes evaluation on the labeled pair set, the current executor is the Structured LLM, classifier version `cross-document-relation-v1` |
-| Candidate admission | complete evidence support per Candidate + same-round dedup against all of the round's Candidate claims | independent items with a cohort-level duplicate output | Structured LLM `GenerationWork`; deterministic normalization and duplicate merging remain code |
-| Entity adjudication | select a supplied candidate or no match | independent items | classifier model (Jev or small-parameter LLM) |
-| Retrieval rerank | comparable relevance score | one indivisible listwise item, never split | classifier model (Jev or small-parameter LLM) |
-| Offline semantic judge / agent authority | fixed labels over complete supplied state | independent items | classifier model (Jev or small-parameter LLM) |
-| Query entity detection | open-vocabulary extraction | independent items | Structured LLM unless code supplies a closed set |
+| Responsibility | Kind | Shape | Batch shape | Runs on |
+| --- | --- | --- | --- | --- |
+| Claim Extraction (with selector correction) | Generation | writes the claim, its validity dates and entity names; on an update only the changed structures with their ReadingGroups as context, on a first import every ReadingGroup; each request reads its items with their reading context and the Unit Title | independent items, one per ReadingGroup that holds authorized Primary | main model |
+| Managed agent patch | Generation | writes the replacement claim for one agent-session window | one item per window | main model |
+| Candidate admission | Reasoning | complete support over the selected Evidence parts per Candidate + same-round dedup against all of the round's Candidate claims | independent items with a cohort-level duplicate output | main model, the same as Support Assessment; deterministic normalization and duplicate merging remain code |
+| Complete Support Assessment | Reasoning | ordered reading with carried witnesses; Primary and Required are one dependent choice | ordered chain | main model |
+| Sparse Relation (same Unit) | Reasoning | one row per admitted Candidate; only meaningful relations to same-Unit old Memories, found among all of the Unit's; refinement decided by entailment | independent items | main model |
+| Same-Unit pair review | Decision, safe answer `contradicts` | two supported refinements of the same old Memory; one memory relation label per pair | independent items | decision model once the task passes its evaluation, otherwise main model |
+| Change Impact | Decision, safe answer `AFFECTED` | one fixed claim vs one shared ChangeBundle; `AFFECTED/UNAFFECTED` | independent items; chunked bundles OR-reduced by code | decision model once the task passes its evaluation, otherwise main model |
+| Cross-document relation | Decision, safe answer `none` | bounded retrieved `K` pairs; one closed label per pair: `none`, `equivalent`, `updates`, `contradicts` ([ADR 0037](../adr/0037-record-cross-document-conflicts-as-relations.md)); the classifier returns only the label and has no per-label confidence threshold | independent items | decision model once the task passes its evaluation on the labeled pair set, otherwise main model; contract version `cross-document-relation-v2` today |
+| Entity adjudication | Decision, safe answer no candidate | one mention and its supplied candidates; pick one or none | independent items | decision model once the task passes its evaluation, otherwise main model |
+| Agent-session authority | Decision, safe answer `not_authoritative` | one user message with its window as context; one `authority_kind` | independent items | decision model once the task passes its evaluation, otherwise main model |
 
 Every row sends its requests through the LLM batch runner (section 4).
 
+Two model calls are outside this assignment. Retrieval rerank is a ranking task for a dedicated reranker; it stays disabled by default, Cloud does not use it, and [Query-time Memory reranking](query-time-memory-reranking.md) owns its contract. The offline semantic judge is evaluation tooling, not a product step, and uses the model its evaluation spec names.
+
 Exact Fragment correspondence, CatalogDiff, coverage, selector validation, manifests and lifecycle actions remain code. `EvidenceFragment`, `ReadingGroup`, `AssessmentContext` and `AssessmentScope` are distinct: a ReadingGroup may contain several selectable fragments; one AssessmentContext contains one or more groups for one call; the AssessmentScope is the complete effective current revision, read in order across all calls.
 
-## 7. User-selectable execution profiles
+## 7. Model settings and task registration
 
-Configuration separates generation from task-scoped classification:
+There are two model settings:
 
 ```text
-generation_executor = structured_llm
-classifier_backend.change_impact = jev | small_llm
-classifier_backend.cross_document_relation = jev | small_llm
+main model       every Generation and Reasoning task, and every Decision task
+                 that is not registered
+decision model   one setting, empty by default, applied to every registered
+                 Decision task
 ```
 
-There is no `jev_with_llm_fallback` profile and no per-item confidence routing. Each registered classifier task has one configured backend, pinned model and contract version. A backend is production-eligible for that task only after the task's fixed evaluation suite passes; otherwise the task remains on its previous whole-task implementation, which for Change Impact is the existing Structured LLM. Same-Unit Relation has no classifier profile: it stays sparse Structured-LLM work. Provider failure produces typed failed/unresolved work and ordinary retry, never silent substitution.
+A Decision task moves to the decision model only after it passes its evaluation
+(section 8). The passed tasks are registered in code with their contract
+versions; a new contract version is not registered until it passes on its own.
+When the decision model is not set, every task runs on the main model. There is
+no per-task backend setting, no per-item routing, no `jev_with_llm_fallback`
+profile and no fallback between models. Provider failure produces typed
+failed or unresolved work and ordinary retry, never substitution.
 
-Complete Support Assessment is always compound `GenerationWork`. Users cannot route it through a classifier backend. Executor, model, contract, complete work manifest and ContextBundle digest participate in derivation identity; changing configuration does not reprocess unchanged Sources automatically.
+Generation and Reasoning tasks always run on the main model; no setting routes
+Claim Extraction, candidate admission, Support Assessment or Sparse Relation
+elsewhere. Model, contract version, complete work manifest and ContextBundle
+digest participate in work identity. Changing the decision model or a
+registration does not reprocess unchanged Sources automatically: derivations use
+the new version at their next processing, and existing cross-document relations
+are re-run by an operator.
+
+Cloud impact: the decision model is one deployment variable next to
+`MEMFORGE_AICORE_ENRICHMENT_MODEL`, read by `prepare-deploy.sh` and the
+`sap-internal` profile, exported by `cf_env_aicore.py` and passed through
+`proxy/external_runtime.py`. It is empty by default and needs no database row,
+so it works with Cloud's environment-only configuration and
+`llm_config_writable = false`. The `sap/` transport choice applies to it as it
+does to the main model. It is the one configuration addition beyond LiteLLM
+metadata, `MEMFORGE_LLM_MAX_*` and `request_timeout_s`.
 
 ## 8. Rollout and acceptance
 
-Classifier backends begin with fixed, non-mutating evaluation cases. Acceptance is per task contract and model version, not per response confidence. Evaluation records exact label quality, especially `AFFECTED` recall; complete item coverage; unknown-ID and truncation rejection; input/output tokens; concurrency and latency; and lifecycle simulation proving that labels alone cannot perform REMOVE, SUPERSEDE or RETIRE.
+A Decision task is evaluated on held-out labeled cases before it is registered.
+It passes when, against the main model on the same cases, its safe-answer recall
+and its precision on every other option are no lower. For Change Impact that is
+`AFFECTED` recall and `UNAFFECTED` precision.
+Acceptance is per task contract version and model, not per response confidence.
+Evaluation also records complete item coverage; unknown-ID and truncation
+rejection; input/output tokens; concurrency and latency; and lifecycle simulation
+proving that labels alone cannot perform REMOVE, SUPERSEDE or RETIRE.
 
-Sparse Relation acceptance includes one row per admitted Candidate, rejection of missing rows, unknown IDs and truncation, a Candidate whose row stays invalid alone left unresolved while the revision commits, the rule that omission means "no relation proposed", idempotent retries and identical results across legal partitions with a deterministic fixture client. Change Impact acceptance includes several changed groups combined into one bundle, multiple bundles OR-reduced by code, distant revocation/exception examples, a deleted distant qualifier, execution failure routing to Support Assessment, and source types represented by Markdown/Confluence, Jira and Teams. The global-scope rule has no dedicated cases; the generic #506 classifier evaluation applies. Complete Support Assessment is evaluated separately as Structured LLM generation/compound proposal work.
+A contract change that alters behaviour on any model needs its own evaluation
+before it ships, whether or not the task moves to the decision model. Removing
+entity adjudication's confidence cutoff turns every returned candidate into a
+persistent alias, and removing Sparse Relation's explanation removes text the
+model wrote before its refinement booleans; both are compared with the previous
+contract on labeled cases before the new version replaces it.
+
+Sparse Relation acceptance includes one row per admitted Candidate, rejection of missing rows, unknown IDs and truncation, a Candidate whose row stays invalid alone left unresolved while the revision commits, the rule that omission means "no relation proposed", idempotent retries and identical results across legal partitions with a deterministic fixture client. Change Impact acceptance includes several changed groups combined into one bundle, multiple bundles OR-reduced by code, distant revocation/exception examples, a deleted distant qualifier, execution failure routing to Support Assessment, and source types represented by Markdown/Confluence, Jira and Teams. The global-scope rule has no dedicated cases; the Change Impact decision evaluation applies. Complete Support Assessment and candidate admission are evaluated separately as Reasoning work on the main model.
 
 LLM batch runner acceptance includes multi-item requests that hit each capacity failure (timeout, input capacity, provider 413, truncated output) and complete after halving with exactly one result per item, valid rows accepted once and never resent, rejected or missing rows re-asked once together with each item's error (item and chain form, the chain re-ask reading the same step and state), a 53-item request with two rejected rows completing in two calls and one with a persistently rejected row ending in two calls with one unjudgeable item, output that cannot be read into rows corrected once and then split (malformed output included), a retried run reusing accepted rows and re-asks without a call, a single-item failure returned as a typed failure with diagnostics, a single-Claim chain step that halves its ReadingGroups first, shared context chunked into per-item-and-chunk results, identical results across legal partitions and split points with a deterministic fixture client, rejection of missing and duplicate rows, a row for an unrequested ID voiding the whole response (an answer shifted onto its neighbour's ID is never accepted), one semantically invalid row costing one re-ask through the real client parse path, and a Support chain in which an item that finds Support in the first part leaves only after the first part is read.
 
 ## 9. Non-goals
 
-- no universal provider interface that pretends generation and classification have identical capabilities;
+- no universal provider interface that pretends every model and adapter has identical capabilities;
 - no per-item confidence fallback or hidden model substitution;
-- no classifier-owned lifecycle action, authority, selector membership or work completeness;
+- no per-task backend setting, per-item routing or fallback between the main model and the decision model;
+- no model-written explanation or model-reported confidence in any Generation, Reasoning or Decision contract, and no per-label confidence threshold;
+- no model-owned lifecycle action, authority, selector membership or work completeness;
 - no correctness dependency on prompt-cache retention;
 - no undocumented Jev cross-request cache assumption;
 - no human confirmation stage for ordinary source lifecycle;
-- no classifier-only claim generation, image understanding or compound Support Assessment;
+- no Generation or Reasoning task on the decision model, and no image understanding by a text-only adapter;
 - no semantic retrieval pruning of the same-Unit Relation catalog;
 - no per-call-site capacity checks, request splitting or timeout handling outside the LLM batch runner;
 - no per-task item or character caps besides limits a backend adapter declares;
@@ -642,5 +748,5 @@ dispatcher is captured in
 [Prompt-cache-aware batch scheduling](../research/2026-09-21-prompt-cache-aware-batch-scheduling.md).
 The research note is supporting evidence; this document and the corresponding
 ADRs remain the normative product contract. Where the parser/Jev note conflicts
-with this document or ADR 0036, for example on classifier confidence thresholds
-or Jev for Support Assessment, this document and ADR 0036 apply.
+with this document, ADR 0036 or ADR 0043, for example on confidence thresholds,
+Jev for Support Assessment or Jev on Cloud, this document and those ADRs apply.

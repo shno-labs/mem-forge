@@ -283,7 +283,6 @@ The model returns generated canonical Memory text and transient selectors:
 {
   "content": "Production timeout should be 60 seconds.",
   "memory_type": "decision",
-  "confidence": 0.92,
   "entity_refs": [],
   "valid_from": null,
   "valid_until": null,

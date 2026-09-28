@@ -95,6 +95,8 @@ Output: comparable relevance probability
 
 A Jev adapter uses one Noul probability per pair. Calls may run with bounded parallelism, but rate limits, latency and cost are transport details. The application sorts by relevance probability, then baseline rank, then Memory ID. The model cannot add candidates or change hard filters.
 
+Rerank is a ranking task for a dedicated reranker and sits outside the Generation, Reasoning and Decision assignment of [ADR 0043](../adr/0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md). Its relevance probability is therefore the ranking output itself, not the diagnostic telemetry that a Decision task's backend probability is, and the decision model setting does not apply to it.
+
 ### 4.2 Structured-LLM listwise reranker
 
 A listwise adapter sends the same bounded candidate manifest to a Structured LLM and requests one complete permutation. It reuses the existing capability but validates the full permutation atomically. Its native output need not invent pointwise scores.

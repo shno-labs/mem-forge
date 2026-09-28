@@ -21,8 +21,7 @@ The example excerpts stand in for authoritative current Evidence; the real execu
     "relations":[{
       "existing_id":"M0",
       "relation":"contradicts",
-      "reason":"The same code flow has incompatible expiry durations.",
-      "contradiction":{"same_subject_and_scope":true,"incompatible_assertions":"ten minutes versus five minutes"},
+      "contradiction":{"same_subject_and_scope":true},
       "revision_assessment":null
     }],
     "uncertain_existing_ids":[]

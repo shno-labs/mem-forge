@@ -16,6 +16,13 @@ evaluation and cache-aware context are tracked by
 Release and deployment evidence remains external to this ADR, and a source
 change alone does not prove a deployed Cloud runtime.
 
+Amended by [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md) (proposed 2026-09-28): model steps are Generation,
+Reasoning or Decision by what the model must do. Candidate admission, Support
+Assessment and same-Unit Sparse Relation are Reasoning on the main model; Change
+Impact, the pair review and cross-document relations are Decision tasks that run
+on one decision model after they pass their evaluation, otherwise on the main
+model. The classifier-model statements below are superseded where they differ.
+
 Current implemented contract: Support Assessment uses exact correspondence,
 Change Impact and the [ordered read](#ordered-current-revision-reading) with
 cumulative witnesses. Claim Extraction reads as described in
@@ -73,7 +80,7 @@ deduplication pass, or cross-Source-Unit destructive rebind.
 
 ### Classifier and Support contract
 
-A **classifier model** is an executor role implemented by TypeSafe/Jev or a small-parameter LLM. Eligibility is decided for a complete task contract from a fixed evaluation set; runtime confidence is telemetry, not a per-item route to another model.
+A **classifier model** is an executor role implemented by TypeSafe/Jev or a small-parameter LLM. Eligibility is decided for a complete task contract from a fixed evaluation set; runtime confidence is telemetry, not a per-item route to another model. [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md) replaces this role with one decision model setting for tasks that passed their evaluation; Jev is an optional OSS adapter that Cloud does not use.
 
 Cross-document discovery retains bounded retrieval followed by classification over `K` pairs.
 
@@ -255,7 +262,7 @@ Structured LLM adapter to use provider prompt-prefix caching without making
 cache retention part of correctness, and permits an eligible classifier adapter
 to evaluate the same state without reconstructing revision context.
 
-Open-vocabulary Claim Extraction remains `GenerationWork`. Closed-set semantic decisions are `JudgmentWork`; a classifier model backed by
+Open-vocabulary Claim Extraction remains `GenerationWork`. Closed-set semantic decisions are `JudgmentWork` (superseded by [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md): a closed output does not make a step a Decision; candidate admission and Support Assessment are Reasoning on the main model); a classifier model backed by
 TypeSafe/Jev or a small-parameter LLM implements the judgment interface only where
 its task-specific evaluation satisfies the complete contract. Runtime confidence
 does not switch individual items to another backend. Classifier models do not
