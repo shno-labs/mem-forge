@@ -529,9 +529,10 @@ Cross-document relation cases pin two Memory snapshots and the label a person
 decided for the pair ([ADR 0037](../adr/0037-record-cross-document-conflicts-as-relations.md)).
 Each snapshot is the classifier input for that Memory: statement, memory type,
 source type, document title, Evidence time and Evidence text. A case also pins
-the classifier contract version whose input it holds; a case pinned for another
-version is not replayed, so a contract that changes the input is evaluated on a
-set seeded again under it. The case kind `cross_document_relation_v1` names the
+the classifier contract version whose input it holds. A case is replayed under
+the current contract while that contract reads the same input
+(`cross-document-relation-v2` and `v3` differ only in rules and output); a
+contract that changes the input is evaluated on a set seeded again under it. The case kind `cross_document_relation_v1` names the
 case structure (a Memory pair and one accepted label), not the classifier
 version; the classifier version is the manifest's `classifier_version`.
 
@@ -553,8 +554,11 @@ definition or model reports precision and recall per label on this set against
 the main model on the same cases; the task moves to the decision model only when
 its `none` recall and its precision on every other label are no lower
 ([ADR 0043](../adr/0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md)). The classifier returns only the label and has no confidence
-threshold. The run report stays content-free; a maintenance operator reads each
-case's pinned input, accepted label and the model's label through `GET /api/v1/agent-evaluations/runs/{run_id}/case-outputs`.
+threshold. A case is scored on the label discovery would record: an `updates`
+whose pinned Evidence times do not order the pair is recorded, and scored, as
+`contradicts`. The run report stays content-free; a maintenance operator reads
+each case's pinned input, accepted label, recorded label and the classifier's
+own label through `GET /api/v1/agent-evaluations/runs/{run_id}/case-outputs`.
 
 ```yaml
 case: later-ticket-decision-changes-earlier-design-page
