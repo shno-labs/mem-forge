@@ -267,6 +267,15 @@ unlabelled candidates are counted for labelling. The group set is the gate for
 a change of the relation prompt, rendering, packing or model: its false
 relation count and `none` recall must not get worse.
 
+The gate reads one run of the change against the recorded baseline run; runs
+are not repeated. The same model on the same pinned cases differs between runs:
+on EU12 dev two runs of unchanged group cases gave the same labels except one
+pair per workspace. A change therefore passes when each workspace gains at
+most one false relation over its baseline and every gained false relation is
+read pair by pair; more than one, or one a reader traces to the change, blocks
+it. `none` recall moves with the false relations, since a false relation is a
+labelled `none` pair the classifier related.
+
 ### Search annotates an equivalent pair
 
 Search returns both Memories of an `equivalent` pair, and each carries the

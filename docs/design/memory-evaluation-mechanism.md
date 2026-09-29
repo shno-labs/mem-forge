@@ -643,8 +643,10 @@ Release gate:
 - no unresolved P0 daily health failures
 - no unresolved P1 evaluator findings that affect lifecycle or search visibility
 - replay fixtures pass for lifecycle and retrieval cases touched by the change
-- on the relation group set, `false_relations` does not rise above and
-  `none_recall` does not drop below the recorded classifier version's report
+- on the relation group set, one run of the change gains at most one
+  `false_relations` pair per workspace over the recorded baseline run, and each
+  gained pair is read and not traced to the change (the run-to-run difference
+  of the same model on the same pinned cases; ADR 0043)
 
 ## Example End-to-End Flow
 
