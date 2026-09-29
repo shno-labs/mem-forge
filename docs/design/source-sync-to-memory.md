@@ -139,7 +139,7 @@ Support 与 Claim Extraction 共用同一个 ReadingGroup 划分：一个最外�
 
 阅读上下文只能被选为 Required，不设字符上限；单个 item 连同其上下文超出容量时按 LLM batch runner 的规则处理。
 
-每一次模型读取还带上该 Unit 当前的 Unit Title（第 0.9 节），包括候选准入的每个请求。它由程序按 Adapter 给出的字段值统一渲染（`pipeline/unit_title.py`），每个 prompt 用同一段话说明它：这是 Unit 的名称，不陈述任何 Claim，不能被选为 Evidence。Unit Title 不是 Fragment，不属于任何 ReadingGroup，也不是变化内容：只改变 Unit Title 的值时不产生 revision，也就没有任何模型工作；名称同时出现在内容或 locator 里时（Confluence 页面标题、文件路径），按内容修改或位置变化处理；和内容一起变化时，模型看到的是本次 revision 的名称，不会把它当作一处改动。
+每一次模型读取还带上该 Unit 当前的 Unit Title（第 0.9 节），包括候选准入的每个请求。它由程序按 Adapter 给出的字段值统一渲染（`pipeline/unit_title.py`），每个 prompt 用同一段话说明它：这是 Unit 的类型和当前各项值，每一项都是关于这个 Unit 的事实，Claim 可以直接写出；它不是源文本，也不能被选为 Evidence。Claim 怎样使用它见第 0.4 节“完整支持的定义”。Unit Title 不是 Fragment，不属于任何 ReadingGroup，也不是变化内容：只改变 Unit Title 的值时不产生 revision，也就没有任何模型工作；名称同时出现在内容或 locator 里时（Confluence 页面标题、文件路径），按内容修改或位置变化处理；和内容一起变化时，模型看到的是本次 revision 的名称，不会把它当作一处改动。
 
 抽取时单个 ReadingGroup 连同阅读上下文就超出请求容量，该组被跳过：程序写诊断（Source Unit、ReadingGroup、`input_capacity_exceeded`），其余组照常抽取，revision 提交。规划时按容量判断放不下的组不进入任何请求；请求发出后 provider 仍对单独这一组报容量错误的，同样跳过。单独读这一组时，模型输出纠正一次后仍不合法的，也同样跳过，诊断原因为 `invalid_response`。恢复 derivation 时规划得到同样的跳过，跳过的组数计入抽取统计（`skipped_reading_group_count`）。这是已知限制，与 Support 的 `UNRESOLVED(capacity)` 并列：因为更新时只抽取变化的结构，这一组的知识要等该结构再次变化才会重新抽取。
 
@@ -246,7 +246,7 @@ changed ReadingGroups (added, modified; removed ones as read-only old text)
 
 Support Assessment 只有一条规则：按固定顺序流式读取当前全部内容，变化的 ReadingGroup（新增、修改和删除的；删除的读其旧文本）和该 Claim 自己的旧 Evidence 所在的 ReadingGroup 先读，其余在后；第一段按 Claim 划分，不同 Claim 的第一段终点可以不同；第一段还有未读的 ReadingGroup 时，Claim 不能退出；第一段读完后，每条 Claim 找到完整支持即退出，全部读完仍无支持才判 `UNSUPPORTED`。Delta 不是一种模式，只是读取顺序的第一段。Planner 只负责排读取顺序，不比较成本，不决定从哪里开始，也不让模型判断否定结果是否已经足够。`EXACT_UNCHANGED` 只贡献 current ref 和 compact state；`MODIFIED` 使用对应 current ReadingGroup；`AMBIGUOUS` 使用全部确定候选。
 
-**完整支持的定义。**Support Assessment 和候选准入判断的是同一件事：所选 Evidence 是否完整支持一条 Claim。两处模型请求使用同一段定义文本（`pipeline/complete_support.py`）：Claim 写出的每一项具体信息，包括人、系统和事物的名称、编号、数量、日期和时间、状态、条件和范围，都必须出现在所选 Evidence 中，或能从中直接得出；只要有一项具体信息与 Evidence 矛盾，或 Evidence 中没有，这条 Claim 就不被支持，即使其余部分都对得上。判断不使用 Evidence 以外的知识。Unit Title 标识 Claim 所属的 Unit，所以 Claim 可以直接写出 Unit Title 里的值（key、类型、标题、路径等），不需要 Evidence；Claim 用这个 Unit 以前的名字（旧标题、旧路径）指代它，仍然是在说这个 Unit，名字和当前 Unit Title 对不上本身不是判为不支持的理由。除了这个 Unit 以前的名字，其他编号都必须出现在 Evidence 中。所以话题、动作或大部分措辞相符都不够：Claim 写了另一个 Unit 的 key，而 Unit Title 和所选 Evidence 里都没有，或写的人、数字、日期与 Primary Evidence 不同，在 Support Assessment 中判为 `UNSUPPORTED`，在候选准入中判为 `REJECTED(evidence_incomplete)`。Change Impact 不判断支持，不使用这条定义。定义改变时，`REVISION_SUPPORT_CONTRACT`、Support Assessment 工作合同和候选准入合同一起升级（当前为 `revision-support-v8`、`support-ordered-reading-v6` 和 `candidate-admission-v4`），旧合同下完成的工作不再复用。
+**完整支持的定义。**Support Assessment 和候选准入判断的是同一件事：所选 Evidence 是否完整支持一条 Claim。两处模型请求使用同一段定义文本（`pipeline/complete_support.py`）：Claim 写出的每一项具体信息，包括人、系统和事物的名称、编号、数量、日期和时间、状态、条件和范围，都必须出现在所选 Evidence 或 Unit Title 中，或能从中直接得出；只要有一项具体信息与 Evidence 矛盾，或 Evidence 和 Unit Title 中都没有，这条 Claim 就不被支持，即使其余部分都对得上。判断不使用 Evidence 和 Unit Title 以外的知识。Unit Title 不是 Evidence，但它显示的每一项值（key、类型、summary、标题、路径等）都是关于这个 Unit 的事实，Claim 可以直接写出，不需要 Evidence；例如 Jira Claim 可以写出 issue type，或复述 summary。Claim 用这个 Unit 以前的名字（旧标题、旧路径）指代它，仍然是在说这个 Unit，名字和当前 Unit Title 对不上本身不是判为不支持的理由。除了这个 Unit 以前的名字，Unit Title 和 Evidence 里都没有的编号（例如另一个 Unit 的 key）不被支持。候选准入把 Candidate 的所选 Evidence 连同 Unit Title 一起读。所以话题、动作或大部分措辞相符都不够：Claim 写了另一个 Unit 的 key，而 Unit Title 和所选 Evidence 里都没有，或写的人、数字、日期与 Primary Evidence 不同，在 Support Assessment 中判为 `UNSUPPORTED`，在候选准入中判为 `REJECTED(evidence_incomplete)`。Change Impact 不判断支持，不使用这条定义。定义改变时，`REVISION_SUPPORT_CONTRACT`、Support Assessment 工作合同和候选准入合同一起升级（当前为 `revision-support-v8`、`support-ordered-reading-v6` 和 `candidate-admission-v4`），旧合同下完成的工作不再复用。
 
 **Cloud 影响：**这条定义是共享的 OSS prompt 文本，Cloud 升级 pin 即可生效；HANA 中的 derivation work 和 reconciliation manifest 带上新的合同版本，不需要改 schema，旧版本下完成的工作会重新计算，不会复用。
 
@@ -303,7 +303,7 @@ UNSUPPORTED(work_id)
 
 候选准入是右线的独立步骤：Claim Extraction → 候选准入 → Sparse Relation。它对每个 Candidate 都执行，与 Unit 是否有旧 Memory 无关。同一个准入请求内完成两项职责，不新增调用轮次，请求带着 Candidate 所属 Unit 的 Unit Title（第 0.9 节）：
 
-1. 证据完整支持：所选 Primary/Required Evidence 是否完整支持该 Claim，包括范围、例外和表头限定；Claim 写出的每一项具体信息都要有 Evidence（定义见第 0.4 节“完整支持的定义”）；
+1. 证据完整支持：所选 Primary/Required Evidence 连同 Unit Title 是否完整支持该 Claim，包括范围、例外和表头限定；Claim 写出的每一项具体信息都要出现在所选 Evidence 或 Unit Title 中，或能从中直接得出，Unit Title 的每一项值都可以直接写出（定义见第 0.4 节“完整支持的定义”）；
 2. 同轮去重：是否与本轮其他 Candidate 为同一条知识。每个准入请求都带本轮全部 Candidate 的 ID 与 Claim 文本（不带 Evidence）作为共享上下文，所以不同请求里的重复也能被报告；程序按确定规则合并。这份列表一次放不下时，由 LLM batch runner 分块，程序合并各块结果。
 
 | 结果 | 处理 |
@@ -443,7 +443,7 @@ COMPLETE_SNAPSHOT 证明 A 消失（B 提交之后）
 
 统一流程依赖 Adapter 提供：稳定 Unit/Observation identity、coherent provider checkpoint、细粒度 coverage、Added/Changed/Removed/Tombstoned facts、结构/顺序/回复关系、exact selectable ranges，以及 Unit Title。
 
-Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 summary，Confluence 的 space 和页面标题，GitHub 的仓库、路径和 ref，GitHub Pages 的标题和 URL，本地 Markdown 的 vault 和路径，Teams 的会话类型、team、会话名称和窗口起始时间（窗口结束时间随新消息后移，不属于名称），agent session 的客户端、窗口类型和标题；扩展 Source 至少给出标题和 source type。Adapter 只写 payload 里有的值，不猜测，也不为某个 Source 写专用 prompt。Unit Title 是投影附带的字段（`SourceProjection.unit_title`，一个 kind 加若干字段值），不是 Observation，不能被选为 Evidence，也不参与 Unit revision 的身份；整个 Unit 被 tombstone 时没有 Unit Title。它随派生输入保存（Cloud 的 `PROJECTION_PAYLOAD_JSON` 原样保存整个投影），没有这个字段的旧记录解码为没有 Unit Title，读取这样的投影时 prompt 里既没有 Unit Title，也没有对它的说明。Jira issue type 只出现在 Unit Title 里，不在 `issue_core` 中；Claim 可以直接写出它（第 0.4 节的完整支持定义）。
+Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 summary，Confluence 的 space 和页面标题，GitHub 的仓库、路径和 ref，GitHub Pages 的标题和 URL，本地 Markdown 的 vault 和路径，Teams 的会话类型、team、会话名称和窗口起始时间（窗口结束时间随新消息后移，不属于名称），agent session 的客户端、窗口类型和标题；扩展 Source 至少给出标题和 source type。Adapter 只写 payload 里有的值，不猜测，也不为某个 Source 写专用 prompt。Unit Title 是投影附带的字段（`SourceProjection.unit_title`，一个 kind 加若干字段值），不是 Observation，不能被选为 Evidence，也不参与 Unit revision 的身份；整个 Unit 被 tombstone 时没有 Unit Title。它随派生输入保存（Cloud 的 `PROJECTION_PAYLOAD_JSON` 原样保存整个投影），没有这个字段的旧记录解码为没有 Unit Title，读取这样的投影时 prompt 里既没有 Unit Title，也没有对它的说明。完整支持的定义是固定文本，始终提到 Unit Title；没有 Unit Title 的读取不显示 Unit Title 块，Claim 只能依据 Evidence。Jira issue type 只出现在 Unit Title 里，不在 `issue_core` 中；Claim 可以直接写出它（第 0.4 节的完整支持定义）。
 
 Jira 按 Jira Data Center 的接口读取：issue 和搜索结果内嵌的 changelog 就是完整历史（Data Center 没有分页的 changelog 接口，不需要也无法再读），评论少于 `total` 时再读一页 `/issue/{key}/comment`；changelog 或评论仍少于 `total` 时整个 issue 为 Partial；Teams 应提供稳定 thread/window membership、reply pagination 和明确 edit/delete/tombstone。Adapter 无法证明时降级为 Partial，流程仍可处理 positive changes，但不会从缺失推断删除。
 
@@ -451,7 +451,7 @@ Jira 按 Jira Data Center 的接口读取：issue 和搜索结果内嵌的 chang
 
 - 投影时不拿它和新 revision 比较，部分覆盖下也不把它带进新 revision。无论覆盖是否完整，这个 Observation 都不再是新 revision 的成员，但它是退出，不是移除：Delta 不因它产生变化、新增或移除的内容。移除只表示覆盖证明了这个 Observation 已不存在。
 - 存储保证一个 Unit 当前指向的 Observation revision 恰好是当前 Unit revision 的成员。记录新的当前 revision 时，把这个 Unit 下所有不是成员的 Observation 的当前指针清空：退出的 Observation 指针随之清空，部分投影带过来的 Observation 保留自己的指针。
-- Support 的基线里去掉它，所以它不会作为删除的旧文本进入变化内容。直接读取一个已存储的投影时（重新处理的预览读取 Unit 的当前 revision，离线重放读取固定的 case），也先去掉它再读（`current_representation_of`）；新投影不会含有它。
+- Support 的基线里去掉它，所以它不会作为删除的旧文本进入变化内容。直接读取一个已存储的投影时（重新处理的预览读取 Unit 的当前 revision，离线重放读取固定的 case），也先去掉它再读（`current_representation_of`），这样读到的 Revision Delta 也不再把它列为变化或新增的内容；新投影不会含有它。
 - 旧 Support 落在它上面的 Evidence part 直接去掉，不算 `REMOVED`，也不算 `UNKNOWN`。是否去掉按 part 自己指向的 revision 判断，与 Support 有没有可用基线无关。其余 part 都是 `EXACT_UNCHANGED` 且没有其他变化时，Support 由程序直接换绑，不调用模型，换绑后的 Support 不再含这个 part；Primary part 被去掉的 Support 没有可换绑的 Primary，走 Support Assessment。
 
 以后任何表示方式退出都用这条规则。
@@ -501,7 +501,7 @@ Evidence Unit 的时间取 Primary 锚定的 Observation Revision 的时间；�
 | 部分投影下旧 Support 有 `UNKNOWN` part，Relation 报 contradicts | 创建协调器 Review，不自动替代 |
 | 候选证据不完整支持 Claim | 候选准入 `REJECTED`：不新增、不进 Review，记录拒绝事件并计数 |
 | Jira Claim 写出 issue key 或 issue type | 准入请求带着 Unit Title，Claim 写出其中的值即可准入；Claim 把本 issue 的内容写成另一个 key，而 Unit Title 和所选 Evidence 里都没有这个 key 时 `REJECTED(evidence_incomplete)` |
-| 已有 Unit 的旧 revision 存有 Unit Title Observation | 下一次投影产生一个新 revision：内容没有变化和新增，Delta 只列出移除的旧标题 Observation；不产生抽取调用；落在旧标题上的 Evidence part 被去掉，其余 part 都精确不变时程序直接换绑，不调用模型 |
+| 已有 Unit 的旧 revision 存有 Unit Title Observation | 下一次投影产生一个新 revision：旧标题 Observation 是退出，不是移除，Delta 不为它列出变化、新增或移除的内容，内容本身也没有变化；不产生抽取调用；落在旧标题上的 Evidence part 被去掉，其余 part 都精确不变时程序直接换绑，不调用模型 |
 | 已有 Unit 的旧 revision 没有 Unit Title，内容不变 | 不产生新 revision，也没有任何工作；下一次模型读取直接带上 Unit Title |
 | Jira summary 修改 | summary 在 `issue_core` 中，这是普通的内容修改；Unit Title 随之更新，只作为阅读上下文；Evidence 在 summary 上的 Support 为 `MODIFIED`，其他 Support 经 Change Impact |
 | 页面改名、文件移动、Teams 会话改名 | 只改变 Unit Title 或位置时不产生语义 revision，不调用模型；下一次读取显示新名称 |

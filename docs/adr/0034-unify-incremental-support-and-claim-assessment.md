@@ -232,9 +232,9 @@ states appears in that Evidence or in the [Unit Title](#the-unit-title), or
 follows directly from them. Specifics include names of people, systems and
 things, identifiers, quantities, dates and times, statuses, conditions and
 scope. A claim that states any specific the Evidence contradicts, or one that
-neither the Evidence nor the Unit Title contains, is not supported, even when the
-rest of the claim matches, and no knowledge outside the Evidence and the Unit
-Title counts.
+neither the Evidence nor the Unit Title contains, is not supported, even when
+the rest of the claim matches, and no knowledge outside the Evidence and the
+Unit Title counts.
 
 The Unit Title is never Evidence, but every value it shows, such as the Unit's
 key, type, summary, title or path, is a fact about the Unit that a claim may
@@ -242,8 +242,9 @@ state without Evidence for it; a Jira claim may state the issue type or repeat
 the summary. A claim that names its Unit by an earlier name, such as a former
 title or path, still speaks of that Unit: the name differing from the current
 Unit Title is never alone a reason for `UNSUPPORTED`. Apart from the Unit's own
-earlier names, any other identifier must be in the Evidence or the Unit Title.
-Candidate Admission reads a Candidate's selected Evidence with the Unit Title.
+earlier names, an identifier that neither the Unit Title nor the Evidence
+contains, such as another Unit's key, is not supported. Candidate Admission
+reads a Candidate's selected Evidence with the Unit Title.
 
 Matching the topic, the action or most of the wording is therefore not enough:
 a claim that names another Unit's key that neither the Unit Title nor its
@@ -357,18 +358,22 @@ Observation and never selectable Evidence. It takes no part in Unit revision
 identity, so a change of only its values, or naming it with other values,
 creates no revision and no model work. A name that also appears in the content
 or the locator, such as a Confluence page title in the page body or a file path
-in the locator, changes as content or location does. Every model reading of the Unit, whether a Claim
-Extraction request, a Candidate Admission request, a Support Assessment step or
-a Change Impact bundle, shows the current Unit Title, rendered once from those
-values (`pipeline/unit_title.py`). Each prompt describes it the same way: the
-Unit's kind and current values, each a fact about the Unit that a claim may
-state, never source text and never Evidence. A Unit Title that changes along with content
-is seen as the name of the revision being read, never as one of its changes.
-[Complete support](#complete-support) says how a claim may use it.
+in the locator, changes as content or location does. Every model reading of the
+Unit, whether a Claim Extraction request, a Candidate Admission request, a
+Support Assessment step or a Change Impact bundle, shows the current Unit Title,
+rendered once from those values (`pipeline/unit_title.py`). Each prompt
+describes it the same way: the Unit's kind and current values, each a fact about
+the Unit that a claim may state, never source text and never Evidence. A Unit
+Title that changes along with content is seen as the name of the revision being
+read, never as one of its changes. [Complete support](#complete-support) says
+how a claim may use it.
 
 The Unit Title is stored with the projection payload (`PROJECTION_PAYLOAD_JSON`
 in Cloud). A payload stored without it decodes to no Unit Title, and a reading
-of such a projection shows neither a Unit Title nor its description.
+of such a projection shows neither a Unit Title nor its description. The
+complete-support definition is one fixed text and always names the Unit Title;
+a reading without one, such as of a payload stored before it, shows no Unit
+Title block, so a claim there has only its Evidence.
 
 ### Comparison in the current representation
 
