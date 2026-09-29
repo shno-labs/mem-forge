@@ -375,8 +375,15 @@ earlier releases projected as an Observation (profile `unit-identity`), is
 treated the same way wherever the program compares:
 
 - The projection neither compares the new revision with it nor carries it under
-  partial coverage. The Observation leaves the Unit under any coverage; the delta
-  lists it as removed and shows no changed or added content for it.
+  partial coverage. The Observation is retired: it is no member of the new
+  revision under any coverage, and the delta shows no changed, added or removed
+  content for it. A removed Observation is only one the coverage proves
+  absent.
+- A store keeps the current Observations of a Unit equal to the members of its
+  current Unit revision. When it records a new current revision, it clears the
+  current revision of every Observation of the Unit that is not a member, so a
+  retired Observation leaves with its pointer, and an Observation a partial
+  projection carries keeps its own.
 - The Support baseline leaves it out, so it adds no removed text to the changes.
   A stored projection read as the revision itself, as a reprocess preview reads
   a Unit's current revision or an offline replay reads a pinned case, is read
@@ -393,15 +400,26 @@ A representation that is retired later follows the same rule.
 Cloud impact: no HANA schema, storage protocol, configuration or
 `proxy/external_runtime.py` change. Cloud stores `PROJECTION_PAYLOAD_JSON`
 verbatim, so the Unit Title travels in it, and rows stored before it decode to
-no Unit Title. A store clears the current revision of every Observation a delta
-removes, whatever the coverage; the HANA store drops its coverage condition on
-that update, as the SQLite store does, or a Unit whose partial projection
-retires its stored Unit Title fails the current-manifest check. About 1,700
-EU12 Units that stored their Unit Title as an Observation each get one new
-revision at their next fetch, with no changed content: a pure program rebind,
-database writes only. Relation subjects of the rebound Supports no longer carry
-the title text as Evidence; `document_title` remains. Derivation idempotency
-keys change with the contracts.
+no Unit Title. The HANA store must keep Observation pointers equal to the
+current revision's members, shipped together with the pin that contains this
+change: `_record_source_projection_sync` in
+`packages/adapters/store/hana/.../workspace.py` clears pointers today only for
+the `removed_observation_ids` of a delta whose coverage proves absence. It must
+also clear the current revision of every Observation of the Unit that is not a
+member of the new current revision. The Source sync lifecycle path and the
+agent claim path both record through that function. Without it, reading the
+current Unit fails with "stored current Source Unit manifest is incomplete" for
+every partial Unit (Teams windows, agent-session concepts) whose stored revision
+holds a Unit Title Observation, that is every such Unit written since
+2026-09-26. About 1,700 EU12 Units that stored their Unit Title as an
+Observation each get one new revision at their next fetch, with no changed
+content: a pure program rebind, database writes only. Relation subjects of the
+rebound Supports no longer carry the title text as Evidence; `document_title`
+remains. Derivation idempotency keys change with the contracts. Derivation
+attempts staged before the upgrade are not resumed:
+`_resume_source_derivations` supersedes pending and retryable attempts under
+another extraction contract and skips completed ones, so no staged target
+revision that holds a Unit Title Observation is applied after the upgrade.
 
 ### Exact current Evidence correspondence
 

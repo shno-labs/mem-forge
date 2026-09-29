@@ -449,13 +449,14 @@ Jira 按 Jira Data Center 的接口读取：issue 和搜索结果内嵌的 chang
 
 **按当前表示方式比较。**`source_representation.py` 里有一个判断：已存储的 Observation revision 是否仍属于当前的表示方式，即它的表示 profile 仍由 Adapter 投影。早先版本把 Unit Title 存成 Unit 的第一条 Observation（profile `unit-identity`），它已不属于当前表示方式。程序在三处按同一条规则处理这类 revision：
 
-- 投影时不拿它和新 revision 比较，部分覆盖下也不把它带进新 revision；这个 Observation 无论覆盖是否完整都离开 Unit，Delta 把它列为移除，但不因它产生变化或新增内容。存储在任何覆盖下都清掉被移除 Observation 的当前 revision 指针。
+- 投影时不拿它和新 revision 比较，部分覆盖下也不把它带进新 revision。无论覆盖是否完整，这个 Observation 都不再是新 revision 的成员，但它是退出，不是移除：Delta 不因它产生变化、新增或移除的内容。移除只表示覆盖证明了这个 Observation 已不存在。
+- 存储保证一个 Unit 当前指向的 Observation revision 恰好是当前 Unit revision 的成员。记录新的当前 revision 时，把这个 Unit 下所有不是成员的 Observation 的当前指针清空：退出的 Observation 指针随之清空，部分投影带过来的 Observation 保留自己的指针。
 - Support 的基线里去掉它，所以它不会作为删除的旧文本进入变化内容。直接读取一个已存储的投影时（重新处理的预览读取 Unit 的当前 revision，离线重放读取固定的 case），也先去掉它再读（`current_representation_of`）；新投影不会含有它。
 - 旧 Support 落在它上面的 Evidence part 直接去掉，不算 `REMOVED`，也不算 `UNKNOWN`。是否去掉按 part 自己指向的 revision 判断，与 Support 有没有可用基线无关。其余 part 都是 `EXACT_UNCHANGED` 且没有其他变化时，Support 由程序直接换绑，不调用模型，换绑后的 Support 不再含这个 part；Primary part 被去掉的 Support 没有可换绑的 Primary，走 Support Assessment。
 
 以后任何表示方式退出都用这条规则。
 
-**Cloud 影响：**不改 HANA 表结构、存储协议、配置或 `proxy/external_runtime.py` 的调用。Cloud 原样保存 `PROJECTION_PAYLOAD_JSON`，Unit Title 随之保存，旧记录解码为没有 Unit Title。HANA store 清除被移除 Observation 的当前 revision 指针时需要去掉对覆盖的判断，和 SQLite store 一致；否则部分投影退出旧标题后，读取当前 Unit 会因当前清单不一致而失败。升级后派生的幂等键随合同变化；EU12 约 1,700 个存有 Unit Title Observation 的 Unit 在下一次抓取时各产生一个新 revision，内容没有变化，只做程序换绑，只有数据库写入；约 3,778 个没有 Unit Title 的 Unit 不产生工作。换绑后的 Support 不再带标题文字，关系评估 subject 的 `evidence` 随之不含标题文字，`document_title` 仍在。
+**Cloud 影响：**不改 HANA 表结构、存储协议、配置或 `proxy/external_runtime.py` 的调用。Cloud 原样保存 `PROJECTION_PAYLOAD_JSON`，Unit Title 随之保存，旧记录解码为没有 Unit Title。HANA store 要和 SQLite store 一样，让 Observation 的当前指针始终等于当前 revision 的成员：`workspace.py` 的 `_record_source_projection_sync` 目前只在覆盖证明不存在时清空 Delta 里移除的 Observation 的指针，还需要在记录新的当前 revision 时清空这个 Unit 下所有非成员 Observation 的指针。Source 同步的 lifecycle 路径和 agent claim 路径都经过这个函数。这项修改必须和升级 OSS 版本一起上线；否则自 2026-09-26 以来写入、存有 Unit Title Observation 的部分覆盖 Unit（Teams 窗口、agent session concept）在读取当前 Unit 时都会报错 “stored current Source Unit manifest is incomplete”。升级前已暂存的派生不会继续执行：`_resume_source_derivations` 把旧抽取合同下 pending 和 retryable 的派生标为 superseded，跳过已完成的，所以不会有含 Unit Title Observation 的暂存目标 revision 在升级后被应用。升级后派生的幂等键随合同变化；EU12 约 1,700 个存有 Unit Title Observation 的 Unit 在下一次抓取时各产生一个新 revision，内容没有变化，只做程序换绑，只有数据库写入；约 3,778 个没有 Unit Title 的 Unit 不产生工作。换绑后的 Support 不再带标题文字，关系评估 subject 的 `evidence` 随之不含标题文字，`document_title` 仍在。
 
 **Observation 修订时间。** 每个 Observation Revision 的 `observed_at` 是来源自己记录的、这份内容形成的时间，不是 MemForge 发现、拉取、接收或同步它的时间。来源没有这样的时间时为空，任何路径都不用同步时间、提交时间或当前时间代替。时间是修订的属性，不参与修订身份：修订 id 只由 Observation 和语义哈希决定，Unit 修订、Evidence Unit 和 Lifecycle Plan 的身份也不含时间，所以纠正时间不会产生新修订或 Delta。已有修订的时间为空、本次投影给出时间时，存储补写一次；已写入的时间不再改。内容从 A 改成 B 再改回 A 时，第二次的 A 复用第一次的修订，时间仍是第一次 A 的时间。
 

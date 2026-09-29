@@ -384,7 +384,11 @@ read-only HANA transaction, with a journal store that refuses writes. The rule
 changes no storage protocol, HANA schema, configuration or
 `proxy/external_runtime.py` call site. Contract identities raised by a replayed
 change arrive with the pin, and work completed under earlier identities is
-never reinterpreted.
+never reinterpreted. Derivation attempts staged before the upgrade are never
+resumed: `_resume_source_derivations` supersedes pending and retryable attempts
+under another extraction contract and skips completed ones. For the Unit Title,
+no staged target revision that holds a Unit Title Observation is applied after
+the upgrade.
 
 ## Alternatives considered
 
