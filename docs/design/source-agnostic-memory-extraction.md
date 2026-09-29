@@ -61,7 +61,9 @@ The adapter owns provider facts:
 - the Unit Title: the Unit's human-facing name from values present in the
   provider payload, a kind and named values carried on the projection
   (`SourceProjection.unit_title`). It is no Observation and no part of the
-  Unit revision, so renaming a Unit creates no revision.
+  Unit revision, so a change of only its values creates no revision; a name
+  that also appears in the content or the locator changes as content or
+  location does.
 
 It does not assign final Evidence roles. A `precedes`, `replies_to`,
 `contained_by`, or `references` relation never grants Primary or Required

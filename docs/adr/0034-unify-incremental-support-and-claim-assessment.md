@@ -238,8 +238,8 @@ The [Unit Title](#the-unit-title) identifies the Unit a claim belongs to, so a
 claim may state its values, such as the Unit's key, type, title or path, without
 Evidence for them. A claim that names its Unit by an earlier name, such as a
 former title or path, still speaks of that Unit: the name differing from the
-current Unit Title is never alone a reason for `UNSUPPORTED`. Any other
-identifier must be in the Evidence.
+current Unit Title is never alone a reason for `UNSUPPORTED`. Apart from the
+Unit's own earlier names, any other identifier must be in the Evidence.
 
 Matching the topic, the action or most of the wording is therefore not enough:
 a claim that names another Unit's key that neither the Unit Title nor its
@@ -350,8 +350,10 @@ source-specific prompt instructions: a kind and named values (`UnitTitle` on
 
 The Unit Title is reading context carried by the projection, never an
 Observation and never selectable Evidence. It takes no part in Unit revision
-identity, so renaming a Unit, or naming it with other values, creates no
-revision and no model work. Every model reading of the Unit, whether a Claim
+identity, so a change of only its values, or naming it with other values,
+creates no revision and no model work. A name that also appears in the content
+or the locator, such as a Confluence page title in the page body or a file path
+in the locator, changes as content or location does. Every model reading of the Unit, whether a Claim
 Extraction request, a Candidate Admission request, a Support Assessment step or
 a Change Impact bundle, shows the current Unit Title, rendered once from those
 values (`pipeline/unit_title.py`). Each prompt describes it the same way: the
@@ -361,7 +363,7 @@ is seen as the name of the revision being read, never as one of its changes.
 
 The Unit Title is stored with the projection payload (`PROJECTION_PAYLOAD_JSON`
 in Cloud). A payload stored without it decodes to no Unit Title, and a reading
-of such a projection shows none.
+of such a projection shows neither a Unit Title nor its description.
 
 ### Comparison in the current representation
 
@@ -376,10 +378,15 @@ treated the same way wherever the program compares:
   partial coverage. The Observation leaves the Unit under any coverage; the delta
   lists it as removed and shows no changed or added content for it.
 - The Support baseline leaves it out, so it adds no removed text to the changes.
-- A prior Evidence part on it is dropped, neither `REMOVED` nor `UNKNOWN`. When
-  every other part is exactly current and nothing else changed, the Support is
-  rebound by the program without a model call, and the rebound Support no longer
-  holds that part.
+  A stored projection read as the revision itself, as a reprocess preview reads
+  a Unit's current revision or an offline replay reads a pinned case, is read
+  without it (`current_representation_of`); a new projection never holds it.
+- A prior Evidence part on it is dropped, neither `REMOVED` nor `UNKNOWN`. The
+  part is classified by the revision it names, whether or not its Support has a
+  usable baseline. When every other part is exactly current and nothing else
+  changed, the Support is rebound by the program without a model call, and the
+  rebound Support no longer holds that part. A Support whose Primary part is
+  dropped has no Primary to rebind and goes to Support Assessment.
 
 A representation that is retired later follows the same rule.
 
@@ -408,7 +415,7 @@ The planner deterministically classifies every part of prior Support Evidence:
 | `AMBIGUOUS` | exact/structural correspondence is not unique | old exact excerpt + all candidate ReadingGroups |
 | `UNKNOWN` | partial coverage cannot prove presence or absence | no model input |
 
-A part on an Observation outside the current representation takes none of these
+A part on a revision outside the current representation takes none of these
 statuses; it is dropped ([Comparison in the current representation](#comparison-in-the-current-representation)).
 
 The classification is recomputed for each base/target revision pair; it is not

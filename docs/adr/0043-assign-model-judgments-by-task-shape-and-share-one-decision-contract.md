@@ -369,7 +369,13 @@ with no model call), a sample of Units that stored a Unit Title Observation
 (each a pure rebind), Claim Extraction and Candidate Admission requests on Jira
 Units (claims that state the Unit's key are kept) and a Support Assessment
 sample (answers about names do not change); the relation group baselines are
-re-run after release.
+re-run after release. Payloads recorded before this change have no Unit Title,
+and those since 2026-09-26 hold it as an Observation, so a replay of the stored
+payload would show neither what the change shows nor compare as it does. The
+replay therefore projects each sampled Unit again from its stored input
+(`SourceUnitInput`) through `project_source_item`, with the Unit revision the
+recorded request read as the prior revision, and runs the production planner and
+prompts on that projection.
 
 ### Cloud impact
 
