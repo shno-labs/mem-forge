@@ -254,6 +254,19 @@ and sharpens `CROSS_DOCUMENT_RELATION_RULES`:
 The input is unchanged, so evaluation cases pinned under `v2` and `v3` are
 replayed under `v4` (`CROSS_DOCUMENT_RELATION_INPUT_VERSIONS`).
 
+### Relation evaluation replays production packing
+
+A relation evaluation shows the classifier what discovery shows it. The
+measured false relations came from candidates judged against one another inside
+one request, which a case holding one pair cannot reproduce. Relation group
+cases (`cross_document_relation_group_v1`) pin one challenger with every
+candidate discovery asked about for it, in discovery's order, and labels for
+some of them; replay sends the whole group through the production classifier
+and batch runner and scores the labelled candidates, while relations given to
+unlabelled candidates are counted for labelling. The group set is the gate for
+a change of the relation prompt, rendering, packing or model: its false
+relation count and `none` recall must not get worse.
+
 ### Search annotates an equivalent pair
 
 Search returns both Memories of an `equivalent` pair, and each carries the
@@ -288,7 +301,10 @@ that marks the work obsolete, as SQLite does, or a re-run leaves relations from
 pairs it no longer judges; an index on
 `CROSS_DOCUMENT_RELATIONS.DISCOVERY_WORK_ID` keeps that removal cheap. No
 storage protocol signature, configuration or `proxy/external_runtime.py` call
-site changes. Existing relations are re-run by an operator.
+site changes. Existing relations are re-run by an operator. Relation group
+cases are stored in each workspace's HANA evaluation store like other cases,
+are seeded through the proxied admin route and run on the Cloud evaluation
+worker through the pinned OSS version.
 
 ## Amendment 2026-09-29: calibrated probabilities
 
