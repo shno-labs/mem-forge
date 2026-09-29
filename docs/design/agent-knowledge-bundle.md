@@ -35,7 +35,7 @@ The local adapter captures evidence. MemForge owns memory decisions.
 ```text
 Codex / Claude Code
   -> local adapter captures bounded evidence + repo metadata
-  -> POST /api/agent-sessions/windows
+  -> POST /api/v1/agent-sessions/windows
   -> server canonicalizes, redacts, and hashes the window
   -> LLM extracts a durable session-outcome candidate or no_output
   -> server reconciles the candidate against existing private memories
@@ -45,10 +45,9 @@ Codex / Claude Code
   -> search returns private memory rows
 ```
 
-There is no `/windows` path that generates a package and then starts a source
-sync. The explicit `/api/agent-sessions/documents` endpoint still accepts an
-already-generated document, but it is a separate upload mode and not part of the
-window flow.
+Windows are the only agent-session intake. A window patches Agent Knowledge
+directly; the `agent_session` Source declares no sync, so no source sync runs
+for it.
 
 ## Lifecycle
 

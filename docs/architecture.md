@@ -160,8 +160,7 @@ All distance thresholds are calibrated for **text-embedding-3-small** with cosin
 |  +---------------------+      +----------------------------+        |
 |  | search              |      | POST /api/hooks/context    |        |
 |  | get_memory          |      | POST /api/agent-sessions/  |        |
-|  | submit_agent_session|      | POST /api/agent-sessions/  |        |
-|  | _document           |      | documents (explicit only)  |        |
+|  | create_memory       |      | windows                    |        |
 |  +---------+-----------+      +----------------------------+        |
 |            v                                                         |
 |  +----------------------------------------------------------+       |
@@ -451,7 +450,6 @@ authority, and asks the LLM for one patch proposal: `create_new_concept`,
 `add_new_claim`, `update_existing_claim`, `supersede_existing_claim`, or
 `no_output`. A proposal that does not cite an authoritative user message as its
 primary evidence is recorded as `no_output`.
-`POST /api/v1/agent-sessions/documents` returns HTTP 410.
 
 **Content unit:** one concept. MemForge renders the concept markdown from its
 claims and projects it as the Source Unit of the `agent_session` Source, with
@@ -1655,7 +1653,6 @@ truth for the session.
 |--------|------|-------------|
 | POST | `/api/v1/agent-sessions/windows` | Submit a versioned, redacted agent-session evidence window; MemForge canonicalizes it, classifies user authority, and applies at most one private Agent Knowledge patch |
 | GET | `/api/v1/agent-sessions/completeness` | Summarize processed window outcomes (`knowledge_patched`, `no_output`, `failed`) on demand; non-zero failures also surface a `latest_failure` summary (`count`, `reason`, `last_seen_at`) |
-| POST | `/api/v1/agent-sessions/documents` | Returns HTTP 410; agent-session knowledge enters only through windows |
 | POST | `/api/v1/hooks/receipts` | Record a coding-agent lifecycle hook receipt without creating source material |
 
 ### System Endpoints

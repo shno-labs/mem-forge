@@ -540,9 +540,8 @@ Patch prompt contract:
 - Keep run logs, exit codes, branch and test names, and deployment notes in
   `claim_text` as provenance, out of the durable claim.
 
-`POST /api/v1/agent-sessions/documents` returns HTTP 410. Agent-session
-knowledge enters MemForge only through windows, so every durable claim is
-anchored to an explicit user message.
+Agent-session knowledge enters MemForge only through windows, so every durable
+claim is anchored to an explicit user message.
 
 `POST /api/v1/hooks/receipts` is a lightweight lifecycle receipt endpoint. It
 does not create source material and does not write memories.
