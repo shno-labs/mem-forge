@@ -21,7 +21,7 @@ for future read-path integrations.
 Hooks must return quickly, must not run memory extraction, and must not write
 canonical memories directly.
 
-Default automatic capture:
+Automatic capture:
 
 ```text
 native hook payload
@@ -37,16 +37,6 @@ The local adapter is a low-authority evidence uploader. It can normalize native
 client events, attach repository metadata, and retry upload windows, but it must
 not decide durable memory semantics. MemForge owns concept placement, claim
 updates, privacy scope, idempotency, and search-surface reconciliation.
-
-Compatibility path:
-
-```text
-MCP submit_agent_session_document
-POST /api/agent-sessions/documents
-```
-
-Use the compatibility path only for explicit, already-generated summaries.
-Automatic hook capture should use window uploads.
 
 ## Decision Boundary
 

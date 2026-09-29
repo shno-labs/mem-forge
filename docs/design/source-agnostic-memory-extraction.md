@@ -508,7 +508,7 @@ The authority rule does not branch on Source type:
   declares.
 - Every adapter supplies the Unit Title from its own payload; no prompt carries
   source-specific instructions for it.
-- Markdown, GitHub, Confluence, local files, and agent-session documents use
+- Markdown, GitHub, Confluence, local files, and agent-session concepts use
   their declared representation profile; raw CommonMark HTML remains a private
   Markdown adapter concern.
 - Canonical records expose schema-owned fields and ranges through the canonical

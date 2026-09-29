@@ -93,7 +93,6 @@ sequenceDiagram
 | `search` | Resolve optional repository context and forward query | `POST /api/memories/search` | None |
 | `create_memory` | Resolve optional repository context and forward confirmed content | `POST /api/memories/create` | None |
 | `get_memory` | Resolve optional repository context and fetch memory detail | `GET /api/memories/{memory_id}` | None |
-| `submit_agent_session_document` | Submit generated summary | `POST /api/agent-sessions/documents` | None |
 | `get_resource(mode="text")` | Resolve optional repository context and fetch artifact text | Service `content_url` | None |
 | `get_resource(mode="base64")` | Resolve optional repository context and fetch artifact bytes | Service artifact URL | None |
 | `get_resource(mode="file")` | Resolve optional repository context, fetch, and cache artifact bytes | Service artifact URL | Writes `~/.memforge-agent/artifacts` |

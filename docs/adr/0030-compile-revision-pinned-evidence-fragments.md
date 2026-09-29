@@ -10,6 +10,10 @@ Amended 2026-09-27 by [ADR 0042](0042-fence-source-writes-with-activity-leases-a
 and the authority-plan identity carry no Source activity epoch; the epoch named
 below is removed.
 
+Amended 2026-09-29: Agent Session document intake is removed. Agent-session
+windows are the only agent-session intake; see
+[Managed Agent Sessions and Direct User provenance](#managed-agent-sessions-and-direct-user-provenance).
+
 Support validation progress is owned exclusively by ADR 0034's baseline
 contract. Evidence creation revisions and extraction run identifiers are
 provenance, not mutable validation checkpoints.
@@ -17,7 +21,7 @@ provenance, not mutable validation checkpoints.
 
 ## Status
 
-Accepted (2026-08-27; amended 2026-09-05 and 2026-09-21)
+Accepted (2026-08-27; amended 2026-09-05, 2026-09-21 and 2026-09-29)
 
 MemForge will replace provider-returned evidence text, single coarse Block
 selection, quote matching, and whole-Block fallback with application-owned
@@ -571,6 +575,14 @@ durable Evidence seam:
    projects the durable concept/claim Markdown, compiles its exact current
    Evidence, runs relation-first reconciliation, and remains the sole owner of
    lifecycle mutations.
+
+Amendment 2026-09-29: document intake removed; windows are the only intake.
+Path 1 no longer exists: `POST /api/v1/agent-sessions/documents`,
+`submit_agent_session_document`, and the `agent_session` Gene's package reading
+were deleted, and the `agent_session` Source declares no sync. Every
+agent-session Observation is the projected concept Markdown of path 2. The
+"Agent Session document intake" row in the representation table above is
+historical. Cloud impact: none; Cloud composed only the window path.
 
 The Fragment compiler does not reclassify raw Codex/Claude events, promote tool
 logs or assistant narration to authority, or persist patch intent as a parallel
