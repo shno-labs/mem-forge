@@ -573,13 +573,78 @@ expected_label: updates
 decided_by: reviewer
 ```
 
+A pair case shows the classifier one pair, but discovery asks about every
+candidate of one challenger in requests that state the challenger once and ask
+one question per candidate. Errors that come from the candidates a request
+shows side by side, such as candidates that repeat one another being judged
+`equivalent` to the subject, never occur in a pair case. Relation group cases
+(`cross_document_relation_group_v1`) replay the production requests: one case
+pins one challenger and every candidate discovery asked about for it, in
+discovery's order, each as the classifier input the pair cases pin, and accepts
+labels for some of the candidates. Replay classifies the whole group through
+the production classifier, so the same rendering, per-challenger requests and
+batch runner packing apply, and scores each labelled candidate on the label
+discovery would record. Unlabelled candidates are classified too, since they
+are what a labelled candidate is shown beside; each relation the classifier
+gives one is counted as an `unlabelled_relation` check that waits for a
+person's label.
+
+A maintenance operator seeds groups for the request's workspace with
+`POST /api/v1/agent-evaluations/relation-group-cases/seed`:
+
+```json
+{
+  "labelled_by": "two reviewers, consensus only",
+  "groups": [
+    {
+      "challenger_memory_id": "mem-...",
+      "candidate_memory_ids": ["mem-...", "mem-..."],
+      "labels": {"mem-...": "none"},
+      "content_hashes": {"mem-...": "<sha256 of the content>", "...": "..."}
+    }
+  ]
+}
+```
+
+The request names Memories by id only, together with the content hash each
+Memory had when the group was labelled (`content_hashes`, one for the
+challenger and one for every candidate); the server reads every Memory and
+builds its classifier input with the subject builder discovery uses, reading
+a Memory that appears in several groups once. A group
+must list distinct candidates other than its challenger and may label only
+candidates it lists; a challenger appears in one group. Each label is pinned
+as the label the program records for it (an `updates` label on a pair whose
+pinned Evidence times do not order it is pinned as `contradicts`). A group is
+pinned whole or not at all. As a pair case is skipped when a Memory no longer
+holds the version its decision was made for, a Memory that is gone, not
+active, or whose content hash differs from the one it was labelled with skips
+the group as `memory_changed`, so a label is never scored against content it
+was not given for. A private Memory, a Memory shown from a Source that is not
+an active workspace Source, or a challenger without Source Evidence skips it
+with the pair set's reasons. The response
+returns the cohort id, the pinned group, candidate and labelled pair counts,
+the recorded label counts, skip counts by reason and the reason for each
+skipped challenger. A group without labels is pinned too; it contributes only
+unlabelled relations.
+
+A run over relation cases reports, over labelled pairs, precision and recall
+per label and the `expected:actual` confusion, and a relation summary:
+`labelled_pairs`, `false_relations` (labelled `none` pairs the classifier
+related), `none_recall` and `unlabelled_relations`. Each check of a group case
+names the candidate it scores in its reason code: `expected:actual/memory_id`
+for a labelled candidate and `actual/memory_id` for an unlabelled relation, so
+the case outputs trace every check to its candidate. The group set is the gate
+for a change of relation prompt, rendering, packing, label definition or model:
+`false_relations` and `none_recall` on it measure the errors a pair case cannot
+show.
+
 Release gate:
 
 - no unresolved P0 daily health failures
 - no unresolved P1 evaluator findings that affect lifecycle or search visibility
 - replay fixtures pass for lifecycle and retrieval cases touched by the change
-- cross-document relation precision per label does not drop below the recorded
-  classifier version's report
+- on the relation group set, `false_relations` does not rise above and
+  `none_recall` does not drop below the recorded classifier version's report
 
 ## Example End-to-End Flow
 
