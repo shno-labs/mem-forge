@@ -34,7 +34,7 @@ provider payload
   -> exact authorized ranges + complete representation index
   -> RepresentationCompiler: exact Fragments + ReadingGroups
   -> extraction request planning: one runner item per ReadingGroup that holds authorized Primary
-  -> immutable request catalog: items + Required-only reading context and Unit Title
+  -> immutable request catalog: items + Required-only reading context; the prompt shows the Unit Title
   -> LLM returns Memory content + primary_ref + required_refs
   -> deterministic Evidence Resolver
   -> one revision-pinned Evidence Unit
@@ -59,7 +59,9 @@ The adapter owns provider facts:
 - Revision Delta and provider coverage;
 - representation-profile assignment for each new Revision;
 - the Unit Title: the Unit's human-facing name from values present in the
-  provider payload, projected as the Unit's first Observation.
+  provider payload, a kind and named values carried on the projection
+  (`SourceProjection.unit_title`). It is no Observation and no part of the
+  Unit revision, so renaming a Unit creates no revision.
 
 It does not assign final Evidence roles. A `precedes`, `replies_to`,
 `contained_by`, or `references` relation never grants Primary or Required
@@ -125,9 +127,11 @@ the exact Primary authority of one Source Unit revision
 (`RevisionAssessmentContext`). Each ReadingGroup, one outermost list or one
 Fragment, that holds authorized Primary is one LLM batch runner item. A request
 reads its items with the context every reading of them adds: the
-representation's heading, intro and list lead-in, the Observation its provider
-declares it replies to or follows, and the Unit Title. Reading context is
-Required-only and is never truncated. The runner packs items into the fewest
+representation's heading, intro and list lead-in, and the Observation its
+provider declares it replies to or follows. Reading context is Required-only and
+is never truncated. The prompt also shows the Unit Title, rendered from the
+projection's values (`pipeline/unit_title.py`); it is the Unit's name, states no
+claim and is never Evidence. The runner packs items into the fewest
 requests that fit the route; each planned request is staged as one derivation
 batch before execution, and execution still halves a multi-item request that
 times out or exceeds capacity. Every authorized Primary Fragment belongs to
@@ -161,7 +165,7 @@ current revision as its first part.
 
 Claim Extraction runs on the LLM batch runner of
 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md), so no
-extraction read has to fit one request. This is `revision-input-v7`.
+extraction read has to fit one request. This is `revision-input-v8`.
 
 ## Deterministic Primary Eligibility
 
@@ -207,17 +211,26 @@ coordinate map. Teams message content therefore follows its canonical schema and
 nested text contract. Agent
 Session `session_summary` content follows `markdown-structural`; neither path asks
 the selector to infer structure from arbitrary JSON. The provider-declared reply
-target, or else predecessor, of each read Observation and the Unit Title are
-added as exact Context. No character budget truncates this Context; a request
+target, or else predecessor, of each read Observation is added as exact
+Context. No character budget truncates this Context; a request
 that cannot hold one item with its Context is a capacity limitation.
 
 Tables and binary Artifacts retain their existing atomic representation and get
 no additional reading group. The reading index does not budget or batch requests;
 the LLM batch runner enforces actual route capacity after expansion.
 
-The Unit Title compiles to one `unit-identity` Fragment that is never
-Primary-eligible. It names the Unit a catalog belongs to, such as a Jira key and
-summary; a claim that names or depends on that Unit selects it as Required.
+The Unit Title is no Fragment. Every model reading of the Unit, Claim
+Extraction, Candidate Admission, Support Assessment and Change Impact, shows it
+next to the catalog, and a claim may state its values, such as a Jira key, type
+and summary, without selecting Evidence for them
+([ADR 0034, The Unit Title](../adr/0034-unify-incremental-support-and-claim-assessment.md#the-unit-title)).
+A stored revision in a representation the adapters no longer project, such as
+the Unit Title earlier releases stored as an Observation, is compared with
+nothing and grants no authority
+([ADR 0034, Comparison in the current representation](../adr/0034-unify-incremental-support-and-claim-assessment.md#comparison-in-the-current-representation)).
+Cloud impact: the Unit Title travels in the stored projection payload
+(`PROJECTION_PAYLOAD_JSON`), which Cloud keeps verbatim; no HANA schema,
+storage protocol, configuration or `proxy/external_runtime.py` change.
 
 Reading expansion starts from the caller's selected Fragments and runs once;
 newly added Context does not recursively trigger unrelated groups. A complete
@@ -506,8 +519,8 @@ The authority rule does not branch on Source type:
 - Jira comments and Teams or future Slack messages use provider-native
   Observation deltas, read with the reply target or predecessor their provider
   declares.
-- Every adapter supplies the Unit Title from its own payload; no prompt carries
-  source-specific instructions for it.
+- Every adapter supplies the Unit Title from its own payload; every prompt shows
+  it with the same description and no source-specific instructions.
 - Markdown, GitHub, Confluence, local files, and agent-session concepts use
   their declared representation profile; raw CommonMark HTML remains a private
   Markdown adapter concern.
