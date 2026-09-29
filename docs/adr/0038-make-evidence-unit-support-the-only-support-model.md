@@ -53,8 +53,8 @@ Evidence Unit Support is the only Support model.
   resumed.
 
   Amended by [ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md)
-  (2026-09-28): the only extraction contract is `projection-extraction-v10`,
-  whose output has no `confidence`. Only the Evidence Unit scope string
+  (2026-09-28): the only extraction contract (then `projection-extraction-v10`,
+  now `PROJECTION_EXTRACTION_CONTRACT_VERSION`) has no `confidence` in its output. Only the Evidence Unit scope string
   (`evidence-unit-set-v2`) is hashed into Evidence Unit ids and Support set
   hashes, so it stays unchanged. The extraction contract version is hashed only
   into derivation and batch ids; changing it supersedes stored derivations and

@@ -13,7 +13,7 @@ new-candidate Primary eligibility. Claim Extraction reads the ReadingGroups that
 hold this authority: on an update only the changed structures with their
 ReadingGroups as context, on a first import every ReadingGroup, one LLM batch
 runner item per ReadingGroup, with no delta/current-full cost comparison
-(`revision-input-v7`). Support Assessment reads the complete current revision in
+(`revision-input-v8`). Support Assessment reads the complete current revision in
 one fixed order with per-work-item early exit once the first part of the order
 (changed ReadingGroups, removed ones included, and prior-Evidence groups) has
 been read
@@ -35,7 +35,7 @@ revision, the immutable staged target projection, the authorized work
 transition, and the access identity. It returns exact current-revision candidate
 ranges with deterministic Primary eligibility.
 
-`projection-extraction-v10` is the currently affected contract, not the dispatch
+`projection-extraction-v11` is the currently affected contract, not the dispatch
 condition. Any later fragment-catalog contract inherits this seam
 automatically through its active contract descriptor. Historical exact replay
 continues to use the authority policy recorded by that historical contract.
@@ -621,7 +621,7 @@ The minimum deterministic suite is:
   Source emits it;
 - Jira changelog `attachment_event`/`operational_transition` continues through
   the existing deterministic quality gate instead of duplicating that policy;
-- `evidence-unit-set-v2` Support with `projection-extraction-v10` selection;
+- `evidence-unit-set-v2` Support with `projection-extraction-v11` selection;
 - repeated planning/compilation produces byte-identical ranges, refs and digest;
 - changing the inference capability hash changes Artifact plan/catalog identity
   and prevents cross-model batch reuse;

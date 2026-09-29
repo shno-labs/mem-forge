@@ -27,12 +27,12 @@ Current implemented contract: Support Assessment uses exact correspondence,
 Change Impact and the [ordered read](#ordered-current-revision-reading) with
 cumulative witnesses. Claim Extraction reads as described in
 [Unified revision input planning](#unified-revision-input-planning-and-bounded-execution)
-under `revision-input-v7`: changed structures with their ReadingGroups on an
+under `revision-input-v8`: changed structures with their ReadingGroups on an
 update, every ReadingGroup on a first import, one runner item per ReadingGroup,
-with no cost comparison and no truncation. Every reading carries the Unit Title
-([One deep context-planning module](#one-deep-context-planning-module)).
+with no cost comparison and no truncation. Every model reading shows the Unit
+Title as context ([The Unit Title](#the-unit-title)).
 [Candidate admission](#candidate-admission) is implemented as
-`candidate-admission-v3`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
+`candidate-admission-v4`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
 request is implemented as `claim-revision-v8-sparse-catalog`, described in
 [Sparse claim catalog](../design/sparse-claim-catalog.md). Relation runs
 concurrently with Support Assessment over every same-Unit old Memory, and
@@ -128,11 +128,11 @@ that owns the detail.
   ReadingGroups as context; a first import streams per ReadingGroup. Extraction
   makes no Delta/current-full cost comparison
   ([Unified revision input planning](#unified-revision-input-planning-and-bounded-execution)).
-  Implemented as `revision-input-v7`.
+  Implemented as `revision-input-v8`.
 - Every Source adapter supplies the Unit Title, the Unit's human-facing name, as
-  the Unit's first Observation. It is never Primary, can be selected as Required,
-  and is read with every model reading of the Unit
-  ([One deep context-planning module](#one-deep-context-planning-module)).
+  a value of its projection. It is no Observation, no selectable Evidence and no
+  part of a Unit revision, and every model reading of the Unit shows it as
+  context ([The Unit Title](#the-unit-title)).
 - Candidate admission is an independent step between Claim Extraction and
   Relation. Low-value Candidates are `REJECTED` with reason `low_value`, and
   every admission request carries the round's Candidate claims so duplicates are
@@ -228,15 +228,27 @@ selected Evidence completely supports a claim. It has one definition, and both
 model requests carry the same text of it (`pipeline/complete_support.py`).
 
 Selected Evidence completely supports a claim only when every specific the claim
-states appears in that Evidence or follows directly from it. Specifics include
-names of people, systems and things, identifiers, quantities, dates and times,
-statuses, conditions and scope. A claim that states any specific the Evidence
-contradicts or does not contain is not supported, even when the rest of the
-claim matches, and no knowledge outside the Evidence counts.
+states appears in that Evidence or in the [Unit Title](#the-unit-title), or
+follows directly from them. Specifics include names of people, systems and
+things, identifiers, quantities, dates and times, statuses, conditions and
+scope. A claim that states any specific the Evidence contradicts, or one that
+neither the Evidence nor the Unit Title contains, is not supported, even when
+the rest of the claim matches, and no knowledge outside the Evidence and the
+Unit Title counts.
+
+The Unit Title is never Evidence, but every value it shows, such as the Unit's
+key, type, summary, title or path, is a fact about the Unit that a claim may
+state without Evidence for it; a Jira claim may state the issue type or repeat
+the summary. A claim that names its Unit by an earlier name, such as a former
+title or path, still speaks of that Unit: the name differing from the current
+Unit Title is never alone a reason for `UNSUPPORTED`. Apart from the Unit's own
+earlier names, an identifier that neither the Unit Title nor the Evidence
+contains, such as another Unit's key, is not supported. Candidate Admission
+reads a Candidate's selected Evidence with the Unit Title.
 
 Matching the topic, the action or most of the wording is therefore not enough:
-a claim that names a different identifier than the Unit Title it selects as
-Required Evidence, or a different person, number or date than its Primary
+a claim that names another Unit's key that neither the Unit Title nor its
+Evidence contains, or a different person, number or date than its Primary
 Evidence, is `UNSUPPORTED` in Support Assessment and `REJECTED` with
 `evidence_incomplete` in Candidate Admission. Change Impact does not judge
 support and does not use this definition.
@@ -244,8 +256,8 @@ support and does not use this definition.
 A change to the definition changes the meaning of both results, so it raises
 `REVISION_SUPPORT_CONTRACT`, the Support Assessment work contract and the
 candidate admission contract together; completed work under an earlier
-definition is never reused. The current contracts are `revision-support-v7`,
-`support-ordered-reading-v5` and `candidate-admission-v3`.
+definition is never reused. The current contracts are `revision-support-v8`,
+`support-ordered-reading-v6` and `candidate-admission-v4`.
 
 Cloud impact: the definition is shared OSS prompt text. Cloud receives it by
 upgrading the pin; its HANA derivation work and reconciliation manifests carry
@@ -327,23 +339,98 @@ Implemented reading groups and reading context: Support and Claim Extraction
 share one partition of a revision into ReadingGroups, one outermost list or one
 Fragment. Every model reading, whether a Claim Extraction request, a Support
 Assessment step or a Change Impact bundle, reads its Fragments with one reading
-context: the representation's heading, intro and list lead-in; the Observation
-its provider declares it replies to, or else follows (`REPLIES_TO`, else
-`PRECEDES`), never inferred from order or similarity; and the Unit Title.
-Reading context is Required-only and has no character cap.
+context: the representation's heading, intro and list lead-in, and the
+Observation its provider declares it replies to, or else follows (`REPLIES_TO`,
+else `PRECEDES`), never inferred from order or similarity. Reading context is
+Required-only and has no character cap. Every reading also shows the Unit Title.
+
+### The Unit Title
 
 The Unit Title is the provider's human-facing name of the Unit, such as a Jira
 key, type and summary, a Confluence space and page title, or a repository and
 path. The Source adapter contract requires every adapter to supply it from the
 values present in the provider payload, without guessing and without
-source-specific prompt instructions. It is projected as the first Observation of
-every live Unit (`unit_identity`, representation `unit-identity`), so a partial
-projection always returns it. It compiles to one Fragment that is never Primary:
-it scopes and identifies claims but states none. A claim that names the Unit
-selects it as Required, which is what candidate admission checks identifying
-details against. It is reading context of every reading, never a ReadingGroup
-of its own: a changed Unit Title is read among the changes of the first part,
-and prior Evidence on an unchanged Unit Title adds no part to the first part.
+source-specific prompt instructions: a kind and named values (`UnitTitle` on
+`SourceProjection`). A tombstone names no Unit.
+
+The Unit Title is reading context carried by the projection, never an
+Observation and never selectable Evidence. It takes no part in Unit revision
+identity, so a change of only its values, or naming it with other values,
+creates no revision and no model work. A name that also appears in the content
+or the locator, such as a Confluence page title in the page body or a file path
+in the locator, changes as content or location does. Every model reading of the
+Unit, whether a Claim Extraction request, a Candidate Admission request, a
+Support Assessment step or a Change Impact bundle, shows the current Unit Title,
+rendered once from those values (`pipeline/unit_title.py`). Each prompt
+describes it the same way: the Unit's kind and current values, each a fact about
+the Unit that a claim may state, never source text and never Evidence. A Unit
+Title that changes along with content is seen as the name of the revision being
+read, never as one of its changes. [Complete support](#complete-support) says
+how a claim may use it.
+
+The Unit Title is stored with the projection payload (`PROJECTION_PAYLOAD_JSON`
+in Cloud). A payload stored without it decodes to no Unit Title, and a reading
+of such a projection shows neither a Unit Title nor its description. The
+complete-support definition is one fixed text and always names the Unit Title;
+a reading without one, such as of a payload stored before it, shows no Unit
+Title block, so a claim there has only its Evidence.
+
+### Comparison in the current representation
+
+A revision is compared with the stored revisions of its Unit only in the
+current representation. One predicate in `source_representation.py` says
+whether a stored Observation revision belongs to it: its profile is one that
+adapters project. A stored revision outside it, such as the Unit Title that
+earlier releases projected as an Observation (profile `unit-identity`), is
+treated the same way wherever the program compares:
+
+- The projection neither compares the new revision with it nor carries it under
+  partial coverage. The Observation is retired: it is no member of the new
+  revision under any coverage, and the delta shows no changed, added or removed
+  content for it. A removed Observation is only one the coverage proves
+  absent.
+- A store keeps the current Observations of a Unit equal to the members of its
+  current Unit revision. When it records a new current revision, it clears the
+  current revision of every Observation of the Unit that is not a member, so a
+  retired Observation leaves with its pointer, and an Observation a partial
+  projection carries keeps its own.
+- The Support baseline leaves it out, so it adds no removed text to the changes.
+  A stored projection read as the revision itself, as a reprocess preview reads
+  a Unit's current revision or an offline replay reads a pinned case, is read
+  without it (`current_representation_of`), and its Revision Delta names it
+  neither as changed nor as added content; a new projection never holds it.
+- A prior Evidence part on it is dropped, neither `REMOVED` nor `UNKNOWN`. The
+  part is classified by the revision it names, whether or not its Support has a
+  usable baseline. When every other part is exactly current and nothing else
+  changed, the Support is rebound by the program without a model call, and the
+  rebound Support no longer holds that part. A Support whose Primary part is
+  dropped has no Primary to rebind and goes to Support Assessment.
+
+A representation that is retired later follows the same rule.
+
+Cloud impact: no HANA schema, storage protocol, configuration or
+`proxy/external_runtime.py` change. Cloud stores `PROJECTION_PAYLOAD_JSON`
+verbatim, so the Unit Title travels in it, and rows stored before it decode to
+no Unit Title. The HANA store must keep Observation pointers equal to the
+current revision's members, shipped together with the pin that contains this
+change: `_record_source_projection_sync` in
+`packages/adapters/store/hana/.../workspace.py` clears pointers today only for
+the `removed_observation_ids` of a delta whose coverage proves absence. It must
+also clear the current revision of every Observation of the Unit that is not a
+member of the new current revision. The Source sync lifecycle path and the
+agent claim path both record through that function. Without it, reading the
+current Unit fails with "stored current Source Unit manifest is incomplete" for
+every partial Unit (Teams windows, agent-session concepts) whose stored revision
+holds a Unit Title Observation, that is every such Unit written since
+2026-09-26. About 1,700 EU12 Units that stored their Unit Title as an
+Observation each get one new revision at their next fetch, with no changed
+content: a pure program rebind, database writes only. Relation subjects of the
+rebound Supports no longer carry the title text as Evidence; `document_title`
+remains. Derivation idempotency keys change with the contracts. Derivation
+attempts staged before the upgrade are not resumed:
+`_resume_source_derivations` supersedes pending and retryable attempts under
+another extraction contract and skips completed ones, so no staged target
+revision that holds a Unit Title Observation is applied after the upgrade.
 
 ### Exact current Evidence correspondence
 
@@ -356,6 +443,9 @@ The planner deterministically classifies every part of prior Support Evidence:
 | `REMOVED` | authoritative complete coverage proves the old fragment absent | old exact excerpt + the whole reading order |
 | `AMBIGUOUS` | exact/structural correspondence is not unique | old exact excerpt + all candidate ReadingGroups |
 | `UNKNOWN` | partial coverage cannot prove presence or absence | no model input |
+
+A part on a revision outside the current representation takes none of these
+statuses; it is dropped ([Comparison in the current representation](#comparison-in-the-current-representation)).
 
 The classification is recomputed for each base/target revision pair; it is not
 a remembered `unchanged` flag or a model judgment. The old side comes from the
@@ -482,7 +572,7 @@ schema changes; Cloud upgrades the pin with no HANA or configuration change.
 
 ### Candidate admission
 
-Implemented as `candidate-admission-v3`; execution through the LLM batch runner.
+Implemented as `candidate-admission-v4`; execution through the LLM batch runner.
 
 Candidate admission runs between Claim Extraction and Sparse Relation, for
 every Candidate, whether or not the Unit has old Memories. One admission request
@@ -1145,12 +1235,18 @@ in its PR. There is no version migration or rollout mechanism for it. Cloud impa
 reaches Cloud when it upgrades to a pin that contains such a compiler change, so
 the PR statement also covers Cloud.
 
-A Source adapter that adds model-visible Unit content, such as the Unit Title,
-is absorbed the same way: the next revision of each Unit carries the new
-Observation as added content. It authorizes no extraction, and exact Supports go
-through Change Impact. Such a change states the one-time load in its PR. Cloud
-impact: Cloud reaches the same load as its Units are next fetched after the pin
-upgrade; the new Observation needs no HANA schema change.
+A Source adapter that changes what a Unit's revisions contain is absorbed the
+same way. Content an adapter adds is added content of the next revision: it
+authorizes no extraction, and exact Supports go through Change Impact. A
+representation an adapter stops projecting leaves the Unit without being a
+change ([Comparison in the current representation](#comparison-in-the-current-representation)):
+the next revision has no changed content, and exact Supports are rebound by the
+program. Context that names or places the Unit, such as the Unit Title, is no
+revision content at all. Every such change is replayed on stored production
+requests before release, and its PR states the measured one-time load
+([ADR 0043](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md#amendment-2026-09-29-model-input-changes-are-replayed-before-release)).
+Cloud impact: Cloud reaches the same load as its Units are next fetched after
+the pin upgrade, with no HANA schema change.
 
 Both rules wait for a Unit's next revision, and a Unit that no longer changes (a
 closed Jira issue, an archived page) never gets one. An operator reprocesses such
@@ -1380,7 +1476,7 @@ Compiler 4 independently changes structural boundaries as described in ADR 0030.
 Legacy stage records remain immutable history. See ADR 0017 for storage ownership.
 
 Claim Extraction scope is defined in [Decision](#decision) item 2 and implemented
-as `revision-input-v7`: `plan_projection_evidence_work` computes Primary authority
+as `revision-input-v8`: `plan_projection_evidence_work` computes Primary authority
 only, and each ReadingGroup that holds authorized Primary is one LLM batch runner
 item, read with its reading context demoted to Required-only. The runner packs
 items into requests by actual capacity; each planned request is staged as one
@@ -1617,7 +1713,11 @@ and the Unit Title uses `revision-input-v7`, `revision-support-v5`,
 presentation policy 5; the extraction contract stays `projection-extraction-v9`
 and the compiler stays 4. [Complete support](#complete-support), with prior
 Evidence offered only as selectable candidates, gives the current contracts
-`revision-support-v7` and `support-ordered-reading-v5`. Completed work under an
+`revision-support-v7` and `support-ordered-reading-v5`. The Unit Title as
+projection context, with comparison in the current representation, gives
+`revision-input-v8`, `revision-support-v8`, `support-ordered-reading-v6`,
+`change-impact-v3`, `candidate-admission-v4`, `projection-extraction-v11` and
+model presentation policy 6. Completed work under an
 earlier contract is never reinterpreted under a later one. Exact successor numbers
 are assigned with the implementation so they cannot collide with independently
 released work; no stored Evidence or lifecycle schema migration follows merely

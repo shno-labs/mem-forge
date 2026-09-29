@@ -1028,14 +1028,15 @@ provider/transport/schema failure keeps its bounded runtime retry. A
 missing/unknown/duplicate selector receives the one workset-local correction
 defined above; exhausted correction is terminal for the surrounding document
 attempt rather than permission to replay earlier semantic stages.
-Unsupported representation, compiler-contract, and processing-capacity
-limitations are non-retryable operational failures. Neither class creates a
-Review row. Runtime failures emit `support_revalidation_failed`; operational
-limitations emit the typed, content-safe
-`support_revalidation_unsupported_representation`,
-`support_revalidation_compiler_failure`, or
-`support_revalidation_capacity_exceeded` lifecycle outcome so Online Evaluation
-provides the Finding path without inventing a lifecycle decision. Successful
+Unsupported representation and compiler-contract limitations are
+non-retryable operational failures. Neither class creates a Review row. Runtime
+failures emit `support_revalidation_failed`; operational limitations emit the
+typed, content-safe `support_revalidation_unsupported_representation` or
+`support_revalidation_compiler_failure` lifecycle outcome so Online Evaluation
+provides the Finding path without inventing a lifecycle decision. A ReadingGroup
+that alone exceeds the model's capacity is not an operational failure: ADR 0034
+records it as `UNRESOLVED(capacity)`, which keeps the Support and lets the
+revision commit. Successful
 executions report work-item count, reused Revision index count, total prompt
 characters, actual model-call count, and automatic rebind count. The shared
 Unit-support postcondition
