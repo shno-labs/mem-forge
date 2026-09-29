@@ -341,8 +341,9 @@ every live Unit (`unit_identity`, representation `unit-identity`), so a partial
 projection always returns it. It compiles to one Fragment that is never Primary:
 it scopes and identifies claims but states none. A claim that names the Unit
 selects it as Required, which is what candidate admission checks identifying
-details against. It forms its own ReadingGroup, so a changed Unit Title is
-ordinary changed content.
+details against. It is reading context of every reading, never a ReadingGroup
+of its own: a changed Unit Title is read among the changes of the first part,
+and prior Evidence on an unchanged Unit Title adds no part to the first part.
 
 ### Exact current Evidence correspondence
 
