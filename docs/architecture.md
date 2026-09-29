@@ -225,12 +225,12 @@ All distance thresholds are calibrated for **text-embedding-3-small** with cosin
    REST API    REST API  Graph API     Graph API
 ```
 
-Default agent-session hook capture is not the MCP
-`submit_agent_session_document` path. The plugin keeps a local queue, uploads
-bounded canonical evidence windows to `/api/agent-sessions/windows`, and
-MemForge queues the `agent_session` source sync after package creation. A
-queued request that arrives while the source is already syncing waits for that
-active pass and then runs one coalesced follow-up pass.
+Agent-session capture does not go through a gene sync. The coding-agent
+plugin keeps a local queue and uploads bounded canonical evidence windows to
+`POST /api/v1/agent-sessions/windows`. Each window yields at most one private
+Agent Knowledge patch, which MemForge writes directly through the Source
+Projection and Lifecycle Plan seam (see [Agent Session Gene
+Design](#agent-session-gene-design)).
 
 ---
 
@@ -433,43 +433,56 @@ def list_available_genes() -> list[GeneMetadata]:
 | Jira | 6h | 30m | Tickets change moderately |
 | Teams | 1h | 5m | Chat moves fast |
 | Outlook | 2h | 15m | Email is moderate |
-| Agent Session | Manual / service-queued | N/A | Generated packages arrive after accepted agent-session windows |
+| Agent Session | None | N/A | No source sync: each accepted window writes its patch directly |
 
 ### Agent Session Gene Design
 
-Agent-derived memory enters MemForge as generated session documents, not as
-direct memory writes. The canonical flow is documented in
-`docs/design/agent-session-saas-plugin-flow.md`.
+Agent-session memory is Managed Capture: Codex and Claude Code windows become
+private Agent Knowledge (concepts and claims), and each claim's Memory follows
+the same Source Projection and Lifecycle Plan seam as every Gene-backed source.
+`docs/design/agent-knowledge-bundle.md` describes the knowledge model and
+`docs/design/agent-session-saas-plugin-flow.md` describes the plugin capture
+flow.
 
-**Content unit:** a MemForge-generated markdown package for one bounded
-agent-session window. Codex and Claude Code plugins upload redacted canonical
-evidence windows to `POST /api/agent-sessions/windows`; MemForge canonicalizes
-again, runs the Stage 1 package LLM, and stores the package as an
-`agent_session` source document. The explicit
-`POST /api/agent-sessions/documents` path remains for already-generated manual or
-MCP summaries, not the default hook flow.
+**Intake:** plugins upload redacted canonical evidence windows to
+`POST /api/v1/agent-sessions/windows`. MemForge redacts and canonicalizes the
+window again, hashes it, classifies which explicit user messages carry durable
+authority, and asks the LLM for one patch proposal: `create_new_concept`,
+`add_new_claim`, `update_existing_claim`, `supersede_existing_claim`, or
+`no_output`. A proposal that does not cite an authoritative user message as its
+primary evidence is recorded as `no_output`.
+`POST /api/v1/agent-sessions/documents` returns HTTP 410.
+
+**Content unit:** one concept. MemForge renders the concept markdown from its
+claims and projects it as the Source Unit of the `agent_session` Source, with
+the concept id as the document id. It locates each claim's exact text in that
+markdown, builds the Lifecycle Plan directly, and commits the projection, the
+lifecycle mutations, and the concept and claim rows in one transaction. Claims
+the patch did not touch are rebound to the new concept revision
+deterministically, without an LLM call.
+
+**No source sync:** the `agent_session` gene declares no execution kinds. The
+scheduler does not enqueue agent-session Sources and the sync runtime rejects
+them; the window request is the only write path.
 
 **Receipt/lineage:** each processed window has a receipt recording client,
-session id, trigger, workspace, repo, branch, commit, history window, document
-hash, outcome (`package_created`, `no_output`, or `failed`), and reason when
-needed. The receipt is not a conversation transcript; it exists for
-deduplication, audit, deletion, and reprocessing.
+session id, trigger, workspace, repo, branch, commit, history window, window
+hash, outcome (`knowledge_patched`, `no_output`, or `failed`), and reason. A
+repeated window with the same range and hash returns the recorded result; a
+failed window runs again. The receipt is not a transcript, and raw windows are
+not retained (`retention` must be `none`).
 
-**Authority:** agent session summaries are generated sources. They can provide
-useful handoff context and candidate memories, including updates to stale docs,
-but they should not bypass the normal source pipeline. When they conflict with
-authored team sources, the conflict should become a human review decision rather
-than an automatic win or loss.
+**Authority:** agent-session claims are private to the uploading user and are
+authorized only by that user's explicit messages in the window. Assistant
+messages and tool output are supporting evidence. A patch may change only the
+caller's own private concepts in the same repository. The owner corrects or
+retires a claim through the memory lifecycle service under Owner Authority
+(ADR 0012), not through automated reconciliation.
 
-**Admin ownership:** the `agent_session` source is service-managed. The Admin UI
-may list it for sync status and repair actions, but users do not add, configure,
-or delete it like Confluence, Jira, or Teams. Its storage path and sync requests
-are owned by the agent-session API flow.
-
-**Normalized markdown includes:** the generated session-window package after
-operational sections such as validation logs, runtime notes, command evidence,
-and receipt-only metadata are removed. Receipt provenance remains available in
-`source_semantics`; it is not copied into LLM-visible extraction markdown.
+**Admin ownership:** each client and user has one service-managed
+`agent_session` Source, created when the first window from that client and user
+proposes a patch. The Admin UI lists it with window completeness counts, but
+users do not configure, sync, or delete it.
 
 ### Agent Hook Integration
 
@@ -483,7 +496,7 @@ separate paths:
   injection, optional lifecycle receipt write-back, and agent-session window
   upload.
 
-The hook context endpoint is `POST /api/hooks/context`. It accepts client,
+The hook context endpoint is `POST /api/v1/hooks/context`. It accepts client,
 hook, workspace, repo, branch, prompt, touched files, and a memory limit. It
 returns `should_inject=false` for trivial prompts, or a compact markdown block
 with relevant active memories, recent memory changes, and source warnings.
@@ -498,15 +511,14 @@ The packaged MCP config starts a stdlib-only local proxy. The proxy forwards
 memory operations to `MEMFORGE_API_URL` and owns only client-local work such as
 artifact cache files for `get_resource(mode="file")`.
 
-Lifecycle receipt write-back is `POST /api/hooks/receipts`; receipts do not
+Lifecycle receipt write-back is `POST /api/v1/hooks/receipts`; receipts do not
 enter the source pipeline. Automatic hook capture uses a local plugin queue and
 uploads bounded, redacted canonical evidence windows to
-`POST /api/agent-sessions/windows`. The plugin keeps native transcript rows as
-local cursor units, but the package LLM sees filtered evidence rather than raw
-JSONL prefixes when canonical events exist. MemForge generates packages and
-queues the `agent_session` source sync internally, including a coalesced
-follow-up when a package is created during an active sync. Hooks never write
-canonical memories directly. See `docs/design/agent-hook-integration.md` for the
+`POST /api/v1/agent-sessions/windows`. The plugin keeps native transcript rows
+as local cursor units, but the patch LLM sees filtered evidence rather than raw
+JSONL prefixes when canonical events exist. MemForge applies at most one private
+Agent Knowledge patch per window (see Agent Session Gene Design above). Hooks
+never write canonical memories directly. See `docs/design/agent-hook-integration.md` for the
 endpoint contract and query rules.
 
 ### Teams Gene Design (Detailed)
@@ -987,7 +999,7 @@ results. Agents drill down through
 
 ## 11. MCP Tool Interface
 
-### Retrieval Tools + Intake Tool
+### Retrieval Tools
 
 ```
 search             "What do I need to know?"
@@ -1003,22 +1015,16 @@ get_memory         "Tell me more about this specific memory"
 get_resource       "Read this source artifact"
                     -> accepts content_url/pdf_url from get_memory
                     -> returns text, a local cache file path, or base64 bytes
-
-submit_agent_session_document
-                    -> stores an explicit already-generated markdown summary
-                    -> writes a thin receipt for lineage and dedupe
-                    -> feeds the generated source through normal sync when requested
 ```
 
 MCP remains the model-visible memory interface. In Codex and Claude Code
-plugins, MCP is implemented as a local thin proxy: `search`, `get_memory`,
-and `submit_agent_session_document` are forwarded to the MemForge API, while
+plugins, MCP is implemented as a local thin proxy: `search` and `get_memory`
+are forwarded to the MemForge API, while
 `get_resource(mode="file")` downloads artifacts into a client-local cache and
 returns a real local path. Agent lifecycle hooks use the Admin API separately:
-`POST /api/hooks/context` for compact prompt context and
-`POST /api/hooks/receipts` for lifecycle receipt write-back. Automatic
-agent-session capture uses `POST /api/agent-sessions/windows`; explicit
-already-generated summaries still use `POST /api/agent-sessions/documents`.
+`POST /api/v1/hooks/context` for compact prompt context and
+`POST /api/v1/hooks/receipts` for lifecycle receipt write-back. Automatic
+agent-session capture uses `POST /api/v1/agent-sessions/windows`.
 
 ### Local Proxy Request Path
 
@@ -1049,7 +1055,6 @@ directly.
 | `search` | Normalize args, resolve optional repository affinity, and forward | `POST /api/memories/search` |
 | `create_memory` | Resolve optional repository attribution and forward confirmed content | `POST /api/memories/create` |
 | `get_memory` | Forward by memory ID | `GET /api/memories/{memory_id}` |
-| `submit_agent_session_document` | Forward generated markdown summary | `POST /api/agent-sessions/documents` |
 | `get_resource(mode="text")` | Fetch and return text inline | `GET` service artifact URL |
 | `get_resource(mode="base64")` | Fetch and return encoded bytes | `GET` service artifact URL |
 | `get_resource(mode="file")` | Fetch bytes, write local cache, return `local_path` | `GET` service artifact URL |
@@ -1237,7 +1242,6 @@ Agent receives a question
 - Unified `search` MCP tool
 - `get_memory` MCP tool
 - Recent-memory questions through `search` with `time_range`
-- `submit_agent_session_document` MCP tool (explicit generated session-document intake)
 - Query expansion with entity aliases
 - Caching layer (entity cache, embedding cache, result cache)
 - Admin API: memory endpoints, entity endpoints, health check
@@ -1649,10 +1653,10 @@ truth for the session.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/agent-sessions/windows` | Submit a versioned, redacted agent-session evidence window for service-owned canonicalization, package generation, and queued source sync |
-| GET | `/api/agent-sessions/completeness` | Summarize processed window outcomes (`package_created`, `no_output`, `failed`) on demand; non-zero failures also surface a `latest_failure` summary (`count`, `reason`, `last_seen_at`) |
-| POST | `/api/agent-sessions/documents` | Submit an explicit already-generated session summary document, store receipt lineage, and optionally start the `agent_session` source sync |
-| POST | `/api/hooks/receipts` | Record a coding-agent lifecycle hook receipt without creating source material |
+| POST | `/api/v1/agent-sessions/windows` | Submit a versioned, redacted agent-session evidence window; MemForge canonicalizes it, classifies user authority, and applies at most one private Agent Knowledge patch |
+| GET | `/api/v1/agent-sessions/completeness` | Summarize processed window outcomes (`knowledge_patched`, `no_output`, `failed`) on demand; non-zero failures also surface a `latest_failure` summary (`count`, `reason`, `last_seen_at`) |
+| POST | `/api/v1/agent-sessions/documents` | Returns HTTP 410; agent-session knowledge enters only through windows |
+| POST | `/api/v1/hooks/receipts` | Record a coding-agent lifecycle hook receipt without creating source material |
 
 ### System Endpoints
 
