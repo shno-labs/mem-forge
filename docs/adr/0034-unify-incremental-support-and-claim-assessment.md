@@ -228,18 +228,22 @@ selected Evidence completely supports a claim. It has one definition, and both
 model requests carry the same text of it (`pipeline/complete_support.py`).
 
 Selected Evidence completely supports a claim only when every specific the claim
-states appears in that Evidence or follows directly from it. Specifics include
-names of people, systems and things, identifiers, quantities, dates and times,
-statuses, conditions and scope. A claim that states any specific the Evidence
-contradicts or does not contain is not supported, even when the rest of the
-claim matches, and no knowledge outside the Evidence counts.
+states appears in that Evidence or in the [Unit Title](#the-unit-title), or
+follows directly from them. Specifics include names of people, systems and
+things, identifiers, quantities, dates and times, statuses, conditions and
+scope. A claim that states any specific the Evidence contradicts, or one that
+neither the Evidence nor the Unit Title contains, is not supported, even when the
+rest of the claim matches, and no knowledge outside the Evidence and the Unit
+Title counts.
 
-The [Unit Title](#the-unit-title) identifies the Unit a claim belongs to, so a
-claim may state its values, such as the Unit's key, type, title or path, without
-Evidence for them. A claim that names its Unit by an earlier name, such as a
-former title or path, still speaks of that Unit: the name differing from the
-current Unit Title is never alone a reason for `UNSUPPORTED`. Apart from the
-Unit's own earlier names, any other identifier must be in the Evidence.
+The Unit Title is never Evidence, but every value it shows, such as the Unit's
+key, type, summary, title or path, is a fact about the Unit that a claim may
+state without Evidence for it; a Jira claim may state the issue type or repeat
+the summary. A claim that names its Unit by an earlier name, such as a former
+title or path, still speaks of that Unit: the name differing from the current
+Unit Title is never alone a reason for `UNSUPPORTED`. Apart from the Unit's own
+earlier names, any other identifier must be in the Evidence or the Unit Title.
+Candidate Admission reads a Candidate's selected Evidence with the Unit Title.
 
 Matching the topic, the action or most of the wording is therefore not enough:
 a claim that names another Unit's key that neither the Unit Title nor its
@@ -357,7 +361,8 @@ in the locator, changes as content or location does. Every model reading of the 
 Extraction request, a Candidate Admission request, a Support Assessment step or
 a Change Impact bundle, shows the current Unit Title, rendered once from those
 values (`pipeline/unit_title.py`). Each prompt describes it the same way: the
-Unit's name, which states no claim. A Unit Title that changes along with content
+Unit's kind and current values, each a fact about the Unit that a claim may
+state, never source text and never Evidence. A Unit Title that changes along with content
 is seen as the name of the revision being read, never as one of its changes.
 [Complete support](#complete-support) says how a claim may use it.
 
@@ -387,7 +392,8 @@ treated the same way wherever the program compares:
 - The Support baseline leaves it out, so it adds no removed text to the changes.
   A stored projection read as the revision itself, as a reprocess preview reads
   a Unit's current revision or an offline replay reads a pinned case, is read
-  without it (`current_representation_of`); a new projection never holds it.
+  without it (`current_representation_of`), and its Revision Delta names it
+  neither as changed nor as added content; a new projection never holds it.
 - A prior Evidence part on it is dropped, neither `REMOVED` nor `UNKNOWN`. The
   part is classified by the revision it names, whether or not its Support has a
   usable baseline. When every other part is exactly current and nothing else

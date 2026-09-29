@@ -132,8 +132,8 @@ reads its items with the context every reading of them adds: the
 representation's heading, intro and list lead-in, and the Observation its
 provider declares it replies to or follows. Reading context is Required-only and
 is never truncated. The prompt also shows the Unit Title, rendered from the
-projection's values (`pipeline/unit_title.py`); it is the Unit's name, states no
-claim and is never Evidence. The runner packs items into the fewest
+projection's values (`pipeline/unit_title.py`); each value is a fact about the
+Unit that a claim may state, and the Unit Title is never Evidence. The runner packs items into the fewest
 requests that fit the route; each planned request is staged as one derivation
 batch before execution, and execution still halves a multi-item request that
 times out or exceeds capacity. Every authorized Primary Fragment belongs to
