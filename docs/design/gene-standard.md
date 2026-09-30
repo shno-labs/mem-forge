@@ -208,7 +208,9 @@ PHASE 3: Sync Run (triggered by scheduler or manual)
   │       ├─ fetch(item)           → RawContent
   │       ├─ normalize(raw)        → NormalizedContent
   │       └─ [orchestrator: store, enrich, extract memories]
-  ├─ [orchestrator: detect deletions]
+  ├─ list_scope()                  → every Document id in scope, whatever `since` was
+  │   └─ confirm_absent(unlisted)  → query listings only: which unlisted ids the provider no longer has
+  ├─ [orchestrator: tombstone the Documents proven absent]
   └─ close()                       → cleanup (always called, even on error)
 ```
 
@@ -219,6 +221,7 @@ PHASE 3: Sync Run (triggered by scheduler or manual)
 | **MUST implement** (abstract) | `metadata()`, `_gene_config_fields()`, `discover()`, `fetch()`, `normalize()` | Registration fails if missing |
 | **SHOULD override** (useful default) | `health_check()`, `close()`, `validate_config()` | Default works but gene-specific override is better |
 | **MAY implement** (optional extension) | `fetch_pdf()`, `migrate_config()`, `rediscovers_documents()` with `rediscover()` | Orchestrator uses capability detection; a Gene that can ask its provider for one stored Document by id rediscovers it for an operator reprocess ([ADR 0040](../adr/0040-keep-stored-input-current-and-isolate-derivation-recovery.md)) |
+| **MAY implement** (absence proof) | `list_scope()` (or `record_scope_listing()` from `discover()`), and `confirm_absent()` for a query listing | A Gene that can list its whole configured scope by identifier lets every run remove what the provider no longer has ([ADR 0045](../adr/0045-prove-document-absence-from-a-listing-not-from-the-run-kind.md)). The listing is complete or it raises. An existence listing (a repository tree) makes an unlisted Document absent; a query listing (JQL, a page tree) confirms each unlisted Document by id, and only not found or gone is absence. Without a listing, no Document is removed except by an authoritative snapshot or a scope transition |
 
 ### 2.5 Timeout Expectations
 
@@ -1096,7 +1099,7 @@ A base `pytest` class that any gene subclasses. Gene developers override `gene_c
 | 429 (Rate Limit) | MAY parse `Retry-After`. Otherwise raise. | Retry with backoff. |
 | 401 (Auth Expired) | Raise. Do NOT retry auth. | Abort sync. Next sync re-authenticates. |
 | 403 (Forbidden) | Raise. | Item failed. No retry. |
-| 404 (Not Found) | Raise. | Item failed. Deletion detection handles cleanup. |
+| 404 (Not Found) | Raise. | Item failed. The next run's scope listing proves whether the item is gone. |
 | 500 (Server Error) | Raise. | Retry with backoff. |
 | Timeout | Let `httpx.TimeoutException` propagate. | Retry with backoff. |
 
