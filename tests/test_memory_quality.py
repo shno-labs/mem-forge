@@ -1251,6 +1251,9 @@ def test_sync_previous_content_read_does_not_bypass_document_store(tmp_path: Pat
     outside.write_text("previous content", encoding="utf-8")
 
     class RejectingDocumentStore:
+        def belongs_to_document(self, uri: str | None, *, source_id: str, doc_id: str) -> bool:
+            return True
+
         def read_normalized(self, stored_path: str) -> str | None:
             assert stored_path == str(outside)
             return None
@@ -1269,6 +1272,37 @@ def test_sync_previous_content_read_does_not_bypass_document_store(tmp_path: Pat
     )
 
     assert orchestrator._read_previous_normalized_content(stored_input) is None
+
+
+def test_sync_previous_content_is_read_only_from_the_inputs_own_object(tmp_path: Path):
+    from memforge.models import slugify
+    from memforge.pipeline.sync import GeneSyncOrchestrator
+    from memforge.storage.document_store import LocalDocumentStore
+
+    doc_store = LocalDocumentStore(str(tmp_path))
+    own_uri = doc_store.store_normalized("src-confluence", "doc-own", "Source Page", "own previous content")
+    sibling_uri = doc_store.store_normalized("src-confluence", "doc-sibling", "Source Page", "sibling content")
+    other_source_uri = doc_store.store_normalized("src-other", "doc-own", "Source Page", "other Source content")
+    # Before objects were keyed by Document, same-titled Documents of one
+    # Source shared this key.
+    title_keyed = tmp_path / slugify("src-confluence") / f"{slugify('Source Page')}.md"
+    title_keyed.write_text("last same-titled Document's content", encoding="utf-8")
+    orchestrator = GeneSyncOrchestrator(
+        db=object(),
+        doc_store=doc_store,
+        memory_extractor=object(),
+        memory_engine=object(),
+        memory_store=object(),
+    )
+
+    def previous(uri: str) -> str | None:
+        stored_input = _confluence_stored_input("doc-own", normalized_content_uri=uri, pdf_content_uri=None)
+        return orchestrator._read_previous_normalized_content(stored_input)
+
+    assert previous(own_uri) == "own previous content"
+    assert previous(sibling_uri) is None
+    assert previous(other_source_uri) is None
+    assert previous(str(title_keyed)) is None
 
 
 def _confluence_stored_input(

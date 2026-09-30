@@ -160,8 +160,9 @@ def setup_logging(verbose: bool = False) -> None:
 
 async def _get_db(config: AppConfig):
     from memforge.storage.database import Database
+    from memforge.storage.document_store import LocalDocumentStore
 
-    db = Database(config.storage.db_path)
+    db = Database(config.storage.db_path, document_store=LocalDocumentStore(config.storage.docs_path))
     await db.connect()
     return db
 
@@ -1908,9 +1909,10 @@ def sync(ctx, source: str | None):
     async def _run():
         config: AppConfig = ctx.obj["config"]
         from memforge.storage.database import Database
+        from memforge.storage.document_store import LocalDocumentStore
         from memforge.runtime import build_sync_runtime, run_source_sync
 
-        db = Database(config.storage.db_path)
+        db = Database(config.storage.db_path, document_store=LocalDocumentStore(config.storage.docs_path))
         await db.connect()
         try:
             runtime = await build_sync_runtime(db, config)
