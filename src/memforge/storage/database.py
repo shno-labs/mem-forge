@@ -1740,6 +1740,7 @@ CREATE TABLE IF NOT EXISTS sync_history (
     memories_extracted  INTEGER NOT NULL DEFAULT 0,
     error_message       TEXT,
     failed_docs         TEXT,                -- JSON array
+    absence_check_skipped_reason TEXT,
     started_at          TEXT NOT NULL,
     finished_at         TEXT NOT NULL,
     run_id              TEXT
@@ -4521,6 +4522,13 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
         "Remove the workspace-wide sync schedule",
         # Sources sync on their own schedules only.
         ["DROP TABLE IF EXISTS schedule_config"],
+    ),
+    (
+        109,
+        "Record why a sync run skipped its absence check",
+        # A run whose scope listing did not complete removes nothing and says
+        # why in its sync history (ADR 0045).
+        ["ALTER TABLE sync_history ADD COLUMN absence_check_skipped_reason TEXT"],
     ),
 ]
 
@@ -18459,8 +18467,8 @@ class Database:
             """INSERT INTO sync_history (
                 source, status, docs_processed, docs_updated, docs_failed,
                 memories_extracted, error_message, failed_docs,
-                started_at, finished_at, run_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                absence_check_skipped_reason, started_at, finished_at, run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 state.source,
                 state.last_sync_status,
@@ -18470,6 +18478,7 @@ class Database:
                 state.memories_extracted,
                 state.error_message,
                 json.dumps(failed_docs) if failed_docs else None,
+                state.absence_check_skipped_reason,
                 started_at,
                 finished_at,
                 run_id,

@@ -57,8 +57,9 @@ in its configured scope, independent of `since`: identifiers only, no content,
 no model call. The listing is complete or it is not used. Incomplete paging,
 a truncated result or any listing or confirmation error leaves the run without
 absence proof: every unlisted Unit keeps its Support, the run still succeeds
-because its content is committed, the skipped check is logged with its cause,
-and the next run lists again. Missing proof keeps what is held, as it does for
+because its content is committed, and the next run lists again. The run
+records why it skipped the check (`absence_check_skipped_reason` in its sync
+history), and the Source's sync activity shows it as a notice, not an error. Missing proof keeps what is held, as it does for
 partial coverage everywhere else. Content discovery stays incremental and is
 unchanged.
 
@@ -134,7 +135,7 @@ explicit user or maintenance retirement. Both are outside this decision.
 | Jira issue older than a relative-date JQL window | Unlisted, still found by id: Unit and Support kept |
 | Jira issue closed under a `status != Done` JQL | Unlisted, still found by id: Unit and Support kept |
 | Confluence page moved out of the configured page tree | Unlisted, still found by id: Unit and Support kept |
-| Listing paging fails or is truncated | Run succeeds; no absence in this run; every unlisted Unit kept; the skipped check is logged |
+| Listing paging fails or is truncated | Run succeeds; no absence in this run; every unlisted Unit kept; the run records why the check was skipped and sync activity shows it |
 | Provider rejects the credential | Discovery fails the run; nothing is tombstoned |
 | Existence check returns 403 for one issue | Not absence; Unit kept; the run continues |
 | Issue becomes hidden from the Source's credential | Jira answers 404 for it: absent to this Source, Unit tombstoned |
@@ -191,12 +192,13 @@ explicit user or maintenance retirement. Both are outside this decision.
   authoritative snapshot, so that path still removes what leaves the query.
   Bringing it under this rule needs the agent to confirm unlisted issues by id
   and is left to a follow-up; no EU12 Source uses it.
-- Cloud impact: OSS pin only. The connectors and the coverage decision are OSS
-  code; HANA already stores tombstone revisions and applies the same Lifecycle
-  Plan. The confirmation reads the stored item through store methods HANA
-  already implements (`find_source_unit_by_document_id`,
-  `get_source_unit_input`, `get_document`). No schema, configuration or `sap/`
-  route change.
+- Cloud impact: the connectors and the coverage decision are OSS code; HANA
+  already stores tombstone revisions and applies the same Lifecycle Plan. The
+  confirmation reads the stored item through store methods HANA already
+  implements (`find_source_unit_by_document_id`, `get_source_unit_input`,
+  `get_document`). The skipped-check reason needs one nullable
+  `SYNC_HISTORY.ABSENCE_CHECK_SKIPPED_REASON` column, added at startup. No
+  configuration or `sap/` route change.
 
 ## Non-goals
 
