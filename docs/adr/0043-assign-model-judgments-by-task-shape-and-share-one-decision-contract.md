@@ -6,6 +6,8 @@ Date: 2026-09-28
 
 Amended: 2026-09-29, see [Amendment: shared context and equivalent results](#amendment-2026-09-29-shared-context-and-equivalent-results).
 
+Amended: 2026-09-30, see [Amendment: candidate admission judges value by one definition](#amendment-2026-09-30-candidate-admission-judges-value-by-one-definition).
+
 ## Context
 
 Every model step in the Source lifecycle runs on one Structured LLM. The
@@ -398,6 +400,52 @@ resumed: `_resume_source_derivations` supersedes pending and retryable attempts
 under another extraction contract and skips completed ones. For the Unit Title,
 no staged target revision that holds a Unit Title Observation is applied after
 the upgrade.
+
+## Amendment 2026-09-30: candidate admission judges value by one definition
+
+Candidate Admission rejects a supported Candidate with `low_value` when it is
+not worth remembering by one definition
+([ADR 0034, Value](0034-unify-incremental-support-and-claim-assessment.md#value)):
+knowledge someone will still need later and that holds apart from the one event
+that produced it is kept; a record of what happened once is dropped; when an
+event establishes a lasting fact, that fact is kept; an unsure case is kept.
+The definition is general across source types and has no source-specific
+wording. The admission contract is `candidate-admission-v5`.
+
+### Why
+
+The earlier rule rejected "instance output or source-recoverable detail" and
+let most one-off records through. A blind evaluation on EU12 dev, with
+reference labels agreed by two reviewers, compared it with the new rule on
+production packing:
+
+- On a 207-Candidate held-out set, the earlier rule (`candidate-admission-v4`)
+  caught 12% of the one-off records and the new rule 69%, with the same
+  knowledge lost: one kept claim, the same one in both.
+- On a 164-Candidate set balanced across Jira, Confluence, GitHub and Teams,
+  the new rule caught 12 more records, with none lost the other way. It lost 3
+  kept claims that the earlier rule kept, within the run-to-run difference; one
+  of them the earlier rule had itself rejected in production, and one is a
+  known open case: a closing status that states its reason.
+
+TypeSafe Jev served as a parallel reference in this evaluation only; it runs
+no production judgment.
+
+### Acceptance for later changes
+
+A later change to this rule is replayed once on the held-out and balanced sets
+with production packing, as the
+[replay rule](#amendment-2026-09-29-model-input-changes-are-replayed-before-release)
+asks. Knowledge lost may exceed the baseline by at most the run-to-run
+difference measured on unchanged instructions, 2 kept claims per set, and every
+extra lost claim is read before release.
+
+### Cloud impact
+
+Prompt text and contract version only; both arrive with the pin. No
+configuration, HANA schema or storage protocol change. Admission work completed
+under `candidate-admission-v4` is not reinterpreted, and Memories already
+admitted are not judged again.
 
 ## Alternatives considered
 

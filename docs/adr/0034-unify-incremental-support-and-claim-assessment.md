@@ -32,7 +32,7 @@ update, every ReadingGroup on a first import, one runner item per ReadingGroup,
 with no cost comparison and no truncation. Every model reading shows the Unit
 Title as context ([The Unit Title](#the-unit-title)).
 [Candidate admission](#candidate-admission) is implemented as
-`candidate-admission-v4`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
+`candidate-admission-v5`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
 request is implemented as `claim-revision-v8-sparse-catalog`, described in
 [Sparse claim catalog](../design/sparse-claim-catalog.md). Relation runs
 concurrently with Support Assessment over every same-Unit old Memory, and
@@ -134,8 +134,9 @@ that owns the detail.
   part of a Unit revision, and every model reading of the Unit shows it as
   context ([The Unit Title](#the-unit-title)).
 - Candidate admission is an independent step between Claim Extraction and
-  Relation. Low-value Candidates are `REJECTED` with reason `low_value`, and
-  every admission request carries the round's Candidate claims so duplicates are
+  Relation. Candidates that are not worth remembering by the one source-neutral
+  [Value definition](#value) are `REJECTED` with reason `low_value`, and every
+  admission request carries the round's Candidate claims so duplicates are
   found across requests ([Candidate admission](#candidate-admission)).
 - Same-Unit Relation stays sparse: one completion row per admitted Candidate,
   listing only meaningful relations to same-Unit old Memories. A pairwise
@@ -257,7 +258,7 @@ A change to the definition changes the meaning of both results, so it raises
 `REVISION_SUPPORT_CONTRACT`, the Support Assessment work contract and the
 candidate admission contract together; completed work under an earlier
 definition is never reused. The current contracts are `revision-support-v8`,
-`support-ordered-reading-v6` and `candidate-admission-v4`.
+`support-ordered-reading-v6` and `candidate-admission-v5`.
 
 Cloud impact: the definition is shared OSS prompt text. Cloud receives it by
 upgrading the pin; its HANA derivation work and reconciliation manifests carry
@@ -572,7 +573,7 @@ schema changes; Cloud upgrades the pin with no HANA or configuration change.
 
 ### Candidate admission
 
-Implemented as `candidate-admission-v4`; execution through the LLM batch runner.
+Implemented as `candidate-admission-v5`; execution through the LLM batch runner.
 
 Candidate admission runs between Claim Extraction and Sparse Relation, for
 every Candidate, whether or not the Unit has old Memories. One admission request
@@ -599,10 +600,42 @@ covers both duties, with no additional call round:
 | Result | Handling |
 | --- | --- |
 | `ADMITTED` | enters Sparse Relation |
-| `REJECTED` (Evidence insufficient, or reason `low_value`) | not added this round; no Review |
+| `REJECTED` (Evidence insufficient, or reason `low_value` under the [Value definition](#value)) | not added this round; no Review |
 | same-round duplicate | merged; one Candidate continues to Sparse Relation |
 | Candidate that stays unjudgeable in isolation (it alone exceeds capacity, or its output stays invalid after the one correction) | `REJECTED` for this round with reason `capacity_exceeded` or `invalid_response`, recorded like any rejection; no ADD, no Review |
 | execution error (provider error, timeout, rejected request, unexpected exception) | the Source Unit revision is not committed and the next sync retries it |
+
+#### Value
+
+A Candidate whose selected Evidence completely supports it is `REJECTED` with
+reason `low_value` when it is not worth remembering. One definition applies to
+every source type and names no source:
+
+- Worth remembering (keep): knowledge someone will still need later to act on
+  or understand a system, product or process, and that holds apart from the one
+  event that produced it. Examples: rules and requirements; designs and system
+  behavior; decisions and their reasons; conventions; causes of problems and
+  how they are fixed; lasting ownership and responsibilities; configuration and
+  limits.
+- Not worth remembering (drop): a record of what happened once, which nobody
+  needs after the event. Examples: a single status transition; who an item was
+  assigned to; a field changed to some value; a version number bump; a link or
+  parent/child relation between two items by itself; who did what when; raw
+  error text or log lines without a cause or conclusion; scheduling and small
+  talk.
+- Boundary: when an event establishes a lasting fact, the lasting fact is worth
+  remembering (a decision taken in a meeting is; an issue moving to Done is
+  not). When unsure, keep.
+
+The judgment reads the knowledge a claim carries, not its tense or phrasing: a
+record stays a record when it is phrased as a present fact. A claim about a
+record that also states a decision, a reason or a requirement is judged by that
+decision, reason or requirement. A claim that states what a system, product,
+component or process is, does or requires is worth remembering, whatever source
+it comes from. The admission instructions carry this definition as their Value
+paragraph, and the response schema's `low_value` reason names it. Its
+evaluation and the acceptance rule for later changes are in the
+[ADR 0043 amendment of 2026-09-30](0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md#amendment-2026-09-30-candidate-admission-judges-value-by-one-definition).
 
 An admission execution error adds no Candidate this round and publishes
 nothing for that revision; it follows the existing extraction-failure contract.
@@ -627,7 +660,10 @@ Memory.
 Cloud impact: admission is a shared OSS prompt and contract. The event uses the
 existing Memory audit events and the counts use sync statistics, so Cloud needs
 no HANA schema or configuration change. The HANA commit gate must accept
-`candidate_admission` as a required derivation work kind, as SQLite does.
+`candidate_admission` as a required derivation work kind, as SQLite does. The Value
+definition is prompt text and the contract version only and arrives with the
+pin; admission work completed under an earlier contract is not reinterpreted,
+and admitted Memories are not judged again.
 
 ### Support and Relation coordination
 
@@ -1717,7 +1753,8 @@ Evidence offered only as selectable candidates, gives the current contracts
 projection context, with comparison in the current representation, gives
 `revision-input-v8`, `revision-support-v8`, `support-ordered-reading-v6`,
 `change-impact-v3`, `candidate-admission-v4`, `projection-extraction-v11` and
-model presentation policy 6. Completed work under an
+model presentation policy 6. The [Value definition](#value) gives
+`candidate-admission-v5`. Completed work under an
 earlier contract is never reinterpreted under a later one. Exact successor numbers
 are assigned with the implementation so they cannot collide with independently
 released work; no stored Evidence or lifecycle schema migration follows merely

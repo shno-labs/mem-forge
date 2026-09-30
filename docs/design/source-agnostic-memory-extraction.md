@@ -477,7 +477,11 @@ exact text of its selected Primary and Required Evidence, plus every claim of
 the round as shared context. It does not receive provider payloads and never
 rewrites candidate content. Each candidate is `ADMITTED` or `REJECTED` with
 reason `evidence_incomplete` or `low_value`, and may name same-round
-duplicates, which the program merges among admitted candidates.
+duplicates, which the program merges among admitted candidates. `low_value`
+follows one Value definition for every source type: a record of what happened
+once is dropped, knowledge that holds apart from the event that produced it is
+kept, and an unsure case is kept
+([ADR 0034, Value](../adr/0034-unify-incremental-support-and-claim-assessment.md#value)).
 
 Admission must return exactly one valid decision for every candidate. Incomplete
 or over-budget coverage fails closed: no candidate is written, the Source Unit
