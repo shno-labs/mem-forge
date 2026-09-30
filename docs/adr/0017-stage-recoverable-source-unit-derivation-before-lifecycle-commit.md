@@ -2,6 +2,10 @@
 
 Status: Accepted (2026-07-27)
 
+Amended: 2026-09-30 by [ADR 0034, Value](0034-unify-incremental-support-and-claim-assessment.md#value):
+a low-value rejection follows that section's one source-neutral definition of
+what is worth remembering. The low-value statement below is superseded.
+
 Amended: 2026-09-27 by [ADR 0042](0042-fence-source-writes-with-activity-leases-alone.md): derivation
 context and identity no longer carry a source-activity epoch, and recovery no
 longer supersedes derivations by epoch. The commit checks the Source activity

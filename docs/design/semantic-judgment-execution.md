@@ -485,7 +485,11 @@ finds same-round duplicates by scanning every Candidate of the round. Its row
 holds the verdict, a program-defined reject reason and a reported duplicate,
 and no text. `REJECTED` has two reasons: `evidence_incomplete`, when the
 selected Evidence does not completely support the Claim, including identifying
-details such as a name or key that the Claim states, or `low_value`. Every
+details such as a name or key that the Claim states, or `low_value`, when the
+Claim is not worth remembering by the one source-neutral Value definition: a
+record of what happened once is dropped, knowledge that holds apart from the
+event that produced it is kept, and an unsure case is kept
+([ADR 0034, Value](../adr/0034-unify-incremental-support-and-claim-assessment.md#value)). Every
 admission request carries all of this round's Candidate claims as shared
 context, so the model can report a duplicate that sits in another request.
 Candidates with the same normalized claim, type and validity are duplicates
