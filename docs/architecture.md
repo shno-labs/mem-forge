@@ -1599,7 +1599,8 @@ truth for the session.
 | GET | `/api/memories` | List memories with pagination, filters (type, status, source, project, entity) |
 | GET | `/api/memories/{id}` | Get memory detail with provenance, current cross-document relations, `relation_notice`, and the caller's undoable Relation Dismissals |
 | PUT | `/api/memories/{id}` | Update memory (admin edit content, status) |
-| DELETE | `/api/memories/{id}` | Hide a memory (set status=retired) |
+| POST | `/api/memories/{id}/retire` | Retire a Memory the caller can see, guarded by `expected_content_hash` and audited to the caller |
+| DELETE | `/api/memories/{id}/purge` | Irreversibly purge a Memory the caller can see, in any lifecycle status: a private Memory by its owner, a workspace Memory by a workspace administrator; refused while a source still supports it |
 | GET | `/api/memories/stats` | Memory counts by type, source, status |
 | GET | `/api/memories/relations` | List current cross-document relations the caller can see, filtered by label; a view, not a queue |
 | POST | `/api/memories/{id}/relations/{counterpart_id}/dismissal` | Dismiss the shown relation for both Memories' current content |
