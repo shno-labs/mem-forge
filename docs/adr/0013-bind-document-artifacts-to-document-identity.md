@@ -49,81 +49,148 @@ The `DocumentStore` interface gains one required parameter, and every adapter,
 caller, and test fake must satisfy it. SQLite/local and Cloud/HANA deployments
 share the same behavior even though their URI formats differ.
 
-## Amendment 2026-09-30: a recorded object is reused only when it is the Document's own
+## Amendment 2026-10-01: a Document uses only its own stored objects
+
+This amendment replaces the paragraph that kept recorded artifact URIs
+readable by their exact URI and left historical rows unrewritten.
 
 ### What happened
 
-"Existing recorded artifact URIs remain readable by their exact URI" was
-applied to more than reading. A sync reuses the objects its Source recorded
-for a Unit while the content is unchanged, and it reused them without asking
-whose keys they lay under. Title-keyed URIs recorded before this decision
-therefore stayed in use, and the ADR 0041 upgrade copied them, and for some
-Jira Units another Source's URI, into the stored input of Source Units. Each
-later sync of an unchanged Document named the same object again. On EU12 dev,
-175 current Units pointed at an object that held another Document's content;
-149 of them had active Memories. The content routes and `get_resource` served
-that content, the next update of such a Unit diffed against it, and a
+Keeping recorded URIs readable was applied to more than reading. A sync reused
+the objects its Source recorded for a Unit while the content was unchanged,
+without asking whose keys they lay under, so title-keyed URIs recorded before
+this decision stayed in use. The ADR 0041 upgrade copied them into the stored
+input of Source Units, and some Jira Units recorded another Jira Source's
+object for the same Document. Each later sync of an unchanged Document named
+the same object again. The content routes and `get_resource` served whatever
+such an object held, the next update of the Unit diffed against it, and a
 reprocess from stored input would have projected it. Evidence text lives in
-the relational store and was not affected. Eight Units recorded a raw
-SHA-256 that no longer matched their object, because a same-titled Document
-overwrote it after it was recorded.
+the relational store and was not affected. On EU12 dev (planning step of
+2026-10-01), 1,117 of 4,000 current stored inputs name at least one object
+outside their Document's keys; 174 normalized objects among them hold
+content other than the Unit's.
 
 ### Decision
 
-An object belongs to a Document only when its key lies under the keys this
-Source writes for that Document (`{source}/{document identity}/`).
-`DocumentStore.belongs_to_document(uri, source_id=, doc_id=)` states this rule
-once; the local store compares the file's directory, and the Cloud object
-store compares the key prefix. Every reuse of a recorded object checks it:
+**One rule at runtime.** An object belongs to a Document only when its key
+lies under the keys its Source writes for that Document
+(`{source}/{document identity}/`). `DocumentStore.belongs_to_document(uri,
+source_id=, doc_id=)` states the rule once: the local store compares the
+file's directory and the Cloud object store compares the key prefix. Every
+use of a recorded object follows it:
 
-- A sync reuses a raw, normalized or PDF URI only when it belongs to the
-  Document being recorded. Any other URI is written again under the Document's
-  own keys, as if nothing had been stored.
+- A sync reuses a raw, normalized or PDF object only when it belongs to the
+  Document being recorded. Otherwise it writes the object again under the
+  Document's keys, as if nothing had been stored.
 - The previous normalized content of an update is read only from an object
-  that belongs to the stored input's Source and Document; otherwise the update
+  that belongs to the stored input's Source and Document. Otherwise the update
   has no previous content and is planned as such.
-- A reprocess from stored input reads the raw object only when it belongs to
-  the input's Document and its bytes match the recorded SHA-256 (when one was
-  recorded). Otherwise the Unit is unavailable with
-  `stored_raw_content_mismatch`, in the preview and the run alike.
+- A reprocess from stored input reads a raw object only when it belongs to the
+  input's Document. Otherwise the Unit has no stored raw content and is
+  unavailable with `stored_raw_content_missing`, in the preview and the run
+  alike.
 
-Reading a recorded URI stays exact: the content routes still serve the URI a
-Unit's stored input names, so they show the stored object until the next sync
-of that Document replaces it.
+The rule has no exception for objects recorded before it.
+
+**One upgrade makes the recorded history satisfy the rule.** OSS SQLite
+migration 109 and the Cloud HANA migration `stored-object-ownership-v1` share
+`memforge.storage.stored_object_ownership`. For every recorded stored input,
+each object outside the Document's keys is proven or no longer named:
+
+| Recorded object | Proven when | Proven | Not proven or missing |
+| --- | --- | --- | --- |
+| raw | its bytes match the recorded SHA-256, or it is a local-agent package whose `package_kind` is the Source's own kind (`decode_package`) and that names this Document | copied under the Document's keys; the SHA-256 of the copy is recorded | URI and SHA-256 cleared, so the input has no stored raw content |
+| normalized | its bytes match the recorded normalized content hash | copied under the Document's keys | URI cleared; the hash stays, because it describes the committed revision's content and decides whether the next sync must extract |
+| PDF | never: no fingerprint of a PDF is recorded | | URI cleared |
+
+An unapplied derivation whose stored input names an object outside its
+Document's keys is superseded, because applying it would record that object
+again. Source Artifacts need no upgrade: their keys hold the Source, the
+Artifact identity and the SHA-256 that the revision cites
+([ADR 0014](0014-model-binary-artifacts-as-revision-pinned-source-evidence.md)).
+Retained sync inputs belong to a Source, not a Document, and a Gene checks a
+package's hash and Document id when it reads one.
+
+The upgrade is recoverable in the sense of
+[ADR 0032](0032-guard-local-data-upgrades-with-recoverable-migrations.md). A
+read-only planning step classifies every object. Proven objects are then
+copied, each named by the SHA-256 of its bytes, before one transaction records
+the new inputs (guarded by each input's `recorded_at`, so an input recorded by
+a sync after planning stays as it is), queues every replaced object to the
+cleanup of released stored input, supersedes the derivations and records the
+migration. A copy whose object changed after planning fails the upgrade. A run
+that stops before the transaction leaves every input as recorded, and the next
+run plans again and writes the same copies. The upgrade deletes nothing
+itself: the cleanup deletes a replaced object once no stored input, retained
+sync input or unapplied derivation names it. The planning counts per class
+are logged as `Stored object ownership: {...}`.
+
+Opening a database with recorded stored input needs the workspace's document
+store (`Database(db_path, document_store=...)`,
+`HanaWorkspaceDatabase(..., document_store=...)`); without it the upgrade
+refuses to run.
+
+### Why not accept older objects at runtime
+
+Accepting an object at runtime when any of several proofs holds (its key, a
+matching recorded hash, or a package that names the Document) would keep
+three rules on every read path permanently, and each path would need the same
+set. A proof from the bytes also holds only at the moment it is checked:
+title-keyed objects are shared by same-titled Documents and can be overwritten
+after they pass. Checking the recorded hash at runtime would also refuse
+legitimate input, because the raw object under the Document's own keys can be
+newer than the committed revision when a later sync of the same Source stored
+its input and has not committed yet. The upgrade proves each object once,
+copies it to where the rule looks, and leaves one rule.
 
 ### Consequences
 
-- A Unit whose stored input names an object outside its keys writes that
-  object again on the next sync that processes its Document, and records the
-  new URI. The old object is released to cleanup and deleted once nothing
-  names it. No data migration or resync is run. On EU12 dev (inventory of
-  2026-09-30), 1,068 current Units name at least one such object, almost all
-  title-keyed objects written before 2026-07-23; they include the 175 whose
-  object holds another Document's content. A Document that an incremental sync
-  does not process again keeps its stored input until it changes.
-- A reprocess from stored input refuses a raw object outside the Unit's keys
-  even when its bytes are the Unit's own: ownership is decided by the key,
-  never by the content. On EU12 dev this refuses 934 Units, among them 601
-  local-agent packages (586 of one local-push GitHub Source) uploaded before
-  2026-07-23 whose content is their own. They become processable again once
-  their Document syncs again. A Source that rediscovers its Documents (Jira
-  server API, Confluence) reads the provider on reprocess and is not affected.
-- Until a Unit syncs again, its content route still shows the object its
-  stored input names.
-- Local-agent packages uploaded since 2026-07-23 are stored per upload under
-  the Document's own keys, so they always belong to their Document.
+On EU12 dev (planning step of 2026-10-01, read-only):
+
+| Class | Count | Upgrade |
+| --- | ---: | --- |
+| raw, package of the Source's kind naming its Document (GitHub local push 587, local Markdown 7) | 594 | copied |
+| raw, package naming another Document | 20 | cleared |
+| raw, no recorded hash and no package of the Source's kind (Jira 219, Confluence 34, GitHub cloud pull 113, agent session 2) | 368 | cleared |
+| raw, object missing | 2 | cleared |
+| normalized, bytes match the recorded hash | 941 | copied |
+| normalized, bytes differ from the recorded hash | 174 | cleared |
+| normalized, object missing | 2 | cleared |
+| PDF outside the Document's keys (Confluence) | 33 | cleared |
+| unapplied derivations naming such an object (of 12) | 0 | superseded |
+
+- A Unit whose raw object is cleared reports `stored_raw_content_missing` for
+  a reprocess from stored input until its next committed revision records
+  input. Jira and Confluence rediscover their Documents and read the provider
+  on reprocess, so they are not affected. For the 113 GitHub cloud-pull Units
+  (77 of them known to name another file's content), the 22 local-push Units
+  and the 2 agent-session Units, reprocess from storage is unavailable until
+  the Document changes.
+- A Unit whose normalized object is cleared has no previous content for its
+  next update, and its content route has no normalized content until the
+  Document syncs again. A cleared PDF is exported again by the next sync that
+  processes the page.
+- Every replaced object is deleted by the ordinary cleanup once nothing names
+  it.
+- The upgrade runs when a workspace's store first opens after the release. On
+  the largest EU12 dev workspace, planning read its objects in 90 seconds; the
+  copies add one write per proven object.
 
 ### Cloud impact
 
 `ObjectDocumentStore` implements `belongs_to_document` by key prefix
-(`workspaces/{workspace}/documents/{source}/{document identity}/`). No HANA
-schema, storage protocol of the workspace database, `sap/` route or
-configuration change, no data migration and no resync. Cloud's
-`requirements.txt` pins the OSS commit that carries this amendment.
+(`workspaces/{workspace}/documents/{source}/{document identity}/`). The HANA
+workspace store runs `stored-object-ownership-v1` in its migrations, with the
+document store that `build_store` now passes to `HanaWorkspaceDatabase`; the
+SQLite store passes its `LocalDocumentStore` to `Database`. No HANA schema,
+`sap/` route or configuration change. Cloud's `requirements.txt` pins the OSS
+commit that carries this amendment.
 
 ## References
 
 - [ADR 0010: Keep Support provenance projection complete](0010-keep-support-provenance-projection-complete.md)
 - [ADR 0011: Separate collection evidence from body materialization](0011-separate-collection-evidence-from-body-materialization.md)
+- [ADR 0014: Model binary Artifacts as revision-pinned Source Evidence](0014-model-binary-artifacts-as-revision-pinned-source-evidence.md)
+- [ADR 0032: Guard local data upgrades with recoverable migrations](0032-guard-local-data-upgrades-with-recoverable-migrations.md)
 - [ADR 0041: Record stored input on the Source Unit revision](0041-record-stored-input-on-the-source-unit-revision.md)
 - `memforge-cloud` Issue #221

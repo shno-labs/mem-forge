@@ -370,8 +370,8 @@ no model.
   that re-projected before and fails now.
 - A stored input whose object holds another Document's package still fails the
   location check, as it should (18 GitHub Units on EU12 dev); it recovers when
-  that file syncs again. Since the ADR 0013 amendment of 2026-09-30, such an
-  input is refused before projection with `stored_raw_content_mismatch`.
+  that file syncs again. The upgrade in the ADR 0013 amendment of 2026-10-01
+  no longer names such an object, so the input has no stored raw content.
 - For incrementally synced Sources (local-push GitHub, Teams, Confluence), "the
   next committed revision records input" can take a long time: a Document whose
   content does not change is never processed again, so its migrated input, with

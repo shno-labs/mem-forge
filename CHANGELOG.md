@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- A Document uses only the stored objects under its own keys
+  (`DocumentStore.belongs_to_document`). A sync writes a raw, normalized or
+  PDF object again when the stored input names any other object, the previous
+  content of an update is read only from the Document's own normalized object,
+  and a reprocess from stored input treats a raw object outside the Document's
+  keys as `stored_raw_content_missing`. Migration 109 (Cloud:
+  `stored-object-ownership-v1`) makes every recorded stored input satisfy
+  this: a raw object whose bytes match the recorded SHA-256, or a local-agent
+  package of the Source's own kind that names the Document, and a normalized
+  object whose bytes match the recorded hash, are copied under the Document's
+  keys; any other object, and every such PDF, is no longer named. Unapplied
+  derivations that name such an object are superseded, and the replaced
+  objects go to the existing cleanup. Proven copies are written before one
+  transaction records the inputs, so an interrupted upgrade leaves every input
+  as recorded and runs again. `Database` takes the workspace's
+  `document_store`, which the upgrade needs when stored input is recorded. On
+  EU12 dev the planning step changes 1,117 of 4,000 current inputs: 594 raw
+  and 941 normalized objects are copied; 390 raw, 176 normalized and 33 PDF
+  objects are no longer named. See the ADR 0013 amendment of 2026-10-01.
+  Cloud: the HANA workspace store runs the migration with the document store
+  that `build_store` now passes to `HanaWorkspaceDatabase`, and
+  `ObjectDocumentStore` implements `belongs_to_document` by key prefix; both
+  arrive with the pin. No HANA schema, `sap/` route or configuration change.
+
 - The runtime provider owns its vector backend. `RuntimeProvider.build_adapters`
   now takes `(db, config, *, audit_logger)` instead of a caller-opened
   `memory_collection`, and the admin memory-store and project routes no longer

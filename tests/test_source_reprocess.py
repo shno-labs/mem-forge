@@ -304,35 +304,33 @@ async def test_the_preview_refuses_each_unit_the_reprocess_refuses_for_the_same_
 
 
 @pytest.mark.asyncio
-async def test_stored_input_whose_raw_object_is_not_its_own_is_refused_in_the_preview_and_the_run(db):
+async def test_stored_input_whose_raw_object_is_not_its_own_has_no_stored_raw_content(db):
     harness = await synced(db)
     first = await _unit_input(db, SOURCE_ID, doc_id("PAY-1"))
     second = await _unit_input(db, SOURCE_ID, doc_id("PAY-2"))
     # PAY-1 names PAY-2's object, as a title-keyed object shared by two
-    # Documents did; PAY-2's object was overwritten after it was recorded.
+    # Documents did.
     await db.db.execute(
         "UPDATE source_unit_inputs SET raw_content_uri = ? WHERE source_unit_id = ?",
         (second.raw_content_uri, first.source_unit_id),
     )
     await db.db.commit()
-    harness.store.source_artifacts[second.raw_content_uri] = b'{"key": "PAY-9"}'
     source = await db.get_source(SOURCE_ID)
 
     preview = await reprocess_preview(
-        db, harness.store, harness.gene, source_id=SOURCE_ID, document_ids=(doc_id("PAY-1"), doc_id("PAY-2")),
+        db, harness.store, harness.gene, source_id=SOURCE_ID, document_ids=(doc_id("PAY-1"),),
         rediscovers=False, projection_adapter=DEFAULT_SOURCE_PROJECTION_ADAPTER,
         projection_scope=canonical_projection_scope("jira", source["config"]),
         access_context=source_access_context(source),
     )
-    state = await harness.reprocess("PAY-1", "PAY-2")
+    state = await harness.reprocess("PAY-1")
 
-    refused = {doc_id("PAY-1"): "stored_raw_content_mismatch", doc_id("PAY-2"): "stored_raw_content_mismatch"}
-    assert {unit.document_id: unit.reason for unit in preview.units} == refused
-    assert {failed.doc_id: failed.error.split(":")[0] for failed in state.failed_docs} == refused
-    assert {unit.document_id: unit.detail for unit in preview.units} == {
-        doc_id("PAY-1"): "the raw object is not stored under this Source's keys for the Document",
-        doc_id("PAY-2"): "the raw object's SHA-256 differs from the recorded input",
-    }
+    assert [(unit.document_id, unit.reason) for unit in preview.units] == [
+        (doc_id("PAY-1"), "stored_raw_content_missing")
+    ]
+    assert [(failed.doc_id, failed.error.split(":")[0]) for failed in state.failed_docs] == [
+        (doc_id("PAY-1"), "stored_raw_content_missing")
+    ]
     assert harness.engine.projected_lifecycle_calls == []
     assert harness.extractor.fragment_calls == []
 

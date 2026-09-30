@@ -4369,8 +4369,9 @@ def create_admin_app(
     async def lifespan(app: FastAPI):
         nonlocal owned_db
 
+        app.state.document_store = document_store or LocalDocumentStore(config.storage.docs_path)
         if db is None:
-            owned_db = Database(config.storage.db_path)
+            owned_db = Database(config.storage.db_path, document_store=app.state.document_store)
             await owned_db.connect()
             app.state.db = owned_db
         else:
@@ -4378,7 +4379,6 @@ def create_admin_app(
 
         app.state.config = config
         app.state.workspace_id = workspace_id
-        app.state.document_store = document_store or LocalDocumentStore(config.storage.docs_path)
         app.state.runtime_provider = runtime_provider
         app.state.principal_resolver = principal_resolver
         app.state.workspace_role_resolver = workspace_role_resolver

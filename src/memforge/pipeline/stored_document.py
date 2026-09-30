@@ -23,10 +23,9 @@ projects and commits that content, as the next ordinary sync would. A Unit
 whose current revision has no stored input cannot be reprocessed from storage
 until the Source's next committed revision records one.
 
-The stored input is read only from its own object: the raw object must be
-stored under the Source's keys for the input's Document, and its bytes must
-match the SHA-256 the input recorded (when it recorded one). Any other object
-may hold another Document's content, so the Unit is unavailable instead.
+A Document uses only the objects stored under its own keys
+(``DocumentStore.belongs_to_document``): a raw object anywhere else is not
+this Document's stored raw content, so the Unit has none.
 
 The Gene reads the stored bytes by what they are, not by the discovery
 metadata stored beside them: a local-agent package names its own kind and
@@ -38,7 +37,6 @@ check, so it reports a Unit as processable only when the run can process it.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -83,12 +81,10 @@ class StoredDocumentUnavailableReason(str, Enum):
     SOURCE_UNIT_MISSING = "stored_source_unit_missing"
     # Nothing describes the Document to ask the provider for it.
     DOCUMENT_MISSING = "stored_document_missing"
-    # The Unit's current revision has no stored input, or its raw object is gone.
+    # The Unit's current revision has no stored input, or no raw object of its
+    # own: none is recorded, the recorded one lies outside the Document's
+    # keys, or it is gone.
     RAW_CONTENT_MISSING = "stored_raw_content_missing"
-    # The raw object is not the one the input recorded: it is not stored under
-    # the Source's keys for the input's Document, or its bytes differ from the
-    # recorded SHA-256. It may hold another Document's content.
-    RAW_CONTENT_MISMATCH = "stored_raw_content_mismatch"
     CONTENT_EMPTY = "stored_content_empty"
     ARTIFACT_MISSING = "stored_artifact_missing"
     # The committed Artifact metadata cannot be read as an Artifact revision.
@@ -220,26 +216,14 @@ async def load_stored_source_document(
 ) -> StoredSourceDocument:
     """Read the stored input of the Unit's current revision and the Artifacts it cites."""
 
-    def unavailable(reason: StoredDocumentUnavailableReason, detail: str | None = None) -> StoredDocumentUnavailable:
-        return StoredDocumentUnavailable(reason, document_id, detail)
+    def unavailable(reason: StoredDocumentUnavailableReason) -> StoredDocumentUnavailable:
+        return StoredDocumentUnavailable(reason, document_id)
 
     committed = await _committed_source_unit(db, source_id=source_id, document_id=document_id)
     unit_input = await db.get_source_unit_input(committed.source_unit_revisions[0].source_unit_id)
-    if unit_input is None or not _stored(document_store, unit_input.raw_content_uri, unit_input.raw_content_type):
+    if unit_input is None or not _owns_stored_raw(document_store, unit_input):
         raise unavailable(StoredDocumentUnavailableReason.RAW_CONTENT_MISSING)
-    if not document_store.belongs_to_document(
-        unit_input.raw_content_uri, source_id=source_id, doc_id=unit_input.document_id,
-    ):
-        raise unavailable(
-            StoredDocumentUnavailableReason.RAW_CONTENT_MISMATCH,
-            "the raw object is not stored under this Source's keys for the Document",
-        )
     body = document_store.read_artifact(str(unit_input.raw_content_uri))
-    if unit_input.raw_content_sha256 is not None and hashlib.sha256(body).hexdigest() != unit_input.raw_content_sha256:
-        raise unavailable(
-            StoredDocumentUnavailableReason.RAW_CONTENT_MISMATCH,
-            "the raw object's SHA-256 differs from the recorded input",
-        )
     if not body.strip():
         raise unavailable(StoredDocumentUnavailableReason.CONTENT_EMPTY)
     artifacts = _committed_artifacts(committed, unavailable)
@@ -316,6 +300,14 @@ async def project_stored_input(
     ):
         raise StoredDocumentUnavailable(StoredDocumentUnavailableReason.INPUT_INCOMPLETE, document_id)
     return StoredInputProjection(normalized=normalized, projection=projection)
+
+
+def _owns_stored_raw(document_store: DocumentStore, unit_input: SourceUnitInput) -> bool:
+    """Whether the input names a raw object that is stored and lies under its Document's keys."""
+
+    return document_store.belongs_to_document(
+        unit_input.raw_content_uri, source_id=unit_input.source_id, doc_id=unit_input.document_id
+    ) and _stored(document_store, unit_input.raw_content_uri, unit_input.raw_content_type)
 
 
 def _stored(document_store: DocumentStore, uri: str | None, media_type: str) -> bool:

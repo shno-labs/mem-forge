@@ -37,6 +37,14 @@ from memforge.local_agent.source_contract import (
     source_sync_input_metadata_with_artifact_attestation,
 )
 from memforge.storage.admin_source import is_pause_only_source_update
+from memforge.storage.document_store import DocumentStore
+from memforge.storage.stored_object_ownership import (
+    RecordedStoredInput,
+    StoredObjectOwnershipPlan,
+    copy_owned_objects,
+    plan_stored_object_ownership,
+    unapplied_derivation_input,
+)
 from memforge.source_activity import (
     SourceActivityConflict,
     SourceActivityKind,
@@ -4522,6 +4530,13 @@ MIGRATIONS: Sequence[tuple[int, str, list[str]]] = [
         # Sources sync on their own schedules only.
         ["DROP TABLE IF EXISTS schedule_config"],
     ),
+    (
+        109,
+        "Keep only the stored objects a Document owns in its stored input",
+        # A proven object is copied under the Document's keys, any other is
+        # no longer named (ADR 0013; see _own_stored_objects_unlocked).
+        [],
+    ),
 ]
 
 
@@ -4557,8 +4572,11 @@ async def _open_aiosqlite_connection(
 class Database:
     """Async SQLite database layer for MemForge."""
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, *, document_store: DocumentStore | None = None) -> None:
         self.db_path = db_path
+        # The workspace's document store. An upgrade that moves stored objects
+        # needs it; a database without recorded stored input does not.
+        self._document_store = document_store
         self._db: aiosqlite.Connection | None = None
         self._write_lock = asyncio.Lock()
 
@@ -4835,6 +4853,9 @@ class Database:
             if version == 104:
                 recorded = await self._move_stored_input_to_source_units_unlocked()
                 logger.info("Recorded the stored input of %d current Source Unit revisions", recorded)
+            if version == 109:
+                ownership = await self._own_stored_objects_unlocked()
+                logger.info("Stored object ownership: %s", json.dumps(ownership.counts(), sort_keys=True))
             await self.db.execute(
                 "INSERT INTO schema_migrations (version, description, applied_at) VALUES (?, ?, ?)",
                 (version, description, _now_iso()),
@@ -4977,6 +4998,84 @@ class Database:
         for column_name in stored_input_columns:
             await self.db.execute(f"ALTER TABLE documents DROP COLUMN {column_name}")
         return len(rows)
+
+    async def _own_stored_objects_unlocked(self) -> StoredObjectOwnershipPlan:
+        """Make every recorded stored input name only objects its Document owns.
+
+        Proven objects are copied under the Document's keys before any input
+        names them; the replaced objects are released to cleanup, and an
+        unapplied derivation whose input names an object outside its
+        Document's keys is superseded. Runs in the migration's transaction.
+        """
+
+        rows = await self.db.execute_fetchall(
+            """SELECT input.source_unit_id, input.unit_revision_id, input.source_id, input.document_id,
+                      input.raw_content_uri, input.raw_content_type, input.raw_content_sha256,
+                      input.normalized_content_uri, input.normalized_content_hash, input.pdf_content_uri,
+                      input.recorded_at, COALESCE(source.type, '') AS source_type
+                 FROM source_unit_inputs input
+                 LEFT JOIN sources source ON source.id = input.source_id
+                ORDER BY input.source_unit_id"""
+        )
+        recorded_inputs = [
+            RecordedStoredInput(
+                source_unit_id=str(row["source_unit_id"]),
+                unit_revision_id=str(row["unit_revision_id"]),
+                source_id=str(row["source_id"]),
+                source_type=str(row["source_type"]),
+                document_id=str(row["document_id"]),
+                raw_content_uri=row["raw_content_uri"],
+                raw_content_type=str(row["raw_content_type"]),
+                raw_content_sha256=row["raw_content_sha256"],
+                normalized_content_uri=row["normalized_content_uri"],
+                normalized_content_hash=row["normalized_content_hash"],
+                pdf_content_uri=row["pdf_content_uri"],
+                recorded_at=str(row["recorded_at"]),
+            )
+            for row in rows
+        ]
+        unapplied = [
+            derivation
+            for row in await self.db.execute_fetchall(
+                f"""SELECT id, context_payload_json FROM source_derivation_attempts
+                    WHERE status IN ({_UNAPPLIED_DERIVATION_STATUSES_SQL}) ORDER BY id"""
+            )
+            if (derivation := unapplied_derivation_input(str(row["id"]), row["context_payload_json"])) is not None
+        ]
+        document_store = self._document_store
+        if document_store is None:
+            if any(stored.names_objects for stored in recorded_inputs) or any(item.uris for item in unapplied):
+                raise RuntimeError("upgrading recorded stored input needs the workspace's document store")
+            return StoredObjectOwnershipPlan(
+                inspected_input_count=len(recorded_inputs), inputs=(), superseded_derivation_ids=()
+            )
+        plan = plan_stored_object_ownership(recorded_inputs, unapplied, document_store)
+        for owned in copy_owned_objects(plan, document_store):
+            await self.db.execute(
+                """UPDATE source_unit_inputs
+                      SET raw_content_uri = ?, raw_content_sha256 = ?, normalized_content_uri = ?,
+                          pdf_content_uri = ?
+                    WHERE source_unit_id = ? AND unit_revision_id = ? AND recorded_at = ?""",
+                (
+                    owned.raw_content_uri,
+                    owned.raw_content_sha256,
+                    owned.normalized_content_uri,
+                    owned.pdf_content_uri,
+                    owned.source_unit_id,
+                    owned.unit_revision_id,
+                    owned.recorded_at,
+                ),
+            )
+            await self._release_input_objects_unlocked(owned.source_id, owned.released_uris)
+        now = _now_iso()
+        for derivation_id in plan.superseded_derivation_ids:
+            await self.db.execute(
+                f"""UPDATE source_derivation_attempts
+                      SET status = 'superseded', terminal_reason_code = ?, updated_at = ?
+                    WHERE id = ? AND status IN ({_UNAPPLIED_DERIVATION_STATUSES_SQL})""",
+                (DERIVATION_INPUT_SUPERSEDED, now, derivation_id),
+            )
+        return plan
 
     async def _backfill_evidence_context_associations_unlocked(self) -> None:
         rows = await self.db.execute_fetchall(

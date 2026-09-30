@@ -94,11 +94,10 @@ class DocumentStore(Protocol):
     def belongs_to_document(self, uri: str | None, *, source_id: str, doc_id: str) -> bool:
         """Whether ``uri`` names an object stored under this Source's keys for this Document.
 
-        Raw, normalized and PDF objects of a Document are written in place
-        under ``{source}/{document identity}/``. Only an object there holds
-        this Document's content as this Source stored it; any other URI names
-        another Document's or another Source's object, even when a record of
-        this Document carries it.
+        Raw, normalized and PDF objects of a Document are written under
+        ``{source}/{document identity}/``, and a Document uses only the objects
+        stored there: an object anywhere else belongs to another Document or
+        another Source.
         """
         ...
 
