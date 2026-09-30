@@ -82,13 +82,14 @@ OpenAPI document of `create_admin_app` to `admin/openapi/admin.json`,
 when either committed file is stale. HEAD operations are left out: FastAPI
 gives a GET and HEAD route one operation id, and the UI never sends HEAD.
 
-88 of the 129 operations declare no response model, including
-`GET /api/v1/sources`, so their generated response type is `unknown`. Until an
-endpoint declares one, V2 declares the response in `src/api/responses.ts`, and
-`src/api/paths.ts` merges it into the generated paths so every call stays
-typed through one client. Each entry is deleted when its endpoint gains a
-response model. A response model on a shared route also validates what Cloud's
-HANA adapter returns, so adding one is checked against Cloud first.
+71 of the 119 operations still declare no response model, so their generated
+response type is `unknown`. V2 adds response models to the routes a page uses
+before building that page, as the Sources page routes already have. Where a
+schema leaves part of a body free-form (a local agent job's `result`),
+`src/api/responses.ts` declares the fields the UI reads and `src/api/paths.ts`
+merges them into the generated paths, so every call stays typed through one
+client. A response model on a shared route also validates what Cloud's HANA
+adapter returns, so adding one is checked against Cloud first.
 
 ### Layers
 
