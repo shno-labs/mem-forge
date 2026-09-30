@@ -4,6 +4,8 @@ Status: Accepted
 
 Date: 2026-09-27
 
+Amended: 2026-09-30, see [Amendment: stored bytes are read by what they are](#amendment-2026-09-30-stored-bytes-are-read-by-what-they-are).
+
 ## Context
 
 Each Source keeps one Source Unit per provider Document it includes, and Units
@@ -312,6 +314,74 @@ sync orchestrator.
   pins the OSS commit and moves to the commit that carries this decision.
 - No change to LLM configuration, `sap/` routes or environment-only
   configuration.
+
+## Amendment 2026-09-30: stored bytes are read by what they are
+
+### What happened
+
+The upgrade rebuilt each migrated item from `DOCUMENTS.ITEM_EXTRA_JSON`. On
+HANA that column was only written from 2026-09-26, one day before the
+migration ran on 2026-09-27, so the migrated input of every Document not
+synced again in between carries an empty `extra`. `GitHubRepoGene` decided
+whether stored bytes were a local-push package by `item.extra.package_uri`
+or `package_path`; with an empty `extra` it read the package as file text and
+failed with `GitHub repository URL is required`. On EU12 dev, 656 current
+local-push GitHub Units could not be reprocessed from storage. Teams window
+packages were read by their own kind already, but stored input keeps only
+bytes, not the attestation a fetch makes about them, so the stored input of a
+tombstoned window failed the empty-content check. The reprocess preview did
+not normalize or project, so it reported all of these Units as processable.
+
+### Decision
+
+A Gene decodes stored bytes by the bytes themselves, never by metadata stored
+beside them. A local-agent package names its own kind (`package_kind`), and a
+Gene reads bytes as its package only when they are a JSON object of exactly
+its kind (`decode_package`); anything else is what the provider returned, so a
+repository file that happens to be JSON is file text. `item.extra` stays
+discovery metadata: `package_uri` and `package_path` still locate the package
+for a fetch, and nothing decodes by them. Every Gene that reads packages
+follows this (GitHub Repository, local Markdown, Jira, Teams), and the
+projection adapters unwrap a Jira or Teams package only for its exact kind.
+
+What the provider attested about the bytes is read back from them too.
+`Gene.raw_from_stored_input(item, body, content_type)` rebuilds the raw content
+of a stored input: a GitHub or local Markdown package whose file is empty and a
+Teams tombstone package attest empty content, with the same evidence their
+fetch gives; other bytes attest nothing. `load_stored_source_document` takes
+the Gene and uses it.
+
+Reprocessing from stored input and its preview run one check,
+`project_stored_input`: normalize, require content the provider attests,
+project with the committed Unit's identity and Artifacts, and require the
+committed revision's location. A Unit that fails normalization or projection is
+unavailable with `stored_input_invalid` (the underlying error in `detail`),
+and one whose location differs with `stored_input_incomplete`, in the preview
+and in the run alike, and neither is retried. The preview calls no provider and
+no model.
+
+### Consequences
+
+- Migrated local-push GitHub inputs with an empty `extra` reprocess from
+  storage. On EU12 dev, 638 of the 656 re-project to exactly their committed
+  revision, so reprocessing them needs no extraction; 55 tombstoned Teams
+  windows do the same. A read-only replay of all 3,973 current Units with
+  stored input found no Unit that re-projected before and fails now.
+- A stored input whose object holds another Document's package still fails the
+  location check, as it should (18 GitHub Units on EU12 dev); it recovers when
+  that file syncs again.
+- For incrementally synced Sources (local-push GitHub, Teams, Confluence), "the
+  next committed revision records input" can take a long time: a Document whose
+  content does not change is never processed again, so its migrated input, with
+  its empty `extra`, stays. Nothing may depend on migrated `extra` being
+  present.
+- The preview reports a Unit as available only when the run can process it.
+
+### Cloud impact
+
+None beyond the OSS pin: no HANA schema, storage protocol, `sap/` route or
+configuration change, no data fix and no resync. The migrated rows stay as
+they are and become readable with the new code.
 
 ## Related
 
