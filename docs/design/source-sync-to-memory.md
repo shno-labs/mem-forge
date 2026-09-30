@@ -440,14 +440,14 @@ B 新增（先提交）
   → 正常提取 Candidate
   → 每个准入的 ADD Candidate 新建 Memory
 
-COMPLETE_SNAPSHOT 证明 A 消失（B 提交之后）
+本 run 证明 provider 已没有 A（B 提交之后）
   → 移除 A-scoped Supports
   → 无其他 Active Support 时 retire
 ```
 
-`PARTIAL_PROJECTION` 中 A 未返回只代表 UNKNOWN，必须保留 A Support。提交顺序固定：先提交 B，再移除 A，因为只有本 run 的文档都已提交，删除检测才能证明缺失。B 的 Memory 是新 ID；A 的 Memory 在最后一个 Support 移除后退休，此前两者短暂并存，关系发现可能把它们标为 `equivalent`。这只是顺序约束，不新增状态。两步都必须幂等并最终收敛。
+本 run 没有证明 A 不存在时，A 未返回只代表 UNKNOWN，必须保留 A Support。怎样证明不存在见第 0.9 节的“范围清单”。提交顺序固定：先提交 B，再移除 A，因为只有本 run 的文档都已提交，删除检测才能证明缺失。B 的 Memory 是新 ID；A 的 Memory 在最后一个 Support 移除后退休，此前两者短暂并存，关系发现可能把它们标为 `equivalent`。这只是顺序约束，不新增状态。两步都必须幂等并最终收敛。
 
-当前实现（`pipeline/sync.py` 的 `sync_gene` 第 5 步）：先让本 run 被推迟、且只等待本 run 其他 Unit 的提交收敛，再做删除检测；最终失败的推迟提交算作失败文档，本 run 不据此证明缺失。收敛后仍在推迟的提交，只要没有直接或经另一个推迟提交等待本 run 以外的 Unit，就已经没有机会再提交，同样算作失败。等待本 run 删除的 Unit 的推迟提交在删除之后再重试；等待本 run 以外、且本 run 没有删除的 Unit 的推迟提交不重试，直接记为失败。B 提交后、A 删除前中断时，下一次完整同步删除 A。Provider 明确的 move/reply/quote/corrects mapping 可以扩大确定比较范围；文本相似度不能。
+当前实现（`pipeline/sync.py` 的 `sync_gene` 第 5 步）：先让本 run 被推迟、且只等待本 run 其他 Unit 的提交收敛，再做删除检测；最终失败的推迟提交算作失败文档，本 run 不据此证明缺失。收敛后仍在推迟的提交，只要没有直接或经另一个推迟提交等待本 run 以外的 Unit，就已经没有机会再提交，同样算作失败。等待本 run 删除的 Unit 的推迟提交在删除之后再重试；等待本 run 以外、且本 run 没有删除的 Unit 的推迟提交不重试，直接记为失败。B 提交后、A 删除前中断时，下一次同步的范围清单仍列不出 A，于是删除 A；不需要 force-full。Provider 明确的 move/reply/quote/corrects mapping 可以扩大确定比较范围；文本相似度不能。
 
 ### 0.9 Source adapter 前置合同
 
@@ -456,6 +456,15 @@ COMPLETE_SNAPSHOT 证明 A 消失（B 提交之后）
 Unit Title 是 provider 展示给人的 Unit 名称：Jira 的 key、类型和 summary，Confluence 的 space 和页面标题，GitHub 的仓库、路径和 ref，GitHub Pages 的标题和 URL，本地 Markdown 的 vault 和路径，Teams 的会话类型、team、会话名称和窗口起始时间（窗口结束时间随新消息后移，不属于名称），agent session 的客户端、窗口类型和标题；扩展 Source 至少给出标题和 source type。Adapter 只写 payload 里有的值，不猜测，也不为某个 Source 写专用 prompt。Unit Title 是投影附带的字段（`SourceProjection.unit_title`，一个 kind 加若干字段值），不是 Observation，不能被选为 Evidence，也不参与 Unit revision 的身份；整个 Unit 被 tombstone 时没有 Unit Title。它随派生输入保存（Cloud 的 `PROJECTION_PAYLOAD_JSON` 原样保存整个投影），没有这个字段的旧记录解码为没有 Unit Title，读取这样的投影时 prompt 里既没有 Unit Title，也没有对它的说明。完整支持的定义是固定文本，始终提到 Unit Title；没有 Unit Title 的读取不显示 Unit Title 块，Claim 只能依据 Evidence。Jira issue type 只出现在 Unit Title 里，不在 `issue_core` 中；Claim 可以直接写出它（第 0.4 节的完整支持定义）。
 
 Jira 按 Jira Data Center 的接口读取：issue 和搜索结果内嵌的 changelog 就是完整历史（Data Center 没有分页的 changelog 接口，不需要也无法再读），评论少于 `total` 时再读一页 `/issue/{key}/comment`；changelog 或评论仍少于 `total` 时整个 issue 为 Partial；Teams 应提供稳定 thread/window membership、reply pagination 和明确 edit/delete/tombstone。Adapter 无法证明时降级为 Partial，流程仍可处理 positive changes，但不会从缺失推断删除。
+
+**范围清单与缺失证明（[ADR 0045](../adr/0045-prove-document-absence-from-a-listing-not-from-the-run-kind.md)）。** 缺失只能由“provider 已经没有这个条目”来证明，查询结果变了不算。发现的结果是一次查询：按 `since` 缩小时只含变化的条目，不缩小时也只含查询此刻匹配的条目，都不能证明没返回的文档已被删除。所以能不能证明缺失，与同步是不是增量、是不是 force-full 无关。`source_run_projection_coverage` 只在两种情况下让发现本身证明缺失：local agent 提交的权威快照，以及用户改了配置范围后对新范围的完整发现（scope transition，ADR 0005，新范围之外的 Unit 照旧移除）。其他所有同步，包括首次同步和 force-full，都按下面的范围清单判断：
+
+- Gene 合同：`Gene.list_scope()` 在本 run 的 `discover()` 之后调用，不管 `since` 是什么，列出配置范围里每个条目的 Document id。只列 id，不取内容，不调用模型。清单要么完整，要么不用：分页不完整、结果被截断或 provider 报错时直接抛错，本 run 失败，不删除任何东西。返回 `None` 表示这个 Gene 无法列出范围（Teams 等会话来源、链接爬取的 GitHub Pages、单页或页面列表），这种 Source 不通过清单删除。清单同时声明种类（`ScopeListingKind`）。
+- 存在清单（`EXISTENCE`）：清单就是 provider 在该位置持有的全部内容，比如 GitHub 仓库在某个 ref 的树、GitHub Pages 的仓库树或声明为完整的 sitemap。清单里没有的 Unit 就是不存在。
+- 查询清单（`QUERY`）：清单是一次查询的结果，比如 JQL、Confluence 页面树或 space。清单里没有的 Unit 还要在同一个 run 里按 id 确认（`Gene.confirm_absent()`）：provider 报 not found 或 gone（Atlassian 的 404、410）才算不存在；还能读到的保留当前 revision 和 Support，不再刷新，重新回到查询里时照常刷新，之后每次同步都再确认一次，所以以后真的删除了也能发现。单个条目返回 403 时保留；凭据被拒、传输错误和其他错误让本 run 失败。
+- 各 Gene 的做法：GitHub 仓库（cloud pull）、GitHub Pages（仓库树或完整 sitemap）和 Confluence 的发现每次本来就走完整个范围，`since` 只决定抓不抓内容，所以直接用这次遍历的结果（`Gene.record_scope_listing()`），不多发请求。Jira 的发现把 `since` 写进 JQL，所以另做一次只取 id 的搜索：去掉 `since`，按 key 排序（分页期间有 issue 被更新也不会重复或漏掉），每页 100 条。确认时 Jira 每 100 个 id 发一次不校验的 `issuekey in (...)` 搜索，Jira 不认识的 id 直接不出现在结果里，不会让整批失败；搜不到的再逐个按 id 读取。Jira 对当前凭据看不到的 issue 也返回 404，所以对这个 Source 来说它和删除一样算不存在。Confluence 逐个按 id 读取未列出的页面；回收站里的页面在不指定 status 时返回 404，算不存在。
+- 同步流程（`sync_gene` 第 5 步）：本 run 所有 Unit 提交后，没有失败时才列清单、确认，再把不存在的 Document 交给已有的 `_detect_deletions`：写投影 tombstone，按 Lifecycle Plan 移除 Support，Memory 的最后一个 Active Support 被移除时 retire。整个过程没有模型调用。确认所需的条目描述由 `stored_source_item` 从 Unit 的存储输入读取（没有存储输入时读 Document 行）；两者都读不到的 Document 无法确认，保留。
+- 成本：Jira 每 100 个 issue 一次清单请求，另加对未列出 id 的批量确认；其他 Gene 不额外请求清单。离开查询但仍存在的条目每次都要再确认，所以确认次数随查询漂移增长。force-full 仍然表示重新读取所有 Unit，但删除和普通同步一样只看范围清单。
 
 **按当前表示方式比较。**`source_representation.py` 里有一个判断：已存储的 Observation revision 是否仍属于当前的表示方式，即它的表示 profile 仍由 Adapter 投影。早先版本把 Unit Title 存成 Unit 的第一条 Observation（profile `unit-identity`），它已不属于当前表示方式。程序在三处按同一条规则处理这类 revision：
 
@@ -534,7 +543,15 @@ Evidence Unit 的时间取 Primary 锚定的 Observation Revision 的时间；�
 | 破坏性决定缺少完成收据、Support 结果或 Relation 完成行 | DestructiveValidation 改为保留，旧 Memory 与验证基线不变，按原因计数 |
 | Teams 同 window edit/delete | stable message ID + current revision/tombstone 驱动正常 Support 变更 |
 | Teams 跨 window correction | 不自动破坏旧 window Memory；只走普通新增与提交后的关系发现 |
-| Page A identity 消失、Page B 新增 | Complete 时允许 delete-and-recreate，先提交 B 的创建，再移除 A；Partial 时保留 A；不保证 Memory ID |
+| Page A identity 消失、Page B 新增 | 本 run 证明 provider 已没有 A 时允许 delete-and-recreate，先提交 B 的创建，再移除 A；没有证明时保留 A；不保证 Memory ID |
+| GitHub 文件改名，增量同步 | 仓库树是存在清单：新路径作为新 Unit 先提交，旧路径不在树里，同一个 run 内 tombstone |
+| Jira issue 被删除，增量同步 | 清单里没有它，按 id 确认返回 404，Unit tombstone，只由它支持的 Memory retire |
+| Jira issue 超出相对日期 JQL（`updated >= -30d`）、在 `status != Done` 下被关闭，或 Confluence 页面移出页面树 | 清单里没有它，但按 id 还能读到：Unit 和 Support 保留，不再刷新；force-full 也一样 |
+| 清单分页失败或结果被截断 | 本 run 失败，不删除任何 Unit |
+| 确认时 provider 拒绝凭据 | 本 run 失败，不删除任何 Unit |
+| 确认时单个 issue 返回 403 | 不算不存在，Unit 保留，本 run 继续 |
+| 用户从 JQL 里去掉一个项目 | 这是 scope transition：对新范围的完整发现证明旧项目的 Unit 不在范围内，照 ADR 0005 移除 |
+| 时间推进，provider 没有变化 | 没有未列出的 Unit，不删除，不发确认请求 |
 | B 的提交被推迟，只等待本 run 的其他 Unit | 先收敛 B，再移除 A；B 最终失败时本 run 不证明缺失，A 保留 |
 | Jira 与 Confluence 写着同一条规则 | 各自新建 Memory；提交后关系发现标注 `equivalent`，搜索两条都返回并互相注明 |
 | 存量 Memory 另有 Jira Support | Confluence Support 删除后 Memory 仍 Active，不能由 Confluence retire |
