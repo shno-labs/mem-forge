@@ -363,13 +363,15 @@ no model.
 ### Consequences
 
 - Migrated local-push GitHub inputs with an empty `extra` reprocess from
-  storage. On EU12 dev, 638 of the 656 re-project to exactly their committed
-  revision, so reprocessing them needs no extraction; 55 tombstoned Teams
-  windows do the same. A read-only replay of all 3,973 current Units with
-  stored input found no Unit that re-projected before and fails now.
+  storage again. On EU12 dev, 638 of the 656 re-project to exactly their
+  committed revision, and 55 tombstoned Teams windows do the same; a reprocess
+  of any of them reads the whole revision again, as every reprocess does. A
+  read-only replay of all 3,973 current Units with stored input found no Unit
+  that re-projected before and fails now.
 - A stored input whose object holds another Document's package still fails the
   location check, as it should (18 GitHub Units on EU12 dev); it recovers when
-  that file syncs again.
+  that file syncs again. Since the ADR 0013 amendment of 2026-09-30, such an
+  input is refused before projection with `stored_raw_content_mismatch`.
 - For incrementally synced Sources (local-push GitHub, Teams, Confluence), "the
   next committed revision records input" can take a long time: a Document whose
   content does not change is never processed again, so its migrated input, with

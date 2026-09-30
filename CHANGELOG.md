@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- A stored object is reused only when it belongs to the Document: its key lies
+  under the keys its Source writes for that Document
+  (`DocumentStore.belongs_to_document`). A sync of unchanged content writes a
+  raw, normalized or PDF object again when the stored input names any other
+  object, such as a title-keyed object from before objects were keyed by
+  Document or another Source's object, and the next update diffs only against
+  previous content read from the input's own object. Reprocess from stored
+  input and its `dry_run` preview refuse a raw object that is not the input's
+  own or whose bytes differ from the recorded SHA-256, with the new reason
+  `stored_raw_content_mismatch`. The content routes still serve the URI a
+  stored input names. On EU12 dev, 1,068 current Units name an object outside
+  their keys, 175 of them an object holding another Document's content; each
+  is written again on the next sync that processes its Document, and cleanup
+  deletes the old object once nothing names it. Until then a reprocess from
+  stored input refuses 934 of them, including 601 older local-agent packages
+  whose content is their own. Cloud: `ObjectDocumentStore` implements
+  `belongs_to_document` by key prefix; arrives with the pin; no HANA schema,
+  workspace store protocol, configuration or `sap/` route change, no data
+  migration and no resync. See the ADR 0013 amendment of 2026-09-30.
+
 - Every sync of a document Source removes the Documents its provider no longer
   has, whether the run is incremental, first or force-full, and never removes
   one only because it left the configured query. After discovery each run
