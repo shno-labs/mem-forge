@@ -53,8 +53,9 @@ only security and data-loss fixes. V2 is served under `/v2/`:
   V2 from `/v2/` with its own `index.html` fallback.
 - Cloud composes both bundles and serves V2 from `/v2/` beside V1 at `/`.
 - While a page is not built in V2, its sidebar item opens the V1 page, so users
-  can work in V2 from the first release. Each such item carries a `v1Path` that
-  is deleted when the page lands.
+  can work in V2 from the first release. Every sidebar page is now built in V2.
+  Adding and configuring a source still opens the V1 Sources page until V2 has
+  its own source setup.
 
 The package is named for what it is, not for its version, so nothing needs a
 rename when V1 is gone. "V2" names the migration, not the code.
@@ -165,8 +166,11 @@ survive V1, carries the tag `admin-ui-v1`:
 - Build and CI: the V1 stage in `admin/Dockerfile`, the V1 location in
   `admin/nginx.conf`, the V1 dev proxy in `admin/vite.config.ts`, the
   `admin-ui` CI job and the V1 half of each `ui-*` Makefile target.
+- In V2: `V1_SOURCES_PATH` and `openInV1`, which open the V1 Sources page to add,
+  configure or sign in to a source. V2's own source setup replaces them.
 
-V2 must not read or write anything tagged `admin-ui-v1`.
+Apart from its links to the V1 Sources page, V2 must not read or write anything
+tagged `admin-ui-v1`.
 
 ### Cut-over and removal
 
