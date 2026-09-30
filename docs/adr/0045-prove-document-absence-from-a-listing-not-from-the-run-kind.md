@@ -55,9 +55,12 @@ absent.
 Every scheduled run of a document Source lists the provider keys of every item
 in its configured scope, independent of `since`: identifiers only, no content,
 no model call. The listing is complete or it is not used. Incomplete paging,
-a truncated result or any listing error fails the run, as a discovery error
-does; the run proves no absence and every unlisted Unit keeps its Support.
-Content discovery stays incremental and is unchanged.
+a truncated result or any listing or confirmation error leaves the run without
+absence proof: every unlisted Unit keeps its Support, the run still succeeds
+because its content is committed, the skipped check is logged with its cause,
+and the next run lists again. Missing proof keeps what is held, as it does for
+partial coverage everywhere else. Content discovery stays incremental and is
+unchanged.
 
 A connector whose discovery already walks the whole scope on every run and
 uses `since` only to choose what to fetch lists from that walk at no extra
@@ -131,8 +134,8 @@ explicit user or maintenance retirement. Both are outside this decision.
 | Jira issue older than a relative-date JQL window | Unlisted, still found by id: Unit and Support kept |
 | Jira issue closed under a `status != Done` JQL | Unlisted, still found by id: Unit and Support kept |
 | Confluence page moved out of the configured page tree | Unlisted, still found by id: Unit and Support kept |
-| Listing paging fails or is truncated | Run fails; no absence in this run; every unlisted Unit kept |
-| Provider rejects the credential | Run fails; nothing is tombstoned |
+| Listing paging fails or is truncated | Run succeeds; no absence in this run; every unlisted Unit kept; the skipped check is logged |
+| Provider rejects the credential | Discovery fails the run; nothing is tombstoned |
 | Existence check returns 403 for one issue | Not absence; Unit kept; the run continues |
 | Issue becomes hidden from the Source's credential | Jira answers 404 for it: absent to this Source, Unit tombstoned |
 | Force-full sync of a relative-date JQL | Issues outside the window are confirmed by id and kept |
