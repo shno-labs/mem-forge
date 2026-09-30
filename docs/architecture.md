@@ -1211,7 +1211,7 @@ Agent receives a question
 **Week 1 focus: Data layer + Gene abstractions (no LLM yet)**
 
 - Project setup (Python package, pyproject.toml, config system)
-- Database schema (all tables: entities, memories, memory_sources, memory_entities, memory_relations, entity_aliases, memories_fts, documents, sources, agent_session_receipts, sync_state, sync_history, schedule_config, llm_config)
+- Database schema (all tables: entities, memories, memory_sources, memory_entities, memory_relations, entity_aliases, memories_fts, documents, sources, agent_session_receipts, sync_state, sync_history, llm_config)
 - Memory data models (dataclasses)
 - Gene ABC, GeneMetadata, GeneCapabilities, NormalizedContent
 - GeneRegistry with explicit built-in registration
@@ -1465,7 +1465,7 @@ limits a backend adapter declares apply.
 
 1. **Environment variables** (highest priority for process config): `MEMFORGE_*` prefix
 2. **Config file**: `~/.memforge/config.toml`
-3. **Database**: `sources`, `schedule_config`, and admin-managed `llm_config`
+3. **Database**: `sources` (including per-source sync schedules) and admin-managed `llm_config`
 4. **Defaults** (lowest priority): Hardcoded in code
 
 For sync runtime, admin-managed `llm_config` values override process defaults
@@ -1662,8 +1662,6 @@ truth for the session.
 |--------|------|-------------|
 | GET | `/api/health` | System health (DB, ChromaDB, gene connectivity) |
 | GET | `/api/stats` | Overall statistics (memory count, entity count, sync history) |
-| GET | `/api/schedule` | Get sync schedule config |
-| PUT | `/api/schedule` | Update sync schedule |
 | GET | `/api/quality/dashboard` | Retrieval quality metrics, staleness rate, cross-document conflict rate |
 
 ---
