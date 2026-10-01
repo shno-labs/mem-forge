@@ -483,11 +483,12 @@ once is dropped, knowledge that holds apart from the event that produced it is
 kept, and an unsure case is kept
 ([ADR 0034, Value](../adr/0034-unify-incremental-support-and-claim-assessment.md#value)).
 
-Proposed refinement (2026-10-01): [ADR 0046](../adr/0046-separate-evidence-correspondence-from-citation-presentation.md#enforce-selection-quality-at-admission)
-also validates Primary directness and Required necessity within the same
-admission judgment, returning a normalized selection from the already selected,
-authorized pool without rewriting the claim. This is not implemented by the
-current admission contract described above.
+Proposed refinement (2026-10-01): [ADR 0046](../adr/0046-separate-evidence-correspondence-from-citation-presentation.md#improve-selection-at-extraction-and-support-assessment)
+improves Primary directness and Required necessity in the extraction and
+Support-assessment selection prompts, with readable compiler input and explicit
+claim-coverage evaluation. Admission retains the contract described above and
+does not repair roles, trim refs or reject a supported candidate merely for
+redundant refs. The proposed selection prompts are not yet implemented.
 
 Admission must return exactly one valid decision for every candidate. Incomplete
 or over-budget coverage fails closed: no candidate is written, the Source Unit
