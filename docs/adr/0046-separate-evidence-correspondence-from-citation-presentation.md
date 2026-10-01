@@ -199,17 +199,79 @@ Complex cases without a proven local closure remain whole-structure selections.
 This changes citation granularity for verifiability, not request packing or
 model capacity. Existing complete reading and destructive coverage remain intact.
 
-The selected Primary carries the claim-bearing assertion. Required refs supply
-necessary qualifications or interpretation, not every neighboring heading.
-Structural dependencies are resolved from the compiler's catalog; the model
-does not reconstruct them from memory. A readable Evidence Unit presents the
+#### Primary and Required selection contract
+
+The Primary must directly carry the claim's central assertion, read with its
+necessary qualifiers. A closing comment, status transition, document title or
+nearby row cannot be the Primary merely because it is recent or discusses the
+same topic. A bare "fixed" comment does not establish a technical rule stated
+only in another ref. Required material cannot supply the entire central
+assertion while the Primary supplies only topical association. Among eligible
+Fragments that directly carry the assertion, prefer the smallest complete
+source selection over a broad structure with unrelated facts; retain a whole
+structure when local dependency closure cannot be proven.
+
+Required refs form a sufficient, inclusion-minimal set with the Primary: after
+normalization, removing any remaining Required part would lose a supported
+condition, scope, exception, time qualification or necessary interpretation.
+This is a semantic necessity check, not a numeric cap or a demand to prove the
+globally smallest set. A heading already adequately represented by another
+selected scope ref is redundant. Nearby text shown in a ReadingGroup stays
+reading context unless its contribution is necessary. Structural dependencies
+are resolved from the compiler's catalog; the model cannot discard a proven
+dependency or reconstruct it from memory. A readable Evidence Unit presents the
 Primary with its dependencies together, while preserving each pinned part.
 
-Candidate admission checks the claim against that resolved, complete Unit and
-checks the necessity of selected Required refs within its existing judgment.
-It adds no independent model call per ref. Expected behavior and a dated test
-outcome remain distinct assertions: "assignment should be allowed" and "the
-recorded run failed" must not become an unqualified permanent product rule.
+Claim Extraction and Support Assessment use this same selection contract. New
+compound claims that join independently useful assertions should be extracted
+separately when that gives each its own direct Primary. Expected behavior and a
+dated test outcome remain distinct assertions: "assignment should be allowed"
+and "the recorded run failed" must not become an unqualified permanent product
+rule. Support Assessment cannot split or rewrite an incumbent claim silently;
+it assesses that fixed claim using complete current Evidence.
+
+#### Enforce selection quality at admission
+
+Current candidate-admission-v5 checks the selected Evidence's collective
+support but returns no corrected selection. Simply adding "prefer direct
+Primary" to the extraction prompt does not close the enforcement gap. The
+proposed admission contract uses its existing single judgment to return an
+admitted candidate's normalized `primary_ref` and `required_refs`, alongside
+the existing verdict and duplicate decisions. It keeps the claim text fixed.
+No independent model call per ref or extra admission pass is introduced.
+
+Admission receives the selected ref pool with exact material, original role
+eligibility and compiler dependency bindings. It may remove unnecessary refs
+or promote a selected Required ref that was genuinely Primary-eligible in the
+original extraction work. It cannot fetch new Evidence, invent a ref, widen
+authority or promote Required-only unchanged context into a new-claim Primary.
+If no valid direct Primary and complete minimal dependency set exist in that
+pool, reject with the existing `evidence_incomplete` reason. This reason covers
+failure of the Evidence selection contract as well as missing support.
+
+The program resolves and validates the returned selection against that frozen
+pool, restores its mandatory structural closure, deduplicates identical refs,
+and forms the complete Evidence Unit before Relation and lifecycle publication.
+Removing an access gate or qualification to reduce ref count is invalid output.
+Invalid IDs and eligibility use the existing typed correction/failure boundary;
+semantic failure is a candidate rejection, not a transport retry. No persisted
+Evidence Unit is edited in place.
+
+For example, if a candidate cites a generic closing note as Primary and an
+eligible acceptance statement as Required, admission selects the acceptance
+statement as Primary and drops the closing note if it adds nothing necessary.
+If that acceptance statement was Required-only context, it cannot be promoted;
+the candidate must fail new-claim admission. When two headings merely repeat
+the same scope, only the necessary scope selection remains. Genuine table
+headers, exceptions and footnotes remain even when their count is high.
+
+Selection semantics change extraction, admission and Support-assessment contract
+versions and durable work identities. A presentation-only update does not.
+The first rollout must reassess legacy selection quality; exact matching alone
+must not preserve an old incorrect Primary or redundant Required set. Subsequent
+rebinds may reuse selections only under the validated selection-contract version.
+Semantic model selection requires evaluation against annotated source/claim
+fixtures; it is not the deterministic guarantee of unchanged-source matching.
 
 ### 6. Carry citations through the actual tool boundary
 
@@ -275,6 +337,11 @@ reprocess. This order is not a split lifecycle or partial publication contract.
 | Table header, merged-cell scope, footnote or distant qualifier changes | Row correspondence can remain exact; complete Support still receives the required semantic check |
 | Blank lines, preformatted lists, XML macros and empty status inside a table | Complete table parsed, no swallowed later row, readable status/issue values, exact source mapping |
 | Local row dependency closure cannot be proven | Whole structure retained; no lossy row selection |
+| Primary is a generic closing note; a selected eligible ref directly carries the claim | Admission selects the direct ref as Primary and removes the closing note when unnecessary; exact current-work authority is retained |
+| Only Required-only context carries the core assertion | No unauthorized promotion; new-claim candidate rejected even if the ref union contains the fact |
+| Duplicate scope headings and unrelated neighboring refs are selected | Unnecessary refs removed; each remaining Required part has a necessary contribution |
+| Several Required conditions, table headers, exceptions or footnotes are genuinely necessary | All preserved, with no count cap; removing one fails selection validation |
+| Claim joins a durable rule and a transient test outcome | New extraction separates assertions and applies the existing value gate; incumbent assessment keeps its claim fixed |
 | An incumbent selection uses an unsupported/unmappable construct | Typed failure preserves Support and prevents unsafe commit; no false absence or unsupported finding |
 | Compiler fixes meaning, source schema changes, or legacy table ref splits | Reuse gate prevents blind rebind; fixed claim assessed against complete current revision |
 | Partial projection, tombstone, access change, stale/retried operation | Existing absence proof, visibility, idempotency, commit order and fail-closed semantics hold |
