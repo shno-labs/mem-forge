@@ -102,6 +102,11 @@ provider is unreachable fails the reprocess at authentication, as a sync does.
 
 ### Observation Revisions are content-addressed
 
+Proposed refinement: [ADR 0046](0046-separate-evidence-correspondence-from-citation-presentation.md)
+requires a changed source-coordinate representation to have a distinct immutable
+identity; renderer-only changes remain derived views. It does not permit
+overwriting an existing Observation Revision or change the current reuse rules.
+
 An Observation Revision's id is derived from its Observation and semantic hash,
 and its Evidence Representation Profile fixes how Evidence addresses its
 content. These three are its identity. When a projected revision's id is
