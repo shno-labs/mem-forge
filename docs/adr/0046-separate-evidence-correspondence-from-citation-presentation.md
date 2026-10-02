@@ -32,8 +32,10 @@ restore appearances while losing Evidence semantics.
 
 ### 1. Keep one compilation seam and three separate outputs
 
-The existing operation-local `RepresentationCompiler` owns parsing, source
+The existing operation-local `RepresentationCompiler` owns compilation, source
 coordinates, Fragment selections, deterministic presentation and ReadingGroups.
+It delegates provider-native parsing to the source adapter's declared contract;
+owning compilation does not make it the owner of every provider grammar.
 No caller reparses a citation or supplies an LLM-generated quote as Evidence.
 The compiler produces three views of the same immutable input:
 
@@ -194,6 +196,43 @@ it does not enter the two success branches shown above.
 ### 4. Parse native structures before presenting them
 
 Adapters declare the native representation and retain its immutable input.
+Each source adapter owns its native parser, field schema, comparison rules,
+identity declarations and source-specific rendering transforms. Confluence
+storage XML, `ac`/`ri` namespaces, macros and native code bodies belong to the
+Confluence adapter. Jira issue, comment, changelog and supported native rich-text
+structures belong to the Jira adapter. Provider-specific helpers may live in
+explicit provider packages, but not in generic normalization, extraction,
+matching, lifecycle or storage methods.
+
+The composition root registers these adapter contracts. Shared compilation
+consumes their typed selections, source-value mappings, dependency declarations
+and versioned schemas. It validates source integrity, coordinates, occurrence
+uniqueness, authority and completeness; it does not switch on source type to
+interpret native tags or fields. Standard Markdown/HTML structure algorithms
+may remain shared. They must receive already-decoded native nodes or an explicit
+adapter contract rather than gaining Confluence/Jira exceptions. Cloud uses the
+same OSS source adapters and declarations, with no separate native-parser fallback.
+
+Source-specific boilerplate recognition also belongs to the adapter and requires
+a verified native construct. An authored heading or sentence does not become
+disposable merely because its text resembles generated UI material. Generic
+cleanup must not delete provider-labelled headings/footers from other sources,
+establish authoritative emptiness or modify retained source authority.
+
+Central registration is not itself an ownership defect: a registry may reference
+adapter-owned contracts without defining their native semantics. Source adapters
+may delegate to separately reviewable provider-format modules rather than grow
+one large method. Providers sharing a standard format should reuse its compiler;
+they must not copy its parsing or correspondence implementation into each adapter.
+A Jira macro embedded in Confluence storage remains Confluence storage grammar,
+distinct from Jira issue payload semantics.
+
+This changes the ownership of native schema definitions and the multi-provider
+projection implementation, not the need for shared registration. Existing shared
+native cleanup and the mixed private parser are design debt, not precedents for the new seam.
+Preserve old frozen experiment code as evidence; new production parsing must
+respect the adapter boundary.
+
 Confluence storage is XML with custom namespaces, not ordinary rendered HTML.
 Its representation parser must understand supported macros and complete tables;
 it must not hand an opaque storage table to a CommonMark HTML-block parser.
@@ -538,6 +577,9 @@ reprocess. This order is not a split lifecycle or partial publication contract.
 
 | Acceptance case | Required evidence |
 | --- | --- |
+| A provider adds or changes native tags, fields or cleanup rules | Its adapter owns the implementation and schema; generic extraction/matching/storage require no provider branch |
+| Another source contains text resembling Confluence/Jira boilerplate | Authored content and authority remain intact; source-specific cleanup cannot run through a generic helper |
+| Native adapter compilation and generic integrity/selection validation | Adapter fixtures prove native meanings; boundary tests and import/static checks prove no native grammar/field literals leak into shared services |
 | Revision number, offsets or catalog refs change; selected source content is unique and unchanged | All unchanged Primary/Required parts correspond; no display digest blocks the match |
 | Renderer changes only presentation | Correspondence and source-change authority remain unchanged; Support reuse follows the existing source-change route |
 | Same text in two indistinguishable rows/sections | No arbitrary occurrence match; assessment/ambiguity is preserved |

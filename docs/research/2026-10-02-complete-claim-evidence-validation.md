@@ -185,6 +185,102 @@ status titles and 34 issue keys in the 11 real tables with seven content-mode
 controls. It does not yet prove a complete corrected runtime bundle. Old frozen
 code/control results are not rewritten to hide this false assumption.
 
+## Source-owned refs and corrected native-profile bundle
+
+The next frozen origin schema asks the model to select supplied source refs before
+wording each facet; the application owns exact material and unchanged facet joins.
+A separate provider-format package isolates native Confluence grammar, while the
+receipt controller separates semantic interpretation from revision/offset binding.
+Four real sources have unchanged displays/material against the prior corrected
+bundle. All 86 Confluence refs retain material and interpretation under a prefix
+blank-line edit, while all exact location bindings change. Real title/ancestor
+scope changes alter interpretation; native server parameters remain material and
+only the declared macro instance identifier is excluded. Sixteen structural and
+seven native code controls pass. These remain private normalized-profile tests,
+not production native-adapter acceptance.
+
+Three complete sources made nine online Sonnet calls/attempts, with no fallback or
+retry, and emitted 97 unchanged candidates. Two fresh blind reviewers examined the
+full packet. A scores **69/69** proposition-level coverage, **91/97** complete
+selected support and **42/97** atomic records; 43 records mix rules with events.
+B scores **53 complete, 1 partial** of 54 obligations and **90/97** complete
+selected support; atomic coverage is **24 complete, 9 partial, 21 missing**.
+Both find twelve redundant Required selections. Acceptance still fails: joint
+coverage cannot make an unsafe individual retrieved Memory correct.
+
+A critical rendering failure is now reproducible: retained Jira wiki
+`{code:html}` source contains an outer region element and inner layout element;
+its display loses the outer opening tag. The selected raw source/hash are intact,
+but hashes of that incomplete display do not prove semantic preservation. The
+current Jira description field is declared nested Markdown without native wiki
+interpretation. This requires adapter-owned format correction, preserving even
+the author's malformed/truncated code literally, not prompt inference or DOM
+repair. Additional failures include unselected distant interpretation rules,
+missing standalone scope/phase, link-to-authority inference and lost ordering.
+Provisional plans are already shaped as Memory candidates; one `core` facet does
+not prevent independent propositions/events inside its text. That interface
+remains under review rather than accepted through another wording-only retry.
+
+Before this latest round, six recorded experiments made **42 logical calls and
+44 provider attempts**, including two canonical native-schema fallback attempts
+and no transport retries. Successful-response telemetry reports 664,041 input and
+144,109 output tokens; it is not complete failed-attempt billing. Invalid initial
+response bodies were not retained because failure capture was disabled; content-
+free diagnostic receipts remain. The latest nine calls add 192,441 input and
+51,728 output tokens. All original final outputs and operation failures remain
+retained; no best-output selection or offline relabelling supplies acceptance.
+
+## Adapter ownership and resource/execution boundaries
+
+Native grammar and field meanings belong to the source adapter or explicitly
+named provider-format module. Standard Markdown/HTML structure, source integrity,
+matching and Memory semantics remain shared. A centralized registration table is
+not itself a defect. A Confluence-hosted Jira macro is Confluence grammar, whereas
+Jira REST/wiki fields are Jira-owned. Current shared boilerplate text deletion,
+Jira field schemas and `fromString/toString` instructions in the generic extraction
+prompt do violate this target boundary; a multi-provider projection method is an
+adapter organization issue, not proof of extraction-layer leakage.
+
+Current resolved selections, serialization, SQLite/HANA references and HTTP/tool
+DTOs cannot carry compound scope/header/value mappings. Read-only running CF HANA
+source confirms parity with the current OSS excerpt/hash fields, rather than the
+older local Cloud checkout: this is a shared protocol gap, not proven deployed
+HANA drift. Existing content links read the current Unit input; they are not
+pinned complete citation resources. A separate private protocol prototype passes
+16 SQLite close/reopen, full-binding validation, current visibility, source/revision
+membership, historical-resource, tamper and missing-resource cases. It invokes the
+frozen provider-owned verifier for real mapped source. This is design feasibility,
+not live HANA/HTTP or production compound-storage acceptance.
+
+A Unit-owned private executor uses the production runner and unchanged actual
+route budget (1,000,000 input/context, 64,000 output metadata, fraction 0.8,
+32,768 requested stage output). Synthetic transport inputs induce four survey,
+four joint-reading and four formation requests; exact journal replay adds no
+calls and failure returns no aggregate candidate subset. This does not establish
+real multi-request online semantics. The production per-request extraction owner
+and skip-and-commit behavior require an upstream Unit contract change.
+
+An actual pinned repository PNG has verified original bytes, whole-Artifact
+projection and production image loading/transport. Its source-only inventory
+contains 82 assertions about the diagram's authored target design, including
+historical policies; examples/legend colors are excluded before generation.
+Visual semantic validation remains open. The existing reserve is only 1,280 tokens
+because it measures short Artifact presentation rather than visual content; the
+private whole-source visual task declares 32,768 demand within the unchanged cap.
+This task-demand correction is not a provider-limit or source-type workaround.
+Image source revision/hash and transport policy must also enter request/work
+identity; prompt/schema identity alone cannot distinguish missing image inputs.
+
+The whole-source Artifact origin experiment completed three actual online
+Sonnet operations with unchanged original source/transport image binding: survey,
+joint Unit read and formation. It returned 37 candidates, with zero retry or
+fallback and 20,319 input plus 11,872 output tokens in successful telemetry.
+The complete original output, roles and 28 provisional outcomes are frozen for
+two independent reviews against all 82 pre-generation source obligations. Call
+success and exact image binding are not visual semantic acceptance. The known
+Git Artifact descriptor was reconstructed locally; this is not an online native
+connector fetch or a persisted lifecycle/resource test.
+
 ## Cross-revision mapping evidence
 
 Actual consecutive repository revisions, rather than only synthetic edits,
