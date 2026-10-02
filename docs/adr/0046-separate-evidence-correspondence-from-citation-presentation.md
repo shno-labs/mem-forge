@@ -466,7 +466,7 @@ invalidate Support reuse even when the local material remains unchanged.
 The Source Unit extraction operation owns complete reading and claim formation.
 Existing request packing remains a transport detail. It does not define the
 semantic universe, nor does a successful request certify exhaustive extraction.
-The origin protocol separates two operation-local responsibilities behind the
+The origin protocol separates three operation-local responsibilities behind the
 same extraction seam. This is semantic ownership, not schema splitting or
 batching to bypass provider capacity:
 
@@ -491,6 +491,35 @@ batching to bypass provider capacity:
    it does not repair, prune or add claim text. A declaration of one conclusion
    cannot itself prove semantic atomicity: independently evaluate source
    understanding and final Memories against complete immutable sources.
+3. Before Candidate construction, check semantic closure against the complete
+   authoritative source and the exact final clauses with their chosen bases.
+   Check both directions separately: useful source predicates must actually
+   appear in final knowledge, and every final assertion must be supported by
+   its selected Evidence or verified immutable interpretation. Source entailment
+   of a broad summary does not prove preservation of the concrete source rules.
+   Reading receipts, producer resolution labels and associations certify neither
+   direction. A privately tasked checker receives source and exact words/bases,
+   rather than producer rationales as support for a clean result.
+
+Specific source-grounded findings may trigger at most one joint origin revision,
+followed by a fresh closure check of the complete revised result. Revision may
+add omitted conclusions, split independent ones or narrow unsupported inventions;
+it must preserve every valid useful remainder and correct words/bases together.
+No valid claim is removed merely to satisfy a role, ref-count or coverage check.
+An unresolved, incomplete or failed final check returns whole-operation failure,
+with no earlier-result fallback or successful subset. It does not create a
+per-Memory corrective lifecycle state or move repair into Candidate admission.
+
+This adds a proposed verification responsibility inside the existing Unit owner,
+not a later wording owner. It supersedes relying on formation's full-source
+reread and declared retained resolutions alone: the real-source trace found
+specific rules fully read, labeled retained, but absent from final words.
+The checker remains fallible, including correlated visual or semantic errors
+when it uses the same model. Its clean judgment is not a completeness theorem;
+independent full-source evaluation and untouched holdouts remain required.
+Artifact viewing capability is separately validated and is not repaired merely
+by adding a model check. The finite protocol keeps current budgets, retains
+all initial/corrective responses and permits no score-based regeneration.
 
 This supersedes the draft's separate conclusion-intent and later model-wording
 stages. Repeating full semantic descriptions in per-ref contributions does not

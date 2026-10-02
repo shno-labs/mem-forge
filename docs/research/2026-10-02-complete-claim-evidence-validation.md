@@ -427,8 +427,72 @@ source parsing, image delivery and provider capacity are separate contracts.
 
 At preparation time CF authentication expired: `cf apps` reported an expired,
 revoked or invalid token, while `cf curl` returned blank output. Public API
-connectivity succeeded. No new Sonnet request was issued before reauthentication;
-the experiment cannot be reported as online-validated on synthetic checks alone.
+connectivity succeeded. The user restored authentication on October 3; protected
+binding access and the actual deployed-model factory were verified before the
+next finite experiment. No substitute credentials or mock provider were used.
+
+## Joint final wording and evidence: complete execution, failed semantics
+
+The two-stage V3 experiment froze 44 source/protocol/client files and completed
+all four authentic sources. Eight logical calls used nine provider attempts,
+including one raster worksheet native-schema fallback to JSON text, zero
+transport retries and zero application mechanical corrections. Both transport
+modes retain the same prepared image input. Successful returned usage was
+182,489 input and 85,763 output tokens; failed native-attempt billing is not
+inferred. It emitted 75 unmodified candidates: Confluence 25, Jira 5,
+ADR 0045 21 and the original raster 24. All frozen files remained unchanged.
+
+The Confluence final formation returned 17,924 output tokens without truncation,
+under the same 32,768-token reserve. Joint ownership removed the reproduced
+response-length failure; this is execution evidence, not semantic acceptance.
+No candidate was persisted and no production source sync or deployment occurred.
+
+Independent final reviewer A fails the experiment: **50/75 candidates pass all
+reviewed dimensions**, while strict source coverage is **111/151 complete,
+17 partial and 23 missing**. Its unchanged source denominators give Confluence
+18/44, Jira 1/1, ADR 0045 23/24 and raster 69/82 complete. Candidate quality and
+source coverage are different measures: a correct subclaim can retain knowledge
+even when another part of its candidate fails, and partial coverage is not
+credited as complete. Hash checks validate the original source, mapped
+dependencies and unchanged output objects; they do not prove meaning.
+Independent reviewer B also fails: **53/75 acceptable candidates**, and its
+unchanged denominator gives **102/136 complete, 15 partial, 18 missing and
+1 distorted**. Its source coverage is Confluence 13/33, Jira 3/3, ADR 0045
+17/18 and raster 69/82. The two inventories are not averaged. Both reviews
+allow an exact immutable interpretation dependency to support a mapped name or
+scope after checking its original source spans; an unselected ReadingGroup or
+display label alone cannot do so. B preserves its initial diagnostic and the
+general protocol clarification that corrected four dependency-support judgments.
+
+A bounded trace separates two origin defects. Two specific Confluence rules
+survived the readable mapped rows and the source-only worksheet in full. Final
+resolutions called them retained within a broad verification summary, but that
+summary never stated their actual conditional predicates. No native parser or
+later application transformation removed them. Selecting a whole table or
+declaring a retained association cannot replace the missing Memory words.
+For three raster defects, the worksheet already missed the re-ask step,
+UNRESOLVED destination or destructive-action precondition; final formation
+repeated those errors despite access to the full original image. The trace does
+not identify transport legibility versus semantic inference as the visual cause.
+
+Primary/Required quality also remains open: the review finds redundant coarse
+table refs beside complete mapped rows, unsupported generalization, lost stage
+qualifications and independently useful rules bundled into a large candidate.
+The next mechanism must preserve actual source predicates in final knowledge
+and verify the chosen support, without treating producer labels as proof or
+making admission reject supported knowledge. Artifact reading capability is a
+separate hypothesis; OCR or a non-equivalent native scene cannot silently fix
+pixel authority. The V3 failed results and source-only denominators are retained.
+
+A separate static audit covers all 34 ADR 0046 acceptance requirements and
+distinguishes existing transactional/stale/role safety from missing new
+integration. Persisted compound bindings, source-value correspondence with a
+separate reuse gate, full Unit execution, historical selected resources and
+proxy identities are not implemented by these private outputs. The V3 phase
+identity binds source/partition/schema/image inputs, while its model/budget are
+pinned separately by the experiment freeze; production durable identity must
+compose both. Current journal behavior alone does not supply image transport
+identity. No full runtime, storage/resource or adapter acceptance is asserted.
 
 ## Cross-revision mapping evidence
 
