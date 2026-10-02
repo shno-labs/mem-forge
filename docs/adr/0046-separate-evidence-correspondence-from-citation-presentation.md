@@ -466,7 +466,7 @@ invalidate Support reuse even when the local material remains unchanged.
 The Source Unit extraction operation owns complete reading and claim formation.
 Existing request packing remains a transport detail. It does not define the
 semantic universe, nor does a successful request certify exhaustive extraction.
-The origin protocol separates three operation-local responsibilities behind the
+The origin protocol separates two operation-local responsibilities behind the
 same extraction seam. This is semantic ownership, not schema splitting or
 batching to bypass provider capacity:
 
@@ -476,21 +476,30 @@ batching to bypass provider capacity:
    Record a reading outcome for every group. These are provisional interpretations,
    not early Memory candidates: no Memory type, entity tags, effective interval
    or Primary/Required role is assigned before the source is understood.
-2. Re-read complete authoritative source/context and form independently useful
-   lasting conclusion intents. Each has one asserted conclusion and all necessary
+2. Re-read complete authoritative source/context and jointly form final exact
+   Memory clauses and their chosen Evidence. Each has one asserted conclusion and all necessary
    scope, phase, conditions, exceptions, quantifiers, modality and authored order.
    A source-grounded event may establish a lasting cause or fix; an unrelated
    instance outcome is not appended to a general rule. Preserve every valid
    lasting assertion and its lineage. A connected procedure or inseparable
    decision/reason can remain one conclusion; independent rules cannot be bundled
-   merely because they share a topic or source selection. Select direct Primary
-   and inclusion-minimal Required refs for this complete conclusion at origin.
-3. Express each closed conclusion as a self-contained Memory. The wording states
-   all necessary contributions and introduces no independent fact or property.
-   Application serializes it unchanged with the exact origin-selected roles;
+   merely because they share a topic or source selection. Select a direct Primary
+   in the core's chosen joint basis. Each final clause states its complete exact
+   meaning and chosen basis once. Required is the stable union of these bases
+   minus Primary, rather than a second model-selected list. This union proves
+   accounting, not semantic necessity. Application joins those clauses unchanged;
    it does not repair, prune or add claim text. A declaration of one conclusion
    cannot itself prove semantic atomicity: independently evaluate source
    understanding and final Memories against complete immutable sources.
+
+This supersedes the draft's separate conclusion-intent and later model-wording
+stages. Repeating full semantic descriptions in per-ref contributions does not
+establish support and can exhaust the response budget. A later model wording
+stage also moves ownership of asserted meaning away from evidence selection.
+Final words and their basis instead have one semantic owner. Source context is
+described once where applicable, with explicit clause differences for mixed
+intended/observed or adopted/proposed knowledge; every emitted claim still states
+its actual modal words. Compactness is not permission to omit useful knowledge.
 
 The source assertion/relationship representation is operation-local model data,
 not a persistent source graph, new Evidence authority or lifecycle state. Exact
@@ -514,6 +523,18 @@ application checks the selected basis accounting and exact source authority;
 independent evaluation checks entailment, direct Primary and minimal Required.
 It must not delete a genuinely necessary code/body ref because an earlier model
 omitted that ref from its reading association.
+
+All provisional entry kinds share one operation-local identity and complete
+resolution universe. A final clause's association with an entry records
+provenance and slot position only. It cannot establish that the entry's whole
+meaning was independently retained or that it deserves the same Value judgment.
+A question title may identify an object inside a core without becoming an
+independent lasting conclusion. Conversely, putting a reusable rule in a
+qualifier does not establish adequate independent retrieval. Semantic resolutions
+are source-backed explanations, not assertions inferred from slot position;
+independent review checks retained, narrowed and disposed knowledge against the
+complete source. Partly incorrect drafts must preserve every valid useful
+remainder and identify their specific unsupported predicates.
 
 Assertion mode, source commitment and logical conditions are distinct. An
 intended conditional behavior and an observed test result remain independently

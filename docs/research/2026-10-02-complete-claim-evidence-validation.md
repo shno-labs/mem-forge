@@ -374,6 +374,62 @@ explicitly. This does not repair the original raster score or supply missing
 historical pixel provenance. The next development cohort keeps the same PNG
 without adding that companion.
 
+## Chosen-basis development experiment and ownership correction
+
+The second source-understanding experiment also failed for all four sources.
+Eleven logical calls used eleven provider attempts, with no retry or fallback.
+Returned usage, including a truncated response, was 246,267 input and 178,141
+output tokens; successful-response usage was 171,869 and 145,373 respectively.
+The complete reading responses contained 229 statements and 59 relationships.
+No wording stage completed and no final Memory subset was published.
+
+The complete Confluence input fit the configured request estimate, but the
+intent response reached its unchanged 32,768-token output limit and ended with
+`finish_reason=length`. Repeated full contribution semantics consumed the output
+budget; this was not a context-window overflow or justification for batching.
+The Jira response used a question title to identify the object in a central
+creation-link statement. The compiler wrongly equated every provenance entry
+inside a core with an independently retained conclusion. The diagram returned
+resolutions for both statements and relationships, while the schema's resolution
+universe counted only statements; complete accounting was rejected as extras.
+ADR correction reached the logical deadline. These interface failures remain
+failed outcomes; they do not erase separate source-interpretation errors.
+
+Two independent source-understanding reviews retain the frozen denominators:
+A reports **132/151 complete, 11 partial, 3 missing, 5 contradicted**; B reports
+**114/136 complete, 12 partial, 3 missing, 7 contradicted**. They are provisional
+reading scores, not final Memory acceptance. Both identify wrong diagram branch
+attachment and destructive-action scope. Exact image bytes did not establish
+the right routing: changed Support goes directly to Support Assessment, while
+Change Impact belongs to exact-unchanged Support with other changed content.
+The review also found intended Confluence behavior promoted into existing
+capabilities and unsupported causal relationships. Denominators were not retuned.
+
+The next finite hypothesis uses a unified source-only entry worksheet followed
+by one joint final-clause/evidence formation. The application joins exact clauses
+without a later wording model and derives Required from the chosen basis union.
+Provenance/slot positions do not infer semantic dispositions. This material
+ownership correction is recorded in ADR 0046. Independent synthetic preflight
+observes 86/86 declared mechanical behaviors, including complete-entry accounting,
+current image authority, unchanged final text and failure without subset return.
+Nine deliberately semantic-invalid controls still structurally accept. These
+checks authorize a finite experiment; they do not prove semantic acceptance.
+
+An offline Apple Vision reading of the original diagram improves some glyphs
+but omits or misreads others. It remains provisional reading data, not text
+Evidence. Deterministic region views also require a distinct delivery contract:
+derived image bytes cannot be labeled as a new authoritative source Artifact.
+Neither OCR, native companions nor cropped views are added to this next cohort.
+The current client image-budget estimator uses an OpenAI `auto` default of 85
+tokens per image rather than verified dimension-sensitive Sonnet accounting.
+Estimated request admission is therefore not proof of actual vision capacity;
+source parsing, image delivery and provider capacity are separate contracts.
+
+At preparation time CF authentication expired: `cf apps` reported an expired,
+revoked or invalid token, while `cf curl` returned blank output. Public API
+connectivity succeeded. No new Sonnet request was issued before reauthentication;
+the experiment cannot be reported as online-validated on synthetic checks alone.
+
 ## Cross-revision mapping evidence
 
 Actual consecutive repository revisions, rather than only synthetic edits,
