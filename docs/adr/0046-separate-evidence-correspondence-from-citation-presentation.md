@@ -472,7 +472,7 @@ Before implementation is called complete, audit every row above, record the
 contract/version changes and measured stored-input replay impact, open PRs in
 every changed repository, and deploy/smoke-test Cloud if its runtime changes.
 
-The [real-content offline feasibility evaluation](../research/2026-10-02-evidence-mapping-feasibility.md)
+The [real-content and online Sonnet feasibility evaluation](../research/2026-10-02-evidence-mapping-feasibility.md)
 records controlled revision perturbations and independent blind review. It is
 evidence for this proposal, not runtime, native-history or deployment acceptance.
 Its online Sonnet replay improves direct Primary selection and redundant Required

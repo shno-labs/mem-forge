@@ -1,4 +1,4 @@
-# Evidence mapping: real-content offline feasibility evaluation
+# Evidence mapping: real-content and online Sonnet feasibility evaluation
 
 Date: 2026-10-02. Design baseline: `7cefb371`; public corpus pin: `57f8b006`.
 This report supports [proposed ADR 0046](../adr/0046-separate-evidence-correspondence-from-citation-presentation.md).
