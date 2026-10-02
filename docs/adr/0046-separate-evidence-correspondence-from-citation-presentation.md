@@ -203,6 +203,12 @@ Confluence adapter. Jira issue, comment, changelog and supported native rich-tex
 structures belong to the Jira adapter. Provider-specific helpers may live in
 explicit provider packages, but not in generic normalization, extraction,
 matching, lifecycle or storage methods.
+The format declaration must identify the actual native field representation,
+not infer a dialect from source type or familiar control text. For example,
+Jira text-field renderer configuration may vary by field, project and issue
+type; an adapter must retain an authoritative declaration or explicitly trusted
+configuration with the immutable input. Unsupported or unknown representations
+remain typed unavailable instead of being guessed as Markdown or active HTML.
 
 The composition root registers these adapter contracts. Shared compilation
 consumes their typed selections, source-value mappings, dependency declarations
@@ -212,6 +218,16 @@ interpret native tags or fields. Standard Markdown/HTML structure algorithms
 may remain shared. They must receive already-decoded native nodes or an explicit
 adapter contract rather than gaining Confluence/Jira exceptions. Cloud uses the
 same OSS source adapters and declarations, with no separate native-parser fallback.
+
+A native diagram scene and its exported image retain separate immutable source
+identities. File proximity, matching names or a shared commit do not establish
+export equivalence; a later scene revision cannot silently supply text for an
+older image citation. A reusable declared diagram-format parser may expose
+exact text, geometry and explicit object/arrow bindings behind the source
+adapter. Missing bindings remain explicit limitations. Geometric proximity is
+not a compiler-proven semantic association, and a native text selection is not
+pixel Evidence. Authenticated companions need an explicit retained relationship
+and version contract; otherwise they are separately authorized material.
 
 Source-specific boilerplate recognition also belongs to the adapter and requires
 a verified native construct. An authored heading or sentence does not become
@@ -450,20 +466,69 @@ invalidate Support reuse even when the local material remains unchanged.
 The Source Unit extraction operation owns complete reading and claim formation.
 Existing request packing remains a transport detail. It does not define the
 semantic universe, nor does a successful request certify exhaustive extraction.
-The origin protocol may use two operation-local stages behind the existing
-extraction seam:
+The origin protocol separates three operation-local responsibilities behind the
+same extraction seam. This is semantic ownership, not schema splitting or
+batching to bypass provider capacity:
 
-1. Read every authorized complete ReadingGroup and enumerate provisional
-   independently useful assertions with their source selections. Record an
-   explicit outcome for every group, including groups with no lasting assertion.
-   Retain all necessary context and the identity of the immutable selections.
-2. Form atomic, qualified claims with direct Primary and inclusion-minimal
-   Required selections. Account for every provisional assertion with an explicit
-   outcome; a bundled assertion can map to several Memories, and truly equivalent
-   assertions can map to one. Re-read complete authoritative source/context to
-   recover missed assertions and distant qualifications. Resolve unsupported
-   provisional wording from source, rather than invent support or remove valid
-   lasting knowledge to improve citation scores.
+1. Read every authorized complete ReadingGroup as source assertions, necessary
+   qualifications, observations and explicitly authored relationships. Retain
+   the actual subject, predicate, scope and modality, with exact source selections.
+   Record a reading outcome for every group. These are provisional interpretations,
+   not early Memory candidates: no Memory type, entity tags, effective interval
+   or Primary/Required role is assigned before the source is understood.
+2. Re-read complete authoritative source/context and form independently useful
+   lasting conclusion intents. Each has one asserted conclusion and all necessary
+   scope, phase, conditions, exceptions, quantifiers, modality and authored order.
+   A source-grounded event may establish a lasting cause or fix; an unrelated
+   instance outcome is not appended to a general rule. Preserve every valid
+   lasting assertion and its lineage. A connected procedure or inseparable
+   decision/reason can remain one conclusion; independent rules cannot be bundled
+   merely because they share a topic or source selection. Select direct Primary
+   and inclusion-minimal Required refs for this complete conclusion at origin.
+3. Express each closed conclusion as a self-contained Memory. The wording states
+   all necessary contributions and introduces no independent fact or property.
+   Application serializes it unchanged with the exact origin-selected roles;
+   it does not repair, prune or add claim text. A declaration of one conclusion
+   cannot itself prove semantic atomicity: independently evaluate source
+   understanding and final Memories against complete immutable sources.
+
+The source assertion/relationship representation is operation-local model data,
+not a persistent source graph, new Evidence authority or lifecycle state. Exact
+ID, selection and lineage checks prove structural accounting, not entailment,
+semantic completeness or Value. Reading associations are not an implicit
+conjunction of necessary witnesses. At conclusion origin, each actually
+asserted contribution chooses an explicitly complete joint support basis from
+the entire authorized immutable catalog. A complete row and a whole table may
+be alternative bases; reading both does not require citing both. Formation may
+correct a provisional interpretation or incomplete grounding against the full
+source, preserving the valid knowledge and its traceable correction.
+
+A relation's endpoint reference identifies another assertion or event. It does
+not require asserting every independent predicate attached to that endpoint in
+the final Memory. Actual restrictions, logical operators and authored order
+must be stated and grounded explicitly. Model relation labels cannot impose
+universal conditions on independent branches. Likewise, contribution labels and
+physical span containment cannot prove that a provisional source model retained
+every needed fact, or that a Required ref is semantically redundant. The
+application checks the selected basis accounting and exact source authority;
+independent evaluation checks entailment, direct Primary and minimal Required.
+It must not delete a genuinely necessary code/body ref because an earlier model
+omitted that ref from its reading association.
+
+Assertion mode, source commitment and logical conditions are distinct. An
+intended conditional behavior and an observed test result remain independently
+identified assertions. A failed or blank test status does not negate the
+requirement, and a passing status does not promote a target design into current
+implemented behavior. Every standalone Memory preserves its supported modality.
+
+This supersedes the private experiment's implicit all-of reading-ref contract
+and whole-endpoint wording closure, both falsified by real source traces. The
+revised contract remains proposed until independently validated. The current private
+experiment allows at most one mechanical contract correction per origin stage,
+retains both responses and never chooses a response by its blind-review score.
+Failure after that correction returns no completed subset. This supersedes the
+earlier Memory-shaped survey draft: exact accounting could preserve a paragraph
+containing independent rules and statuses without exposing that semantic error.
 
 A tested origin schema may express one supported core and only its necessary
 qualifier facets, with witness-bearing names and effective-time boundaries.

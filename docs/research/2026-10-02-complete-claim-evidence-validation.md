@@ -275,11 +275,104 @@ The whole-source Artifact origin experiment completed three actual online
 Sonnet operations with unchanged original source/transport image binding: survey,
 joint Unit read and formation. It returned 37 candidates, with zero retry or
 fallback and 20,319 input plus 11,872 output tokens in successful telemetry.
-The complete original output, roles and 28 provisional outcomes are frozen for
-two independent reviews against all 82 pre-generation source obligations. Call
-success and exact image binding are not visual semantic acceptance. The known
+The complete original output, roles and 28 provisional outcomes were frozen for
+two independent reviews against all 82 pre-generation source obligations. Both
+reviews fail: each finds full content coverage of 46/82 and 13 contradicted or
+materially distorted obligations. One reports 16 partial and 7 missing; the
+other reports 18 partial and 5 missing. These differences remain recorded,
+without changing the denominator. Standalone claims also lose the authored
+target-design modality. One candidate confuses splitting a request with halving
+a score, illustrating that correct image reference identity cannot establish
+correct interpretation. Call success and exact image binding are not visual
+semantic acceptance. The known
 Git Artifact descriptor was reconstructed locally; this is not an online native
 connector fetch or a persisted lifecycle/resource test.
+
+## Source understanding and closed conclusion experiment
+
+The next finite hypothesis replaces early Memory-shaped survey drafts with
+source statements, actual modality, necessary qualifications, observations and
+explicit authored relationships. A Unit-owned operation reads the complete
+source, forms independently useful closed conclusion intents, selects their
+exact origin Evidence, and only then expresses final Memories. No intermediate
+graph becomes Evidence or a durable business record. Native field meaning and
+literal code decoding remain adapter-owned; source interpretation and conclusion
+formation use one generic contract.
+
+An independent preflight exercises the complete extraction interface with
+synthetic exact inputs and fake inference responses. **61/61 declared mechanical
+behaviors** conform after correcting group-origination authority, bidirectional
+statement/intent accounting, exact redundant-selection detection and unrelated
+source-outcome binding. Shared necessary conditions do not force independent
+conclusions to merge; relation-root endpoints may remain dependencies; authored
+procedures and event-established lasting fixes remain expressible. Missing or
+wrong Artifact bytes fail before calls; stage failure produces no completed
+subset. One permitted mechanical correction keeps exact source/images, schema,
+model and requested reserve unchanged, and retains initial, corrected and
+accepted responses separately.
+
+Four semantic negative controls deliberately still pass structure: hidden
+independent predicates, an unsupported factual addition under a reused
+contribution ID, a literal date with no effective meaning, and read receipts
+with an empty knowledge representation. Thus the preflight is permission to
+test the hypothesis, not evidence of semantic acceptance.
+
+The development experiment freezes three complete authentic textual sources
+and the genuine diagram, both textual source-only inventories and all 82 visual
+obligations, the native-format contracts, prompts/schemas, actual route budget
+and one repetition per source. Each semantic stage permits at most one
+mechanical contract correction. Independent intermediate-source and final-Memory
+packets withhold other phases and treatment labels. No semantic-score retry,
+best-of-N, reduced cap, new transport split or candidate-admission repair is
+permitted. Untouched holdouts remain untouched until development acceptance.
+
+The frozen online experiment **failed for all four sources**. Twelve logical
+calls used fourteen provider attempts, including one native-schema fallback and
+one image-correction transport retry ending at the logical deadline. Successful
+telemetry records 334,799 input and 115,089 output tokens; failed-attempt billing
+is not inferred. All four initial understanding responses returned, totaling
+198 statements and 66 relations. No wording phase completed and no final Memory
+subset was produced. Frozen files remained unchanged.
+
+Independent understanding reviewers retained their separate source-only
+denominators. A found **108/151 complete** (text 66/69, image 42/82); B found
+**93/136 complete, 36 partial, 2 missing and 5 contradicted** (text 25/54,
+image 68/82 complete). B's 29 Confluence partials concern intended behavior
+embedded in observed-status nodes without a distinct expected/observed binding.
+These scores are not averaged or substituted for final-Memory acceptance.
+Complete read receipts and verified hashes did not establish correct modality,
+branch attachment or image transcription.
+
+A separate interface audit accumulated 370 structural violations across seven
+returned initial/corrected intent objects. These are repeated diagnostic checks,
+not 370 independent semantic defects. It falsified three interface assumptions:
+reading-ref lists are not necessarily joint proof; provisional contribution labels
+are not support authority; referencing a relationship endpoint does not require
+asserting every independent rule in that endpoint. In a real procedure, the
+correct added literal-code ref was rejected as redundant because the provisional
+understanding had omitted it. Conversely, selecting only the target identifier
+for a claim about its DOM attributes really lacked the necessary code body.
+Replacing all conjunctions with an any-of rule would accept that unsupported
+claim and is not a correction.
+
+The revised hypothesis selects an explicitly complete joint basis for each
+actually asserted contribution at origin, allows grounding corrections from
+the complete authorized catalog, and separates assertion mode, source commitment
+and logical conditions. It does not force whole-table citations or independent
+endpoint rules into each Memory. Pointer/basis accounting remains mechanical;
+entailment and minimality remain independently evaluated. The original failed
+responses, frozen obligations and both reviews remain evidence. A new hypothesis
+requires a new finite freeze and online cohort, not relabeling this run as passed.
+
+The repository also retains an authentic Excalidraw scene. History inspection
+shows the scene was updated after the frozen PNG, with a material Unit Title
+change. The image contains no embedded scene metadata. The current scene cannot
+be treated as the accurate textual representation of that PNG. Its explicit
+shape/arrow bindings and exact text may support a separately pinned native-format
+reading, with absent text-container bindings and unbound arrows reported
+explicitly. This does not repair the original raster score or supply missing
+historical pixel provenance. The next development cohort keeps the same PNG
+without adding that companion.
 
 ## Cross-revision mapping evidence
 
