@@ -1,5 +1,9 @@
 # ADR 0030: Compile revision-pinned Evidence Fragments
 
+Proposed refinement, 2026-10-01: [ADR 0046](0046-separate-evidence-correspondence-from-citation-presentation.md)
+separates source selection, complete ReadingGroup context and readable citation
+presentation. It is not yet implemented and does not change the current contract.
+
 Design transition (2026-09-06): [ADR 0034](0034-unify-incremental-support-and-claim-assessment.md)
 records the implemented unified Support assessment and claim relation/revision
 judgment. Its L3/L4 orchestration supersedes the earlier matching and separate-call

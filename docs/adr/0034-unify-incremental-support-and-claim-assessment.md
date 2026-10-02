@@ -1,5 +1,10 @@
 # Unify incremental Support and claim assessment within the existing lifecycle
 
+Proposed refinement, 2026-10-01: [ADR 0046](0046-separate-evidence-correspondence-from-citation-presentation.md)
+makes unchanged source correspondence independent of presentation and adds an
+explicit whole-Support reuse gate. The digest matching and upgrade behavior
+below remain the current implementation until that proposal is delivered.
+
 ## Status
 
 Accepted. The original unified assessment contract was implemented on

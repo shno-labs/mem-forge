@@ -10,6 +10,13 @@
 
 ## 文档职责与阅读入口
 
+2026-10-01 的 [ADR 0046 提案](../adr/0046-separate-evidence-correspondence-from-citation-presentation.md)
+优化 Evidence 的源定位、可读呈现和跨 revision 对应，尚未实施。本文和现有 PNG/Excalidraw
+仍描述当前流程；提案把“内容未变、能定位”与“整个 Support 可以复用”分开，保留完整
+ReadingGroup、Change Impact 和原有生命周期安全边界。
+[历史回放](../research/2026-10-01-evidence-readability-regression.md)定位表格/宏可读性退化于
+9 月 8 日 PR #426，早于 ReadingGroup 重构及本 Diagram；不是新增 Diagram 导致的运行时变化。
+
 本文是普通 Source 文档从 Sync 到 Memory 的完整流程入口，解释模块、数据、模型调用和失败边界。共享决策以 OSS ADR 为准；本次合并判断与输入策略由 [ADR 0034](../adr/0034-unify-incremental-support-and-claim-assessment.md) 记录共享决策。第 18 节区分实施前基线与改造落点。
 
 - [Document Memory Lifecycle](document-memory-lifecycle.md) 只定义 Evidence/Support、动作与 Review 的领域约束，不再重复完整 Sync 流程。

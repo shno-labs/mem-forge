@@ -6,6 +6,11 @@ Date: 2026-09-04
 
 Canonical decision: [ADR 0030](../adr/0030-compile-revision-pinned-evidence-fragments.md)
 
+Proposed refinement (2026-10-01): [ADR 0046](../adr/0046-separate-evidence-correspondence-from-citation-presentation.md)
+separates exact source correspondence from citation rendering and Support reuse.
+It preserves the authority and coverage rules described here; no target behavior
+in that proposal is claimed as implemented by this document.
+
 Document scope: the representation-specific authority algorithm. For the full
 sync lifecycle, unified Support assessment and revision-input policy, use
 [Source sync to Memory](source-sync-to-memory.md). This algorithm governs
