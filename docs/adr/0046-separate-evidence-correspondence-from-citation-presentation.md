@@ -201,11 +201,13 @@ model capacity. Existing complete reading and destructive coverage remain intact
 
 #### Primary and Required selection contract
 
-The Primary must directly carry the claim's central assertion, read with its
-necessary qualifiers. A closing comment, status transition, document title or
-nearby row cannot be the Primary merely because it is recent or discusses the
-same topic. A bare "fixed" comment does not establish a technical rule stated
-only in another ref. Required material cannot supply the entire central
+The Primary must directly support the claim's central assertion, read with its
+necessary qualifiers. Selection is determined by the Evidence's contribution
+to the claim, not its provider, document type, field name, structural position,
+length or recency alone. There is no hierarchy that always prefers a particular
+kind of statement or always excludes another. Explicit corrections, conditions,
+source authority and temporal scope still affect what the content supports.
+Required material cannot supply the entire central
 assertion while the Primary supplies only topical association. Among eligible
 Fragments that directly carry the assertion, prefer the smallest complete
 source selection over a broad structure with unrelated facts; retain a whole
@@ -251,28 +253,50 @@ and uniqueness responsibilities and its existing response schema. It neither
 repairs Primary/Required roles nor trims refs, and it gains no rejection reason
 or stricter rejection rule for redundant refs or imperfect role placement.
 
-The model-facing selection instructions must make the following rules explicit,
-with contrasting examples from the acceptance fixtures:
+The same model-facing selection instructions apply to every supported Source
+and representation. Representation adapters supply exact, readable material and
+eligibility, not provider-specific selection prompts. Instructions state the
+following semantic rules; any illustrative examples are source-neutral and
+show a support relationship, not a shortcut based on document labels:
 
 ```text
 For each durable claim, select its Evidence from the supplied catalog:
-1. Choose the eligible Primary that directly states the central fact or rule.
-   Prefer the precise acceptance statement over a generic closing comment;
-   recency and topical similarity do not establish direct support.
+1. Choose an eligible Primary that most directly supports the claim's central
+   assertion, read with its necessary qualifications. Topical association is
+   insufficient. Do not select or exclude a ref based on its document type,
+   label, location, length or recency alone. Respect explicit corrections,
+   applicable conditions, source authority and the claim's temporal scope.
 2. If the Primary's represented material supports the entire claim without
-   ambiguity, return required_refs: []. Do not add headings just because they
-   are above it, or neighboring rows just because they were read together.
+   ambiguity, return required_refs: []. Being nearby, related or supplied as
+   reading context does not make another ref necessary Evidence.
 3. Add a Required ref only for a distinct condition, scope, exception, time or
    interpretation that the claim needs and the Primary does not already cover.
    Ask whether removing it would make the claim unsupported or ambiguous.
-4. Do not repeat header/scope material already covered by the mapped Primary
-   or another selected ref. Do not cite unrelated exceptions or footnotes.
+4. Do not repeat a contribution already covered by the mapped Primary or
+   another selected ref. Structure type alone does not make a ref necessary.
 5. Preserve genuinely necessary qualifications; there is no Required-count cap.
    Do not shorten the claim, omit durable knowledge or skip a supported claim
    merely to obtain fewer refs.
 6. Keep the catalog's existing role authority: Required-only context cannot
    become Primary. Use only supplied refs and never invent a source quotation.
 ```
+
+The semantic examples below describe neutral Fragments A/B/C. Their roles are
+the same whether the material came from prose, a conversation, a structured
+record or a table, provided the represented meaning and authority are the same:
+
+| Supplied meaning and claim | Selection principle |
+| --- | --- |
+| A states "In mode M, the limit is three attempts"; B merely mentions reviewing that limit; claim repeats A's rule | A is Primary; B adds no necessary contribution |
+| A states "The limit is three attempts"; B establishes that this statement applies only in mode M; claim states the rule for M | A is Primary and B is Required if A's mapped representation does not already carry that scope |
+| A already states the complete rule for M; B repeats the same scope and C concerns another condition not used by the claim | A is Primary; neither B nor C is Required |
+
+Examples must include the reverse of any tempting format heuristic in the
+evaluation corpus: a brief item can carry the actual assertion, and a formally
+named section can be unrelated. Neither brevity nor a section/field label
+determines the role. These evaluation examples need not all be shipped in the
+prompt; keep prompt examples small and generic rather than accumulating
+provider-specific exceptions.
 
 The compiler supplies correctly bounded, readable candidate material and
 visible source-mapped structure so these instructions can be applied. Generic
@@ -295,6 +319,19 @@ unnecessary Required refs, complete qualification and durable-claim coverage
 together. A prompt that reduces ref count by omitting otherwise supported,
 valuable Memories fails acceptance. The before/after replay reports every lost
 expected claim, rather than measuring only ref count among surviving candidates.
+
+Evaluate semantic patterns across multiple supported representations, including
+unstructured text, conversations, structured fields and complete structural
+documents. Compare contribution/role correctness and knowledge coverage, not
+identical ref IDs when representations have different boundaries. Use held-out
+source/representation families and counterexamples so success on the motivating
+table/comment cohort alone cannot pass. Harmless changes in catalog ordering,
+labels, proximity or verbosity must not switch roles without a change in support
+or authority. Genuine changes of meaning or an explicit correction must change
+the selection when appropriate. Use one shared prompt/selection contract; no
+provider-specific prompt route or hidden document-type preference is introduced.
+When several selections are equally valid, accept their contribution/role
+equivalence rather than imposing a single ref ID as the only correct answer.
 
 ### 6. Carry citations through the actual tool boundary
 
@@ -362,6 +399,9 @@ reprocess. This order is not a split lifecycle or partial publication contract.
 | Blank lines, preformatted lists, XML macros and empty status inside a table | Complete table parsed, no swallowed later row, readable status/issue values, exact source mapping |
 | Local row dependency closure cannot be proven | Whole structure retained; no lossy row selection |
 | Generic closing note and an eligible acceptance statement are both in the catalog | Extraction selects the direct statement as Primary and omits the closing note when unnecessary; the durable claim is retained |
+| The brief item carries the actual assertion; a formally labeled or longer item is only related | The direct assertion remains Primary; the motivating example does not become a format preference |
+| Same semantic support relationships in prose, conversations, structured fields and structural documents | Shared prompt yields valid roles and complete claim coverage; evaluation includes held-out families |
+| Catalog order, labels or verbosity change without changing meaning/authority | No unsupported role switch or lost claim; an explicit substantive correction is distinguished from presentation variation |
 | Only Required-only context carries the core assertion | Existing catalog authority retained; no promotion or new admission remediation rule |
 | Duplicate headings, unrelated neighbors or footnotes are in reading context | Extraction/assessment omits them from Required; necessary qualification and claim coverage remain complete |
 | Applicable column names are already in the mapped Primary representation | No duplicate Required header ref; revision-pinned dependency mapping and reuse check remain intact |
@@ -393,3 +433,5 @@ on. Neither readable output nor successful correspondence alone proves a claim.
 - [CommonMark 0.31.2 HTML blocks](https://spec.commonmark.org/0.31.2/#html-blocks): type-6 HTML blocks terminate at a blank line; retained tables are unsafe as an opaque Markdown transport.
 - [Canonical XML 1.1](https://www.w3.org/TR/xml-c14n11/): serialization canonicalization is distinct from application-defined equivalence.
 - [Python difflib](https://docs.python.org/3/library/difflib.html): matching heuristics and tie-breaking are not an occurrence-identity proof.
+- [ALCE citation evaluation](https://aclanthology.org/2023.emnlp-main.398/): evaluate correctness and citation quality over diverse questions and corpora; fewer citations alone do not establish better grounded output.
+- [Lost in the Middle](https://aclanthology.org/2024.tacl-1.9/): relevant-information position affects model behavior, motivating ordering perturbations in the selection evaluation.
