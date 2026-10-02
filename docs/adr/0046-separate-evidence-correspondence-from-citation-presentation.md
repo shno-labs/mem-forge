@@ -56,10 +56,21 @@ reuse check. Presentation text/digest and renderer version remain derivation
 metadata. Digests index candidate matches; a final exact comparison or verified
 native mapping must confirm them. No hash alone proves occurrence identity.
 
-Native input is resolved from the revision-owned stored input of
-[ADR 0041](0041-record-stored-input-on-the-source-unit-revision.md), not a
-Document's latest mutable input. If that historical object has been released or
-cannot be verified, correspondence/resource resolution must report that limit.
+For native text and structured textual fields, the existing immutable
+`SourceObservationRevision.content` owns the retained authoritative coordinate
+text under its declared native profile. Citation-relevant title/field values
+must also belong to that immutable representation, not mutable Document metadata.
+Strict decoding and verified byte-to-Unicode mapping are required where byte
+integrity is claimed. Retain binary authority through revision-pinned,
+content-addressed Artifacts with explicit retention/access checks.
+
+[ADR 0041](0041-record-stored-input-on-the-source-unit-revision.md) retains only
+the current input per Unit and writes its objects in place. It supplies current
+reprocess input, **not historical native snapshot authority**. This supersedes
+the draft's earlier assumption that its revision ID implied immutable history.
+Historical correspondence/resources read the existing immutable Observation
+Revision or pinned Artifact. If that authority is unavailable or unverifiable,
+they report that limit; they never read a Document's latest input as old Evidence.
 Provider-native decoding belongs at the adapter/representation boundary; shared
 Evidence and lifecycle services have no Confluence-specific matching branch.
 
@@ -67,7 +78,8 @@ Evidence and lifecycle services have no Confluence-specific matching branch.
 
 For two effective revisions of the same Source Unit and Observation, an old
 source selection **must correspond** when its content is unchanged and its
-target occurrence is provably unique. Offsets, catalog numbering, revision IDs,
+base and target occurrence are provably unique under the profile's selection
+contract. Offsets, catalog numbering, revision IDs,
 renderer versions, citation whitespace and insertions elsewhere must not break
 that correspondence. This applies independently to Primary and Required parts.
 New Evidence refs still name the new immutable revision; matching does not mean
@@ -88,8 +100,9 @@ Correspondence is established in this order:
    Source Unit and Observation, with existing visibility and coverage guards.
 2. Resolve a source-native stable selector when supplied by the profile; verify
    that it selects exactly one target occurrence and compare the content value.
-3. Otherwise find exact equal content selections within that Observation. A
-   unique candidate establishes correspondence. Multiple equal candidates need
+3. Otherwise find exact equal content selections within that Observation in
+   both snapshots. A unique base and target candidate establish material
+   correspondence. Multiple equal candidates on either side need
    a profile-proven structural mapping, such as unique matched parent and
    neighboring structures. Position alone, a diff algorithm's arbitrary tie,
    a row index or a hash collision is not that proof.
@@ -101,6 +114,23 @@ The guarantee cannot cover indistinguishable duplicate occurrences, unavailable
 historical input, or a selection whose structure actually changed. Those cases
 retain the existing fail-closed behavior. One native ID is not globally trusted
 across different Sources or Observations.
+
+Material correspondence is defined by verified snapshot selections; it is not
+proof that a physical occurrence survived every intermediate edit. Deleting an
+occurrence and inserting an identical copy can yield the same two snapshots as
+moving it. In particular, two identical old occurrences reduced to one target
+must not both be rebound as an occurrence-identity match without native or
+structural disambiguation. Hash indexes only narrow candidates; exact values,
+cardinality, profile compatibility and dependencies provide the proof.
+
+For large documents, parse each immutable input once and index exact source
+content values behind the existing compiler seam. Confirm candidate values and
+cardinality against the complete authoritative representation; an LLM request's
+subset or its truncated display is not the matching universe. Document size
+does not change identity semantics. Declared parse/catalog capacity limits
+remain explicit typed limitations, not permission to omit unmatched material,
+infer removal or split atomic publication. Capacity and semantic coverage need
+their own acceptance evidence; a successful indexed lookup is insufficient.
 
 When a source-content schema changes, compare both snapshots under the same
 target schema, using a verified mapping of the old selection into its immutable
@@ -261,23 +291,36 @@ show a support relationship, not a shortcut based on document labels:
 
 ```text
 For each durable claim, select its Evidence from the supplied catalog:
-1. Choose an eligible Primary that most directly supports the claim's central
+1. Consider every supplied Fragment for independently useful assertions that
+   pass the unchanged durable-knowledge rules. Do not sample representative
+   claims or let a broad summary stand in for independently useful assertions.
+2. Distinguish an explicitly stated rule, intended behavior, permission or
+   prohibition from an observation of one instance. Preserve the supported rule
+   when nearby outcomes are transient; do not turn an instance result or incident
+   into a timeless rule. A label or status alone proves no unstated rule.
+3. Choose an eligible Primary that most directly supports the claim's central
    assertion, read with its necessary qualifications. Topical association is
    insufficient. Do not select or exclude a ref based on its document type,
    label, location, length or recency alone. Respect explicit corrections,
    applicable conditions, source authority and the claim's temporal scope.
-2. If the Primary's represented material supports the entire claim without
+   Prefer the smallest complete direct selection with proven interpretation;
+   retain a broad structure when local completeness is not established.
+4. If the Primary's represented material supports the entire claim without
    ambiguity, return required_refs: []. Being nearby, related or supplied as
    reading context does not make another ref necessary Evidence.
-3. Add a Required ref only for a distinct condition, scope, exception, time or
+5. Add a Required ref only for a distinct condition, scope, exception, time or
    interpretation that the claim needs and the Primary does not already cover.
    Ask whether removing it would make the claim unsupported or ambiguous.
-4. Do not repeat a contribution already covered by the mapped Primary or
+6. Do not repeat a contribution already covered by the mapped Primary or
    another selected ref. Structure type alone does not make a ref necessary.
-5. Preserve genuinely necessary qualifications; there is no Required-count cap.
+7. Preserve genuinely necessary qualifications; there is no Required-count cap.
    Do not shorten the claim, omit durable knowledge or skip a supported claim
    merely to obtain fewer refs.
-6. Keep the catalog's existing role authority: Required-only context cannot
+   Every material assertion, condition and identifier in the emitted claim must
+   be supported by selected refs and their mapped interpretation. Unselected
+   surrounding text cannot repair a missing selected contribution. Do not
+   silently generalize or bundle an independent assertion or instance outcome.
+8. Keep the catalog's existing role authority: Required-only context cannot
    become Primary. Use only supplied refs and never invent a source quotation.
 ```
 
@@ -376,6 +419,13 @@ version.
 Exact historical replay continues using its recorded contract; current reprocess
 uses the new contract. Preserve Plans, failed jobs, Evidence and Support history.
 
+Legacy normalized revisions keep their recorded representation. Missing native
+history cannot be reconstructed from current input or similar rendered text.
+Current whole-Support assessment may establish new Evidence for the fixed claim;
+it does not certify old native correspondence. Historical resources return the
+retained normalized representation with its declared profile, or typed
+unavailability, without manufacturing native selectors.
+
 Implement canonical OSS protocols and SQLite first, then Cloud/HANA and the MCP
 proxy using the same signatures, visibility, resource and routing tests. Cloud
 ADRs record only HANA/hosting consequences and link this shared decision. This
@@ -394,6 +444,7 @@ reprocess. This order is not a split lifecycle or partial publication contract.
 | Revision number, offsets or catalog refs change; selected source content is unique and unchanged | All unchanged Primary/Required parts correspond; no display digest blocks the match |
 | Renderer changes only presentation | Correspondence and source-change authority remain unchanged; Support reuse follows the existing source-change route |
 | Same text in two indistinguishable rows/sections | No arbitrary occurrence match; assessment/ambiguity is preserved |
+| Two identical base occurrences collapse to one target occurrence | No many-to-one occurrence rebind without verified disambiguation |
 | Native key or unique parent/neighbor mapping disambiguates identical text | Deterministic verified occurrence mapping, not first-match behavior |
 | Table header, merged-cell scope, footnote or distant qualifier changes | Row correspondence can remain exact; complete Support still receives the required semantic check |
 | Blank lines, preformatted lists, XML macros and empty status inside a table | Complete table parsed, no swallowed later row, readable status/issue values, exact source mapping |
@@ -412,6 +463,7 @@ reprocess. This order is not a split lifecycle or partial publication contract.
 | Compiler fixes meaning, source schema changes, or legacy table ref splits | Reuse gate prevents blind rebind; fixed claim assessed against complete current revision |
 | Partial projection, tombstone, access change, stale/retried operation | Existing absence proof, visibility, idempotency, commit order and fail-closed semantics hold |
 | Historical resource requested after provider page changes | Pinned old material returned or typed unavailability; latest content never substituted |
+| Current Unit input object is overwritten; native history was never retained | Immutable Observation/Artifact authority only; legacy normalized history remains declared, no fabricated native backfill |
 | Tool excerpt exceeds transport budget | Explicit incompleteness, complete citation identities and pinned resource; no silently dropped Required part |
 | UI, get_memory and get_resource in OSS/SQLite and Cloud/HANA | Same identity/role/visibility/pinned content; adapter SQL and parameters prove scope enforcement |
 | Controlled legacy reprocess | Exact bounded cohort and dry-run load recorded; atomic current Supports and preserved history verified once incrementally |
@@ -419,6 +471,15 @@ reprocess. This order is not a split lifecycle or partial publication contract.
 Before implementation is called complete, audit every row above, record the
 contract/version changes and measured stored-input replay impact, open PRs in
 every changed repository, and deploy/smoke-test Cloud if its runtime changes.
+
+The [real-content offline feasibility evaluation](../research/2026-10-02-evidence-mapping-feasibility.md)
+records controlled revision perturbations and independent blind review. It is
+evidence for this proposal, not runtime, native-history or deployment acceptance.
+Its online Sonnet replay improves direct Primary selection and redundant Required
+refs, but still loses some baseline-covered claims and necessary qualifications.
+The proposed prompt remains unaccepted for release until the actual complete
+ReadingGroup path and those named coverage/qualification cases meet this contract.
+Neither candidate omission nor stricter admission may be used to claim success.
 
 ## Consequences and sources
 
