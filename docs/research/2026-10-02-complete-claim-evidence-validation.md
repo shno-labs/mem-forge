@@ -664,7 +664,79 @@ runner enables the canonical opt-in local failure sink in explicit private
 per-source directories, retaining failed raw structured replies for diagnosis;
 config credentials and transport headers are excluded. Production capture is off.
 
-The online cohort has started; no semantic success, blind acceptance, holdout,
-large/full-Unit, storage/resource/adapter parity or deployment result is asserted.
-Whole original raster delivery remains unchanged so the extraction ownership
-hypothesis is evaluated separately from image-delivery capability.
+The online cohort finished with **four failed source operations and zero
+CandidateDTOs**. Whole original raster delivery remains unchanged so the
+extraction ownership hypothesis is evaluated separately from image-delivery
+capability. This is a failed development cohort, not release acceptance.
+
+## Fifth cohort: complete online accounting and independent blind results
+
+The same CF-bound `sap/anthropic--claude-4.6-sonnet` made 15 logical calls and
+21 physical attempts: one canonical schema-repair retry, five native-to-JSON
+fallbacks and one application mechanical correction. Received usage was
+528,696 input and 216,425 output tokens; billing is not inferred from usage.
+All 87 frozen files remained unchanged. No budget, denominator, image, batching,
+source authority, admission-pruning or product-write change was made.
+
+| Source | Logical / physical | Terminal result | CandidateDTOs |
+| --- | --- | --- | --- |
+| Confluence | 5 / 5 | Final material-difference collection nonempty | 0 |
+| Jira | 2 / 4 | Structured response validation failed | 0 |
+| ADR 0045 | 4 / 5 | Final material-difference collection nonempty | 0 |
+| Original raster | 4 / 7 | Final unknown collection nonempty | 0 |
+
+The Jira raw failure is now retained through the existing opt-in private capture
+facility. Its native response is valid JSON but omits the required nullable
+`source_navigation_hint` in two differences. The fallback and its single repair
+contain invalid sibling-object JSON punctuation. All three complete normally
+below the 32,768 requested output cap (8,609 / 5,825 / 5,832 output tokens).
+This is not evidence of truncation, insufficient capacity, an invalid enum or a
+network exception. The captured request schema matches the frozen schema;
+requested `strict: true` alone does not establish actual upstream enforcement.
+Jira did not return a typed audit or reach semantic revision.
+
+Two fresh reviewers independently inspected the whole original sources, chosen
+citations and latest tentative formations, without producer prompts, audits,
+implementation or peer reviews. All **98 drafts** were evaluated: 56 Confluence,
+5 Jira, 22 ADR and 15 raster. These are diagnostic drafts, not emitted DTOs.
+Their source-only obligation inventories remain separately frozen and are not
+averaged, retuned or replaced by producer counts.
+
+| Reviewer | Frozen obligations: complete / partial / missing / distorted | Drafts passing every quality dimension |
+| --- | --- | --- |
+| A | 69 / 59 / 9 / 14 of 151 | 28 / 98 |
+| B | 53 / 59 / 8 / 16 of 136 | 25 / 98 |
+
+Both reviewers found **44 drafts with unnecessary Required selections** and
+22 without one independently useful central conclusion. They agreed on broad
+parent tables redundantly selected beside complete mapped rows. A credits all
+69 text obligations (44 Confluence, 1 Jira, 24 ADR); B credits 33 Confluence,
+3 Jira and 17 of 18 ADR obligations, with one ADR obligation partial. Therefore
+good text coverage is not evidence of minimal basis or complete draft quality.
+
+The original raster remains a material semantic failure. Both reviewers found
+branch/routing reversals, deleted-content inclusion misread, deduplication and
+destructive-guard errors, and missing authored target-design qualification in
+all 15 raster drafts. A separately credits predicate-only coverage of 117/151
+(48/82 image predicates), preserving 11 partial, 9 missing and 14 distorted;
+this diagnostic does not waive the missing qualification or establish acceptance.
+
+The final raster audit also places a statement explicitly saying there is no
+actual unknown into the blocking unknown collection. This is a reproducible
+auditor classification failure; removing that entry would not correct the
+independently confirmed image misunderstandings. Automatic filtering of audit
+prose or pruning affected Memories is not adopted as a repair.
+
+Private reproducibility receipts (authentic sources/replies remain outside Git):
+
+- Complete accounting: `understanding-v5-online-accounting.json`.
+- Anonymous tentative packet: `2ac3e950df6d03ea5df19e57ef7858bced09307165bb7d5d14000b8086e97cb3`.
+- Complete independent reviews: `blind-tentative-complete-a-review.json/.md`
+  and `blind-tentative-complete-b-review.json/.md`.
+- Jira raw-failure diagnosis: `27f0d66f8485a1d60566a16fd1a51f6716f07337471a4d8b5acb283a6f2bf224`.
+
+The next design decision must separately address extraction-origin basis
+minimality/standalone wording, fallible audit comparison semantics and original
+image delivery/readability. More audit bookkeeping does not prove any of these.
+Untouched holdouts, repeats, large/full-Unit execution, persistence/resources,
+SQLite-HANA/proxy parity, production integration and deployment remain open.
