@@ -1671,3 +1671,86 @@ Independent static review closed the commit and selector completeness findings.
 These checks validate execution safety, not source semantic accuracy, stable
 native correspondence, product cutover or deployment. The CF OSS pin/build and
 full design acceptance remain required.
+
+
+### Complete seven-source canonical-origin online experiment
+
+One frozen experiment ran the committed generic origin rules and seven-field
+schema against the actual CF-bound `sap/anthropic--claude-4.6-sonnet` route. The
+cohort retained six entire real text sources (246,762 Unicode characters), all
+537 refs / 400 ReadingGroups, and original diagram pixels. No source exclusion,
+new batch/cap/deadline policy, initial/best-result fallback or product write was
+introduced. All 96 frozen source/driver/runtime files remained unchanged.
+
+Six operations completed with **332 private DTOs**. The seventh operation failed
+its latest same-model audit after the permitted one whole-origin revision and
+returned zero DTO; its exact latest 12 proposals were supplied to reviewers for
+private diagnosis only. The reviewers saw **all 344 exact latest proposals**,
+not a published or successful subset. The 123,896-character ADR completed with
+170 DTOs; its existing runner used three formation calls and one audit. Across
+seven sources there were 18 logical calls and 18 recorded physical transport
+attempts. One failed large-document operation has unknown token usage, retained
+as unknown rather than filled from estimates. Input delivery/field order are
+execution receipts, not proof of cognitive reading or semantic accuracy.
+
+Two fresh independent reviewers first read all original sources and actual PNG,
+and froze their own criteria before seeing proposals. They did not receive
+producer/audit/runtime outcomes or peer reviews. Both completed all seven
+sources and verified 666 selected citation bindings. A additionally records
+31,207 nested mapped span occurrences, including repeated context mappings;
+these are not counts of unique semantic facts.
+
+Their judgments remain separate:
+
+| Reviewer | Complete pass | Reference-only findings | Other findings |
+| --- | ---: | ---: | --- |
+| A | 172 | 132 | 23 scope/modality/standalone, 2 temporal metadata, 2 direct Primary, 1 unsupported generalization, 1 wrong specific identifier, 4 low-value records, 7 uncertain-kept |
+| B | 227 | 71 | 38 content/date revisions, 1 direct Primary, 4 low-value records, 3 uncertain |
+
+These mutually exclusive overall dispositions are not false-claim counts. A
+finds some Required contribution defect in 140 candidates (including candidates
+with other findings); B records 87 noncontributing selected Required instances.
+The units differ and must not be merged or compared as one score. Their date,
+modality and contribution judgments have material disagreements. Reasonable
+missing optional citations were not penalized; whole tables and the original
+image remained legitimate Primary when no equally complete focused view existed.
+
+Both reviewers identify the same definite incorrect ADR attribution, current
+identity statements missing their explicit removal/history boundary, coordinator
+branch precedence problems and unnecessary Required citations. The wrong
+attribution says another ADR contains identity statements where the immutable
+source says the statements below in the current ADR. The Primary maps exactly
+and is readable; accurate binding therefore does not establish claim accuracy.
+Useful source-knowledge gaps and source-version uncertainties remain separately
+listed in the full reviews. A broad entailed summary does not establish coverage
+of every concrete lasting rule.
+
+**Semantic acceptance is negative.** Clarified generic instructions and field
+order do not suffice to establish this complete design. Clean same-model audits
+still miss independently demonstrated errors. The proposed ADR therefore removes
+the uncalibrated mandatory runtime self-check/revision requirement: it remains a
+private diagnostic, not a new production gate or repeated repair loop. The
+canonical extractor never gained that additional model stage. Fixes still belong
+to origin input/formation and fixed-claim assessment, with no admission trimming
+or suppression remedy. Native immutable input, mapped readable selections,
+complete interpretation/changed-source routing, stable correspondence, full
+product integration and checked CF deployment remain required.
+
+Anthropic's current [evaluation guidance](https://platform.claude.com/docs/en/test-and-evaluate/develop-tests)
+(accessed 2026-10-03) explicitly advises testing LLM-based grading reliability
+before scaling and recognizes ambiguous cases where human assessments differ.
+That guidance supports calibration; the demonstrated negative conclusion above
+comes from this actual model/cohort, not a claim that all self-checks always fail.
+The retained official page SHA256 is
+`0df5de1420bd23940683fc456692f2367fcf4305c7a7f41f0e7a20159697f7c4`.
+
+Reproducible private receipts (no confidential source content committed):
+
+- `understanding-v15-development-freeze.json`: `80c899ff797c68dfaf6d56c7a5aa6e6f9620aae9284acf6a24b1d3098796fab8`.
+- `understanding-v15-online-development-manifest.json`: `adf1b3fdef682fa42fb86118654929d13aaeae925554f45997381f6192e5c887`.
+- `understanding-v15-final-execution-accounting.json`: `85e20775f2b72c3d4971dd81eba0fa59636cc56560f946e3429e8f6f97d60e63`.
+- `blind-v15-source-only-packet.json`: `307083aadcfc74a8885e6bd8d93435b5bea7699adfb9cc03ed953e6449a3b1c6`.
+- `blind-v15-initial-proposals-packet.json`: `1990122f568c9e472f5a6418109f9ed9559ea60f0c2d36836f63796447b910ad`.
+- `blind-v15-complement-proposals-packet.json`: `82d74a2c5237c679952db4c7c898484e06224c674ed3d202f8ef93b790fbd79e`.
+- `blind-v15-full-a-summary.json`: `b71bf37925d8752bc838ac3baa21cc152c4610d5e47d5578b1c054e010aa436f`.
+- `blind-v15-full-b-summary.json`: `c277a28497b7e5f758632e44d5f9097882ce24ae13b0830493c87f9b88cd5099`.

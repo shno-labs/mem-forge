@@ -430,29 +430,32 @@ model-authored clause/context trees nor runs a later wording model. Repeating
 full meanings and modality fields for every ref does not establish Support and
 adds another lossy semantic representation.
 
-Before Candidate construction, a fallible checker receives the complete actual
-source and exact final content/metadata/citations. Check both directions: useful
-source knowledge must survive in final claims, and the claims must be accurate
-with direct readable evidence and relevant citations. A broad entailed summary
-does not prove that concrete source rules were retained. Producer rationales,
-other Memories and navigation hints supply no missing source authority.
+Mechanical validation before Candidate construction checks shape, known refs,
+role eligibility, authentic binding, access and complete execution. It does not
+claim to prove entailment, entity association, atomicity or knowledge recall.
+Existing candidate admission and fixed-claim Support Assessment keep their
+established duties; neither trims citations or rewrites claims to hide extraction
+quality failures.
 
-The checker returns only actionable source-grounded changes and genuinely
-unresolved questions. Findings identify the affected final Memory, actual source
-refs, authored meaning and required correction. Do not output confirmations,
-withdrawn suspicions, notes or missing additional related citations as defects.
-There is no per-criterion audit ontology or classification ledger. Mechanical
-validation checks shape, known IDs, role eligibility, binding and access; it does
-not claim to prove entailment, entity association, atomicity or recall.
+Independent full-source acceptance evaluates both directions: useful source
+knowledge must survive in standalone claims, and actual final words, metadata,
+Primary and Required must faithfully represent the source. Findings distinguish
+source falsehood, lost qualifications/history/modality, unsupported metadata,
+Primary support, Required contribution and reasonable uncertainty. Missing an
+optional related citation alone remains acceptable. Producer rationales, other
+Memories and navigation hints supply no missing source authority.
 
-Permit at most one whole-origin semantic revision followed by a fresh complete
-check. Correct final words and selections together, preserving valid useful
-knowledge; no score-based regeneration, earlier-result fallback or successful
-subset. An unresolved or failed complete operation returns failure and preserves
-incumbent Support. This introduces no per-Memory corrective lifecycle state and
-moves no repair into admission. A clean model check remains fallible, especially
-for visual/semantic errors shared by producer and checker. Independent source-only
-review, repeated real-model runs and untouched holdouts remain necessary.
+The former draft required a same-model semantic checker and one whole-origin
+revision before Candidate construction. The complete real-source experiment
+repeatedly returned clean checks while independent reviewers found material
+errors. It also blocked a complete source result after its permitted revision.
+A clean model self-check is therefore insufficient release evidence. This
+supersedes that runtime-checker requirement: self-checks remain private diagnostic
+experiments, not an added mandatory production stage or an iterative repair loop.
+There is one extraction owner for final words and citations; no per-Memory
+worksheet, corrective lifecycle state, earlier/best output fallback, successful
+subset publication or admission-pruning remedy. Independent calibrated review of
+real untouched sources remains required before accepting an origin change.
 
 #### Complete reading, safety and validation
 
