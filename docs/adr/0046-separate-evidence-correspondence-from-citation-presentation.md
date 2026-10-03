@@ -460,6 +460,21 @@ A complete Unit cannot silently skip an oversized or unread ReadingGroup and
 publish other groups as complete. Use typed unavailability/failure, ordinary
 retry/reprocess and incumbent preservation, without interpreting unread source
 as absence. This supersedes the current partial `ExtractionPlan` behavior.
+Planning returns an existing typed planning failure if any authorized group
+cannot fit. Any failed or missing runtime group, missing planned result, or
+claim whose Evidence remains unresolved after the existing selector correction
+fails the complete operation; no successful subset becomes reusable output.
+Omitting an optional related Required citation is distinct from returning an
+invalid reference that cannot be resolved to authoritative material.
+
+The atomic store boundary also checks the staged computation's terminal reason
+and extraction policy under its existing writer fence. A computationally
+`completed` planning failure is not committable, and completed predecessor-policy
+work cannot bypass recovery invalidation by direct/deferred apply. SQLite and
+Cloud adapters use the same readiness rule and existing persisted fields. This
+adds no lifecycle state and does not reinterpret already applied historical
+results. Support's existing unjudgeable `KEEP` behavior remains unchanged.
+
 For existing multi-request workloads, the Unit owner must carry complete ordered
 source context and resolve distant qualifications across request boundaries;
 request-local rereading does not validate this contract. A one-catalog prototype

@@ -193,12 +193,13 @@ that owns the detail.
   rejected request or an unexpected exception) leaves the Source Unit revision
   uncommitted, and an item that stays
   unjudgeable in isolation (capacity or invalid output) is recorded by its stage
-  and the revision commits. Support records `UNRESOLVED(capacity)` or
+  according to its own completeness contract. Support records `UNRESOLVED(capacity)` or
   `UNRESOLVED(invalid_response)` and KEEP. Change Impact sends the claim to
   Support Assessment. Candidate admission rejects the Candidate for this round.
   Relation consumes the Candidate without ADD and withholds every destructive
-  action of the Unit this round. Claim Extraction skips the ReadingGroup with a diagnostic and extracts the other
-  groups ([Capacity and non-goals](#capacity-and-non-goals)).
+  action of the Unit this round. Claim Extraction now fails the complete Unit
+  without returning a successful subset, as amended by
+  [ADR 0046](0046-separate-evidence-correspondence-from-citation-presentation.md).
 
 Cloud impact: these are shared OSS contracts that Cloud consumes by upgrading its
 OSS pin. They add no configuration, no lifecycle state, no Review field and no
@@ -940,9 +941,8 @@ an automatic `DestructiveValidation` over the affected fixed claims. It verifies
 
 1. authoritative coverage or an explicit tombstone for every affected object;
 2. complete Claim Extraction and Support Assessment manifests with no technical
-   failure or unresolved independent Support (an extraction ReadingGroup skipped
-   because it could not be read alone, for capacity or invalid output, is a
-   recorded coverage fact, not a technical failure);
+   failure or unresolved independent Support; an unread extraction ReadingGroup
+   is a complete extraction failure under ADR 0046, not successful coverage;
 3. resolvable decisive current witnesses and non-stale Support-set hashes;
 4. every `UNSUPPORTED` proposal binds a completed receipt for the whole ordered
    read;
@@ -1049,22 +1049,16 @@ Target (#505): the LLM batch runner measures capacity fit. When an indivisible R
 still exceeds route capability, the outcome depends on the work: a Support work
 item that cannot fit is `UNRESOLVED(capacity)` and KEEP, with a diagnostic naming
 the Source Unit and the ReadingGroup, while other work continues and the Source
-revision may commit. A Claim Extraction ReadingGroup that cannot fit is skipped
-with a diagnostic naming the Source Unit, the ReadingGroup and
-`input_capacity_exceeded`; the other groups are extracted and the revision
-commits. Planning skips a group the capacity fit rejects, and execution skips a
-group the provider still rejects alone, so recovering a derivation plans the
-same skip; the skipped count is reported in the extraction statistics. A
-ReadingGroup whose extraction output stays invalid when read alone, after the
-one correction, is skipped the same way with the reason `invalid_response`. Because an
-update extracts only its changed structures, the skipped group's knowledge is
-extracted again only when that structure changes again. A skipped group is a
-recorded coverage fact, not a technical failure of the extraction manifest, so it
-does not block a destructive action that
-[DestructiveValidation](#automated-destructive-validation) otherwise admits.
-Cloud impact: capacity is measured from LiteLLM metadata and the existing
-`MEMFORGE_LLM_MAX_*` caps for Cloud's `sap/` routes; no configuration is added,
-and the skip is shared OSS extraction code with no HANA change.
+revision may commit. ADR 0046 supersedes the former Claim Extraction skip
+policy: an authorized group that cannot fit alone, fails at runtime, or produces
+claims whose Evidence remains unresolved prevents the complete Unit commit.
+Successful sibling work may be reused by the existing durable retry path, but
+must not be published as a complete subset. Planning failures retain their
+existing terminal reason; computational completion does not authorize lifecycle
+apply. SQLite and HANA enforce the same terminal-reason/current-contract guard
+under their existing commit fence, without a schema migration or new state.
+Cloud still consumes the same route limits and shared OSS runner classification;
+its HANA adapter applies the shared commit readiness rule with the OSS pin.
 
 This amendment deliberately does not add semantic Evidence retrieval, manual
 confirmation, a separate candidate-to-candidate deduplication pass, permanent Fragment
@@ -1518,11 +1512,12 @@ item, read with its reading context demoted to Required-only. The runner packs
 items into requests by actual capacity; each planned request is staged as one
 derivation batch and, when executed, is still split in half on a capacity or
 deadline failure, or on output the client cannot read even after its one
-repair. An item that alone exceeds capacity, or whose output alone stays
-invalid, is skipped with a diagnostic ([Capacity and non-goals](#capacity-and-non-goals)). Claim Extraction and Support Assessment share
+repair. Under the ADR 0046 amendment, any extraction item that cannot complete
+fails the complete Unit. Claim Extraction and Support Assessment share
 catalog, budget and durable execution primitives, while retaining distinct
 semantic duties. Cloud impact: extraction scope is shared OSS
-planning code; Cloud upgrades the pin with no configuration or HANA change.
+planning code; Cloud upgrades the pin and enforces the same derivation readiness
+rule in HANA, with no new configuration or schema.
 
 ## Local unresolved claim relationships
 

@@ -17,7 +17,9 @@ from memforge.llm.structured import (
 )
 from memforge.pipeline.extraction_requests import plan_extraction_requests
 from memforge.pipeline.memory_extractor import MemoryExtractor
-from memforge.pipeline.projection_context import ExtractionAuthority, plan_projection_evidence_work
+from memforge.pipeline.projection_context import (
+    ExtractionAuthority, ProjectionEvidencePlanningFailure, ProjectionEvidencePlanningFailureCode, plan_projection_evidence_work,
+)
 from memforge.pipeline.revision_assessment import RevisionAssessmentContext
 from memforge.pipeline.source_projection_adapters import project_source_item
 from tests.test_projection_context import _committed_snapshot, _confluence_projection, _jira_projection, _requests
@@ -81,20 +83,14 @@ def test_large_complete_table_reaches_actual_request_budget(representation, rows
             max_input_tokens=window, context_window_tokens=window, max_output_tokens=1024))
         extractor = MemoryExtractor(model=client.config.model, structured_llm_client=client)
         if window == 8_000:
-            # A ReadingGroup that alone exceeds the route is skipped with a diagnostic, never truncated;
-            # the other groups are still planned.
+            # One unfit group refuses the entire authority; no successful subset.
             with caplog.at_level("WARNING", logger="memforge.pipeline.memory_extractor"):
                 extraction = extraction_plan(projection, whole(projection), extractor=extractor)
-            [skipped] = extraction.skipped_reading_groups
-            assert skipped.startswith(body_id(projection) + ":")
-            planned = [f.presentation_text.strip() for f in primary(extraction.requests)]
-            assert {"Before the table.", "After the table."} <= set(planned)
-            assert not any("table" in f.fragment_type for f in primary(extraction.requests))
-            source_unit_id = projection.source_units[0].id
-            assert (
-                f"extraction_reading_group_skipped source_unit_id={source_unit_id} reading_group={skipped} "
-                f"reason={INPUT_CAPACITY_EXCEEDED}"
-            ) in caplog.text
+            assert isinstance(extraction, ProjectionEvidencePlanningFailure)
+            assert extraction.code is ProjectionEvidencePlanningFailureCode.EXTRACTION_INPUT_CAPACITY_EXCEEDED
+            assert extraction.authorized_structure_count >= 3
+            assert "extraction_reading_group_unread" in caplog.text
+            assert f"reason={INPUT_CAPACITY_EXCEEDED}" in caplog.text
             continue
         requests = plan(projection, whole(projection), extractor=extractor)
         tables = [f for f in primary(requests) if "table" in f.fragment_type]
@@ -254,7 +250,7 @@ async def test_a_multi_item_request_that_times_out_is_halved_and_every_item_comp
 
 
 @pytest.mark.asyncio
-async def test_a_reading_group_the_provider_rejects_alone_is_skipped_and_the_others_are_kept(caplog):
+async def test_a_reading_group_the_provider_rejects_alone_fails_complete_work():
     projection = _projection(
         primary_content="Rule one applies.\n\nRule two is far too large.\n", context_content="Country: US.\n",
     )
@@ -276,22 +272,18 @@ async def test_a_reading_group_the_provider_rejects_alone_is_skipped_and_the_oth
 
     extractor = MemoryExtractor(model="fixture", max_tokens=8192, structured_llm_client=OverflowingClient(limit=40000))
     [request] = plan(projection, ExtractionAuthority({body_id(projection): None}), extractor=extractor)
-    with caplog.at_level("WARNING", logger="memforge.pipeline.memory_extractor"):
-        result = await extractor.extract_projection_fragment_memories(
-            request.catalog, source_type="confluence", revision_context=context,
-        )
+    result = await extractor.extract_projection_fragment_memories(
+        request.catalog, source_type="confluence", revision_context=context,
+    )
 
-    assert result.error_type is None
-    assert [memory.content for memory in result.memories] == ["Rule one applies."]
-    assert result.metadata["skipped_reading_group_count"] == 1
-    assert (
-        f"extraction_reading_group_skipped source_unit_id={projection.source_units[0].id} "
-        f"reading_group={body_id(projection)}:"
-    ) in caplog.text
+    assert result.error_type == "structured_llm_error"
+    assert result.memories == []
+    assert result.metadata["failed_reading_group_count"] == 1
+    assert result.metadata["safe_error_code"] == INPUT_CAPACITY_EXCEEDED
 
 
 @pytest.mark.asyncio
-async def test_a_reading_group_whose_output_stays_invalid_is_skipped_and_the_others_are_kept(caplog):
+async def test_a_reading_group_whose_output_stays_invalid_fails_complete_work():
     projection = _projection(
         primary_content="Rule one applies.\n\nRule two confuses the model.\n", context_content="Country: US.\n",
     )
@@ -313,16 +305,14 @@ async def test_a_reading_group_whose_output_stays_invalid_is_skipped_and_the_oth
 
     extractor = MemoryExtractor(model="fixture", max_tokens=8192, structured_llm_client=MalformedClient(limit=40000))
     [request] = plan(projection, ExtractionAuthority({body_id(projection): None}), extractor=extractor)
-    with caplog.at_level("WARNING", logger="memforge.pipeline.memory_extractor"):
-        result = await extractor.extract_projection_fragment_memories(
-            request.catalog, source_type="confluence", revision_context=context,
-        )
+    result = await extractor.extract_projection_fragment_memories(
+        request.catalog, source_type="confluence", revision_context=context,
+    )
 
-    assert result.error_type is None
-    assert [memory.content for memory in result.memories] == ["Rule one applies."]
-    assert result.metadata["skipped_reading_group_count"] == 1
-    [record] = [r.getMessage() for r in caplog.records if r.getMessage().startswith("extraction_reading_group_skipped")]
-    assert f"reading_group={body_id(projection)}:" in record and record.endswith("reason=invalid_response")
+    assert result.error_type == "structured_llm_error"
+    assert result.memories == []
+    assert result.metadata["failed_reading_group_count"] == 1
+    assert result.metadata["safe_error_code"] == "ValueError"
 
 
 def _updated_confluence(initial, body):

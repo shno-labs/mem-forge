@@ -2456,6 +2456,13 @@ async def test_atomic_projection_lifecycle_commits_document_and_derivation(
         )
     ).attempt
     assert attempt.context.document == staged_document
+    # Stored completed work from the previous extraction policy cannot bypass
+    # recovery invalidation by going directly to the atomic commit boundary.
+    await db.db.execute(
+        "UPDATE source_derivation_attempts SET extraction_contract_version = ? WHERE id = ?",
+        ("projection-extraction-v12", attempt.id),
+    )
+    await db.db.commit()
     delta = second.deltas[0]
     scope = ReconciliationScope(
         id="scope-derivation-atomic",
@@ -2484,6 +2491,19 @@ async def test_atomic_projection_lifecycle_commits_document_and_derivation(
             access_context_hash="workspace-eng",
         ),
     )
+
+    with pytest.raises(ValueError, match="not ready for lifecycle commit"):
+        await db.apply_source_projection_lifecycle(
+            second, plan, document=staged_document, derivation_id=attempt.id,
+            derivation_context_identity_hash=attempt.context_identity_hash,
+        )
+    assert await db.get_document("confluence-123") == original_document
+    assert (await db.get_current_source_unit_revision(first.source_units[0].id)).id == first.source_unit_revisions[0].id
+    await db.db.execute(
+        "UPDATE source_derivation_attempts SET extraction_contract_version = ? WHERE id = ?",
+        (attempt.extraction_contract_version, attempt.id),
+    )
+    await db.db.commit()
 
     # Another writer advancing the Unit after planning must not be hidden by
     # record_source_projection() advancing it to the target before validation.
@@ -2895,7 +2915,14 @@ class _OversizedGroupExtractor(NoopMemoryExtractor):
 
 
 @pytest.mark.asyncio
-async def test_a_reading_group_beyond_capacity_is_skipped_and_the_derivation_completes(db: Database) -> None:
+async def test_a_reading_group_beyond_capacity_refuses_the_unit_and_preserves_support(db: Database) -> None:
+    base = _projection(run_id="projection-capacity-base", body="Rule one applies.\n")
+    await db.record_source_projection(base)
+    incumbent = await _seed_exact_incumbent_support(
+        db, projection=base, memory_id="mem-capacity", memory_content="Rule one applies.",
+    )
+    before_support = await active_support_evidence(db, incumbent.id)
+    before_projection = await db.get_current_source_unit_projection(base.source_units[0].id)
     body = f"Rule one applies.\n\n{_OversizedGroupExtractor.OVERSIZED}\n\nRule three applies.\n"
     projection = _projection(run_id="projection-extraction-capacity", body=body)
     document = await db.get_document("confluence-123")
@@ -2932,19 +2959,53 @@ async def test_a_reading_group_beyond_capacity_is_skipped_and_the_derivation_com
 
     first = await SourceUnitDeriver(db).derive(request())
 
-    assert first.extraction.error_type is None
+    assert first.extraction.error_type == "evidence_authority_planning_failed"
     assert first.derivation.status == "completed"
-    assert first.extraction.metadata["skipped_reading_group_count"] == 1
-    assert "Rule one applies." in read and "Rule three applies." in read
-    assert _OversizedGroupExtractor.OVERSIZED not in read
+    assert first.derivation.terminal_reason_code == "EXTRACTION_INPUT_CAPACITY_EXCEEDED"
+    assert first.derivation.batches == () and read == []
+    assert first.extraction.memories == []
+    assert first.extraction.metadata["lifecycle_mutation_skipped"]
+    assert await active_support_evidence(db, incumbent.id) == before_support
+    assert await db.get_current_source_unit_projection(base.source_units[0].id) == before_projection
 
-    # Recovering the derivation plans the same skip and reuses every completed batch.
+    # A direct/deferred commit cannot bypass the sync failure gate just because
+    # the empty failed computation is durably marked completed.
+    delta = projection.deltas[0]
+    plan = build_lifecycle_plan(
+        plan_id="plan-capacity-cannot-commit",
+        scope=ReconciliationScope(
+            id="scope-capacity-cannot-commit", source_id=projection.source_id,
+            source_unit_id=delta.source_unit_id,
+            base_unit_revision_id=delta.previous_unit_revision_id,
+            target_unit_revision_id=delta.current_unit_revision_id,
+        ),
+        gate_state=LifecycleGateState.GATED, operations=(), incumbents={},
+        source_support_unit_ids={}, all_active_support_unit_ids={}, support_set_hashes={},
+        observation_revision_ids=tuple(revision.id for revision in projection.observation_revisions),
+        defaults=NewMemoryDefaults(
+            visibility="workspace", owner_user_id=None, project_key="ENG",
+            repo_identifier=None, doc_id="confluence-123", source_type="confluence",
+            access_context_hash="access-extraction-capacity",
+        ),
+    )
+    with pytest.raises(ValueError, match="not ready for lifecycle commit"):
+        await db.apply_source_projection_lifecycle(
+            projection, plan, document=document, derivation_id=first.derivation.id,
+            derivation_context_identity_hash=first.derivation.context_identity_hash,
+        )
+    assert await active_support_evidence(db, incumbent.id) == before_support
+    assert await db.get_current_source_unit_projection(base.source_units[0].id) == before_projection
+
+    # The deterministic failed plan replays exactly, with no inference or commit.
     read.clear()
     again = await SourceUnitDeriver(db).derive(request())
 
     assert again.derivation.id == first.derivation.id
     assert again.executed_batch_count == 0 and read == []
-    assert again.extraction.metadata["skipped_reading_group_count"] == 1
+    assert again.extraction.error_type == first.extraction.error_type
+    assert again.derivation.terminal_reason_code == first.derivation.terminal_reason_code
+    assert await active_support_evidence(db, incumbent.id) == before_support
+    assert await db.get_current_source_unit_projection(base.source_units[0].id) == before_projection
 
 
 @pytest.mark.asyncio

@@ -13,7 +13,6 @@ from memforge.config import DEFAULT_MEMORY_EXTRACTION_MAX_TOKENS
 from memforge.evals.agent_evaluation import QualitySignal, record_quality_signal
 from memforge.llm.batch_runner import ItemFailure, ItemTask, LlmBatchRunner, LlmRequest
 from memforge.llm.structured import (
-    INPUT_CAPACITY_EXCEEDED,
     LiteLlmStructuredClient,
     ProjectionFragmentMemoryExtractionResponse,
     StructuredLlmConfig,
@@ -117,16 +116,16 @@ class ExtractionReading:
             doc_type=doc_type,
         )
 
-    def report_skipped(self, reasons: Mapping[str, str]) -> tuple[str, ...]:
+    def report_unread(self, reasons: Mapping[str, str]) -> tuple[str, ...]:
         """Report the items that cannot be read even alone, each with its reason; return their labels in reading order."""
         source_unit_id = self.context.projection.source_units[0].id
-        skipped = tuple((reading_group_label(group), reasons[item_id]) for item_id, group in self.items.items() if item_id in reasons)
-        for label, reason in skipped:
+        unread = tuple((reading_group_label(group), reasons[item_id]) for item_id, group in self.items.items() if item_id in reasons)
+        for label, reason in unread:
             logger.warning(
-                "extraction_reading_group_skipped source_unit_id=%s reading_group=%s reason=%s",
+                "extraction_reading_group_unread source_unit_id=%s reading_group=%s reason=%s",
                 source_unit_id, label, reason,
             )
-        return tuple(label for label, _reason in skipped)
+        return tuple(label for label, _reason in unread)
 
     def catalog_for(self, item_ids) -> ProjectionFragmentCatalog:
         """The catalog of one request that reads these items."""
@@ -228,8 +227,8 @@ class MemoryExtractor:
         Each ReadingGroup that holds authorized Primary is one runner item, so a
         request that times out, exceeds capacity or keeps returning invalid
         output is halved and resent. A ReadingGroup that alone exceeds the
-        route's capacity, or whose output alone stays invalid, is skipped with a
-        diagnostic, and the other groups' Candidates are kept.
+        route's capacity, or whose output alone stays invalid, fails the complete
+        extraction work; no successful subset is returned.
         """
 
         if not self.structured_llm_client:
@@ -288,31 +287,34 @@ class MemoryExtractor:
             return MemoryExtractionResult(
                 error_type="unexpected_error", error=str(error), metadata={**metrics, **elapsed()},
             )
-        # An item that cannot be read even alone is skipped; a transient failure fails the work.
+        if set(outcomes) != set(reading.items):
+            return MemoryExtractionResult(
+                error_type="projection_extraction_incomplete",
+                error="The authorized ReadingGroups were not completely accounted for.",
+                metadata={**metrics, **elapsed(), "safe_error_code": "EXTRACTION_WORK_INCOMPLETE"},
+            )
+        # The runner's classification still belongs to its task. Extraction
+        # requires every authorized group; Support's unjudgeable KEEP is unchanged.
         failures = {item_id: outcome for item_id, outcome in outcomes.items() if isinstance(outcome, ItemFailure)}
-        failure = next((outcome for outcome in failures.values() if not outcome.unjudgeable), None)
+        failure = next(iter(failures.values()), None)
         if failure is not None:
             error = failure.error
             validation_fields = error.validation_fields if isinstance(error, StructuredLlmError) else ()
             return MemoryExtractionResult(
                 error_type="structured_llm_error",
-                error=str(error),
+                error=str(error) if error is not None else "An authorized ReadingGroup could not be processed.",
                 metadata={
                     **metrics,
                     **elapsed(),
                     "safe_error_code": failure.error_code,
+                    "failed_reading_group_count": len(failures),
                     "safe_validation_fields": [
                         {"location": location, "type": rule_type}
                         for location, rule_type in validation_fields
                     ],
                 },
             )
-        skipped = reading.report_skipped({
-            item_id: INPUT_CAPACITY_EXCEEDED if outcome.category == "capacity_exceeded" else outcome.category
-            for item_id, outcome in failures.items()
-        })
-
-        responses = dict(chunks[0] for item_id, chunks in outcomes.items() if item_id not in failures)
+        responses = dict(chunks[0] for chunks in outcomes.values())
         memories: list[RawMemory] = []
         resolution = _SelectionResolution()
         image_count = image_bytes = 0
@@ -331,19 +333,23 @@ class MemoryExtractor:
                 prompt_hash=hashlib.sha256(request.prompt.encode("utf-8")).hexdigest(),
                 returned=len(response.memories),
             ))
-        return MemoryExtractionResult(
-            memories=memories,
-            metadata={
-                **metrics,
-                **elapsed(),
-                "structured_llm_calls": runner.stats.calls + resolution.correction["selector_correction_calls"],
-                "extraction_request_count": len(responses),
-                "skipped_reading_group_count": len(skipped),
-                "image_count": image_count,
-                "image_bytes": image_bytes,
-                **resolution.metrics(),
-            },
-        )
+        metadata = {
+            **metrics,
+            **elapsed(),
+            "structured_llm_calls": runner.stats.calls + resolution.correction["selector_correction_calls"],
+            "extraction_request_count": len(responses),
+            "skipped_reading_group_count": 0,
+            "image_count": image_count,
+            "image_bytes": image_bytes,
+            **resolution.metrics(),
+        }
+        if resolution.returned != resolution.resolved:
+            return MemoryExtractionResult(
+                error_type="projection_extraction_incomplete",
+                error="Some extracted claims could not be bound to authentic Evidence.",
+                metadata={**metadata, "safe_error_code": "EXTRACTION_EVIDENCE_UNRESOLVED"},
+            )
+        return MemoryExtractionResult(memories=memories, metadata=metadata)
 
 
 class _SelectionResolution:

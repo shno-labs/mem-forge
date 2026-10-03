@@ -1626,3 +1626,48 @@ Required selections cannot be declared fixed by containment or passing fixture
 tests. Full-source retention, actual claim/metadata accuracy, useful Required
 contributions, immutable native history/correspondence, resources, Cloud parity
 and deployment remain required; the design is not accepted for release.
+
+
+### Complete Source Unit failure boundary
+
+The canonical execution contract is now extraction v13. Planning any unfit
+ReadingGroup returns the existing typed planning failure before inference or
+batch staging. Every failed/missing runtime group, missing planned result,
+reported skip, or unresolved selector after the existing one-time mechanical
+correction fails the complete operation. No successful subset becomes reusable
+output. Complete empty candidate output remains valid; best-effort optional
+Required recall is unchanged. Existing Support unjudgeable KEEP is unchanged.
+
+A zero-batch failed computation can have durable status `completed` under the
+existing staging contract. SQLite and HANA now read terminal reason and
+extraction contract inside their existing writer fence, before any Document,
+Projection or lifecycle mutation, and invoke the same canonical readiness rule.
+A terminal failed or predecessor-policy completed attempt cannot bypass the
+normal sync/recovery failure gate through direct/deferred commit. Applied
+historical results are not forced to satisfy the new policy, and no new store
+field, migration, retry state or lifecycle record is introduced.
+
+Actual OSS verification completed with **344 passed in 33.51 seconds**:
+
+```text
+/Users/i551096/Dev/memforge-cloud/.venv/bin/python -m pytest tests/test_extraction_contract.py tests/test_extraction_requests.py tests/test_projection_fragments.py tests/test_projected_lifecycle_integration.py tests/test_derivation_work.py tests/test_revision_assessment.py tests/test_structured_llm.py tests/test_revision_work.py tests/test_candidate_admission.py -q
+```
+
+Historical/persisted-input/recovery boundaries completed with **48 passed in
+17.00 seconds** (`test_source_projection_store.py`, `test_source_unit_input.py`,
+`test_claim_recovery.py`). Clean Cloud HANA boundary tests completed with **4
+passed in 4.39 seconds**, followed by the complete HANA workspace suite with
+**489 passed in 20.21 seconds**. All Cloud package source directories and the
+canonical OSS source directory were selected explicitly; an initial collection
+attempt with only the HANA directory accidentally imported the old Cloud core
+checkout and failed. That environment error was corrected without an adapter
+fallback or source patch.
+
+Tests exercise same-input failure replay, no model call on planning failure,
+incumbent Support and current Projection preservation, direct commit rejection,
+old completed-work rejection, repaired/invalid/omitted selector responses,
+corrected fixed words, typed error retention and HANA query fields/parameters.
+Independent static review closed the commit and selector completeness findings.
+These checks validate execution safety, not source semantic accuracy, stable
+native correspondence, product cutover or deployment. The CF OSS pin/build and
+full design acceptance remain required.

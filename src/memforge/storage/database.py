@@ -238,6 +238,7 @@ from memforge.source_derivation import (
     memory_extraction_output_payload,
     memory_extraction_result_from_output_payload,
     output_payload_hash,
+    require_source_derivation_ready_for_commit,
     safe_derivation_error,
     source_derivation_document_identity_hash,
     source_derivation_projection_identity_hash,
@@ -9125,7 +9126,9 @@ class Database:
                                   target_unit_revision_id, status,
                                   projection_identity_hash,
                                   context_payload_json,
-                                  context_identity_hash
+                                  context_identity_hash,
+                                  extraction_contract_version,
+                                  terminal_reason_code
                            FROM source_derivation_attempts
                            WHERE id = ?""",
                         (derivation_id,),
@@ -9144,6 +9147,11 @@ class Database:
                         }
                     ):
                         raise ValueError("Source derivation is not ready for lifecycle commit")
+                    require_source_derivation_ready_for_commit(
+                        status=derivation["status"],
+                        extraction_contract_version=derivation["extraction_contract_version"],
+                        terminal_reason_code=derivation["terminal_reason_code"],
+                    )
                     if derivation["projection_identity_hash"] != (
                         source_derivation_projection_identity_hash(projection)
                     ):

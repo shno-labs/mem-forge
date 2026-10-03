@@ -77,12 +77,10 @@ class ExtractionRequest:
 
 @dataclass(frozen=True, slots=True)
 class ExtractionPlan:
-    """The Claim Extraction requests of one authority, and the ReadingGroups no request can read.
+    """Complete Claim Extraction requests for one authority.
 
-    A ReadingGroup that with its reading context alone exceeds the route's
-    capacity is skipped with a diagnostic; the other groups are extracted and
-    the revision commits. Its knowledge is extracted again only when its
-    structure changes again.
+    Unread ReadingGroups make the entire plan noncommittable. They never
+    authorize publishing the other requests as a successful Source Unit.
     """
 
     requests: tuple[ExtractionRequest, ...]
@@ -97,6 +95,7 @@ class ProjectionEvidencePlanningFailureCode(str, Enum):
     EVIDENCE_WORK_IDENTITY_INCOMPLETE = "EVIDENCE_WORK_IDENTITY_INCOMPLETE"
     REPRESENTATION_PROFILE_UNSUPPORTED = "REPRESENTATION_PROFILE_UNSUPPORTED"
     REPROCESS_AUTHORIZATION_MISSING = "REPROCESS_AUTHORIZATION_MISSING"
+    EXTRACTION_INPUT_CAPACITY_EXCEEDED = "EXTRACTION_INPUT_CAPACITY_EXCEEDED"
 
 
 @dataclass(frozen=True, slots=True)
