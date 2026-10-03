@@ -968,3 +968,85 @@ anonymous `blind-v8-tentative-packet.json` SHA256
 SHA256 `dca36039aaa973129ee0dc176a7fec840ca83c6f821824e632cc12a9a578bdf9`.
 The full extraction design remains unaccepted; no production write, deploy,
 reprocess, inventory reduction or new deferred scope follows from this result.
+
+### V9 complete online operation and independent semantic findings
+
+The compact audit now returns one actionable comparison per needed change,
+without duplicating whole meaning/modality records. Public formation fields,
+direct roles, whole-Unit closure and the one origin revision remain unchanged.
+Source-neutral instructions check each asserted relationship and preserve authored
+modality in every independently returned Memory. Original-Artifact views precede
+the query under the versioned delivery profile; all seven bodies and native
+bindings are unchanged. This changes transport ordering, not source authority.
+
+All four operations finished on the CF-bound online
+`sap/anthropic--claude-4.6-sonnet`, requesting 32,768 output tokens per stage.
+Eight logical calls made eight native physical attempts; no retries, fallbacks,
+mechanical correction or origin revision occurred. Usage: 187,579 input and
+20,439 output tokens. All 131 frozen files remained unchanged. The resulting
+private DTOs number 56 Confluence, seven Jira, 25 ADR 0045 and 18 raster, totaling
+106. There were no product writes. Clean model audits did not establish acceptance.
+
+Both fresh reviewers received the same anonymous full-source/output packet and
+their previously fixed independent inventories, plus original PNG pixels. Neither
+received prompts, operation outcomes, earlier/peer reviews or producer views.
+All 106 outputs were individually assessed and all original hashes remained
+unchanged. Both accepted all 106 Primary citations as eligible, authentic,
+readable and direct under the policy allowing an original whole image when no
+equally complete authorized focused alternative exists. All 139 catalog raw
+identities and 138 text-display identities matched. The 12 supplied Required
+assignments contain ten contributing/two redundant according to A and eleven
+contributing/one redundant according to B; neither found a wrong, misleading or
+irrelevant supplied Required. Omitted related citations are best-effort, with no
+exhaustive recall denominator or 100-percent requirement.
+
+| Reviewer | All candidate dispositions | Fixed text knowledge | Fixed original pixels |
+| --- | --- | --- | --- |
+| A | 82 pass, 17 fail, 7 uncertain / 106 | 69 covered / 69 | 79 covered, 2 partial, 1 contradicted / 82 |
+| B | 90 pass, 13 revise, 2 uncertain, 1 low-value / 106 | 50 covered, 3 partial, 1 uncertain / 54 | 78 covered, 2 partial, 1 contradicted, 1 uncertain / 82 |
+
+A separately classifies nine failed outputs as memory-value judgments, rather
+than false source content. B distinguishes full-source support from selected
+citation contribution and whether a single Primary covers an entire compound
+claim by itself; these are not interchangeable pass counts. Differences in
+inventory granularity, value and uncertainty are retained, not averaged away.
+
+Both find persistent conflict incorrectly routed to execution failure rather
+than review, admitted ADD generalized to every admitted item, an observation
+date promoted to an effective boundary, and an unresolved scenario antecedent.
+Other source-grounded findings include a proposed fix promoted to completed
+repair, a source-read operation rewritten as determining a value, overbroad
+absence/error execution boundaries, and two independently changeable conventions
+combined into one Memory. These are content/metadata defects, not missing-extra-
+Required recall. Citation readability and improved role selection therefore pass
+important diagnostic checks, but the complete extraction design still fails
+semantic acceptance. No unsafe draft pruning or audit filtering was performed.
+
+Private receipts: `understanding-v9-online-accounting.json` SHA256
+`e5c4041d3a7653d3e8b44713c0a2332a2606668c72ca3a5dd72bc176d0347e5d`;
+`understanding-v9-online-development-manifest.json` SHA256
+`431363c0c98d936345f1afcc00194c7fd96734f02f0280f9eb8e061a3ce4f18b`;
+`understanding-v9-development-freeze.json`;
+`blind-v9-tentative-packet.json` SHA256
+`a7e030451c4467709e4f9a9685b6551ca93964746d4ecdd08ea80dd5fb4d1a5d`;
+`blind-v9-a-review.json/.md`, JSON SHA256
+`0c5808b237a6db968d9704f51e6efa039a8abe602320b380ffc1b706844fcc0b`;
+`blind-v9-b-review.json/.md`, JSON SHA256
+`36ec80a77500cc42ef0ec5ab44b81cd677d4c8b287700f600e134a852ecfc3d8`.
+Offline origin, Artifact and root preflights passed 17, 14 and seven finite
+controls respectively, without provider calls. Current delivery/client tests
+passed 17 checks; these mechanical results do not certify source understanding.
+
+### Deferred model image capability
+
+[Issue 497](https://github.com/shno-labs/mem-forge/issues/497) records the user's
+explicitly deferred configured-model image capability work, including both OSS
+and Cloud. It is outside the current version's acceptance requirements.
+A bounded public-client probe used installed model metadata identifying
+`openai/gpt-3.5-turbo` as lacking vision: format/capacity admission still passed
+and an injected transport received one image block. This was an offline
+reproduction with zero real provider calls and no product writes, not an online
+provider failure or an implementation of the deferred feature. Artifact
+eligibility and byte/token checks do not establish model image-input capability.
+The receipt `model_image_capability_current_gap.json` has SHA256
+`1657f981c7457cd039fac0b91aafa9d6ac0a03845f27523dd9ea6514f07bbe1c`.

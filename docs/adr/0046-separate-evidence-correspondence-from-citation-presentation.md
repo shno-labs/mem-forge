@@ -444,6 +444,20 @@ companion. Provider/format syntax belongs to its adapter; model image-delivery
 limits belong to the LLM boundary. Multiple delivery views of one image remain
 views of one Evidence selection, never new refs or authoritative source content.
 
+An Artifact citation does not require every configured or consuming LLM to be
+multimodal. `get_memory` returns the readable claim and revision-pinned citation
+identity/resource, not unsolicited image bytes or transport detail views.
+Human inspection and model interpretation are separate uses of that resource.
+Text-only extraction and retrieval must remain usable with text-only models.
+
+Configured-model image-input capability checking is deferred by the user to
+[issue 497](https://github.com/shno-labs/mem-forge/issues/497), outside this
+version's completion contract. That LLM-boundary follow-up must preserve source
+adapter ownership and existing Support when pixels cannot be read. Current
+online image acceptance uses the explicitly verified Sonnet route; it does not
+certify arbitrary configured models. Citation identity/readability and ordinary
+text use remain separate from optional image interpretation.
+
 Phase-specific inputs and renderers make ownership explicit without appending
 competing legacy response instructions. Compiler containers faithfully describe
 actual structures; a table is not labeled as a list to reuse a packing flag.
