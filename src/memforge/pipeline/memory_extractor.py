@@ -22,6 +22,7 @@ from memforge.llm.structured import (
 from memforge.models import MemoryExtractionResult, RawMemory
 from memforge.pipeline.extraction_contract import (
     DURABLE_MEMORY_QUALITY_RULES,
+    MEMORY_CLAIM_EVIDENCE_RULES,
     PROJECTION_EXTRACTION_CONTRACT_VERSION,
 )
 from memforge.pipeline.fragment_selector_correction import (
@@ -56,26 +57,20 @@ Preserve table column/row associations, list order, code indentation and explici
 A table ref contains the complete table; read its headers before asserting a cell value.
 A figure preserves its image link and caption together. Only a supplied image Artifact
 ref proves image contents; a caption or URL alone never proves unseen image details.
-Canonical fromString is the previous value; toString is the new value. Select the
-field-name/time refs when needed to state the change accurately.
-Structural groups describe ancestry, not additional Evidence. When a heading defines claim scope, select its current ref as Required.
+Use the adapter's format_interpretation to read source-specific field meanings.
+Structural groups describe ancestry, not additional Evidence. Authored scope must
+remain in the claim; select its ref only when it adds relevant evidence.
 Only the following application-owned Evidence Fragments may support a Memory:
 <evidence_fragment_catalog digest="{catalog_digest}">
 {fragment_catalog}
 </evidence_fragment_catalog>
 
-Each Memory must contain exactly:
-- "content": one self-contained durable claim
-- "memory_type": one of "fact", "decision", "convention", "procedure"
-- "entity_refs": entity names copied from supporting Fragments
-- "valid_from": YYYY-MM-DD or null
-- "valid_until": YYYY-MM-DD or null
-- "primary_ref": exactly one `pNNNNNN` ref from `primary_candidates` that directly states the claim
-- "required_refs": a duplicate-free list of presented `pNNNNNN` or `rNNNNNN` refs without which the claim would be invalid or ambiguous
+Use the supplied response schema. Within each Memory choose primary_ref, write
+final content and metadata, then select required_refs in the same response.
 
 Do not return Evidence text, quotes, Observation or Revision IDs, offsets, hashes, profile names, catalog digests, Context refs, or lifecycle actions. Split a candidate that would otherwise need multiple independently claim-bearing Primary refs.
 
-""" + DURABLE_MEMORY_QUALITY_RULES + """`required_only_candidates` may be selected as Required but never as Primary. If a durable claim is stated only by required_only_candidates, return an empty memories array. Fragment refs are valid only in this catalog. Never invent or transform a ref.
+""" + MEMORY_CLAIM_EVIDENCE_RULES + DURABLE_MEMORY_QUALITY_RULES + """`required_only_candidates` may be selected as Required but never as Primary. Do not originate a Memory whose central assertion is stated only by required_only_candidates; preserve other useful claims with eligible Primary evidence. Fragment refs are valid only in this catalog. Never invent or transform a ref.
 
 Return ONLY a JSON object with a "memories" array. Use {{"memories": []}} when there are no memories."""
 

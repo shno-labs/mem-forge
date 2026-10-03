@@ -47,6 +47,11 @@ CANONICAL_RECORD_SCHEMAS: Mapping[tuple[str, int], CanonicalRecordSchema] = {
     ("jira-changelog", 1): CanonicalRecordSchema(
         name="jira-changelog",
         version=1,
+        model_interpretation=(
+            "fromString is the previous field value; toString is the new value. "
+            "field identifies the changed field and created records the change event. "
+            "The event time alone does not establish when a business rule becomes effective."
+        ),
         fields=(
             CanonicalRecordField("/created", contextual=True),
             CanonicalRecordField("/items/*/field", contextual=True),

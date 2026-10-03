@@ -65,16 +65,15 @@ def _planned_requests(projection, authority):
 def test_extraction_contract_version_is_pinned_into_derivation_identity() -> None:
     # Stored derivations and batch ids hash this value; changing it supersedes
     # every stored derivation instead of resuming it.
-    assert PROJECTION_EXTRACTION_CONTRACT_VERSION == "projection-extraction-v11"
+    assert PROJECTION_EXTRACTION_CONTRACT_VERSION == "projection-extraction-v12"
 
 
 def test_extraction_prompt_carries_the_durable_memory_quality_contract() -> None:
     required_rules = (
-        "PREFER EMPTY",
-        "CODE-RECOVERABLE FACTS ARE NOT MEMORIES",
+        "Worth remembering (keep):",
+        "When unsure, keep.",
         "ONE CLAIM, ONE MEMORY",
-        "FOLD REJECTED ALTERNATIVES INTO THE CHOSEN DECISION",
-        "FUTURE USEFULNESS CHECK",
+        "Fold a rejected alternative into the chosen decision",
         "NO META-MEMORIES",
         "OPERATIONAL DOES NOT MEAN TRANSIENT",
         "For each candidate, preserve the language of its owned source evidence.",
@@ -85,6 +84,14 @@ def test_extraction_prompt_carries_the_durable_memory_quality_contract() -> None
     assert DURABLE_MEMORY_QUALITY_RULES in PROJECTION_FRAGMENT_EXTRACTION_PROMPT
     for rule in required_rules:
         assert rule in DURABLE_MEMORY_QUALITY_RULES
+    from memforge.memory.candidate_admission import _ADMISSION_INSTRUCTIONS
+    from memforge.pipeline.memory_value import MEMORY_VALUE_DEFINITION
+
+    assert MEMORY_VALUE_DEFINITION in DURABLE_MEMORY_QUALITY_RULES
+    assert MEMORY_VALUE_DEFINITION in _ADMISSION_INSTRUCTIONS
+    assert all(obsolete not in DURABLE_MEMORY_QUALITY_RULES for obsolete in (
+        "PREFER EMPTY", "CODE-RECOVERABLE", "six months", "in under a minute",
+    ))
 
 
 def test_v9_derivation_identity_binds_access_and_inference_capability() -> None:

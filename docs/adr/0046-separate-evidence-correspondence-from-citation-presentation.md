@@ -404,9 +404,25 @@ that it is an entity of that claim. Display titles are identity hints unless
 retained as factual immutable source under the adapter contract. An update or
 report date is not an effective boundary.
 
-Use a compact formation output: final content, type, entities/effective boundaries,
-direct `primary_ref` and additional `required_refs`, matching the existing
-Candidate citation interface. Application emits those words and selections
+Use the existing Candidate fields in one response: an eligible direct
+`primary_ref`, exact final content and metadata, then additional `required_refs`.
+Required selection evaluates its incremental contribution to that settled claim,
+not a provisional topic or a promised later wording. Field order clarifies this
+responsibility; it is not proof of the model's internal reasoning. Effective
+dates apply to the whole claim, not an event or one independently changing
+clause. Explicit amendments and supersession stay in each affected standalone
+claim, including useful historical or uncertain knowledge.
+
+Provider-specific model interpretation is declared alongside the owning
+adapter's field schema. Shared readers transport it with current structural
+groups, carried witnesses and removed historical readings without parsing
+provider field names or granting new Evidence authority. Stateless requests must
+retain that context for carried text as well as newly read text. Extraction and
+admission reuse the accepted source-neutral Value definition; the prior
+code-recoverability, six-month/refactor and prefer-empty extraction exclusions
+are superseded. This changes no admission decision policy.
+
+Application emits those words and selections
 unchanged. Calling the displayed selection a complete joint basis can imply the
 exhaustive dependency obligation that the human contract rejects. This output
 is accounting, not proof of semantic accuracy. It neither joins

@@ -73,14 +73,14 @@ def test_projection_fragment_schemas_describe_catalog_role_constraints() -> None
 
     for schema, definition_name in schemas:
         properties = schema["$defs"][definition_name]["properties"]
-        assert properties["primary_ref"]["description"] == (
-            "Exactly one reference copied unchanged from primary_candidates; "
-            "never select from required_only_candidates."
-        )
-        assert properties["required_refs"]["description"] == (
-            "A duplicate-free list of references copied unchanged from "
-            "primary_candidates or required_only_candidates; do not repeat primary_ref."
-        )
+        primary_description = properties["primary_ref"]["description"].lower()
+        assert "copied unchanged from primary_candidates" in primary_description
+        assert "never select from required_only_candidates" in primary_description
+        assert "central conclusion" in primary_description
+        required_description = properties["required_refs"]["description"].lower()
+        for rule in ("duplicate-free", "primary_candidates or required_only_candidates",
+                     "do not repeat primary_ref", "additional contribution", "best effort", "[] is valid"):
+            assert rule in required_description
 
 
 class ChoiceMessage:

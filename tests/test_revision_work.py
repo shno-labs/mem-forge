@@ -443,6 +443,74 @@ async def test_witness_union_is_monotonic_and_rehydrated():
 
 
 @pytest.mark.asyncio
+async def test_carried_record_witnesses_keep_field_interpretation_across_requests():
+    from memforge.memory.evidence import ActiveSupportEvidence
+    from memforge.source_adapters.jira import CANONICAL_RECORD_SCHEMAS
+    from memforge.source_representation import representation_profile_for_observation_contract
+
+    _, current = revisions("unused", "unused")
+    record = json.dumps({"created": "2026-09-08", "items": [{
+        "field": "description", "fromString": "Two approvers.", "toString": "One approver.",
+    }]})
+    changed = replace(
+        current.observation_revisions[0], content=record,
+        evidence_profile=representation_profile_for_observation_contract(source_type="jira", observation_type="changelog"),
+    )
+    notes = replace(current.observation_revisions[1], id="rev-z-notes", content="\n\n".join(
+        f"Routine note {i}: unrelated maintenance information for the other observation."
+        for i in range(120)
+    ))
+    current = replace(
+        current, observation_revisions=(changed, notes),
+        source_unit_revisions=(replace(current.source_unit_revisions[0], observation_revision_ids=(changed.id, notes.id)),),
+    )
+    context = RevisionAssessmentContext(projection=current, base=None, access_context_hash="scope")
+    target = next(f for f in context.full_fragments if f.presentation_text == "One approver.")
+    support = (ActiveSupportEvidence(
+        memory_id="memory", source_id="source-1", reference_id="e1", evidence_unit_id="eu1",
+        role=EvidenceRole.PRIMARY, anchor=target.anchor, excerpt=target.presentation_text,
+        raw_content_sha256=None, presentation_sha256=None,
+    ),)
+    item = SupportWorkItem("w0", replace(memory(), content="The recorded description changed to one approver."), support, context)
+
+    class RecordClient(Client):
+        def judge(self, prompt):
+            data = payload(prompt)
+            values = {text: ref for ref, text in readable(data) if text in {"Two approvers.", "One approver."}}
+            current_refs = {row[0] for row in (
+                *data["current"]["primary_candidates"], *data["current"]["required_only_candidates"],
+            )}
+            return [
+                supported(w, values["One approver."]) if data["last"]
+                else continued(w, [ref for ref in values.values() if ref in current_refs])
+                for w in data["works"]
+            ]
+
+    client = RecordClient(limit=6500)
+    [result] = (await RevisionWorkExecutor(client=client, model="fixture").assess_many([item])).values()
+    assert result.supported and selected_texts(result) == ["One approver."]
+    requests = [payload(prompt) for prompt in client.prompts]
+    later = [data for data in requests if data["carried_witness_catalog"] and all(
+        row[1] not in {"Two approvers.", "One approver."}
+        for row in (*data["current"]["primary_candidates"], *data["current"]["required_only_candidates"])
+    )]
+    assert later, [(len(readable(data)), len(data["carried_witness_catalog"]), data["last"]) for data in requests]
+    interpretation = CANONICAL_RECORD_SCHEMAS["jira-changelog", 1].model_interpretation
+    for data in later:
+        rows = readable(data)
+        assert len({ref for ref, _ in rows}) == len(rows)
+        for text, field in (("Two approvers.", "/items/0/fromString"), ("One approver.", "/items/0/toString")):
+            [ref] = [ref for ref, value in rows if value == text]
+            assert ref.startswith("PRM-")
+            [group] = [group for group in data["current"]["structural_groups"] if ref in group["refs"]]
+            assert group["field"] == field and group["format_interpretation"] == interpretation
+        unrelated_refs = {ref for ref, text in rows if text.startswith("Routine note")}
+        assert unrelated_refs
+        assert all("format_interpretation" not in group for group in data["current"]["structural_groups"]
+                   if unrelated_refs.intersection(group["refs"]))
+
+
+@pytest.mark.asyncio
 async def test_results_do_not_depend_on_split_points():
     [item] = work_items(f"{RULE}\n\n" + "\n\n".join(f"Routine note {i}." for i in range(150)))
     item = without_baseline(item)

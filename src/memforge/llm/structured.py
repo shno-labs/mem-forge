@@ -228,32 +228,51 @@ class AgentSessionAuthorityResponse(StructuredResponseModel):
     decisions: list[AgentSessionAuthorityDecision]
 
 
+_PRIMARY_REF_DESCRIPTION = (
+    "Exactly one authentic readable reference copied unchanged from primary_candidates, "
+    "directly supporting the central conclusion; it need not alone prove every clause. "
+    "Never select from required_only_candidates."
+)
+_REQUIRED_REFS_DESCRIPTION = (
+    "After settling final content and metadata, select confident additional contribution "
+    "beyond Primary, other selected refs and source-proven included interpretation. "
+    "A duplicate-free list copied unchanged from primary_candidates or required_only_candidates; "
+    "do not repeat primary_ref. Another occurrence or containing alternative is not "
+    "automatically additional contribution. Related-ref recall is best effort; [] is valid."
+)
+
+
 class ProjectionFragmentMemoryCandidate(StructuredResponseModel):
     """One extracted claim with catalog-local selectors and no authority fields."""
 
     model_config = ConfigDict(extra="forbid")
 
-    content: str = Field(min_length=1)
+    primary_ref: str = Field(description=_PRIMARY_REF_DESCRIPTION)
+    content: str = Field(min_length=1, description=(
+        "One independently useful standalone claim retaining authored scope, conditions, "
+        "exceptions, branch precedence, order, modality and historical/supersession boundaries. "
+        "Other Memories or citations cannot supply missing qualifications."
+    ))
     memory_type: Literal["fact", "decision", "convention", "procedure"]
-    entity_refs: list[str] = Field(default_factory=list)
-    valid_from: str | None = None
-    valid_until: str | None = None
+    entity_refs: list[str] = Field(default_factory=list, description=(
+        "Explicitly authored entities associated with this claim; supported aliases are allowed. "
+        "A name elsewhere in the source alone does not establish that association."
+    ))
+    valid_from: str | None = Field(default=None, description=(
+        "YYYY-MM-DD or null: authored start of effectiveness for the whole claim. "
+        "A proposal, report, update or observed-event date alone is not an effective boundary."
+    ))
+    valid_until: str | None = Field(default=None, description=(
+        "YYYY-MM-DD or null: authored end of effectiveness for the whole claim. "
+        "Do not infer it merely from a proposal, report, update or observed-event date."
+    ))
     # Keep the transport schema structural.  Membership and role are
     # catalog-local facts, so malformed or stale string selectors are rejected
     # candidate-by-candidate by the catalog resolver instead of failing every
     # other valid candidate in the LLM response.
-    primary_ref: str = Field(
-        description=(
-            "Exactly one reference copied unchanged from primary_candidates; "
-            "never select from required_only_candidates."
-        )
-    )
     required_refs: list[str] = Field(
         default_factory=list,
-        description=(
-            "A duplicate-free list of references copied unchanged from "
-            "primary_candidates or required_only_candidates; do not repeat primary_ref."
-        ),
+        description=_REQUIRED_REFS_DESCRIPTION,
     )
 
 class ProjectionFragmentMemoryExtractionResponse(StructuredResponseModel):
@@ -270,18 +289,10 @@ class ProjectionFragmentSelectorCorrection(StructuredResponseModel):
     model_config = ConfigDict(extra="forbid")
 
     candidate_index: int
-    primary_ref: str = Field(
-        description=(
-            "Exactly one reference copied unchanged from primary_candidates; "
-            "never select from required_only_candidates."
-        )
-    )
+    primary_ref: str = Field(description=_PRIMARY_REF_DESCRIPTION)
     required_refs: list[str] = Field(
         default_factory=list,
-        description=(
-            "A duplicate-free list of references copied unchanged from "
-            "primary_candidates or required_only_candidates; do not repeat primary_ref."
-        ),
+        description=_REQUIRED_REFS_DESCRIPTION,
     )
 
 

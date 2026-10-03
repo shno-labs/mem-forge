@@ -25,6 +25,7 @@ class CanonicalRecordSchema:
     version: int
     fields: tuple[CanonicalRecordField, ...]
     tombstone_pointer: str | None = None
+    model_interpretation: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

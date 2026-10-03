@@ -313,6 +313,9 @@ def test_changelog_delta_keeps_before_after_field_identity_and_event_context():
     removed_claim = next(f for f in removed if f["text"] == "Three approvers.")
     assert removed_claim["field"] == "/items/0/toString"
     assert removed_claim["context"] == {"/created": "2026-09-08", "/items/0/field": "description"}
+    from memforge.source_adapters.jira import CANONICAL_RECORD_SCHEMAS
+    interpretation = CANONICAL_RECORD_SCHEMAS["jira-changelog", 1].model_interpretation
+    assert removed_claim["format_interpretation"] == interpretation
     fragment = next(f for f in current if f.presentation_text == "One approver.")
     revision = context.current[fragment.anchor.observation_id]
     expansion = context.reading_index(revision).expand([fragment])
@@ -325,4 +328,8 @@ def test_changelog_delta_keeps_before_after_field_identity_and_event_context():
     payload = _reading_source(context, context.catalog(()), [{**removed_claim, "ref": "d000001"}])
     assert payload["removed_historical"][0][2] == {
         "field": "/items/0/toString", "context": removed_claim["context"],
+        "format_interpretation": interpretation,
     }
+    current_payload = _reading_source(context, context.catalog(current), [])
+    assert all(group["format_interpretation"] == interpretation
+               for group in current_payload["current"]["structural_groups"])

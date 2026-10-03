@@ -1576,3 +1576,53 @@ and exact capture equality, finding no blocker in this bounded declaration move.
 The reviewer did not rerun the tests. This is encapsulation evidence, not a
 native parser, immutable-native/history integration, exact native correspondence,
 provider semantic acceptance or Cloud deployment.
+
+### Canonical origin interface and adapter interpretation
+
+The canonical extractor now uses a source-neutral claim/citation rule and the
+same accepted Value definition as admission. It selects an eligible direct
+Primary, forms standalone words/metadata, then chooses best-effort additional
+Required in the same response and existing seven fields. Descriptions explicitly
+preserve governing conditions, branch precedence, source uncertainty, historical
+amendments and whole-claim effective dates. The forced-heading Required rule and
+global Jira field interpretation were removed. This introduces no additional
+model call, semantic auditor, admission repair, candidate-pruning policy,
+worksheet, new batch strategy or limit change. Field order and instructions
+clarify responsibilities; they do not certify cognitive reading or entailment.
+
+Jira changelog previous/new-value and event-time interpretation is declared in
+the Jira adapter. Profile-based shared readers carry the declaration with
+current groups and removed historical text. Independent static review found
+that carried witnesses lost their field interpretation between stateless
+Support requests. The patch now scopes structural groups over exactly the
+current-plus-carried catalog while keeping the two row lists disjoint and their
+original roles unchanged. A multi-Observation, multi-request fixture verifies
+both previous/new field meanings survive, aliases stay unique, and unrelated
+source text does not inherit the Jira declaration. This is a transport control,
+not a model judgment.
+
+The accepted ADR 0034/0043 Value definition lives in a shared constant. Extractor
+rules no longer apply the obsolete prefer-empty, six-month/refactor or
+code-recoverability exclusions. Admission's complete before/after prompt is
+byte-identical, SHA256
+`d186d66247dc73fdceaf2e6f7c540c94a608653adc53ae40d5b07a62ae8a4446`.
+Owned-Evidence language instructions remain unchanged. The extraction contract
+is version 12 and the revision input policy is version 9, preventing predecessor
+work identities from silently certifying changed inputs or instructions.
+
+Actual canonical verification:
+
+```text
+/Users/i551096/Dev/memforge-cloud/.venv/bin/python -m pytest tests/test_extraction_contract.py tests/test_extraction_requests.py tests/test_derivation_work.py tests/test_revision_assessment.py tests/test_evidence_fragments.py tests/test_structured_llm.py tests/test_revision_work.py tests/test_candidate_admission.py -q
+```
+
+Result: **210 passed in 9.13 seconds**. The earlier synthetic input-budget
+regression was fixed by removing a duplicated field list already defined by the
+response schema, without increasing the limit or changing request packing.
+Independent reviews verified the limited generic interface and the carried
+interpretation correction. No online model ran against this canonical patch
+yet. In particular, different-position semantic repetition in the prior 57
+Required selections cannot be declared fixed by containment or passing fixture
+tests. Full-source retention, actual claim/metadata accuracy, useful Required
+contributions, immutable native history/correspondence, resources, Cloud parity
+and deployment remain required; the design is not accepted for release.
