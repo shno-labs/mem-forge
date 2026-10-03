@@ -465,9 +465,14 @@ class RevisionWorkExecutor:
         def render(step: ChainStep) -> LlmRequest:
             step_catalog, carried = supplied(step)
             carried_rows = carried.model_payload()
+            readable = catalog.subset(_refs(step_catalog) | _refs(carried))
+            source = _reading_source(context, step_catalog, removed_entries(step.parts))
+            # Carried text needs its original scope and adapter interpretation in
+            # every stateless request, without repeating or changing its authority.
+            source["current"]["structural_groups"] = context.model_payload(readable)["structural_groups"]
             payload = {
                 "last": step.position + len(step.parts) == step.total,
-                **_reading_source(context, step_catalog, removed_entries(step.parts)),
+                **source,
                 "carried_witness_catalog": [*carried_rows["primary_candidates"], *carried_rows["required_only_candidates"]],
                 "works": [self._work_payload(by_id[item_id], step, reading.first_part_end) for item_id in step.item_ids],
             }
@@ -479,7 +484,6 @@ class RevisionWorkExecutor:
                 prompt, AssessmentResponse,
                 self._output(step.item_ids, len(step_catalog.fragments) + len(carried.fragments), step.states.values()),
             )
-            readable = catalog.subset(_refs(step_catalog) | _refs(carried))
             return context.attach_images(request, readable, fits=self._runner.fits)
 
         def decode(response, step: ChainStep):
@@ -754,7 +758,7 @@ def _removed_payload(removed) -> dict:
         groups.setdefault(aliases[part["observation_id"], part["revision_id"]], []).append(part["ref"])
     rows = []
     for part in removed:
-        scope = {key: part[key] for key in ("heading_context", "field", "context") if key in part}
+        scope = {key: part[key] for key in ("heading_context", "field", "context", "format_interpretation") if key in part}
         rows.append([part["ref"], part["text"], *([scope] if scope else [])])
     return {
         "removed_historical": rows,

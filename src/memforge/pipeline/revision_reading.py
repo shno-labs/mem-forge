@@ -167,6 +167,27 @@ def build_revision_reading_index(
         groups.extend(_canonical_context_groups(fields, ordered_fragments))
         for field in fields:
             if (
+                field.descriptor.text_format is not None
+                and isinstance(field.value, str)
+                and field.string_boundaries is not None
+            ):
+                coordinates = _Coordinates(boundaries=field.string_boundaries)
+                for native in field.descriptor.text_format.parse(field.value).groups:
+                    start, end = coordinates.range(native.start, native.end)
+                    context = tuple(
+                        anchor
+                        for left, right in native.context_ranges
+                        for anchor in _anchors_in_range(
+                            ordered_fragments, *coordinates.range(left, right), exact=True,
+                        )
+                    )
+                    groups.append(ReadingGroup(
+                        kind="canonical-declared-text", range_start=start, range_end=end,
+                        trigger_anchors=_anchors_in_range(ordered_fragments, start, end),
+                        context_anchors=context, owner=field.descriptor.json_pointer,
+                        is_list=native.together,
+                    ))
+            if (
                 field.descriptor.nested_profile == "markdown-structural"
                 and isinstance(field.value, str)
                 and field.string_boundaries is not None

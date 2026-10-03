@@ -778,7 +778,7 @@ class JiraGene(Gene):
             comments_resp = await self._request(
                 "GET",
                 f"/rest/api/2/issue/{key}/comment",
-                params={"maxResults": COMMENT_MAX_RESULTS},
+                params={"maxResults": COMMENT_MAX_RESULTS, "expand": "renderedBody"},
             )
             comment_data = comments_resp.json()
             data["_comments"] = self._validated_comment_page(comment_data)
@@ -976,7 +976,7 @@ class JiraGene(Gene):
         comments_resp = await self._request(
             "GET",
             f"/rest/api/2/issue/{key}/comment",
-            params={"maxResults": COMMENT_MAX_RESULTS},
+            params={"maxResults": COMMENT_MAX_RESULTS, "expand": "renderedBody"},
         )
         comment_data = comments_resp.json()
         comments = self._validated_comment_page(comment_data)

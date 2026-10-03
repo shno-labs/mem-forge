@@ -37,15 +37,15 @@ from memforge.pipeline.projection_fragments import (
     _compose_projection_fragment_catalog,
 )
 from memforge.source_projection import SourceAnchor, SourceObservationRevision, SourceProjection
-from memforge.source_representation import in_current_representation
+from memforge.source_representation import in_current_representation, representation_contract_for_profile
 
 # Versions how a fixed Support is revalidated against a revision: it enters the
 # reconciliation manifest and each revalidated Support's ``support_validation``.
-REVISION_SUPPORT_CONTRACT = "revision-support-v8"
+REVISION_SUPPORT_CONTRACT = "revision-support-v9"
 # Versions how revision Fragments are compiled into catalogs, what every
 # reading adds as context, and Claim Extraction's reading scope. Every catalog
 # this context composes, for extraction or for Support, carries it in its identity.
-REVISION_INPUT_POLICY = "revision-input-v8"
+REVISION_INPUT_POLICY = "revision-input-v10"
 
 
 def reading_group_label(fragments) -> str:
@@ -156,6 +156,12 @@ class RevisionAssessmentContext:
             if r.id in projection.source_unit_revisions[0].observation_revision_ids
         }
         baseline = base.observation_revisions if base else ()
+        # Evidence may predate the Support's last validation baseline. Keep its
+        # exact immutable revision, rather than substituting baseline or latest.
+        self.revisions = {
+            revision.id: revision
+            for revision in (*evidence_revisions, *baseline, *projection.observation_revisions)
+        }
         self.retired = frozenset(r.id for r in (*baseline, *evidence_revisions) if not in_current_representation(r))
         observations = {o.id: o for o in (*known_observations, *(base.observations if base else ()))}
         observations.update({o.id: o for o in projection.observations})
@@ -187,6 +193,13 @@ class RevisionAssessmentContext:
             for revision in (*self.previous.values(), *self.current.values())
             if revision.evidence_profile and revision.evidence_profile.name == "canonical-record"
         }
+        self.format_interpretations = {}
+        for revision in (*self.previous.values(), *self.current.values()):
+            contract = representation_contract_for_profile(revision.evidence_profile)
+            if contract is not None and contract.canonical_schema is not None:
+                interpretation = contract.canonical_schema.model_interpretation
+                if interpretation:
+                    self.format_interpretations[revision.id] = interpretation
         # Both sides, so removed old text keeps its heading path too.
         for revision in {r.id: r for r in (*self.previous.values(), *self.current.values())}.values():
             if revision.evidence_profile and revision.evidence_profile.name == "markdown-structural":
@@ -288,7 +301,9 @@ class RevisionAssessmentContext:
         payload["structural_groups"] = tuple(
             {"source": aliases[observation, revision], "refs": refs,
              **({"heading_context": headings} if headings else {}),
-             **({"field": field} if field is not None else {})}
+             **({"field": field} if field is not None else {}),
+             **({"format_interpretation": interpretation}
+                if (interpretation := self.format_interpretations.get(revision)) else {})}
             for (observation, revision, headings, field), refs in groups.items()
         )
         return payload
@@ -391,4 +406,6 @@ class RevisionAssessmentContext:
             "revision_id": anchor.observation_revision_id,
             "text": fragment.presentation_text,
             **self.canonical_context(fragment),
+            **({"format_interpretation": interpretation}
+               if (interpretation := self.format_interpretations.get(anchor.observation_revision_id)) else {}),
         }

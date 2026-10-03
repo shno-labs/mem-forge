@@ -929,7 +929,7 @@ async def test_v9_fragment_selection_commits_one_complete_unit_support(db) -> No
 
 
 @pytest.mark.asyncio
-async def test_context_replacement_does_not_change_unit_support_identity_or_hash(db) -> None:
+async def test_context_replacement_does_not_change_unit_support_identity_or_hash(db, tmp_path) -> None:
     memory_id, unit_id, source_id, _access_hash = await _seed_complete_unit_support(db)
     before = (await db.get_active_memory_support_states((memory_id,)))[memory_id]
     now = datetime(2026, 8, 27, 10, 0, tzinfo=timezone.utc).isoformat()
@@ -993,6 +993,30 @@ async def test_context_replacement_does_not_change_unit_support_identity_or_hash
     ]
     assert group.items[-1].grants_support is False
     assert group.items[-1].anchor.observation_id == "obs-context-two"
+    [historical] = await db.get_memory_evidence_units(memory_id, include_historical=True)
+    assert [item.role for item in historical.items] == [EvidenceRole.PRIMARY, EvidenceRole.REQUIRED]
+    [old_reference] = await db.db.execute_fetchall(
+        "SELECT evidence_reference_id FROM evidence_context_associations WHERE evidence_unit_id = ? AND active = 0", (unit_id,),
+    )
+    old_reference_id = old_reference["evidence_reference_id"]
+    [with_requested_context] = await db.get_memory_evidence_units(
+        memory_id, include_historical=True, context_reference_id=old_reference_id,
+    )
+    assert with_requested_context.items[-1].anchor.observation_revision_id == "obsrev-context-one"
+    from fastapi.testclient import TestClient
+    from memforge.config import AppConfig
+    from memforge.server.admin_api import create_admin_app
+    config = AppConfig(base_dir=tmp_path / "context-resource-test")
+    config.sync.worker_enabled = False
+    with TestClient(create_admin_app(db=db, config=config)) as client:
+        response = client.get(f"/api/v1/memories/{memory_id}/evidence/{unit_id}/references/{old_reference_id}/resource")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["selected_reference_id"] == old_reference_id
+    assert payload["evidence"]["items"][-1]["support_contribution"] is False
+    assert payload["evidence"]["items"][-1]["excerpt"] == "Helpful context one."
+    assert all(item["observation_revision_id"] != "obsrev-context-two" for item in payload["source_material"])
+    assert next(item for item in payload["source_material"] if item["observation_revision_id"] == "obsrev-context-one")["support_unit_member"] is False
     await db.db.execute(
         """UPDATE evidence_references
               SET raw_content_sha256 = ?
@@ -1020,6 +1044,135 @@ async def test_invalid_supporting_part_omits_complete_evidence_unit(db) -> None:
     )
     await db.db.commit()
     assert await db.get_memory_evidence_units(memory_id) == ()
+
+
+@pytest.mark.asyncio
+async def test_historical_evidence_retains_complete_support_without_current_associations(db) -> None:
+    memory_id, unit_id, _, _ = await _seed_complete_unit_support(db)
+    [current] = await db.get_memory_evidence_units(memory_id)
+    await db.db.execute("UPDATE memory_unit_support_assertions SET active = 0 WHERE memory_id = ?", (memory_id,))
+    await db.db.commit()
+    assert await db.get_memory_evidence_units(memory_id) == ()
+    [historical] = await db.get_memory_evidence_units(memory_id, include_historical=True)
+    assert historical.evidence_unit_id == unit_id
+    assert historical.current is False
+    assert historical.items == current.items
+    assert historical.support_ids == current.support_ids
+    assert [item.role for item in historical.items] == [EvidenceRole.PRIMARY, EvidenceRole.REQUIRED]
+    assert await db.get_memory_evidence_units("another-memory", include_historical=True) == ()
+    await db.db.execute("UPDATE evidence_references SET raw_content_sha256 = ? WHERE id = 'eref-required'", ("0" * 64,))
+    await db.db.commit()
+    assert await db.get_memory_evidence_units(memory_id, include_historical=True) == ()
+
+
+@pytest.mark.asyncio
+async def test_pinned_resource_survives_support_retirement_and_current_revision_change(db, tmp_path, monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+    from memforge.config import AppConfig
+    from memforge.server.admin_api import create_admin_app
+
+    memory_id, unit_id, _, _ = await _seed_complete_unit_support(db)
+    await db.db.execute("UPDATE memory_unit_support_assertions SET active = 0 WHERE memory_id = ?", (memory_id,))
+    await db.db.execute("UPDATE source_observations SET current_revision_id = NULL")
+    await db.db.execute("UPDATE source_units SET current_revision_id = NULL")
+    await db.db.commit()
+
+    async def latest_input_is_not_historical_authority(*args, **kwargs):
+        raise AssertionError("Pinned citation must not read the current input")
+
+    monkeypatch.setattr(db, "get_source_unit_input", latest_input_is_not_historical_authority)
+    config = AppConfig(base_dir=tmp_path / "resource-test")
+    config.sync.worker_enabled = False
+    url = f"/api/v1/memories/{memory_id}/evidence/{unit_id}/resource"
+    with TestClient(create_admin_app(db=db, config=config)) as client:
+        response = client.get(url)
+        wrong_memory = client.get(f"/api/v1/memories/unrelated/evidence/{unit_id}/resource")
+        wrong_unit = client.get(f"/api/v1/memories/{memory_id}/evidence/unrelated/resource")
+    assert response.status_code == 200, response.text
+    assert response.headers["x-content-sha256"] == hashlib.sha256(response.content).hexdigest()
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["content-type"] == "application/json"
+    evidence = response.json()["evidence"]
+    assert evidence["source_unit_revision_id"] == "unitrev-1"
+    assert evidence["current"] is False
+    assert evidence["resource_url"] == url
+    assert [(item["role"], item["excerpt"], item["observation_revision_id"]) for item in evidence["items"]] == [
+        ("primary", "Release requires approval.", "obsrev-primary"),
+        ("required", "Only after two reviewers agree.", "obsrev-required"),
+    ]
+    assert wrong_memory.status_code == wrong_unit.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("denial", ["memory", "unit", "source", "required_integrity", "required_missing", "manifest"])
+async def test_pinned_resource_enforces_complete_unit_access_and_integrity(db, tmp_path, denial) -> None:
+    from fastapi.testclient import TestClient
+    from memforge.config import AppConfig
+    from memforge.server.admin_api import create_admin_app
+
+    memory_id, unit_id, _, _ = await _seed_complete_unit_support(db)
+    if denial == "memory":
+        await db.db.execute("UPDATE memories SET visibility = 'private', owner_user_id = 'other' WHERE id = ?", (memory_id,))
+    elif denial == "unit":
+        await db.db.execute("UPDATE evidence_units SET visibility = 'private', owner_user_id = 'other' WHERE id = ?", (unit_id,))
+    elif denial == "source":
+        await db.db.execute("UPDATE sources SET access_policy = 'private', owner_user_id = 'other' WHERE id = 'source-1'")
+    elif denial == "required_integrity":
+        await db.db.execute("UPDATE evidence_references SET raw_content_sha256 = ? WHERE id = 'eref-required'", ("0" * 64,))
+    elif denial == "required_missing":
+        await db.db.execute("DELETE FROM evidence_references WHERE id = 'eref-required'")
+    else:
+        await db.db.execute("UPDATE source_unit_revisions SET observation_revision_ids_json = ? WHERE id = 'unitrev-1'",
+                            (json.dumps(["missing-authority"]),))
+    await db.db.commit()
+    config = AppConfig(base_dir=tmp_path / "resource-access-test")
+    config.sync.worker_enabled = False
+    with TestClient(create_admin_app(db=db, config=config)) as client:
+        response = client.get(f"/api/v1/memories/{memory_id}/evidence/{unit_id}/resource")
+        detail = client.get(f"/api/v1/memories/{memory_id}")
+    assert response.status_code == (409 if denial == "manifest" else 404), response.text
+    assert "Release requires approval." not in response.text
+    if denial == "manifest":
+        assert response.json()["detail"]["code"] == "pinned_evidence_unavailable"
+    elif denial not in {"memory", "source"}:
+        assert detail.status_code == 200
+        assert detail.json()["evidence"] == []
+
+
+@pytest.mark.asyncio
+async def test_pinned_resource_uses_persisted_range_across_new_compiler_boundaries(db, tmp_path) -> None:
+    from fastapi.testclient import TestClient
+    from memforge.config import AppConfig
+    from memforge.server.admin_api import create_admin_app
+    memory_id, unit_id, _, _ = await _seed_complete_unit_support(db)
+    [group] = await db.get_memory_evidence_units(memory_id)
+    text = "Release requires approval.\n\nApproval is recorded separately."
+    digest = hashlib.sha256(text.encode()).hexdigest()
+    primary = EvidenceReference(
+        role=EvidenceRole.PRIMARY, kind=EvidencePartKind.TEXT,
+        anchor=SourceAnchor(kind=AnchorKind.REVISION_RANGE, observation_id="obs-primary",
+                            observation_revision_id="obsrev-primary", range_start=0, range_end=len(text)),
+        raw_content_sha256=digest,
+    )
+    required = group.items[1]
+    required_ref = EvidenceReference(role=required.role, kind=required.kind, anchor=required.anchor,
+                                     raw_content_sha256=required.raw_content_sha256)
+    await db.db.execute("UPDATE source_observation_revisions SET content = ?, semantic_hash = ? WHERE id = 'obsrev-primary'", (text, digest))
+    await db.db.execute("UPDATE evidence_references SET anchor_kind = 'revision_range', range_start = 0, range_end = ?, raw_content_sha256 = ?, presentation_sha256 = ?, excerpt = ? WHERE id = 'eref-primary'",
+                        (len(text), digest, digest, text))
+    await db.db.execute("UPDATE evidence_units SET part_set_digest = ? WHERE id = ?",
+                        (evidence_part_set_digest((primary, required_ref)), unit_id))
+    await db.db.commit()
+    config = AppConfig(base_dir=tmp_path / "historical-selection-test")
+    config.sync.worker_enabled = False
+    with TestClient(create_admin_app(db=db, config=config)) as client:
+        response = client.get(f"/api/v1/memories/{memory_id}/evidence/{unit_id}/references/eref-primary/resource")
+    assert response.status_code == 200, response.text
+    [item, _required] = response.json()["evidence"]["items"]
+    assert item["range_end"] == len(text)
+    assert item["excerpt"] == text
+    assert item["raw_content_sha256"] == digest
+    assert response.json()["source_material"][0]["content"] == text
 
 
 @pytest.mark.asyncio
@@ -1092,4 +1245,3 @@ async def test_deriver_stages_projection_extraction_without_ingestion_replay(db)
     assert isinstance(seen_batches[0], ExtractionRequest)
     assert result.derivation.extraction_contract_version == PROJECTION_EXTRACTION_CONTRACT_VERSION
     assert result.derivation.target_unit_revision_id == projection.source_unit_revisions[0].id
-

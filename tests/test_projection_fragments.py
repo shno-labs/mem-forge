@@ -69,7 +69,6 @@ from memforge.source_projection import (
 from memforge.source_representation import (
     BINARY_ARTIFACT_PROFILE,
     PLAIN_TEXT_PROFILE,
-    representation_profile_for_observation_contract,
 )
 
 
@@ -90,7 +89,11 @@ def _canonical_projection(
     observation_type: str,
     content: str,
 ) -> SourceProjection:
-    profile = representation_profile_for_observation_contract(
+    from memforge.source_representation import legacy_representation_profile_for_observation_contract
+
+    # These retained JSON fixtures exercise the original Markdown declaration.
+    # New provider HTML records are verified through the Jira adapter boundary.
+    profile = legacy_representation_profile_for_observation_contract(
         source_type="jira",
         observation_type=observation_type,
     )
@@ -857,7 +860,7 @@ def test_model_catalog_separates_primary_capable_from_required_only_refs() -> No
 
 
 @pytest.mark.asyncio
-async def test_prompt_requires_empty_output_when_only_required_only_context_has_claim() -> None:
+async def test_prompt_requires_owned_primary_without_suppressing_other_eligible_claims() -> None:
     projection = _projection()
     projection = replace(
         projection,
@@ -893,8 +896,8 @@ async def test_prompt_requires_empty_output_when_only_required_only_context_has_
     assert '"primary_candidates"' in prompts[0]
     assert '"required_only_candidates"' in prompts[0]
     assert (
-        "If a durable claim is stated only by required_only_candidates, "
-        "return an empty memories array."
+        "Do not originate a Memory whose central assertion is stated only by required_only_candidates; "
+        "preserve other useful claims with eligible Primary evidence."
     ) in prompts[0]
 
 
@@ -1165,11 +1168,9 @@ async def test_extractor_admits_normalized_candidates_with_candidate_local_telem
             ),
         )
 
-    assert len(result.memories) == 1
-    assert [part.kind for part in result.memories[0].resolved_evidence_selection.parts] == [
-        EvidencePartKind.TEXT,
-        EvidencePartKind.ARTIFACT,
-    ]
+    assert result.error_type == "projection_extraction_incomplete"
+    assert result.metadata["safe_error_code"] == "EXTRACTION_EVIDENCE_UNRESOLVED"
+    assert result.memories == []
     assert result.metadata["selector_normalized_candidate_count"] == 5
     assert result.metadata["selector_normalization_count"] == 6
     fingerprints = result.metadata["selector_normalization_fingerprints"]
@@ -1197,11 +1198,8 @@ async def test_extractor_admits_normalized_candidates_with_candidate_local_telem
     assert normalization_signals[0].candidate_hash == strong_candidate_hash
     assert normalization_signals[0].candidate_hash != fingerprints[0]
 
-    restored = memory_extraction_result_from_output_payload(
+    with pytest.raises(ValueError, match="failed derivation batches have no reusable output"):
         memory_extraction_output_payload(result)
-    )
-    assert restored.metadata["selector_normalization_count"] == 6
-    assert restored.metadata["selector_normalization_fingerprints"] == fingerprints
 
 
 @pytest.mark.asyncio
@@ -1267,7 +1265,7 @@ async def test_extractor_persists_only_resolved_parts_and_never_falls_back() -> 
     "valid", "repaired", "still_invalid", "required_only", "duplicate", "omitted",
     "capacity", "provider_failure", "unexpected_failure", "cancelled",
 ])
-async def test_selector_correction_preserves_success_and_fixed_claims(mode) -> None:
+async def test_selector_correction_preserves_fixed_claims_and_refuses_incomplete_work(mode) -> None:
     projection = _projection()
     catalog = _compile(projection, access_context_hash="access-1")
     primary = next(f.reference for f in catalog.fragments if f.primary_eligible)
@@ -1338,14 +1336,20 @@ async def test_selector_correction_preserves_success_and_fixed_claims(mode) -> N
             await extractor.extract_projection_fragment_memories(catalog, source_type="github_repo", revision_context=context)
         return
     result = await extractor.extract_projection_fragment_memories(catalog, source_type="github_repo", revision_context=context)
-    assert result.error_type is None
-    assert result.memories[0].content == stable.content
-    assert len(result.memories[0].resolved_evidence_selection.parts) == 1
+    successful = mode in {"valid", "repaired"}
+    if successful:
+        assert result.error_type is None
+        assert result.memories[0].content == stable.content
+        assert len(result.memories[0].resolved_evidence_selection.parts) == 1
+    else:
+        assert result.error_type == "projection_extraction_incomplete"
+        assert result.metadata["safe_error_code"] == "EXTRACTION_EVIDENCE_UNRESOLVED"
+        assert result.memories == []
     assert client.extraction_calls == 1
     assert client.correction_calls == (0 if mode in {"valid", "capacity"} else 1)
     assert result.metadata["structured_llm_calls"] == 1 + client.correction_calls
     assert result.metadata["selector_correction_recovered_count"] == (1 if mode == "repaired" else 0)
-    assert len(result.memories) == (2 if mode == "repaired" else 1)
+    assert len(result.memories) == (2 if mode == "repaired" else 1 if mode == "valid" else 0)
     assert "private provider text" not in json.dumps(result.metadata)
     if mode == "repaired":
         repaired = result.memories[1]
@@ -1356,6 +1360,9 @@ async def test_selector_correction_preserves_success_and_fixed_claims(mode) -> N
         assert result.metadata["rejected_fragment_selection_count"] == 0
     elif mode != "valid":
         assert result.metadata["rejected_fragment_selection_count"] == 1
+        with pytest.raises(ValueError, match="failed derivation batches have no reusable output"):
+            memory_extraction_output_payload(result)
+        return
     # The existing persisted batch result carries only accepted Evidence and
     # counters. A replay needs no correction-specific state or another call.
     restored = memory_extraction_result_from_output_payload(memory_extraction_output_payload(result))

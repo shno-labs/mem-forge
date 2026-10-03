@@ -4103,6 +4103,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "resource_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Url"
+          },
           "source_id": {
             "title": "Source Id",
             "type": "string"
@@ -4202,6 +4213,17 @@
             ],
             "title": "Excerpt"
           },
+          "fragment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fragment Id"
+          },
           "kind": {
             "enum": [
               "text",
@@ -4275,6 +4297,17 @@
               }
             ],
             "title": "Raw Content Sha256"
+          },
+          "resource_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Url"
           },
           "role": {
             "enum": [
@@ -11275,6 +11308,138 @@
           }
         },
         "summary": "Propose Memory Correction Route",
+        "tags": [
+          "memories"
+        ]
+      }
+    },
+    "/api/v1/memories/{memory_id}/evidence/{evidence_unit_id}/references/{reference_id}/resource": {
+      "get": {
+        "description": "Read verified stored citations and the complete immutable Unit source material.",
+        "operationId": "get_memory_evidence_resource_api_v1_memories__memory_id__evidence__evidence_unit_id__references__reference_id__resource_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "title": "Memory Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evidence_unit_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Unit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "reference_id",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Memory Evidence Resource",
+        "tags": [
+          "memories"
+        ]
+      }
+    },
+    "/api/v1/memories/{memory_id}/evidence/{evidence_unit_id}/resource": {
+      "get": {
+        "description": "Read verified stored citations and the complete immutable Unit source material.",
+        "operationId": "get_memory_evidence_resource_api_v1_memories__memory_id__evidence__evidence_unit_id__resource_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "title": "Memory Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evidence_unit_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Unit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reference_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Memory Evidence Resource",
         "tags": [
           "memories"
         ]

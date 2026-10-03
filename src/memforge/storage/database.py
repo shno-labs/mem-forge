@@ -109,6 +109,7 @@ from memforge.memory.evidence import (
     ReviewCase,
     evidence_context_association_id,
     evidence_part_set_digest,
+    evidence_items_part_set_digest,
     evidence_unit_revision_lineage_is_valid,
     evidence_relation_retry_identity,
     evidence_reference_id_for,
@@ -238,6 +239,7 @@ from memforge.source_derivation import (
     memory_extraction_output_payload,
     memory_extraction_result_from_output_payload,
     output_payload_hash,
+    require_source_derivation_ready_for_commit,
     safe_derivation_error,
     source_derivation_document_identity_hash,
     source_derivation_projection_identity_hash,
@@ -4856,7 +4858,7 @@ class Database:
     async def _classify_jira_changelog_revisions_unlocked(self) -> int:
         """Give every stored Jira changelog revision the semantic class its content has."""
 
-        from memforge.pipeline.source_projection_adapters import jira_changelog_semantic_class
+        from memforge.source_adapters.jira import changelog_semantic_class as jira_changelog_semantic_class
 
         rows = await self.db.execute_fetchall(
             """SELECT sor.id, sor.content, sor.metadata_json
@@ -5016,7 +5018,7 @@ class Database:
         self,
     ) -> EvidenceProfileBackfillReport:
         from memforge.source_representation import (
-            representation_profile_for_observation_contract,
+            legacy_representation_profile_for_observation_contract,
         )
 
         async with self.db.execute(
@@ -5038,7 +5040,7 @@ class Database:
             if any(row[key] is not None for key in ("profile_name", "profile_version", "coordinate_space")):
                 unresolved.append(str(row["id"]))
                 continue
-            profile = representation_profile_for_observation_contract(
+            profile = legacy_representation_profile_for_observation_contract(
                 source_type=str(row["source_type"]),
                 observation_type=str(row["observation_type"]),
             )
@@ -7651,16 +7653,19 @@ class Database:
     async def get_memory_evidence_units(
         self,
         memory_id: str,
+        *, include_historical: bool = False,
+        context_reference_id: str | None = None,
     ) -> tuple[MemoryEvidenceUnitProjection, ...]:
         """Return one hash-verified grouped Evidence projection for get_memory."""
 
+        active_clause = "" if include_historical else " AND msa.active = 1"
         support_rows = await self.db.execute_fetchall(
-            """SELECT msa.id AS support_id, msa.evidence_unit_id,
+            f"""SELECT msa.id AS support_id, msa.evidence_unit_id, msa.active AS support_active,
                       eu.source_id, eu.source_type, eu.source_lineage_id,
-                      eu.doc_revision_id, eu.doc_id
+                      eu.doc_revision_id, eu.doc_id, eu.visibility, eu.owner_user_id, eu.part_set_digest
                  FROM memory_unit_support_assertions msa
                  JOIN evidence_units eu ON eu.id = msa.evidence_unit_id
-                WHERE msa.memory_id = ? AND msa.active = 1
+                WHERE msa.memory_id = ?{active_clause}
                 ORDER BY msa.evidence_unit_id, msa.id""",
             (memory_id,),
         )
@@ -7671,6 +7676,10 @@ class Database:
                 unit_id,
                 {
                     "support_ids": [],
+                    "support_active": False,
+                    "visibility": str(row["visibility"]),
+                    "owner_user_id": row["owner_user_id"],
+                    "part_set_digest": row["part_set_digest"],
                     "source_id": str(row["source_id"]),
                     "source_type": str(row["source_type"]),
                     "source_unit_id": str(row["source_lineage_id"] or ""),
@@ -7689,6 +7698,7 @@ class Database:
             support_ids = header["support_ids"]
             assert isinstance(support_ids, list)
             support_ids.append(str(row["support_id"]))
+            header["support_active"] = header["support_active"] or bool(row["support_active"])
 
         projected: list[MemoryEvidenceUnitProjection] = []
         for unit_id, header in sorted(grouped_headers.items()):
@@ -7709,8 +7719,13 @@ class Database:
                              er.range_start, er.range_end, er.id""",
                 (unit_id,),
             )
-            context_rows = await self.db.execute_fetchall(
-                """SELECT er.*, NULL AS unit_excerpt,
+            # A retained association proves one requested Context reference,
+            # never a complete historical Context snapshot.
+            context_clause = (" AND association.evidence_reference_id = ?"
+                              if context_reference_id is not None else " AND association.active = 1")
+            context_params = (unit_id, context_reference_id) if context_reference_id is not None else (unit_id,)
+            context_rows = () if include_historical and context_reference_id is None else await self.db.execute_fetchall(
+                f"""SELECT er.*, NULL AS unit_excerpt,
                           so.observation_type, so.current_revision_id,
                           so.source_id AS observation_source_id,
                           so.source_unit_id AS observation_source_unit_id,
@@ -7722,11 +7737,11 @@ class Database:
                      JOIN source_observation_revisions sor
                        ON sor.id = er.observation_revision_id
                     WHERE association.evidence_unit_id = ?
-                      AND association.active = 1
+                      {context_clause}
                       AND er.role = 'context'
                     ORDER BY er.observation_revision_id,
                              er.range_start, er.range_end, er.id""",
-                (unit_id,),
+                context_params,
             )
             supporting_items: list[MemoryEvidenceItemProjection] = []
             invalid_support = False
@@ -7748,6 +7763,11 @@ class Database:
             if invalid_support or not supporting_items or sum(
                 item.role is EvidenceRole.PRIMARY for item in supporting_items
             ) != 1:
+                continue
+            try:
+                if evidence_items_part_set_digest(tuple(supporting_items)) != header["part_set_digest"]:
+                    continue
+            except ValueError:
                 continue
             context_items: list[MemoryEvidenceItemProjection] = []
             for row in context_rows:
@@ -7792,12 +7812,14 @@ class Database:
                     source_unit_id=str(header["source_unit_id"]),
                     source_unit_revision_id=header["source_unit_revision_id"],
                     doc_id=header["doc_id"],
-                    current=all(
+                    current=bool(header["support_active"]) and all(
                         item.current
                         for item in items
                         if item.grants_support
                     ),
                     items=items,
+                    visibility=str(header["visibility"]),
+                    owner_user_id=header["owner_user_id"],
                 )
             )
         return tuple(projected)
@@ -9125,7 +9147,9 @@ class Database:
                                   target_unit_revision_id, status,
                                   projection_identity_hash,
                                   context_payload_json,
-                                  context_identity_hash
+                                  context_identity_hash,
+                                  extraction_contract_version,
+                                  terminal_reason_code
                            FROM source_derivation_attempts
                            WHERE id = ?""",
                         (derivation_id,),
@@ -9144,6 +9168,11 @@ class Database:
                         }
                     ):
                         raise ValueError("Source derivation is not ready for lifecycle commit")
+                    require_source_derivation_ready_for_commit(
+                        status=derivation["status"],
+                        extraction_contract_version=derivation["extraction_contract_version"],
+                        terminal_reason_code=derivation["terminal_reason_code"],
+                    )
                     if derivation["projection_identity_hash"] != (
                         source_derivation_projection_identity_hash(projection)
                     ):
@@ -14113,8 +14142,13 @@ class Database:
     async def get_memory_sources(self, memory_id: str) -> list[MemorySource]:
         results: list[MemorySource] = []
         async with self.db.execute(
-            """SELECT * FROM memory_sources
-               WHERE memory_id = ?
+            """SELECT ms.*, EXISTS (
+                   SELECT 1 FROM memory_unit_support_assertions msa
+                   JOIN evidence_units eu ON eu.id = msa.evidence_unit_id
+                   WHERE msa.memory_id = ms.memory_id
+                     AND eu.source_id = ms.source_id AND eu.doc_id = ms.doc_id
+               ) AS has_unit_support FROM memory_sources ms
+               WHERE ms.memory_id = ?
                ORDER BY
                    CASE WHEN support_kind = 'extracted' THEN 0 ELSE 1 END,
                    added_at DESC,
@@ -14134,6 +14168,7 @@ class Database:
                         support_kind=d.get("support_kind", "extracted"),
                         added_at=_parse_dt(d["added_at"]),
                         source_updated_at=_parse_dt(d.get("source_updated_at")),
+                        has_unit_support=bool(d["has_unit_support"]),
                     )
                 )
         return results

@@ -41,7 +41,7 @@ Unit Title 随投影提供，每次模型读取都带上]
     R --> D[RevisionContextPlanner + CatalogDiff]
     D --> E[Claim Extraction
 Structured LLM
-单项无法判断的 ReadingGroup 跳过并记录]
+完整抽取失败时保留旧状态、不提交 revision]
     E --> G[LLM · 候选准入
 证据完整支持 + 同轮去重
 单项无法判断按 REJECTED 记录]
@@ -105,7 +105,7 @@ none / equivalent / updates / contradicts
     class XD decision
 ```
 
-图中 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation 都经同一个 LLM batch runner 调用模型（见 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md)）。模型对每一项各返回一行。响应模型只检查一行的 JSON 结构（类型、必填字段、枚举值）；关于一行含义的规则都是行规则，由各阶段逐行单独检查。合格的行立即采用，不再重发；不合格或缺失的行合在一起重问一次，只带这些项，并逐项写明错误（例如“NEW-0003 引用了 MEM-0037，不在它允许比较的列表里”）。所以一个请求里有几行出错，都只多一次调用。如果某行用了本请求没有提供的 ID，说明整份回答的 ID 已经对不上（比如每个答案都挪到了下一项的 ID 下），整份回答按无法读出处理。只有无法定位到具体哪一项时才对半拆分：多条目请求组超时、超出容量，或者整个输出无法按行读出（格式错乱、有歧义的 JSON、schema 不符、出现本请求没有提供的 ID）且整体纠正一次后仍读不出。逐行校验适用于 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation（`claim_revision`）；同 Unit identity 的目录作为一个整体校验，仍是整体纠正一次后拆分。失败按一条规则处理：某一项单独处理仍无法判断时，由所在阶段记录下来，revision 照常提交；其余失败统称执行错误，使该 Source Unit revision 不提交，下次同步重试。“无法判断”只有两种：这一项单独就超出容量；或模型确实返回了结果，但重问或纠正一次后仍通不过校验（包括格式错乱、有歧义的 JSON）。provider 错误、超时、被 provider 拒绝的请求（如 400）和意外异常（包括代码缺陷）都是执行错误。一项无法判断，不会挡住同一 Unit 的其他内容。Change Impact 和跨文档关系分类器用单独颜色标出，因为它们是 Decision 任务，通过评估后可以改由决策模型执行。Support 线与 Relation 线并行执行，只在 SupportRelationCoordinator 汇合。
+图中 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation 都经同一个 LLM batch runner 调用模型（见 [ADR 0036](../adr/0036-separate-semantic-work-from-inference-executors.md)）。模型对每一项各返回一行。响应模型只检查一行的 JSON 结构（类型、必填字段、枚举值）；关于一行含义的规则都是行规则，由各阶段逐行单独检查。合格的行立即采用，不再重发；不合格或缺失的行合在一起重问一次，只带这些项，并逐项写明错误（例如“NEW-0003 引用了 MEM-0037，不在它允许比较的列表里”）。所以一个请求里有几行出错，都只多一次调用。如果某行用了本请求没有提供的 ID，说明整份回答的 ID 已经对不上（比如每个答案都挪到了下一项的 ID 下），整份回答按无法读出处理。只有无法定位到具体哪一项时才对半拆分：多条目请求组超时、超出容量，或者整个输出无法按行读出（格式错乱、有歧义的 JSON、schema 不符、出现本请求没有提供的 ID）且整体纠正一次后仍读不出。逐行校验适用于 Claim Extraction、候选准入、Change Impact、Support Assessment 和 Sparse Relation（`claim_revision`）；同 Unit identity 的目录作为一个整体校验，仍是整体纠正一次后拆分。失败按阶段的完整性要求处理：Claim Extraction 任一组失败或 Evidence 仍无法解析时整个 Unit 不提交；其余阶段某一项单独处理仍无法判断时，由所在阶段记录下来，revision 照常提交；其余失败统称执行错误，使该 Source Unit revision 不提交，下次同步重试。“无法判断”只有两种：这一项单独就超出容量；或模型确实返回了结果，但重问或纠正一次后仍通不过校验（包括格式错乱、有歧义的 JSON）。provider 错误、超时、被 provider 拒绝的请求（如 400）和意外异常（包括代码缺陷）都是执行错误。一项无法判断，不会挡住同一 Unit 的其他内容。Change Impact 和跨文档关系分类器用单独颜色标出，因为它们是 Decision 任务，通过评估后可以改由决策模型执行。Support 线与 Relation 线并行执行，只在 SupportRelationCoordinator 汇合。
 
 每个模型步骤按模型要做的事归为三类之一，而不是按输出形状或单条 confidence 分流（[ADR 0043](../adr/0043-assign-model-judgments-by-task-shape-and-share-one-decision-contract.md)）。Generation 写出输入里没有的文本：Claim Extraction 和 managed agent patch。Reasoning 虽然只做选择，但要在程序无法缩小的列表里找出相关项、跨项携带状态或依赖前面的答案，或者判断几段 Evidence 合起来是否完整支持一条 claim：候选准入、Support Assessment 和 Sparse Relation。Decision 对程序完整给出的一项回答一个固定问题，选项封闭，各项互不依赖：Change Impact、同一旧 Memory 的两个 refinement 之间的 pair review、跨文档关系、实体裁决和 agent-session authority。Generation 和 Reasoning 始终由主模型执行；Decision 任务通过评估后才改由决策模型执行，之前也由主模型执行。模型只返回知识本身或程序定义的选项，不返回理由，也不返回自报的 confidence。exact 比较、完整性、权限和 lifecycle action 始终由程序负责。后端给出的概率只用于离线评估和监控，不决定运行时是否换模型。
 
@@ -141,7 +141,7 @@ Support 与 Claim Extraction 共用同一个 ReadingGroup 划分：一个最外�
 
 每一次模型读取还带上该 Unit 当前的 Unit Title（第 0.9 节），包括候选准入的每个请求。它由程序按 Adapter 给出的字段值统一渲染（`pipeline/unit_title.py`），每个 prompt 用同一段话说明它：这是 Unit 的类型和当前各项值，每一项都是关于这个 Unit 的事实，Claim 可以直接写出；它不是源文本，也不能被选为 Evidence。Claim 怎样使用它见第 0.4 节“完整支持的定义”。Unit Title 不是 Fragment，不属于任何 ReadingGroup，也不是变化内容：只改变 Unit Title 的值时不产生 revision，也就没有任何模型工作；名称同时出现在内容或 locator 里时（Confluence 页面标题、文件路径），按内容修改或位置变化处理；和内容一起变化时，模型看到的是本次 revision 的名称，不会把它当作一处改动。
 
-抽取时单个 ReadingGroup 连同阅读上下文就超出请求容量，该组被跳过：程序写诊断（Source Unit、ReadingGroup、`input_capacity_exceeded`），其余组照常抽取，revision 提交。规划时按容量判断放不下的组不进入任何请求；请求发出后 provider 仍对单独这一组报容量错误的，同样跳过。单独读这一组时，模型输出纠正一次后仍不合法的，也同样跳过，诊断原因为 `invalid_response`。恢复 derivation 时规划得到同样的跳过，跳过的组数计入抽取统计（`skipped_reading_group_count`）。这是已知限制，与 Support 的 `UNRESOLVED(capacity)` 并列：因为更新时只抽取变化的结构，这一组的知识要等该结构再次变化才会重新抽取。
+Claim Extraction 必须完整完成获授权的工作。单个 ReadingGroup 连同阅读上下文仍超出容量时，规划返回 typed failure；运行时任何组失败、结果缺失，或一次既有 selector correction 后仍有 claim 无法绑定真实 Evidence，整个 Source Unit 抽取失败，不返回成功子集，也不提交 revision。已有 Memory/Support 和已提交投影保持不变，使用既有 retry/reprocess。空候选集合可以是完整成功的结果；遗漏可选相关 Required 不等于返回无效 ref。SQLite 与 HANA 在原有提交 fence 内共同检查 derivation 的失败原因和 extraction contract，不能因失败计算已标记 completed 而绕过同步失败检查。已应用历史不重写，Support 的 `UNRESOLVED(capacity|invalid_response)` KEEP 规则不变。详见 [ADR 0046](../adr/0046-separate-evidence-correspondence-from-citation-presentation.md)。
 
 #### `RepresentationCompiler` 只在 planner 内部暴露
 
@@ -415,7 +415,7 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 普通 KEEP、Evidence replacement 和非破坏性 ADD 不增加额外检查。准备 `REMOVE_SUPPORT`、`SUPERSEDE` 或 `RETIRE_MEMORY` 时，程序自动验证：
 
 1. affected object 有 authoritative coverage 或 explicit tombstone；
-2. Claim Extraction、Support Assessment 与 work manifest 完整且无技术失败；抽取时因单独读仍无法处理（超容量或输出无效）而跳过的 ReadingGroup 是已记录的覆盖事实，不算技术失败；DELETE、SUPERSEDE 或 UPDATE 都要求 Sparse Relation 完整：每个 Candidate 的完成行覆盖本 Unit 全部旧 Memory，缺一行就无法确定哪条旧 Memory 可以安全处理；
+2. Claim Extraction、Support Assessment 与 work manifest 完整且无技术失败；抽取时任何获授权 ReadingGroup 未能完成，或 claim 的 Evidence 仍无法解析，都使完整抽取失败，不能凭其余组成功通过破坏性提交检查；DELETE、SUPERSEDE 或 UPDATE 都要求 Sparse Relation 完整：每个 Candidate 的完成行覆盖本 Unit 全部旧 Memory，缺一行就无法确定哪条旧 Memory 可以安全处理；
 3. decisive current witnesses 可重新解析，Support set 与 revision 未 stale；
 4. `UNSUPPORTED` proposal 是否绑定完整顺序读取的完成收据，且受影响对象的覆盖是权威的；
 5. 模拟 source-scoped removal 后，Memory 是否还有其他 Active Support。
@@ -811,7 +811,7 @@ Evidence-fixed、多 Memory cohorts 可使用 `REVISION_FIRST` cache layout；co
 
 **程序校验：**输出格式、真实引用、Primary 授权、角色、访问兼容性及证据完整性。通过后保存到本次 derivation 的成功输出，形成 RawMemory/Candidate。尚不创建正式 Memory。
 
-**容量：**单个 ReadingGroup 连同阅读上下文单独超出容量时，跳过该组并写诊断，其余组照常抽取，revision 提交（第 0.2 节）。
+**容量：**单个 ReadingGroup 单独仍无法完成时，整个抽取失败，不提交 revision；不把成功子集当作完整结果（第 0.2 节）。
 
 本文按两个步骤描述：L1 找出本次变化带来的新知识候选；L3 检查已有知识是否仍被当前来源支持。L1 输出候选，不直接创建 Memory；L3 输出支持判断与证据调整方案，不直接修改旧 Memory。两种结果都交给后面的统一 reconciliation 和 Lifecycle Plan，决定最终如何提交。
 
@@ -1030,7 +1030,7 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 | provider 抓取失败 | Run 与错误；可能有其他成功页面 | 本页不据此证明删除 | provider/本页采集 |
 | Artifact 不适合当前推理 | 准确原始 Artifact 与 eligibility | 依赖它的 Support 走明确未决保护；不伪造视觉验证 | eligibility/既有 Review |
 | 提取 schema/transport 失败 | 固定 target 与成功 sibling batch 输出 | 本页不以不完整提取覆盖提交新知识 | 失败工作；精确输出复用 |
-| 请求超容量，或多条目请求组超时、provider 413、输出截断 | 固定目标与成功阶段 | LLM batch runner 按容量拆分；多条目请求组遇到这些容量失败时对半拆分后重发，直到完成；不截断成“完整” | 精确复用成功阶段；拆到单条仍失败时：执行错误使该 revision 不提交、下次同步重试；单项无法判断（超容量或输出仍不合法）由各阶段记录，revision 提交：Support 为 `UNRESOLVED(capacity)` 或 `UNRESOLVED(invalid_response)`，候选准入本轮拒绝该 Candidate，Sparse Relation 与 identity 消费该 Candidate、不 ADD（Sparse Relation 还拦下本 Unit 的全部破坏性决定），Claim Extraction 跳过该组并写诊断 |
+| 请求超容量，或多条目请求组超时、provider 413、输出截断 | 固定目标与成功阶段 | LLM batch runner 按容量拆分；多条目请求组遇到这些容量失败时对半拆分后重发，直到完成；不截断成“完整” | 精确复用成功阶段；拆到单条仍失败时：执行错误使该 revision 不提交、下次同步重试；Claim Extraction 任一组无法完成或 Evidence 无法解析时整个 Unit 不提交。其他阶段的单项无法判断（超容量或输出仍不合法）按原规则记录：Support 为 `UNRESOLVED(capacity)` 或 `UNRESOLVED(invalid_response)`，候选准入本轮拒绝该 Candidate，Sparse Relation 与 identity 消费该 Candidate、不 ADD（Sparse Relation 还拦下本 Unit 的全部破坏性决定），Claim Extraction 则失败关闭整项 Source Unit 抽取 |
 | Support 未决 (`UNRESOLVED`) | 原 Memory、Support、Evidence、验证基线 | 目标（#505）：部分覆盖（`partial_coverage`）、单个 ReadingGroup 单独超出容量（`capacity`）和单项输出纠正后仍不合法（`invalid_response`）成为 `UNRESOLVED` 并 KEEP，本轮 NOOP，其他处理和 Source 提交继续；Support 结果只有 `SUPPORTED` 和 `UNSUPPORTED`，没有 insufficient。已实现（`revision_work.py`、`engine.py`）：`supported` 为 None 并带未决原因，该 Memory 保留，Unit 其余部分继续；只有执行错误（provider 错误、超时、请求被拒、意外异常）使整个 Unit 失败 | KEEP；记录 `partial_coverage`、`capacity` 或 `invalid_response` 原因，后两者的诊断写明 Source Unit 和 ReadingGroup；不新增人工确认 |
 | Support 或定向复核执行错误 | 失败诊断（现有 failure trace） | 目标（#505）：拆到单条 work 后仍是执行错误时，该 Source Unit revision 不提交；Unit 内其他工作在重试时重新计算 | 下次同步重试该 revision；重复失败通过现有 sync 失败状态和 LLM failure trace 可见，不新增机制 |
 | Change Impact 执行失败 | 失败诊断 | 相关 Claim 进入 Support Assessment；不记 `AFFECTED` 标签 | 同一 revision 内由 Support Assessment 继续 |
@@ -1063,7 +1063,7 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（证�
 | 部分覆盖、单组超容量或单项输出无效 | `UNRESOLVED(reason)` 保留旧 Memory；Support 与 Relation 的语义冲突按第 0.6.3 节组合表处理，不自动换模型期待改口 |
 | Support 或定向复核执行错误 | 该 Source Unit revision 不提交，下次同步重试 |
 
-失败按一条规则处理：某一项单独处理仍无法判断（超容量，或输出纠正一次后仍不合法）时，由所在阶段记录，revision 提交；其余的执行错误（provider 错误、超时、请求被拒、意外异常）使该 Source Unit revision 不提交，下次同步重试。各阶段的记录方式：Support Assessment 与定向复核为 `UNRESOLVED(capacity)` 或 `UNRESOLVED(invalid_response)` 并 KEEP；候选准入本轮拒绝该 Candidate；Sparse Relation 消费该 Candidate，不 ADD，并拦下本 Unit 的全部破坏性决定；Claim Extraction 跳过该 ReadingGroup。Change Impact 的任何执行失败都进入 Support Assessment；Sparse Relation 的失败不能当作“未提出关系”。任何一步的失败都不能变成“直接新增”。保留已有日志/指标，分别统计确定性规范化、局部纠正、语义 Review、能力失败及实际外层重试；不能只看最终 partial sync 数量。
+失败按阶段的完整性要求处理：Claim Extraction 任一组失败或 Evidence 仍无法解析时整个 Unit 不提交；其余阶段某一项单独处理仍无法判断（超容量，或输出纠正一次后仍不合法）时，由所在阶段记录，revision 提交；其余的执行错误（provider 错误、超时、请求被拒、意外异常）使该 Source Unit revision 不提交，下次同步重试。各阶段的记录方式：Support Assessment 与定向复核为 `UNRESOLVED(capacity)` 或 `UNRESOLVED(invalid_response)` 并 KEEP；候选准入本轮拒绝该 Candidate；Sparse Relation 消费该 Candidate，不 ADD，并拦下本 Unit 的全部破坏性决定；Claim Extraction 不发布成功子集、不提交 revision。Change Impact 的任何执行失败都进入 Support Assessment；Sparse Relation 的失败不能当作“未提出关系”。任何一步的失败都不能变成“直接新增”。保留已有日志/指标，分别统计确定性规范化、局部纠正、语义 Review、能力失败及实际外层重试；不能只看最终 partial sync 数量。
 
 实施验收必须回放此前修复的边界样例：角色 ref 兼容、重复 Required、固定 slot 重复、非适用字段、完整选择纠正、纠正耗尽不重放外层工作，以及文档其他 Unit 继续完成。支持的输入不应因新模型 schema 更严而退化为 partial sync；真正无法证明的状态仍不能假报成功。
 

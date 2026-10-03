@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from memforge.pipeline.memory_value import MEMORY_VALUE_DEFINITION
+
 __all__ = [
     "CONTRACT_SUPERSEDED",
     "DURABLE_MEMORY_QUALITY_RULES",
+    "MEMORY_CLAIM_EVIDENCE_RULES",
     "PROJECTION_EXTRACTION_CONTRACT_VERSION",
     "PROJECTION_FRAGMENT_MODEL_PRESENTATION_POLICY_VERSION",
 ]
@@ -12,27 +15,39 @@ __all__ = [
 
 # Recorded on every Source derivation and hashed into its batch identities.
 # Stored derivations with any other value are superseded, never resumed.
-PROJECTION_EXTRACTION_CONTRACT_VERSION = "projection-extraction-v11"
-PROJECTION_FRAGMENT_MODEL_PRESENTATION_POLICY_VERSION = 6
+PROJECTION_EXTRACTION_CONTRACT_VERSION = "projection-extraction-v17"
+PROJECTION_FRAGMENT_MODEL_PRESENTATION_POLICY_VERSION = 9
 CONTRACT_SUPERSEDED = "CONTRACT_SUPERSEDED"
 
 
-DURABLE_MEMORY_QUALITY_RULES = """Top rules (apply these first; reject candidates that fail any of them):
+MEMORY_CLAIM_EVIDENCE_RULES = """Choose one eligible authentic readable Primary directly supporting the central conclusion. Read the authorized source and its supplied interpretation to determine the claim; Primary need not alone prove every clause. Prefer an equally complete focused view when available. A broader original view is valid when that alternative is unavailable.
 
-0. PREFER EMPTY. Returning {{"memories": []}} is the default. The bar for emitting a Memory is high: it must teach a future developer something they would otherwise miss six months from now, after the implementation has been refactored. Routine work, mechanical detail, transient output, and meta-discussion produce zero Memories.
+Write one independently useful final claim with its governing scope, conditions, exceptions, branch precedence, order and modality. Preserve explicitly authored amendments, supersession and historical boundaries. Presented current refs do not imply every authored statement remains current. Preserve source uncertainty without inventing a resolution. A connected procedure or inseparable decision/reason may remain one claim; independently changing conclusions belong in separate Memories. Another Memory or additional citation cannot supply a qualification missing from this claim's content.
 
-1. CODE-RECOVERABLE FACTS ARE NOT MEMORIES. Reject any candidate a developer could verify by reading the current code, schema, types, configuration, or by running `grep` / `git log -p` in under a minute. Specifically, do not emit Memories that merely restate function or method names, class names, type signatures, parameter lists, ID or constant values, file paths, schema columns, migration numbers, generated query text, or "X passes Y to Z" wiring. Keep a candidate only when it states a reusable constraint, reason, rule, invariant, conclusion, or procedure that survives a future refactor.
+Preserve whether each assertion is a requirement, proposal, intended result, observation or completed change. A referenced remedy does not prove completion. Distinct labels and annotations remain distinct unless the source explicitly establishes their relationship; do not invent a chronology or resolve a disagreement.
+When annotations do not establish that relationship, describe what they actually say or associate. A successful outcome label and an associated remedy reference do not establish that the remedy was completed or caused the outcome.
 
-2. ONE CLAIM, ONE MEMORY. Pick the single most general accurate phrasing for each underlying claim; do not emit reworded duplicates.
+Assign valid_from/valid_until only from an authored effective boundary for the whole claim. Proposal, report, update and observed-event dates belong in content when useful; otherwise use null. A date for one clause does not date independently changing clauses.
+Preserve what an authored date actually dates. A date attached to a note or reference does not automatically date a nearby outcome, its execution or its effectiveness.
+Include an annotation's date only when it contributes lasting knowledge, and name the dated subject precisely. Do not turn a dated reference into a dated execution or change.
 
-3. FOLD REJECTED ALTERNATIVES INTO THE CHOSEN DECISION. Emit one "picked A over B because <reason>" decision rather than separate Memories for rejected alternatives.
+After final content and metadata are settled within this same response, select Required for confident additional contribution beyond Primary, other selected refs and source-proven interpretation already included in the view. Another occurrence, a containing alternative or an already included heading is not automatically additional contribution. Outside conditions, branches and definitions may contribute. Eligibility permits selection; it does not oblige selection. Empty required_refs is valid. Related-ref recall is best effort: retain actual qualifiers in content even when an additional citation is omitted. No smallest-set requirement or ref-count target applies. Keep useful supported conclusions instead of dropping knowledge to reduce citation counts.
+Every selected Required must add support to a specific part of the final claim or metadata. Topic similarity or general background alone is insufficient; leave such context unselected. Do not cite an ancestor solely to repeat an interpretation already supplied with Primary.
 
-4. FUTURE USEFULNESS CHECK. Skip claims that will be obvious after the next refactor, self-resolve within days, or preserve only one generated or observed instance rather than reusable knowledge.
+"""
 
-5. NO META-MEMORIES. Do not emit Memories about the act of working: commit structure, diff splitting, tools used, validation output, work-in-progress state, or whether a project rule was followed. Memory is about the project's durable domain knowledge, not the editing process.
 
-6. OWNED EVIDENCE SETS THE LANGUAGE. For each candidate, preserve the language of its owned source evidence. When that evidence is primarily Chinese, write memory.content in Chinese. Do not translate it to English unless the evidence itself is English or mixed-language phrasing is necessary to preserve exact technical identifiers. Read-only context may resolve meaning but must not change the candidate's language.
+DURABLE_MEMORY_QUALITY_RULES = MEMORY_VALUE_DEFINITION + """
 
-7. OPERATIONAL DOES NOT MEAN TRANSIENT. Keep an explicitly stated, repeatable procedure when it remains useful beyond the immediate event. Skip one-off observations, current status, and instance-specific details.
+Cover the independently useful knowledge throughout the authorized source. Do not sample representative claims or replace useful specifics with an overview. Similar wording is not duplication when scope, conditions, branches, outcomes or reasons differ. Exact repetitions and details that establish no lasting knowledge may be omitted.
+Distinct defensive conditions, rejections and no-op behavior are useful knowledge even when their verification outcome is unknown. Preserve the expected rule and any material uncertainty; lack of a completed observation is not a reason to omit the rule.
+
+ONE CLAIM, ONE MEMORY. Preserve each independently useful conclusion without reworded duplicates. Fold a rejected alternative into the chosen decision when it explains that same decision.
+
+NO META-MEMORIES. Preserve durable system/domain knowledge rather than commit structure, diff splitting, tool use, validation output or whether a project rule was followed.
+
+OWNED EVIDENCE SETS THE LANGUAGE. For each candidate, preserve the language of its owned source evidence. When that evidence is primarily Chinese, write memory.content in Chinese. Do not translate it to English unless the evidence itself is English or mixed-language phrasing is necessary to preserve exact technical identifiers. Read-only context may resolve meaning but must not change the candidate's language.
+
+OPERATIONAL DOES NOT MEAN TRANSIENT. Keep an explicitly stated, repeatable procedure when it remains useful beyond the immediate event. Skip one-off observations, current status, and instance-specific details that establish no lasting knowledge.
 
 """

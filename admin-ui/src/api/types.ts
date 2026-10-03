@@ -105,6 +105,7 @@ export interface MemoryEvidenceArtifact {
 }
 
 export interface MemoryEvidenceItem {
+  resource_url?: string | null;
   authority: "revision_pinned" | "application_document";
   evidence_reference_id: string | null;
   role: "primary" | "required" | "context";
@@ -123,6 +124,7 @@ export interface MemoryEvidenceItem {
 }
 
 export interface MemoryEvidenceGroup {
+  resource_url?: string | null;
   kind: "evidence_unit" | "document";
   evidence_unit_id: string | null;
   support_ids: string[];

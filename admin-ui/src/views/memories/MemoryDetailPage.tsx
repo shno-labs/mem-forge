@@ -295,18 +295,28 @@ function EvidenceGroupCard({ group }: { group: MemoryEvidenceGroup }) {
                 {item.artifact.filename} <ExternalLink className="size-3" />
               </a>
             )}
+            {item.resource_url && (
+              <a href={item.resource_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
+                Open citation
+              </a>
+            )}
           </div>
         ))}
       </div>
 
-      {(document?.content_url || document?.pdf_url) && (
+      {(group.resource_url || document?.content_url || document?.pdf_url) && (
         <div className="mt-3 flex flex-wrap gap-3 text-xs">
-          {document.content_url && (
+          {group.resource_url && (
+            <a href={group.resource_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              Open cited evidence
+            </a>
+          )}
+          {document?.content_url && (
             <a href={document.content_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
               Open content
             </a>
           )}
-          {document.pdf_url && (
+          {document?.pdf_url && (
             <a href={document.pdf_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
               Open PDF
             </a>

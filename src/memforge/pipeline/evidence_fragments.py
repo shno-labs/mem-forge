@@ -40,7 +40,7 @@ from memforge.source_representation import (
 )
 
 
-COMPILER_CONTRACT_VERSION = 4
+COMPILER_CONTRACT_VERSION = 5
 DEFAULT_MAX_FRAGMENTS = 2_048
 DEFAULT_MAX_PRESENTATION_CHARS = 120_000
 _SUPPORTING_ROLES = frozenset({EvidenceRole.PRIMARY, EvidenceRole.REQUIRED})
@@ -235,6 +235,9 @@ class EvidenceFragment:
     raw_content_sha256: str
     presentation_text: str
     presentation_sha256: str
+    # Reconstructed from the immutable Revision under its declared profile.
+    # Neither a display digest nor a replacement for raw-range integrity.
+    content_value: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,6 +304,7 @@ class _FragmentCandidate:
     eligible_roles: frozenset[EvidenceRole]
     presentation_text: str
     raw_content_sha256: str | None = None
+    content_value: str | None = None
 
     @property
     def primary_eligible(self) -> bool:
@@ -556,16 +560,16 @@ def _compile_canonical_record_profile(
         node = document.nodes.get(descriptor.json_pointer)
         if node is None or node.value is None:
             continue
-        if descriptor.nested_profile is None:
+        if descriptor.nested_profile is None and descriptor.text_format is None:
             candidates.append(
-                _text_candidate(
+                replace(_text_candidate(
                     revision.content,
                     "canonical-field",
                     node.start,
                     node.end,
                     _SUPPORTING_ROLES,
                     _canonical_value_presentation(node.value),
-                )
+                ), content_value=_canonical_selection_value(descriptor, node.value))
             )
             continue
         if not isinstance(node.value, str) or node.string_boundaries is None:
@@ -579,7 +583,31 @@ def _compile_canonical_record_profile(
                 )
             )
             continue
-        if descriptor.nested_profile == "plain-text":
+        if descriptor.text_format is not None:
+            try:
+                parsed = descriptor.text_format.parse(node.value)
+                nested = tuple(
+                    _FragmentCandidate(
+                        kind=EvidenceFragmentKind.TEXT,
+                        fragment_type=item.kind,
+                        start=item.start,
+                        end=item.end,
+                        eligible_roles=_SUPPORTING_ROLES,
+                        presentation_text=item.presentation,
+                        content_value=_canonical_selection_value(descriptor, item.content_value),
+                    )
+                    for item in parsed.fragments
+                )
+                if any(not 0 <= item.start < item.end <= len(node.value) for item in parsed.fragments):
+                    raise ValueError("declared text selection is outside its field")
+                nested_errors = ()
+            except ValueError as exc:
+                errors.append(_error(
+                    revision, FragmentCompilationErrorCode.SCHEMA_MISMATCH,
+                    str(exc), start=node.start, end=node.end, fatal=True,
+                ))
+                continue
+        elif descriptor.nested_profile == "plain-text":
             nested = tuple(
                 _FragmentCandidate(
                     kind=EvidenceFragmentKind.TEXT,
@@ -604,14 +632,16 @@ def _compile_canonical_record_profile(
             raw_start = node.string_boundaries[candidate.start]
             raw_end = node.string_boundaries[candidate.end]
             candidates.append(
-                _text_candidate(
+                replace(_text_candidate(
                     revision.content,
                     f"canonical-{candidate.fragment_type}",
                     raw_start,
                     raw_end,
                     candidate.eligible_roles,
                     candidate.presentation_text,
-                )
+                ), content_value=(candidate.content_value or _canonical_selection_value(
+                    descriptor, node.value[candidate.start:candidate.end]
+                )))
             )
         for nested_error in nested_errors:
             raw_start = (
@@ -642,6 +672,18 @@ def _compile_canonical_record_profile(
     return bound, (
         *_errors_inside_authority(tuple(errors), authority_ranges, revision.content),
         *authority_errors,
+    )
+
+
+def _canonical_selection_value(field: CanonicalRecordField, value: object) -> str:
+    """Bind comparison material to its declared record field and format."""
+    format_identity = (
+        (field.text_format.name, field.text_format.version)
+        if field.text_format is not None else field.nested_profile
+    )
+    return json.dumps(
+        (field.json_pointer, format_identity, value),
+        sort_keys=True, ensure_ascii=False, separators=(",", ":"),
     )
 
 
@@ -1702,6 +1744,12 @@ def _materialize_fragment(
         raw_content_sha256=raw_digest,
         presentation_text=candidate.presentation_text,
         presentation_sha256=hashlib.sha256(candidate.presentation_text.encode("utf-8")).hexdigest(),
+        content_value=(
+            candidate.content_value
+            if candidate.content_value is not None
+            else raw_digest if candidate.kind is EvidenceFragmentKind.ARTIFACT
+            else revision.content[candidate.start:candidate.end]
+        ),
     )
 
 

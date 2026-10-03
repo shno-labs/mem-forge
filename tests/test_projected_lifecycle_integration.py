@@ -36,6 +36,7 @@ from tests.revision_client_fixture import (
 import pytest
 from memforge.llm.structured import ChangeImpactWireResponse, SupportAssessmentWireResponse
 import pytest_asyncio
+from markdown_it import MarkdownIt
 
 
 from memforge.llm.structured import (
@@ -310,7 +311,7 @@ def _projection(
         version="2",
         extra={"page_id": page_id, "space_key": "ENG"},
     )
-    raw = RawContent(item=item, body=body.encode(), content_type="text/html")
+    raw = RawContent(item=item, body=MarkdownIt("commonmark").render(body).encode(), content_type="text/html")
     # As the Confluence Gene reports it: the page version time is the body's source time.
     normalized = NormalizedContent(
         item=item,
@@ -396,7 +397,8 @@ def _projection_with_artifact(
         item=item,
         raw=RawContent(
             item=item,
-            body=body.encode(),
+            # This provider returns storage XHTML, not the normalized fixture text.
+            body=MarkdownIt("commonmark").render(body).encode(),
             content_type="text/html",
         ),
         normalized=NormalizedContent(item=item, markdown_body=body),
@@ -1505,13 +1507,13 @@ async def test_identical_admitted_candidates_merge_before_lifecycle_writes(
     )
     observation_id = _body_observation(projection).id
     canonical = RawMemory(
-        content=_body_revision(projection).content,
+        content="The payroll trigger remained OPEN and was not processed.",
         memory_type="fact",
         evidence_quote="The payroll trigger remained OPEN and was not processed.",
         source_observation_id=observation_id,
     )
     duplicate = RawMemory(
-        content="  # Page\n\nThe   payroll trigger remained OPEN and was not processed. ",
+        content="  The   payroll trigger remained OPEN and was not processed. ",
         memory_type="fact",
         evidence_quote="The payroll trigger remained OPEN and was not processed.",
         source_observation_id=observation_id,
@@ -2456,6 +2458,13 @@ async def test_atomic_projection_lifecycle_commits_document_and_derivation(
         )
     ).attempt
     assert attempt.context.document == staged_document
+    # Stored completed work from the previous extraction policy cannot bypass
+    # recovery invalidation by going directly to the atomic commit boundary.
+    await db.db.execute(
+        "UPDATE source_derivation_attempts SET extraction_contract_version = ? WHERE id = ?",
+        ("projection-extraction-v12", attempt.id),
+    )
+    await db.db.commit()
     delta = second.deltas[0]
     scope = ReconciliationScope(
         id="scope-derivation-atomic",
@@ -2484,6 +2493,19 @@ async def test_atomic_projection_lifecycle_commits_document_and_derivation(
             access_context_hash="workspace-eng",
         ),
     )
+
+    with pytest.raises(ValueError, match="not ready for lifecycle commit"):
+        await db.apply_source_projection_lifecycle(
+            second, plan, document=staged_document, derivation_id=attempt.id,
+            derivation_context_identity_hash=attempt.context_identity_hash,
+        )
+    assert await db.get_document("confluence-123") == original_document
+    assert (await db.get_current_source_unit_revision(first.source_units[0].id)).id == first.source_unit_revisions[0].id
+    await db.db.execute(
+        "UPDATE source_derivation_attempts SET extraction_contract_version = ? WHERE id = ?",
+        (attempt.extraction_contract_version, attempt.id),
+    )
+    await db.db.commit()
 
     # Another writer advancing the Unit after planning must not be hidden by
     # record_source_projection() advancing it to the target before validation.
@@ -2895,7 +2917,14 @@ class _OversizedGroupExtractor(NoopMemoryExtractor):
 
 
 @pytest.mark.asyncio
-async def test_a_reading_group_beyond_capacity_is_skipped_and_the_derivation_completes(db: Database) -> None:
+async def test_a_reading_group_beyond_capacity_refuses_the_unit_and_preserves_support(db: Database) -> None:
+    base = _projection(run_id="projection-capacity-base", body="Rule one applies.\n")
+    await db.record_source_projection(base)
+    incumbent = await _seed_exact_incumbent_support(
+        db, projection=base, memory_id="mem-capacity", memory_content="Rule one applies.",
+    )
+    before_support = await active_support_evidence(db, incumbent.id)
+    before_projection = await db.get_current_source_unit_projection(base.source_units[0].id)
     body = f"Rule one applies.\n\n{_OversizedGroupExtractor.OVERSIZED}\n\nRule three applies.\n"
     projection = _projection(run_id="projection-extraction-capacity", body=body)
     document = await db.get_document("confluence-123")
@@ -2932,19 +2961,53 @@ async def test_a_reading_group_beyond_capacity_is_skipped_and_the_derivation_com
 
     first = await SourceUnitDeriver(db).derive(request())
 
-    assert first.extraction.error_type is None
+    assert first.extraction.error_type == "evidence_authority_planning_failed"
     assert first.derivation.status == "completed"
-    assert first.extraction.metadata["skipped_reading_group_count"] == 1
-    assert "Rule one applies." in read and "Rule three applies." in read
-    assert _OversizedGroupExtractor.OVERSIZED not in read
+    assert first.derivation.terminal_reason_code == "EXTRACTION_INPUT_CAPACITY_EXCEEDED"
+    assert first.derivation.batches == () and read == []
+    assert first.extraction.memories == []
+    assert first.extraction.metadata["lifecycle_mutation_skipped"]
+    assert await active_support_evidence(db, incumbent.id) == before_support
+    assert await db.get_current_source_unit_projection(base.source_units[0].id) == before_projection
 
-    # Recovering the derivation plans the same skip and reuses every completed batch.
+    # A direct/deferred commit cannot bypass the sync failure gate just because
+    # the empty failed computation is durably marked completed.
+    delta = projection.deltas[0]
+    plan = build_lifecycle_plan(
+        plan_id="plan-capacity-cannot-commit",
+        scope=ReconciliationScope(
+            id="scope-capacity-cannot-commit", source_id=projection.source_id,
+            source_unit_id=delta.source_unit_id,
+            base_unit_revision_id=delta.previous_unit_revision_id,
+            target_unit_revision_id=delta.current_unit_revision_id,
+        ),
+        gate_state=LifecycleGateState.GATED, operations=(), incumbents={},
+        source_support_unit_ids={}, all_active_support_unit_ids={}, support_set_hashes={},
+        observation_revision_ids=tuple(revision.id for revision in projection.observation_revisions),
+        defaults=NewMemoryDefaults(
+            visibility="workspace", owner_user_id=None, project_key="ENG",
+            repo_identifier=None, doc_id="confluence-123", source_type="confluence",
+            access_context_hash="access-extraction-capacity",
+        ),
+    )
+    with pytest.raises(ValueError, match="not ready for lifecycle commit"):
+        await db.apply_source_projection_lifecycle(
+            projection, plan, document=document, derivation_id=first.derivation.id,
+            derivation_context_identity_hash=first.derivation.context_identity_hash,
+        )
+    assert await active_support_evidence(db, incumbent.id) == before_support
+    assert await db.get_current_source_unit_projection(base.source_units[0].id) == before_projection
+
+    # The deterministic failed plan replays exactly, with no inference or commit.
     read.clear()
     again = await SourceUnitDeriver(db).derive(request())
 
     assert again.derivation.id == first.derivation.id
     assert again.executed_batch_count == 0 and read == []
-    assert again.extraction.metadata["skipped_reading_group_count"] == 1
+    assert again.extraction.error_type == first.extraction.error_type
+    assert again.derivation.terminal_reason_code == first.derivation.terminal_reason_code
+    assert await active_support_evidence(db, incumbent.id) == before_support
+    assert await db.get_current_source_unit_projection(base.source_units[0].id) == before_projection
 
 
 @pytest.mark.asyncio
@@ -4053,7 +4116,7 @@ async def test_projected_support_invariant_accepts_other_valid_same_source_unit(
         item=other_item,
         raw=RawContent(
             item=other_item,
-            body=other_body.encode(),
+            body=MarkdownIt("commonmark").render(other_body).encode(),
             content_type="text/html",
         ),
         normalized=NormalizedContent(
@@ -4703,7 +4766,9 @@ async def test_noop_revalidation_uses_bounded_fragment_refs_for_large_revision(
     assert stats["noop"] == 2
     assert stats["support_revalidation_work_item_count"] == 2
     assert stats["support_revalidation_model_call_count"] == 1
-    assert stats["support_revalidation_revision_index_count"] == len(second.observation_revisions)
+    assert stats["support_revalidation_revision_index_count"] == len({
+        revision.id for projection in (first, second) for revision in projection.observation_revisions
+    })
     assert stats["support_revalidation_supported_count"] == 2
     assert len(client.validation_prompts) == 2
     assert all(unrelated_marker in prompt for prompt in client.validation_prompts)
@@ -7552,6 +7617,14 @@ async def _attach_current_evidence_unit(
             support["created_at"],
         ),
     )
+    part_digest = evidence_part_set_digest((EvidenceReference(
+        role=EvidenceRole.PRIMARY, kind=EvidencePartKind(primary["part_kind"]),
+        anchor=SourceAnchor(kind=AnchorKind(primary["anchor_kind"]), observation_id=observation_id,
+                            observation_revision_id=revision_id, fragment_id=primary["fragment_id"],
+                            range_start=primary["range_start"], range_end=primary["range_end"]),
+        raw_content_sha256=primary["raw_content_sha256"],
+    ),))
+    await db.db.execute("UPDATE evidence_units SET part_set_digest = ? WHERE id = ?", (part_digest, evidence_unit_id))
     await db.db.commit()
 
 
@@ -9016,7 +9089,10 @@ async def test_reused_evidence_advances_only_support_validation_plan_across_revi
         appendix = replace(_body_observation(first), id="obs-appendix", provider_key="appendix")
         appendix_revision = replace(
             _body_revision(first), id=f"appendix-v{version}", observation_id=appendix.id,
-            semantic_hash=f"appendix-hash-{version}", content=f"Appendix edition {version}.",
+            semantic_hash=f"appendix-hash-{version}", content=json.dumps({
+                "title": "Appendix", "body": f"<p>Appendix edition {version}.</p>",
+                "representation": "confluence-page-storage:1",
+            }),
         )
         revision = replace(
             first.source_unit_revisions[0], id=f"baseline-unit-v{version}",
@@ -9199,20 +9275,15 @@ async def test_unresolved_support_preserves_its_baseline_and_resumes_after_sourc
         prior_unit = await db.get_evidence_unit(old_support[0].evidence_unit_id)
         alternate = replace(prior_unit, id="eu-alternate-support", doc_revision_id=second.source_unit_revisions[0].id)
         await db.upsert_evidence_unit(alternate)
-        revision = _body_revision(second)
-        start = revision.content.index(skipped_claim)
+        selected = next(fragment for fragment in RevisionAssessmentContext(
+            projection=second, base=None, access_context_hash="fixture",
+        ).full_fragments if fragment.presentation_text == skipped_claim)
         references = await db.record_evidence_references(alternate.id, (
             EvidenceReference(
                 role=EvidenceRole.PRIMARY,
                 kind=EvidencePartKind.TEXT,
                 raw_content_sha256=old_support[0].raw_content_sha256,
-                anchor=SourceAnchor(
-                    kind=AnchorKind.REVISION_RANGE,
-                    observation_id=revision.observation_id,
-                    observation_revision_id=revision.id,
-                    range_start=start,
-                    range_end=start + len(skipped_claim),
-                ),
+                anchor=selected.anchor,
             ),
         ))
         await db.upsert_evidence_unit(replace(alternate, part_set_digest=evidence_part_set_digest(references)))

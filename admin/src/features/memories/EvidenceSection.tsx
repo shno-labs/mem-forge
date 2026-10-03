@@ -36,6 +36,11 @@ function EvidenceItemBlock({ item }: { item: EvidenceItem }) {
           {item.artifact.filename}
         </a>
       ) : null}
+      {item.resource_url ? (
+        <a href={item.resource_url} target="_blank" rel="noopener noreferrer" className="text-xs hover:underline">
+          Open citation
+        </a>
+      ) : null}
     </div>
   );
 }
@@ -74,19 +79,24 @@ function EvidenceGroupCard({ group, typeLabel }: { group: EvidenceGroup; typeLab
           <EvidenceItemBlock key={item.evidence_reference_id ?? `${item.role}-${index}`} item={item} />
         ))}
       </div>
-      {document?.content_url || document?.pdf_url || document?.source_updated_at ? (
+      {group.resource_url || document?.content_url || document?.pdf_url || document?.source_updated_at ? (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-          {document.content_url ? (
+          {group.resource_url ? (
+            <a href={group.resource_url} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline">
+              Open cited evidence
+            </a>
+          ) : null}
+          {document?.content_url ? (
             <a href={document.content_url} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline">
               Open content
             </a>
           ) : null}
-          {document.pdf_url ? (
+          {document?.pdf_url ? (
             <a href={document.pdf_url} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline">
               Open PDF
             </a>
           ) : null}
-          {document.source_updated_at ? (
+          {document?.source_updated_at ? (
             <span className="ml-auto text-muted-foreground">Source updated {formatDateTime(document.source_updated_at)}</span>
           ) : null}
         </div>
