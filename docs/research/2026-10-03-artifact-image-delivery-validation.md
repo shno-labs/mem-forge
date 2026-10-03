@@ -46,6 +46,26 @@ as a bundle: only the caller can authenticate its current access/authority.
 Production integration, additional input profiles, caller authority, adapter
 parity, full extraction acceptance and CF deployment/smoke remain open.
 
+The versioned second profile places all reading views before the query, following
+official vision/long-context prompting guidance. Its source/ref binding and all
+seven image bodies/rectangles remain unchanged; ordering participates in the
+delivery identity. Current image/client tests passed 17 checks, with lint/diff
+clean. A separate complete online four-source operation retained 106 candidates
+after eight native Sonnet calls; source-only semantic review is separate.
+
+Configured-model image-input capability checking is explicitly deferred by the
+user to [issue 497](https://github.com/shno-labs/mem-forge/issues/497), outside
+this version. Artifact eligibility and format/token checks do not certify that
+arbitrary configured models support images. The current experiment uses the
+verified Sonnet route and keeps citation identity independent of image inference.
+
+Both fresh source-only reviewers have now completed all 106 assessments. All
+Primary views pass authenticity/readability/directness; nevertheless both find
+persistent conflict misrouted to execution error and an ADD condition lost in
+raster claims. All original hashes remain unchanged. This cohort fails semantic
+acceptance despite clean model audits; ordering/delivery is not a guarantee of
+understanding.
+
 Canonical design and full retained development evidence are in
 [the proposed extraction design PR](https://github.com/shno-labs/mem-forge/pull/495).
 Private source/response bytes, credentials and personal identifiers are excluded
