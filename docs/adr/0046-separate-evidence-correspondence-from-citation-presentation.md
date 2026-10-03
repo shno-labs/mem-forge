@@ -267,7 +267,8 @@ traceable to its selected revision. Derived labels, such as a table's header
 path, are marked as structure/context rather than presented as literal quotes.
 
 Supported constructs have deterministic readable renderings: table columns and
-rows retain their association; status macros show the stored status title;
+rows retain their association; status macros show their stored title and any
+supported meaning-bearing values, including an authored colour;
 issue/link macros expose their source identifier and link; code and nested lists
 retain their structure. Content mode belongs to the native representation
 grammar: Markdown fenced/inline/indented code is literal; ordinary HTML
@@ -278,7 +279,13 @@ cannot decide whether contained markup is authoritative structure. An empty stat
 FAIL by inference. Rendering a user macro may use an authoritative snapshot
 label or its stored identifier, but must not silently resolve a new live value
 into an old citation. Hiding macro control metadata is allowed; hiding material
-macro content is not.
+macro content is not. Preserving native values in canonical material does not
+prove that the reading or citation view exposes those values. Every supported
+meaning-bearing native value must have a faithful mapped readable representation,
+or the adapter must report an explicit unsupported interpretation. Source-authored
+conventions determine significance; a colour must not silently be inferred from
+a title or treated as decorative universally. Native parameter interpretation
+belongs to the provider-format adapter, not the generic extractor or matcher.
 
 ### 5. Select claim-local Evidence within complete reading context
 
@@ -473,9 +480,11 @@ batching to bypass provider capacity:
 1. Read every authorized complete ReadingGroup as source assertions, necessary
    qualifications, observations and explicitly authored relationships. Retain
    the actual subject, predicate, scope and modality, with exact source selections.
-   Record a reading outcome for every group. These are provisional interpretations,
-   not early Memory candidates: no Memory type, entity tags, effective interval
-   or Primary/Required role is assigned before the source is understood.
+   Account for every complete group, but do not require a second model-produced
+   assertion/relationship ledger or disposition ontology. Input completeness and
+   reading receipts prove delivery/accounting, not cognitive reading or recall.
+   Internal source understanding precedes final claim formation; an intermediate
+   model summary cannot become Evidence or proof of coverage.
 2. Re-read complete authoritative source/context and jointly form final exact
    Memory clauses and their chosen Evidence. Each has one asserted conclusion and all necessary
    scope, phase, conditions, exceptions, quantifiers, modality and authored order.
@@ -499,7 +508,13 @@ batching to bypass provider capacity:
    of a broad summary does not prove preservation of the concrete source rules.
    Reading receipts, producer resolution labels and associations certify neither
    direction. A privately tasked checker receives source and exact words/bases,
-   rather than producer rationales as support for a clean result.
+   rather than producer rationales as support for a clean result. Use one fixed
+   property per required criterion. Each property separates material source-grounded
+   differences, verification notes and unresolved meaning. Its property path names
+   the criterion; do not generate a second overlapping classification vocabulary.
+   A confirmation or nonmaterial observation is not an actionable defect. Typed
+   separation prevents bookkeeping conflation, but cannot prove that the checker
+   classified a difference correctly.
 
 Specific source-grounded findings may trigger at most one joint origin revision,
 followed by a fresh closure check of the complete revised result. Revision may
@@ -530,40 +545,32 @@ described once where applicable, with explicit clause differences for mixed
 intended/observed or adopted/proposed knowledge; every emitted claim still states
 its actual modal words. Compactness is not permission to omit useful knowledge.
 
-The source assertion/relationship representation is operation-local model data,
-not a persistent source graph, new Evidence authority or lifecycle state. Exact
-ID, selection and lineage checks prove structural accounting, not entailment,
-semantic completeness or Value. Reading associations are not an implicit
-conjunction of necessary witnesses. At conclusion origin, each actually
-asserted contribution chooses an explicitly complete joint support basis from
-the entire authorized immutable catalog. A complete row and a whole table may
-be alternative bases; reading both does not require citing both. Formation may
-correct a provisional interpretation or incomplete grounding against the full
-source, preserving the valid knowledge and its traceable correction.
+The direct formation protocol supersedes the proposed model-produced reading
+worksheet and its resolution ontology. A separate ledger added another lossy
+semantic representation and allowed source predicates to be declared retained
+without appearing in final words. Removing it is an ownership correction to be
+validated, not evidence that direct formation improves recall. Complete source,
+actual final clauses and selected immutable bases are the independent checker's
+inputs; producer reasons, navigation associations and other Memories supply no
+missing Support. Operation-local clause IDs navigate exact output only.
 
-A relation's endpoint reference identifies another assertion or event. It does
-not require asserting every independent predicate attached to that endpoint in
-the final Memory. Actual restrictions, logical operators and authored order
-must be stated and grounded explicitly. Model relation labels cannot impose
-universal conditions on independent branches. Likewise, contribution labels and
-physical span containment cannot prove that a provisional source model retained
-every needed fact, or that a Required ref is semantically redundant. The
-application checks the selected basis accounting and exact source authority;
-independent evaluation checks entailment, direct Primary and minimal Required.
-It must not delete a genuinely necessary code/body ref because an earlier model
-omitted that ref from its reading association.
+At conclusion origin, each actually asserted contribution chooses an explicitly
+complete joint support basis from the entire authorized immutable catalog. A
+complete row and a whole table may be alternative bases; reading both does not
+require citing both. A question title may identify an object inside a core without
+becoming an independent conclusion. Conversely, putting a reusable rule inside
+a broad topic qualifier does not establish adequate independent retrieval. Source
+examples, dates and instance outcomes may express useful scoped rules or lasting
+knowledge; their shape alone is not a Value rejection. Preserve the authored
+conditions rather than inventing a universal rule. Missing, blank and default
+fields are not authored negative propositions unless the adapter's declared
+native semantics establish that interpretation.
 
-All provisional entry kinds share one operation-local identity and complete
-resolution universe. A final clause's association with an entry records
-provenance and slot position only. It cannot establish that the entry's whole
-meaning was independently retained or that it deserves the same Value judgment.
-A question title may identify an object inside a core without becoming an
-independent lasting conclusion. Conversely, putting a reusable rule in a
-qualifier does not establish adequate independent retrieval. Semantic resolutions
-are source-backed explanations, not assertions inferred from slot position;
-independent review checks retained, narrowed and disposed knowledge against the
-complete source. Partly incorrect drafts must preserve every valid useful
-remainder and identify their specific unsupported predicates.
+Semantic atomicity, exact chosen Support, direct Primary, minimal Required and
+source-to-final coverage remain independent acceptance questions. No declaration,
+physical containment or clean checker verdict proves them. Partly unsupported
+drafts must preserve every valid useful remainder while correcting their exact
+unsupported predicates at origin.
 
 Assertion mode, source commitment and logical conditions are distinct. An
 intended conditional behavior and an observed test result remain independently

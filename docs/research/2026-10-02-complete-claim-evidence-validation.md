@@ -533,3 +533,88 @@ extraction transport; the independent source/selection contracts remain required
 Existing OSS projection/context/Support-reading contract verification: **42 passed**.
 These tests validate current runtime behavior, not the proposed compound storage
 or complete semantic extraction contract.
+
+
+## Fourth complete online experiment: closure did not converge
+
+The authenticated CF-bound `sap/anthropic--claude-4.6-sonnet` experiment used the
+same four complete originals, existing 32,768 completion limit and unchanged
+source inventories. All 63 frozen inputs remained unchanged. It added complete
+source-grounded closure, one bounded origin revision and a fresh complete audit.
+All four operations failed and emitted **zero Candidate DTOs**: three retained
+unresolved final audit differences; ADR 0045 exhausted structured-response
+validation during its first audit. The fail-closed boundary held; semantic
+extraction acceptance did not.
+
+Accounting: **18 logical calls, 28 physical provider attempts, 4 canonical schema
+repair retries, 6 native-output fallbacks, 0 application mechanical corrections**.
+Received usage totals were 708,484 input and 205,071 output tokens; these are not
+billing estimates. The ADR audit responses ended with `stop`, below the requested
+completion limit. Recorded failures identify invalid `findings.*.kind` literals;
+invalid strings/raw failed bodies were not retained. Output truncation, an exact
+bad enum value or a provider cause is therefore not established. Do not remediate
+with guessed aliases, a larger cap, batching or a Cloud-specific workaround.
+
+For semantic diagnosis only, a separate blinded packet retained all 73 latest
+complete tentative formations: 29 Confluence, 7 Jira, 17 ADR and 20 raster. These
+are failed-operation drafts, never published Memories or successful DTOs. Two
+independent reviewers inspected complete original source and selected immutable
+interpretation dependencies. The frozen denominators and complete results were:
+
+| Reviewer | Fully covered | Partial | Missing | Distorted | Drafts passing every assessed dimension |
+| --- | --- | --- | --- | --- | --- |
+| A | 106/151 | 14 | 25 | 6 | 45/73 |
+| B | 100/136 | 8 | 20 | 8 | 46/73 |
+
+No averaging, best-output selection or denominator revision is used. Concrete
+scenario predicates were discarded as isolated pass/fail events even when the
+worksheet retained reusable scoped behavior. Diagram branch destinations,
+conditional destructive guards, retry/order and literal transcription remained
+incorrect. Selected title dependencies made some extra Required refs redundant.
+Both genuine semantic errors and checker noise remained: explicit successful
+comparisons appeared as material findings; blank fields became invented
+obligations; a stronger unsupported naming-attribute claim escaped both audits.
+A clean self-check would not itself prove complete extraction.
+
+Read-only design review recommends direct full-source joint claim/basis formation
+without the model-produced assertion/resolution ontology, and fixed criterion
+properties separating material differences, verification notes and unknowns.
+This is the next unvalidated ownership hypothesis. It changes neither canonical
+Value nor the requirement to preserve valid narrower knowledge. Image delivery
+capability remains a separate hypothesis, with the original raster as authority.
+
+Reproducibility receipts (private corpus and responses are excluded from Git):
+
+- 63-file V4 freeze: `c0e950b6394ed1d808b7609afa1e59a98a2eb519fccf23f37ff6cb194c6159de`.
+- Complete accounting: `understanding-v4-online-accounting.json`; manifest SHA
+  `e312573f194827dc26343c16f09802744cd564840a48a7b2c724d1cf8897c727`.
+- Tentative blind packet: `ab4a2ed8e5a3d1219e8159ff514001d1b84b9efb507f53bc40bbba844631a9d8`.
+- Jira origin trace: `2a7799da8d3f1feb534daabcb3e14014c402c9ee9212b58a057437bff3c1d693`.
+- ADR provider-failure trace: `8656ff8906473226d524ab6e4dfb0d0177a234369f5fda13aa5a033ad1076d57`.
+- Complete closure design review: `ee3cc75128be937a01a20c560dab2fd575528d87638ab988c28166a1d314dead`.
+
+## Native values can be matchable yet hidden from reading
+
+A separate reproducible adapter audit changed only two authentic Confluence
+status colour values while retaining their titles. Both selected rows and the
+whole table changed canonical source material and rejected exact correspondence
+and Support reuse. Header/scope interpretation stayed equal, which correctly
+could not override changed material. Readable presentation and actual selected
+model payload nevertheless remained byte-identical: the private native profile
+retained colour in canonical material, but exposed only title in its mapped view.
+The source explicitly defines a colour convention, so a global decorative-colour
+assumption is unsafe.
+
+This is a provider-format reading/presentation completeness defect, **not false
+exact matching**, missing native material, historical source mutation or HANA
+drift. Its repair belongs to the Confluence format adapter: expose supported
+meaning-bearing values with authentic mappings or report typed unsupported
+interpretation; do not infer a corrected title/colour. Match authority remains
+immutable source content and proven occurrence/dependencies, independently of
+rendering. The audit is mechanical evidence, not provider-history or model-recall
+acceptance. Report SHA:
+`3a17b7582ca75c03b4e24584d60fe37b1a355e7802872b4dcae7aefcfda4cf74`.
+
+Release acceptance, production integration, untouched holdouts, large/full-Unit
+execution, storage/resource/SQLite-HANA parity and deployment remain open. No
+production sync, reprocess, Memory write or deployment occurred.
