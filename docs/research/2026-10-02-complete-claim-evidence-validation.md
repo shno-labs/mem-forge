@@ -1384,5 +1384,84 @@ The separate corrected online experiment was launched after a 159-file freeze
 (`understanding-v12c-development-freeze.json`, SHA256
 `63a0d6bfc5553f041b1cbf1afd3b2ca883a6cb5bda7b4be5a95f13318ada3190`).
 It uses the complete large ADR, the same CF-bound Sonnet route and unchanged
-runner policy. Its result is still pending; the preceding stub directories and
-injected errors must not be mistaken for this actual model operation.
+runner policy. The actual result is recorded below; the preceding stub
+directories and injected errors must not be mistaken for this model operation.
+
+### V12C complete large-source online result
+
+The actual CF-bound `sap/anthropic--claude-4.6-sonnet` operation completed on the
+full **123,896-character ADR**, retaining all **201 ReadingGroups and 244 native
+refs**, and produced **176 private DTOs** after one aggregate conversion. Elapsed
+time was **1,554,587 ms** (about 25.9 minutes). The existing runner made seven
+formation calls, including three deadline-driven splits, followed by one
+whole-source audit: **eight logical calls, nine physical attempts and one
+provider retry**. There were no fallbacks, mechanical corrections or semantic
+origin revisions, and no failed terminal runner requests. Per-request limits
+remained 32,768 output tokens and 300 seconds; no new batching policy was added.
+
+Five calls report **409,975 input and 37,777 output tokens**. Usage for three
+deadline calls is unavailable, not zero, so these are known subtotals rather
+than complete operation cost. Frozen files remained unchanged. No successful
+subset or product write was published. This resolves the observed transport
+failure for this large-source sample; it does **not** establish claim accuracy,
+coverage, production integration or release readiness. Two independent reused
+reviewers received the exact anonymous 176-candidate packet and complete source,
+with producer prompts, audit findings and operation status withheld. Their
+semantic reviews are pending at this recording point.
+
+Private receipts, SHA256 checked against the retained files:
+
+- `understanding-v12c-online-development-manifest.json`: `2169932d2acd560c75bb9761c657bb6a6675ebe05249ecb2445152410a3f0a60`.
+- `understanding-v12c-online-accounting-usage-explicit.json`: `3d9cbe2b82cf8945f562f9610d48323ac00ee27eb0a326bff41ceb5b78386601`.
+- `blind-v12c-tentative-packet.json`: `990fbcc73d3219f7f4907ab0aba6411f4fef6a5c9ae1ca09a412dcb0fa5f180f`.
+
+### V14 bounded audit-discrimination diagnostic
+
+The falsifiable hypothesis was that making verified adapter context explicit
+would allow the same-model auditor to identify independently established errors
+in unchanged V13 candidates. The source-neutral mapped context contains readable
+authored scope/title; Confluence column syntax and verification stay inside the
+Confluence adapter module. Physical containment is explicitly distinguished
+from a semantic contribution. Native material, refs, roles, readable views,
+groups and candidate words remain unchanged; context is additive, not new source
+authority. Six real text-source program controls verify this preservation, and
+a two-Observation control verifies that coincident offsets cannot overwrite
+another Observation's context. Independent static review closed the observed
+offset-key collision after the lookup incorporated revision identity. These
+controls establish neither inference quality nor semantic acceptance.
+
+One actual online Sonnet audit per complete source rechecked the unchanged
+**54 Confluence and 22 raster candidates**, using the original Artifact pixels
+and unchanged audit schema/limits. Both returned `needed_changes=[]` and
+`unresolved_questions=[]`. The two logical calls made two physical attempts,
+with no retry or fallback, reporting **94,239 input and 2,309 output tokens**.
+No formation, candidate conversion or product write occurred in this diagnostic.
+
+Reviewer B then compared these responses with its own prior source-grounded
+V13 findings, without consulting the peer review. The auditor missed **42
+redundant Required selections**, source-meaning/scope problems affecting **20
+distinct candidates**, and one separate atomicity problem. The source-meaning
+problems include loss of target-design modality, missing branch outcomes, a
+completed-fix chronology unsupported by the source and a missing explicit
+scenario antecedent. Value has no failure in this comparison; three uncertain
+Value judgments remain uncertain. The union of quality failures is **62
+candidates**, not 62 claims proved false in the real world. All 76 Primary
+selections previously passed authenticity/readability/direct-support checks.
+Missing optional Required citations alone were not penalized.
+
+This rejects the hypothesis that clarified view context alone repairs audit
+discrimination on these candidates. It does not measure new formation quality,
+isolate the causal contribution of model capability versus task framing, or
+generalize to every model or production path. The review is an unblinded repeat
+diagnostic, not a new independent blind acceptance cohort. Empty findings cannot
+certify extraction quality; additional self-audit iterations or candidate
+pruning would not resolve the demonstrated acceptance gap. Production native
+history, source resources, stable correspondence, adapter parity and deployment
+remain incomplete.
+
+Private receipts, SHA256 checked against the retained files:
+
+- `view-context-v14-audit-diagnostic-freeze.json`: `c153849b8637281a038f0f7653540418de8eb972d4081865d5fe94e8f8635425`.
+- `view-context-v14-audit-diagnostic-manifest.json`: `49e12d91c1bd68e399705deb21440578d3253108c6eeb9bd50bed3f6b5175ef9`.
+- `view-context-v14-audit-diagnostic-accounting.json`: `42a466cec3e6b79120bceb302c7d45744117d2c19714f60b775ef1d4a3185480`.
+- `view-context-v14-audit-b-factual-failure-review.json`: `fb8de1d4cf962dd2a0cd78b0be7f537a67677d9a54dedd96b2091905f5852716`.
