@@ -2,6 +2,112 @@
 
 Status: experiment in progress; no runtime/deployment acceptance.
 
+## Authentic complete native Confluence evaluation, 2026-10-03
+
+The actual retained provider storage artifact is **71,051 bytes / 70,981 Unicode
+characters**, SHA-256
+`38eda4ad6e0563c6a759881d1f35817d2ab3a4112a22363600d270d5a2a0789b`.
+It is a different representation from the earlier 70,032-character normalized
+Markdown cohort below. Its 12 tables contain 60 physical rows and 45 scenarios;
+78 macros comprise one TOC, 43 Status and 34 Jira macros. The complete adapter
+index contains 79 Fragments/ReadingGroups. All 79 eligible Primary selections
+are planned once in one existing runtime request, with no skipped groups.
+
+The parser initially rejected the authentic TOC. The Confluence adapter now
+validates that bodyless navigation construct and omits its generated output,
+while retaining original storage, headings and adjacent authored text. Status
+and issue macros receive compact mapped presentation. Hidden issue-origin IDs
+remain material, so changing only an origin ID cannot obtain a false match.
+The generic extraction prompt now correctly says a ref may select one row rather
+than claiming every table ref covers a whole table.
+
+Two source-first independent agents froze their inventories before candidates:
+A identified 16 knowledge families, B 13. Both account for all 12 tables,
+60 rows and 45 scenarios (24 PASS, 17 Failed, four without an outcome). Family
+granularity and expected Memory count are not equated. The packet hides producer
+prompts, implementation, treatment and peer judgments. Reviewers in the second
+round retain their original source inventories and know their own first-round
+assessment; this is not a fresh-reader experiment.
+
+Actual generation uses the verified CF dev app's `memforge-aicore` binding and
+online `sap/anthropic--claude-4.6-sonnet`, through the deployed structured-client
+factory (SHA-256
+`af3409ce0abbfe3bdc6559c532536648bdabda73384ccc97537a06c88f3f87f0`).
+Each round is one canonical extraction response with unchanged model limits,
+no semantic repair, same-model checker, admission pruning or product writes.
+The execution is a local canonical replay against the actual endpoint; the CF
+app still pins baseline `57f8b006`, so this is not deployment acceptance.
+
+| Frozen round | Actual online calls | Candidates / parts | Independent result |
+| --- | ---: | ---: | --- |
+| Native extraction v15 / presentation policy 7 | 1 (38,963 ms) | 17 / 26 | Negative: meaningful missing branches, six redundant/noncontributing Required parts, overstated fix completion and date relationships |
+| Native extraction v16 / presentation policy 8 | 1 (89,845 ms) | 54 / 55 | Negative: both reviewers find six low temporal precision issues and two omitted defensive guards; no wrong Primary anchor or false/redundant Required |
+| Native extraction v17 / presentation policy 9 | 1 (89,732 ms) | 56 / 60 | Unaccepted: all 45 scenarios represented; remedy-completion overstatement/ambiguity remains, three redundant Required table headers; A also notes a low refinement-qualification gap |
+
+Every part in both rounds passed independently checked immutable range,
+raw/presentation digest and native origin verification. In v16 the sole Required
+list adds useful support. Reviewer A classifies the empty-run `Fix by` completion
+claim as source ambiguity; B classifies it as a medium overstatement. Both note
+that an associated remedy does not itself prove completion. The next source-neutral
+prompt refinement preserves annotation relationships and unverified defensive
+rules; its acceptance is not inferred from the v16 improvement or candidate count.
+
+The original v16 candidate packet SHA-256 is
+`df0b26ffeec590f651e8409296e7e6bdf02945eba3caa3fef5dfc3d2c839b55d`.
+All original outputs and both complete reviews are frozen in the private
+`canonical-native-20261003` cohort; `completed-v16-experiment-freeze.json`
+records SHA-256/bytes for 36 finished artifacts. No failed candidate was manually
+edited, removed, rerun in place or reclassified as an accepted output.
+
+Controlled future-revision correspondence also reads complete inputs. For this
+native document, a preceding insertion and macro instance-ID changes preserve
+all 73 uniquely identifiable selections; six duplicate selections remain
+ambiguous. All 55 v16 selected parts are among the unique selections and verify.
+For complete repository ADR 0034 (123,896 characters), all 244 original selections
+match after a preceding insertion. This proves the named perturbations under
+the declared material contract, not arbitrary semantic equivalence or universal
+matching of duplicate occurrences. Whole-claim Support safety remains a separate
+check when external conditions or interpretation change.
+
+Relevant Confluence/extraction boundary tests passed **147 tests**. These overlap
+earlier suites and are not additive coverage. Native code/format contracts and
+official primary-source evidence are recorded in
+[the native source review](2026-10-03-native-source-format-contracts.md).
+Complete native Jira/current-versus-history validation, held-out semantic
+evaluation, runtime lifecycle/resource acceptance and checked CF deployment
+remain required. The overall design is still unaccepted for release.
+
+The v17 original candidate packet SHA-256 is
+`9a62af91c16d401ade082f4b5366236a7ddd18186fa1b602f55fe42083e54c1f`.
+Both complete independent reviews are retained, including their disagreement:
+A treats the empty-run history as low source ambiguity; B treats completed
+resolution as a medium claim overstatement. Root does not resolve the issue's
+actual status by inference and does not mark this round accepted. All 60 citation
+parts independently pass immutable range/native/digest verification. Required
+recall remains best effort; the three findings are redundant selections, not
+missing optional citations. No subsequent prompt/model iteration is authorized
+after the user's request to finish this iteration and hand off.
+
+Jira format work in the same iteration reads its actual complete 50,807-byte
+provider payload. The adapter retains native description (1,549 characters)
+and returned HTML (3,401 characters), and all ten original histories. Its code
+body preserves exactly 300 characters (SHA-256
+`75484e5a651c70f85dd7418746ca645592c0f9927a98faae4235ea60ff8a80a7`),
+with code language now shown separately in the readable view. All eleven
+observation revisions compile and their citation ranges verify. All 15 unique
+description selections match under a controlled insertion and removal of known
+highlighting decoration. A reproduced inline-space false match (`A B C` versus
+`ABC`) was corrected and covered through the actual Support planner. Unsupported
+meaningful attributes fail explicitly. The 31 Jira format tests pass; these are
+structural evidence, not online Jira semantic acceptance. Source-only inventories
+are frozen for handoff; no online Jira generation has been run. The final affected
+OSS boundary suite passed **355 tests in 27.99 seconds**, and the clean Cloud
+worktree's HANA suite passed **496 tests in 20.92 seconds**, including exact
+legacy Jira schema-v1 backfill and bound null-profile SQL guards. Changed files
+pass Ruff. These overlap prior suites and do not cure the failed semantic gate.
+The stopped-iteration handoff is
+[saved for Claude Code](../handoffs/2026-10-03-claim-evidence-claude-code-handoff.md).
+
 ## Canonical native correspondence integration, 2026-10-03
 
 Confluence now retains its actual storage field inside an immutable versioned

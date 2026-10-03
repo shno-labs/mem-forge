@@ -69,7 +69,6 @@ from memforge.source_projection import (
 from memforge.source_representation import (
     BINARY_ARTIFACT_PROFILE,
     PLAIN_TEXT_PROFILE,
-    representation_profile_for_observation_contract,
 )
 
 
@@ -90,7 +89,11 @@ def _canonical_projection(
     observation_type: str,
     content: str,
 ) -> SourceProjection:
-    profile = representation_profile_for_observation_contract(
+    from memforge.source_representation import legacy_representation_profile_for_observation_contract
+
+    # These retained JSON fixtures exercise the original Markdown declaration.
+    # New provider HTML records are verified through the Jira adapter boundary.
+    profile = legacy_representation_profile_for_observation_contract(
         source_type="jira",
         observation_type=observation_type,
     )

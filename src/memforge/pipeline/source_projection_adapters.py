@@ -72,34 +72,6 @@ BUILTIN_SPECIALIZED_SOURCE_TYPES = frozenset(
     }
 )
 
-# The Jira fields that make up an issue's core Observation.
-_JIRA_CORE_FIELDS = (
-    "summary",
-    "description",
-    "status",
-    "priority",
-    "assignee",
-    "labels",
-    "resolution",
-)
-
-_JIRA_OPERATIONAL_HISTORY_FIELDS = frozenset(
-    {
-        "assignee",
-        "due date",
-        "duedate",
-        "fix version",
-        "fix version/s",
-        "fixversion",
-        "labels",
-        "priority",
-        "rank",
-        "resolution",
-        "sprint",
-        "status",
-    }
-)
-
 def source_run_projection_coverage(
     *,
     authoritative_snapshot: bool,
@@ -874,7 +846,12 @@ def _project_native(
         if not issue_id.isdigit():
             raise ValueError("jira projection requires immutable numeric issue id")
         issue_key = str(data.get("key") or item.extra.get("issue_key") or item.item_id)
-        core_value = {name: fields.get(name) for name in _JIRA_CORE_FIELDS}
+        from memforge.source_adapters.jira import (
+            issue_record, comment_record, changelog_record, core_revised_at,
+            changelog_semantic_class,
+        )
+
+        core_value = issue_record(data)
         changelog = data.get("changelog") if isinstance(data.get("changelog"), dict) else {}
         raw_histories = changelog.get("histories", [])
         histories = raw_histories if isinstance(raw_histories, list) else []
@@ -889,7 +866,7 @@ def _project_native(
                 _canonical_json(core_value),
                 core_value,
                 {"issue_key": issue_key},
-                _jira_core_revised_at(
+                core_revised_at(
                     fields,
                     histories,
                     # A payload without a changelog says nothing about core changes.
@@ -904,8 +881,7 @@ def _project_native(
             if not isinstance(comment, dict):
                 continue
             comment_id = str(comment["id"])
-            body = comment.get("body")
-            semantic_comment = {"body": body, "attachments": comment.get("attachments")}
+            semantic_comment = comment_record(comment)
             inputs.append(
                 _ObservationInput(
                     "comment",
@@ -923,16 +899,17 @@ def _project_native(
             if not isinstance(history, dict):
                 continue
             history_id = str(history["id"])
+            semantic_history = changelog_record(history)
             inputs.append(
                 _ObservationInput(
                     "changelog",
                     history_id,
-                    _canonical_json(history),
-                    history,
+                    _canonical_json(semantic_history),
+                    semantic_history,
                     {"issue_key": issue_key},
                     str(history.get("created") or "") or None,
                     {
-                        "semantic_class": jira_changelog_semantic_class(
+                        "semantic_class": changelog_semantic_class(
                             history
                         )
                     },
@@ -1206,57 +1183,6 @@ def _provider_name(value: object) -> object:
     """A provider object's display name, such as a Jira issue type's name."""
 
     return value.get("name") if isinstance(value, Mapping) else value
-
-
-def _jira_core_revised_at(
-    fields: Mapping[str, object],
-    histories: list[object],
-    *,
-    changelog_complete: bool,
-) -> str | None:
-    """When the issue's core fields last changed, from the issue's own records.
-
-    The latest changelog entry that touches a core field gives the time; an
-    issue whose complete changelog never touches one has kept its core since
-    ``fields.created``. A truncated changelog may omit the latest core change,
-    so the time is unknown. ``fields.updated`` is not used: comments and other
-    fields move it too.
-    """
-
-    if not changelog_complete:
-        return None
-    core_fields = frozenset(_JIRA_CORE_FIELDS)
-    core_change_times = [
-        history.get("created")
-        for history in histories
-        if isinstance(history, Mapping)
-        and any(
-            isinstance(entry, Mapping)
-            and str(entry.get("fieldId") or entry.get("field") or "").strip().lower() in core_fields
-            for entry in (history.get("items") if isinstance(history.get("items"), list) else [])
-        )
-    ]
-    if core_change_times:
-        return latest_source_time(core_change_times)
-    return reported_source_time(fields.get("created"))
-
-
-def jira_changelog_semantic_class(history: Mapping[str, object]) -> str:
-    """Classify one Jira changelog entry from its fields; stored revisions carry the result."""
-
-    items = history.get("items")
-    history_items = items if isinstance(items, list) else []
-    fields = {
-        " ".join(str(item.get("field") or "").strip().lower().split())
-        for item in history_items
-        if isinstance(item, Mapping)
-    }
-    fields.discard("")
-    if fields and fields.issubset({"attachment"}):
-        return "attachment_event"
-    if fields and fields.issubset(_JIRA_OPERATIONAL_HISTORY_FIELDS):
-        return "operational_transition"
-    return "domain_transition"
 
 
 def _native_payload(raw: RawContent) -> object:

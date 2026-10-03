@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from html import escape
 from dataclasses import replace
 from datetime import datetime, timezone
 
@@ -69,8 +70,13 @@ def _jira_payload(
     histories: list[dict] | None = None,
     changelog_total: int | None = None,
 ) -> dict:
-    comments = list(comments or [])
-    histories = list(histories or [])
+    # This fixture represents an explicit provider HTML response, not a runtime
+    # renderer inference. Native fixture bodies are literal prose here.
+    comments = [
+        {"renderedBody": f"<p>{escape(comment.get('body') or '')}</p>", **comment}
+        for comment in (comments or [])
+    ]
+    histories = [{"items": [], **history} for history in (histories or [])]
     payload = {
         "id": "10012",
         "key": "PAY-12",
@@ -93,6 +99,10 @@ def _jira_payload(
             "histories": histories,
             "total": len(histories) if changelog_total is None else changelog_total,
         },
+    }
+    description = payload["fields"]["description"]
+    payload["renderedFields"] = {
+        "description": f"<p>{escape(description)}</p>" if description else description,
     }
     if payload["_comments_total"] > len(comments):
         payload["_comments_truncated"] = {
@@ -861,6 +871,7 @@ def test_operational_message_metadata_does_not_create_semantic_revision(source_t
                 {
                     "id": "501",
                     "body": "Keep A7",
+                    "renderedBody": "<p>Keep A7</p>",
                     "updated": "2026-07-15T10:00:00Z",
                     "author": {"displayName": "Renamed User"},
                 }

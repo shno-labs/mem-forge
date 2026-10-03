@@ -28,6 +28,8 @@ _TAGS = {
     "ri:user", "ri:page", "ri:attachment", "ri:url",
 }
 _MACRO_PARAMETERS = {
+    "toc": {"type", "outline", "style", "indent", "separator", "minLevel", "maxLevel",
+            "include", "exclude", "printable", "class", "absoluteUrl"},
     "status": {"title", "colour"},
     "jira": {"key", "server", "serverId", "columnIds", "columns", "showSummary"},
     "code": {"language", "title", "collapse", "linenumbers", "firstline", "theme"},
@@ -193,10 +195,23 @@ def _macro(node: _Node) -> str:
             not isinstance(child, _Text) or not child.literal for child in bodies[0].children
         ):
             raise ValueError("Confluence literal macro must have one CDATA body")
-    elif name in {"status", "jira"} and bodies:
-        raise ValueError("unexpected Confluence status/issue macro body")
-    elif name not in {"status", "jira"} and (len(bodies) != 1 or bodies[0].tag != "ac:rich-text-body"):
+    elif name in {"status", "jira", "toc"} and bodies:
+        raise ValueError("unexpected Confluence bodyless macro body")
+    elif name not in {"status", "jira", "toc"} and (len(bodies) != 1 or bodies[0].tag != "ac:rich-text-body"):
         raise ValueError("Confluence container macro must have one rich-text body")
+    if name == "toc":
+        # Native TOC has no authored body: its output repeats page headings.
+        # The immutable input retains its configuration; headings remain selectable.
+        return ""
+    values = {key: _render(value) for key, value in zip(names, parameters, strict=True)}
+    if name == "jira":
+        # Keep a supplied instance name; omit opaque server IDs and column controls.
+        # A native issue key proves neither an unseen summary nor issue status.
+        server = f" (server: {values['server']})" if "server" in values else ""
+        return f"Issue: {values['key']}{server}"
+    if name == "status":
+        colour = f" (colour: {values['colour']})" if "colour" in values else ""
+        return f"Status: {values['title']}{colour}"
     labels = {"status": "Status", "jira": "Issue", "code": "Code", "noformat": "Literal text"}
     lines = [labels.get(name, name)]
     lines.extend(f"{key}: {_render(value)}" for key, value in zip(names, parameters, strict=True))
@@ -208,7 +223,8 @@ def _render(node: _Node | _Text) -> str:
     if isinstance(node, _Text):
         return node.value
     if node.tag == "ac:structured-macro":
-        return _macro(node)
+        text = _macro(node)
+        return text + "\n"
     if node.tag == "br":
         return "\n"
     if node.tag == "hr":

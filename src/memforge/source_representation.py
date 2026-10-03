@@ -11,11 +11,15 @@ from memforge.source_adapters.contracts import (
     CanonicalRecordSchema,
     EvidenceRepresentationContract,
 )
-from memforge.source_adapters.jira import CANONICAL_RECORD_SCHEMAS as JIRA_RECORD_SCHEMAS
+from memforge.source_adapters.jira import (
+    CANONICAL_RECORD_SCHEMAS as JIRA_RECORD_SCHEMAS,
+    CURRENT_OBSERVATION_PROFILES as JIRA_OBSERVATION_PROFILES,
+    LEGACY_OBSERVATION_PROFILES as JIRA_LEGACY_PROFILES,
+)
 from memforge.source_adapters.teams import CANONICAL_RECORD_SCHEMAS as TEAMS_RECORD_SCHEMAS
 from memforge.source_adapters.confluence import (
     CANONICAL_RECORD_SCHEMAS as CONFLUENCE_RECORD_SCHEMAS,
-    LEGACY_OBSERVATION_PROFILES,
+    LEGACY_OBSERVATION_PROFILES as CONFLUENCE_LEGACY_PROFILES,
 )
 from memforge.source_projection import (
     EvidenceCoordinateSpace,
@@ -51,21 +55,19 @@ class EvidenceProfileBackfillReport:
     unresolved_revision_ids: tuple[str, ...]
 
 
-def _canonical_record_profile(schema_name: str) -> EvidenceRepresentationProfile:
+def _canonical_record_profile(schema_name: str, schema_version: int = 1) -> EvidenceRepresentationProfile:
     return EvidenceRepresentationProfile(
         name="canonical-record",
         version=1,
         coordinate_space=EvidenceCoordinateSpace.UNICODE_SCALAR,
         schema_name=schema_name,
-        schema_version=1,
+        schema_version=schema_version,
     )
 
 
 _REPRESENTATION_CONTRACTS: Mapping[tuple[str, str], EvidenceRepresentationProfile] = {
     ("confluence", "page_body"): _canonical_record_profile("confluence-page-storage"),
-    ("jira", "issue_core"): _canonical_record_profile("jira-issue-core"),
-    ("jira", "comment"): _canonical_record_profile("jira-comment"),
-    ("jira", "changelog"): _canonical_record_profile("jira-changelog"),
+    **JIRA_OBSERVATION_PROFILES,
     ("github_repo", "file_content"): MARKDOWN_STRUCTURAL_PROFILE,
     ("github_pages", "page_content"): MARKDOWN_STRUCTURAL_PROFILE,
     ("local_markdown", "file_content"): MARKDOWN_STRUCTURAL_PROFILE,
@@ -78,6 +80,11 @@ _CANONICAL_RECORD_SCHEMAS: Mapping[tuple[str, int], CanonicalRecordSchema] = {
     **JIRA_RECORD_SCHEMAS,
     **TEAMS_RECORD_SCHEMAS,
     **CONFLUENCE_RECORD_SCHEMAS,
+}
+
+_LEGACY_OBSERVATION_PROFILES = {
+    **CONFLUENCE_LEGACY_PROFILES,
+    **JIRA_LEGACY_PROFILES,
 }
 
 
@@ -115,6 +122,7 @@ _SUPPORTED_REPRESENTATION_CONTRACTS: Mapping[
         BINARY_ARTIFACT_PROFILE,
         PLAIN_TEXT_PROFILE,
         *_REPRESENTATION_CONTRACTS.values(),
+        *(_canonical_record_profile(name, version) for name, version in _CANONICAL_RECORD_SCHEMAS),
     }
 }
 
@@ -200,7 +208,7 @@ def legacy_representation_profile_for_observation_contract(
     *, source_type: str, observation_type: str,
 ) -> EvidenceRepresentationProfile | None:
     """A known pre-profile writing contract, independent of today's adapter."""
-    return LEGACY_OBSERVATION_PROFILES.get(
+    return _LEGACY_OBSERVATION_PROFILES.get(
         (source_type, observation_type),
         representation_profile_for_observation_contract(
             source_type=source_type, observation_type=observation_type,

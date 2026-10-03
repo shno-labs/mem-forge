@@ -4858,7 +4858,7 @@ class Database:
     async def _classify_jira_changelog_revisions_unlocked(self) -> int:
         """Give every stored Jira changelog revision the semantic class its content has."""
 
-        from memforge.pipeline.source_projection_adapters import jira_changelog_semantic_class
+        from memforge.source_adapters.jira import changelog_semantic_class as jira_changelog_semantic_class
 
         rows = await self.db.execute_fetchall(
             """SELECT sor.id, sor.content, sor.metadata_json

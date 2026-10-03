@@ -51,9 +51,11 @@ PROJECTION_FRAGMENT_EXTRACTION_PROMPT = """You are extracting durable atomic kno
 
 <source_type>{source_type}</source_type>
 <doc_type>{doc_type}</doc_type>
-{unit_title}Catalog rows are [ref, exact source text, optional metadata]. Headings are ordinary selectable Fragments.
+{unit_title}Catalog rows are [ref, faithful source view, optional metadata]. Headings are ordinary selectable Fragments.
 Preserve table column/row associations, list order, code indentation and explicit exceptions.
-A table ref contains the complete table; read its headers before asserting a cell value.
+Each ref covers its supplied selection, which may be one row or a larger structure.
+Read the supplied labels and structural context before interpreting a value;
+do not assume that one ref covers the entire document or table.
 A figure preserves its image link and caption together. Only a supplied image Artifact
 ref proves image contents; a caption or URL alone never proves unseen image details.
 Use the adapter's format_interpretation to read source-specific field meanings.

@@ -306,6 +306,28 @@ conventions determine significance; a colour must not silently be inferred from
 a title or treated as decorative universally. Native parameter interpretation
 belongs to the provider-format adapter, not the generic extractor or matcher.
 
+For Confluence's supported bodyless navigation macro, the readable view omits
+the generated directory while retaining authored headings and adjacent content.
+Status renders its stored title and colour. Embedded issue macros render the
+stored issue key and supplied server name; opaque server IDs and column controls
+remain in immutable material rather than the normal excerpt. Code and container
+bodies remain readable. This is adapter-owned presentation, not generic text
+cleanup or deletion from the historical snapshot. An unsupported macro or an
+unexpected body is not silently discarded. A hidden origin parameter change
+still changes material correspondence even if the excerpt looks the same.
+
+Jira current text uses the HTML field view explicitly returned by the provider,
+paired with its original native string in the same immutable versioned record.
+Only the returned view supplies formatted current selections; unknown native
+string grammar is not guessed from the source type or marker tokens. Historical
+old/new values remain literal under their own schema and never borrow today's
+rendering. The adapter owns supported HTML structures, meaningful attributes,
+known renderer decoration and field/event semantics. Unsupported meaningful
+attributes or structures report a representation limitation rather than disappear
+from the readable view. Old schemas remain registered for pinned historical
+reads and NULL-profile backfill; a new observation contract does not relabel old
+Markdown as HTML. Comments need the provider's explicit rendered-body expansion.
+
 ### 5. Form accurate claims and readable citations at extraction origin
 
 A complete structure remains a ReadingGroup. The compiler may offer a smaller
@@ -340,6 +362,15 @@ claim and its metadata, and the displayed Primary must directly evidence the
 central assertion. A wrong or misleading citation, an invented source fact, or
 missing claim wording that changes the source meaning remains a defect. Citation
 recall and source-to-claim knowledge coverage are separate measurements.
+
+Requirements and expected defensive behavior remain useful knowledge when no
+verification outcome is recorded. Missing verification must not remove the rule
+or become an observed success. Source annotations retain their actual subject:
+an associated remedy, outcome label or reference date does not establish completed
+repair, causation or execution time. If the source leaves that relationship
+unresolved, the claim preserves an attributed association or uncertainty instead
+of inventing history. These are source-neutral claim instructions; adapters
+render native structures without making these semantic judgments.
 
 Displayed citations are not an exhaustive inventory of source dependencies.
 Compiler-proven interpretation bindings retain their exact immutable mapping.
@@ -648,7 +679,7 @@ reprocess. This order is not a split lifecycle or partial publication contract.
 | Display title changes, or an immutable source title/identity changes | Display-only change leaves correspondence intact; real source dependency change prevents blind reuse |
 | A complete extraction plan skips a ReadingGroup or reads only changed Primary scope | No false complete-Unit success; read scope remains separate from origination authority |
 | Necessary qualification is in another existing extraction request | One complete ordered Unit-wide reading preserves its actual meaning; local rereading and request-local ref IDs are insufficient |
-| A provisional assertion bundles several rules, or is unsupported | One-to-many outcome preserves every valid proposition; independent review of source-grounded dispositions, not model self-certification |
+| Generated wording bundles independently useful rules or overstates source support | Extraction preserves valid propositions with their actual qualifiers; independent full-source review measures lost knowledge and inaccurate wording, without an added assertion ledger or self-certification stage |
 | Ref count improves but an otherwise supported durable claim disappears | Evaluation fails; lost expected claims reported, no admission tightening used as remediation |
 | Claim joins a durable rule and a transient test outcome | New extraction separates assertions and applies the canonical current Value definition; incumbent assessment keeps its claim fixed |
 | An incumbent selection uses an unsupported/unmappable construct | Typed failure preserves Support and prevents unsafe commit; no false absence or unsupported finding |

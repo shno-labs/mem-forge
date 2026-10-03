@@ -56,8 +56,10 @@ def _jira_projection(comment_count: int = 3):
             "resolution": None,
             "updated": "2026-07-15T00:00:00Z",
         },
+        "renderedFields": {"description": "<p>A7 processing context</p>"},
         "_comments": [
-            {"id": str(500 + index), "body": f"Reply {index}: retain A7"}
+            {"id": str(500 + index), "body": f"Reply {index}: retain A7",
+             "renderedBody": f"<p>Reply {index}: retain A7</p>"}
             for index in range(comment_count)
         ],
         "_comments_included": True,
@@ -321,6 +323,7 @@ def test_v9_incremental_canonical_record_authorizes_only_changed_registered_fiel
             "resolution": None,
             "updated": "2026-07-16T00:00:00Z",
         },
+        "renderedFields": {"description": "<p>A7 processing requires approval</p>"},
         "_comments": [],
         "_comments_included": True,
         "_comments_total": 0,
@@ -712,4 +715,3 @@ def test_source_projection_attaches_summary_only_to_exact_image_revision() -> No
     )
     with pytest.raises(ValueError, match="must be unique"):
         with_source_artifact_summaries(projection, (summary, summary))
-

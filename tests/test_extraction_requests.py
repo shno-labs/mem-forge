@@ -16,7 +16,7 @@ from memforge.llm.structured import (
     StructuredLlmError,
 )
 from memforge.pipeline.extraction_requests import plan_extraction_requests
-from memforge.pipeline.memory_extractor import MemoryExtractor
+from memforge.pipeline.memory_extractor import ExtractionReading, MemoryExtractor
 from memforge.pipeline.projection_context import (
     ExtractionAuthority, ProjectionEvidencePlanningFailure, ProjectionEvidencePlanningFailureCode, plan_projection_evidence_work,
 )
@@ -110,12 +110,26 @@ def test_first_import_streams_every_reading_group_through_complete_requests():
     projection = _projection(primary_content=body, context_content="Country: US.\n")
     client = Client(limit=12000)
     extractor = MemoryExtractor(model="fixture", max_tokens=8192, structured_llm_client=client)
+    context = RevisionAssessmentContext(projection=projection, base=None, access_context_hash="scope")
+    reading = ExtractionReading.of_authority(
+        context, whole(projection), source_type=projection.source_type, doc_type="document",
+    )
+    # This fixture must fit every complete group, while requiring multiple
+    # requests; its character quota includes the current instruction overhead.
+    def single_group_cost(item_id):
+        catalog = reading.catalog_for((item_id,))
+        prompt = extractor.projection_fragment_prompt(
+            catalog, source_type=projection.source_type,
+            doc_type="document", revision_context=context,
+        )
+        return len(prompt) + bounded_output(extractor, catalog) // 8
+
+    client.limit = max(single_group_cost(item_id) for item_id in reading.items) + 256
     requests = plan(projection, whole(projection), extractor=extractor)
 
     assert len(requests) > 2
     anchors = [fragment.anchor for fragment in primary(requests)]
     assert len(anchors) == len(set(anchors))
-    context = RevisionAssessmentContext(projection=projection, base=None, access_context_hash="scope")
     assert set(anchors) == {fragment.anchor for fragment in context.full_fragments}
     for request in requests:
         # The heading scopes every paragraph under it; outside its own request it is Required-only.
