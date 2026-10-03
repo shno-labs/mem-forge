@@ -120,7 +120,7 @@ class _GroupStore:
     async def list_memories_by_ids(self, memory_ids):
         return [self.memories[memory_id] for memory_id in memory_ids if memory_id in self.memories]
 
-    async def get_memory_evidence_units(self, memory_id):
+    async def get_memory_evidence_units(self, memory_id, *, include_historical=False, context_reference_id=None):
         self.unit_reads[memory_id] = self.unit_reads.get(memory_id, 0) + 1
         return self.units.get(memory_id, ())
 

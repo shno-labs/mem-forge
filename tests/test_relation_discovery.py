@@ -185,7 +185,7 @@ class _Store:
     async def get_memory_entity_ids(self, _memory_id):
         return []
 
-    async def get_memory_evidence_units(self, memory_id):
+    async def get_memory_evidence_units(self, memory_id, *, include_historical=False, context_reference_id=None):
         return (primary_evidence_unit_fixture(memory_id),)
 
     async def get_current_source_observation_revisions(self, source_unit_id):

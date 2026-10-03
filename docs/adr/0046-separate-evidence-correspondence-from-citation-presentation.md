@@ -561,6 +561,24 @@ never silently serve the latest page. UI and MCP share this service contract.
 Resource resolution must not reveal inaccessible Required material through an
 otherwise visible Primary. Storage and resource adapters enforce the same scope.
 
+Historical resource validity comes from the retained Support membership,
+immutable Unit manifest, exact stored anchors and reference integrity, including
+the Unit's complete supporting part-set digest. A missing Required part must
+not turn a partial join into a complete successful resource. Today's compiler
+boundaries cannot invalidate a verified historical selection; format cutover
+assessment is separate from reading a retained citation. Return the stored
+readable citations alongside the complete immutable Unit source material under
+its actual representation profile, without substituting the latest stored input.
+
+Context associations describe a mutable current projection. A part resource
+may resolve one exact retained Context reference associated with the Unit,
+including an inactive association, while explicitly declaring that it does not
+contribute Support. This is not a reconstructed historical Context snapshot.
+Ordinary Document provenance cannot substitute for a rejected or inaccessible
+Unit. The same Memory, Unit and Source access predicates apply to the current
+projection and historical resource. HTTP integrity describes the serialized
+resource bytes; its selected-material digests remain separate citation fields.
+
 ### 7. Reprocess through the existing revision flow
 
 The first rollout changes source mapping, Fragment shape and interpretation;

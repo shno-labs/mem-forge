@@ -394,7 +394,7 @@ async def test_rerun_of_completed_work_keeps_its_classifier_version_until_it_com
 def _evidence_times(db: Database, times: dict[str, str]) -> None:
     """Give each named Memory a Primary Evidence the source recorded at that time."""
 
-    async def evidence_units(memory_id):
+    async def evidence_units(memory_id, *, include_historical=False, context_reference_id=None):
         return (primary_evidence_unit_fixture(memory_id),) if memory_id in times else ()
 
     async def current_revisions(source_unit_id):

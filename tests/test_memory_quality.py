@@ -638,6 +638,8 @@ async def test_memory_detail_and_source_artifact_route_preserve_exact_image_evid
 ) -> None:
     from memforge.server.admin_api import create_admin_app
     from memforge.storage.document_store import LocalDocumentStore
+    from memforge.memory.evidence import EvidenceReference, EvidenceRole, EvidencePartKind, evidence_part_set_digest
+    from memforge.source_projection import SourceAnchor, AnchorKind
 
     class StreamingOnlyLocalDocumentStore(LocalDocumentStore):
         def read_artifact(self, uri: str) -> bytes:
@@ -791,6 +793,14 @@ async def test_memory_detail_and_source_artifact_route_preserve_exact_image_evid
            VALUES (?, ?, ?, ?, ?, 1, ?)""",
         ("support-image", memory.id, "evidence-image", "src-confluence", "access-hash", now),
     )
+    page_digest = hashlib.sha256(b"The page provides the primary claim.").hexdigest()
+    page_anchor = SourceAnchor(kind=AnchorKind.WHOLE_OBSERVATION, observation_id="obs-page", observation_revision_id="obsrev-page")
+    part_digest = evidence_part_set_digest(tuple(
+        EvidenceReference(role=role, kind=EvidencePartKind.TEXT, anchor=page_anchor, raw_content_sha256=page_digest)
+        for role in (EvidenceRole.PRIMARY, EvidenceRole.REQUIRED)
+    ))
+    await db.db.execute("UPDATE evidence_references SET part_kind = 'text', raw_content_sha256 = ? WHERE evidence_unit_id = 'evidence-image'", (page_digest,))
+    await db.db.execute("UPDATE evidence_units SET part_set_digest = ? WHERE id = 'evidence-image'", (part_digest,))
     await db.db.commit()
 
     app = create_admin_app(db=db, config=config, document_store=document_store)

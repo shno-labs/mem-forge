@@ -7617,6 +7617,14 @@ async def _attach_current_evidence_unit(
             support["created_at"],
         ),
     )
+    part_digest = evidence_part_set_digest((EvidenceReference(
+        role=EvidenceRole.PRIMARY, kind=EvidencePartKind(primary["part_kind"]),
+        anchor=SourceAnchor(kind=AnchorKind(primary["anchor_kind"]), observation_id=observation_id,
+                            observation_revision_id=revision_id, fragment_id=primary["fragment_id"],
+                            range_start=primary["range_start"], range_end=primary["range_end"]),
+        raw_content_sha256=primary["raw_content_sha256"],
+    ),))
+    await db.db.execute("UPDATE evidence_units SET part_set_digest = ? WHERE id = ?", (part_digest, evidence_unit_id))
     await db.db.commit()
 
 

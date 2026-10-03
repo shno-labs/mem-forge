@@ -575,7 +575,7 @@ class _GitHubSubjectStore:
         self._db = db
         self._units = units
 
-    async def get_memory_evidence_units(self, memory_id):
+    async def get_memory_evidence_units(self, memory_id, *, include_historical=False, context_reference_id=None):
         return self._units.get(memory_id, ())
 
     async def get_document(self, doc_id):

@@ -106,7 +106,7 @@ class AdapterOnlyEntityDb:
     async def get_memory_sources(self, memory_id: str) -> list:
         return []
 
-    async def get_memory_evidence_units(self, memory_id: str) -> tuple:
+    async def get_memory_evidence_units(self, memory_id: str, *, include_historical: bool = False, context_reference_id: str | None = None) -> tuple:
         return ()
 
     async def get_memory_entity_names(self, memory_id: str) -> list[str]:

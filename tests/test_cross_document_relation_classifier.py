@@ -453,7 +453,7 @@ class _SubjectStore:
         self.document_reads: list[str] = []
         self.revision_reads: list[str] = []
 
-    async def get_memory_evidence_units(self, memory_id):
+    async def get_memory_evidence_units(self, memory_id, *, include_historical=False, context_reference_id=None):
         return self.units.get(memory_id, ())
 
     async def get_document(self, doc_id):

@@ -274,6 +274,13 @@ class MemoryEvidenceUnitProjection:
     doc_id: str | None
     current: bool
     items: tuple[MemoryEvidenceItemProjection, ...]
+    visibility: str = "workspace"
+    owner_user_id: str | None = None
+
+    def visible_to(self, viewer_id: str | None) -> bool:
+        return self.visibility == "workspace" or (
+            self.visibility == "private" and bool(viewer_id) and self.owner_user_id == viewer_id
+        )
 
 
 def validate_evidence_references(
@@ -365,6 +372,16 @@ def evidence_part_set_digest(references: tuple[EvidenceReference, ...]) -> str:
     return sha256(
         json.dumps(canonical_parts, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def evidence_items_part_set_digest(items: tuple[MemoryEvidenceItemProjection, ...]) -> str:
+    """Verify projected supporting membership with the persisted Unit contract."""
+    return evidence_part_set_digest(tuple(
+        EvidenceReference(
+            id=item.reference_id, role=item.role, anchor=item.anchor, kind=item.kind,
+            raw_content_sha256=item.raw_content_sha256,
+        ) for item in items if item.grants_support
+    ))
 
 
 def evidence_unit_id_v2(
