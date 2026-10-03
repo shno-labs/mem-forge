@@ -40,6 +40,7 @@ from memforge.source_projection import (
 from memforge.models import DocumentRecord, Memory, MemorySource
 from memforge.source_activity import SourceActivityConflict, SourceActivityKind
 from memforge.storage.database import Database, MIGRATIONS
+from memforge.source_representation import representation_profile_for_observation_contract
 
 
 MARKDOWN_PROFILE = EvidenceRepresentationProfile(
@@ -47,6 +48,7 @@ MARKDOWN_PROFILE = EvidenceRepresentationProfile(
     version=1,
     coordinate_space=EvidenceCoordinateSpace.UNICODE_SCALAR,
 )
+PAGE_PROFILE = representation_profile_for_observation_contract(source_type="confluence", observation_type="page_body")
 TEAMS_PROFILE = EvidenceRepresentationProfile(
     name="canonical-record",
     version=1,
@@ -87,10 +89,10 @@ def _projection() -> SourceProjection:
         id="obsrev-page-1-v2",
         observation_id=observation.id,
         semantic_hash="body-hash-v2",
-        content="new body",
+        content=json.dumps({"title": "Page", "body": "<p>new body</p>", "representation": "confluence-page-storage:1"}),
         observed_at="2026-07-15T00:00:00Z",
         metadata={"version": 2},
-        evidence_profile=MARKDOWN_PROFILE,
+        evidence_profile=PAGE_PROFILE,
     )
     unit = SourceUnit(
         id="unit-page-1",
@@ -472,7 +474,7 @@ async def test_carried_revision_uses_persisted_profile_in_new_run_payload(db: Da
 
     restored = await db.get_source_projection(carried.run_id)
     assert restored is not None
-    assert restored.observation_revisions[0].evidence_profile == MARKDOWN_PROFILE
+    assert restored.observation_revisions[0].evidence_profile == PAGE_PROFILE
 
     await db.record_source_projection(carried)
 
@@ -515,8 +517,8 @@ async def test_carried_revision_rejects_payload_or_source_unit_mismatch(db: Data
         id="obsrev-other",
         observation_id=other_observation.id,
         semantic_hash="other-hash",
-        content="Other body",
-        evidence_profile=MARKDOWN_PROFILE,
+        content=json.dumps({"title": "Other", "body": "<p>Other body</p>", "representation": "confluence-page-storage:1"}),
+        evidence_profile=PAGE_PROFILE,
     )
     other_unit = SourceUnit("unit-other", "src-other", "confluence_page", "other")
     other_projection = SourceProjection(

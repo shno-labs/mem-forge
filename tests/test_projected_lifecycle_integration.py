@@ -36,6 +36,7 @@ from tests.revision_client_fixture import (
 import pytest
 from memforge.llm.structured import ChangeImpactWireResponse, SupportAssessmentWireResponse
 import pytest_asyncio
+from markdown_it import MarkdownIt
 
 
 from memforge.llm.structured import (
@@ -310,7 +311,7 @@ def _projection(
         version="2",
         extra={"page_id": page_id, "space_key": "ENG"},
     )
-    raw = RawContent(item=item, body=body.encode(), content_type="text/html")
+    raw = RawContent(item=item, body=MarkdownIt("commonmark").render(body).encode(), content_type="text/html")
     # As the Confluence Gene reports it: the page version time is the body's source time.
     normalized = NormalizedContent(
         item=item,
@@ -396,7 +397,8 @@ def _projection_with_artifact(
         item=item,
         raw=RawContent(
             item=item,
-            body=body.encode(),
+            # This provider returns storage XHTML, not the normalized fixture text.
+            body=MarkdownIt("commonmark").render(body).encode(),
             content_type="text/html",
         ),
         normalized=NormalizedContent(item=item, markdown_body=body),
@@ -1505,13 +1507,13 @@ async def test_identical_admitted_candidates_merge_before_lifecycle_writes(
     )
     observation_id = _body_observation(projection).id
     canonical = RawMemory(
-        content=_body_revision(projection).content,
+        content="The payroll trigger remained OPEN and was not processed.",
         memory_type="fact",
         evidence_quote="The payroll trigger remained OPEN and was not processed.",
         source_observation_id=observation_id,
     )
     duplicate = RawMemory(
-        content="  # Page\n\nThe   payroll trigger remained OPEN and was not processed. ",
+        content="  The   payroll trigger remained OPEN and was not processed. ",
         memory_type="fact",
         evidence_quote="The payroll trigger remained OPEN and was not processed.",
         source_observation_id=observation_id,
@@ -4114,7 +4116,7 @@ async def test_projected_support_invariant_accepts_other_valid_same_source_unit(
         item=other_item,
         raw=RawContent(
             item=other_item,
-            body=other_body.encode(),
+            body=MarkdownIt("commonmark").render(other_body).encode(),
             content_type="text/html",
         ),
         normalized=NormalizedContent(
@@ -4764,7 +4766,9 @@ async def test_noop_revalidation_uses_bounded_fragment_refs_for_large_revision(
     assert stats["noop"] == 2
     assert stats["support_revalidation_work_item_count"] == 2
     assert stats["support_revalidation_model_call_count"] == 1
-    assert stats["support_revalidation_revision_index_count"] == len(second.observation_revisions)
+    assert stats["support_revalidation_revision_index_count"] == len({
+        revision.id for projection in (first, second) for revision in projection.observation_revisions
+    })
     assert stats["support_revalidation_supported_count"] == 2
     assert len(client.validation_prompts) == 2
     assert all(unrelated_marker in prompt for prompt in client.validation_prompts)
@@ -9077,7 +9081,10 @@ async def test_reused_evidence_advances_only_support_validation_plan_across_revi
         appendix = replace(_body_observation(first), id="obs-appendix", provider_key="appendix")
         appendix_revision = replace(
             _body_revision(first), id=f"appendix-v{version}", observation_id=appendix.id,
-            semantic_hash=f"appendix-hash-{version}", content=f"Appendix edition {version}.",
+            semantic_hash=f"appendix-hash-{version}", content=json.dumps({
+                "title": "Appendix", "body": f"<p>Appendix edition {version}.</p>",
+                "representation": "confluence-page-storage:1",
+            }),
         )
         revision = replace(
             first.source_unit_revisions[0], id=f"baseline-unit-v{version}",
@@ -9260,20 +9267,15 @@ async def test_unresolved_support_preserves_its_baseline_and_resumes_after_sourc
         prior_unit = await db.get_evidence_unit(old_support[0].evidence_unit_id)
         alternate = replace(prior_unit, id="eu-alternate-support", doc_revision_id=second.source_unit_revisions[0].id)
         await db.upsert_evidence_unit(alternate)
-        revision = _body_revision(second)
-        start = revision.content.index(skipped_claim)
+        selected = next(fragment for fragment in RevisionAssessmentContext(
+            projection=second, base=None, access_context_hash="fixture",
+        ).full_fragments if fragment.presentation_text == skipped_claim)
         references = await db.record_evidence_references(alternate.id, (
             EvidenceReference(
                 role=EvidenceRole.PRIMARY,
                 kind=EvidencePartKind.TEXT,
                 raw_content_sha256=old_support[0].raw_content_sha256,
-                anchor=SourceAnchor(
-                    kind=AnchorKind.REVISION_RANGE,
-                    observation_id=revision.observation_id,
-                    observation_revision_id=revision.id,
-                    range_start=start,
-                    range_end=start + len(skipped_claim),
-                ),
+                anchor=selected.anchor,
             ),
         ))
         await db.upsert_evidence_unit(replace(alternate, part_set_digest=evidence_part_set_digest(references)))

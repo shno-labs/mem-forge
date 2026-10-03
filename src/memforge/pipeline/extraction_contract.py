@@ -15,7 +15,7 @@ __all__ = [
 
 # Recorded on every Source derivation and hashed into its batch identities.
 # Stored derivations with any other value are superseded, never resumed.
-PROJECTION_EXTRACTION_CONTRACT_VERSION = "projection-extraction-v13"
+PROJECTION_EXTRACTION_CONTRACT_VERSION = "projection-extraction-v14"
 PROJECTION_FRAGMENT_MODEL_PRESENTATION_POLICY_VERSION = 6
 CONTRACT_SUPERSEDED = "CONTRACT_SUPERSEDED"
 

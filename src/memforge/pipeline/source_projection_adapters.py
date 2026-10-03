@@ -827,13 +827,13 @@ def _project_native(
                     {},
                 ),
             )
-        semantic_body = native if isinstance(native, str) else normalized.markdown_body
-        display_body = str(normalized.source_semantics.get("semantic_markdown") or normalized.markdown_body)
-        semantic_value = {
-            "title": item.title,
-            "body": semantic_body,
-        }
-        semantic_content = f"# {item.title}\n\n{display_body}".strip()
+        from memforge.source_adapters.confluence import page_record
+
+        semantic_value = page_record(item.title, native)
+        # The declared schema is part of immutable content identity. This creates
+        # a new revision when replacing the former lossy Markdown representation,
+        # even if the fetched native body has the same semantic hash as before.
+        semantic_content = _canonical_json(semantic_value)
         return _NativeProjection(
             unit_type="confluence_page",
             provider_key=page_id,

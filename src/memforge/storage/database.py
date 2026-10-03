@@ -5017,7 +5017,7 @@ class Database:
         self,
     ) -> EvidenceProfileBackfillReport:
         from memforge.source_representation import (
-            representation_profile_for_observation_contract,
+            legacy_representation_profile_for_observation_contract,
         )
 
         async with self.db.execute(
@@ -5039,7 +5039,7 @@ class Database:
             if any(row[key] is not None for key in ("profile_name", "profile_version", "coordinate_space")):
                 unresolved.append(str(row["id"]))
                 continue
-            profile = representation_profile_for_observation_contract(
+            profile = legacy_representation_profile_for_observation_contract(
                 source_type=str(row["source_type"]),
                 observation_type=str(row["observation_type"]),
             )

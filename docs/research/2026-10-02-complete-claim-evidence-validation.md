@@ -1,6 +1,46 @@
 # Complete claim and Evidence extraction validation
 
 Status: experiment in progress; no runtime/deployment acceptance.
+
+## Canonical native correspondence integration, 2026-10-03
+
+Confluence now retains its actual storage field inside an immutable versioned
+record. Its adapter owns tags, macros, status/issue parameters, CDATA, tables,
+merged cells, ordered lists and readable presentation. Shared compiler/reading
+code consumes the declared format interface. Historical Markdown remains
+Markdown, including pre-profile backfill. The user accepts one-time format
+cutover assessment; no lossless old/new format matcher is required.
+
+There are no new binding columns or correspondence ledger. Full pinned old and
+target indexes reconstruct material values, verify old anchor/raw integrity,
+and count exact occurrences on both sides. Unique unchanged selections match
+despite offsets, macro instance IDs, attribute order or presentation changes.
+Ambiguity does not become first-match reuse. Compiler/extraction/Support input
+contracts are now 5/14/9, with revision input policy 10.
+
+Staged Review challengers use the same fixed-claim revision executor as
+incumbents. The existing originating Plan supplies their complete validation
+baseline. External qualifications can invalidate a claim while its selected refs
+still match. Unsupported challengers do not enter the ledger; unknown legacy
+pins or unjudgeable claims preserve Reviews. The service also suppresses latest
+input content/PDF links when they name a different revision from the Evidence.
+
+Actual deterministic verification: 128 native/store/Support/Review/extraction
+boundary tests passed; 307 lifecycle/Review/Evidence/stored-input/service tests
+passed after challenger integration; two additional service tests passed for
+matching versus mismatched historical content links. The complete clean Cloud
+HANA suite passed **491 tests in 19.68 seconds**, including bound SQL/parameters
+that preserve legacy Markdown and refuse partial profile guesses. Test cohorts
+overlap and must not be summed as independent coverage. Independent static
+review identified the challenger gap before its repair. Ruff passes for changed
+Python files in both repositories.
+
+These are controlled native-format and execution tests, not a new authentic
+provider snapshot, online Sonnet semantic acceptance or deployed behavior.
+The prior seven-source semantic evaluation remains negative. Complete native
+real-source inference, independent blind review, exact historical resource
+resolution, the remaining source-format contracts and checked CF deployment
+remain required; this integration must not be released on test counts alone.
 Date: 2026-10-02. Canonical OSS baseline: `57f8b006962bf65a6430592b1a5002e15082c8c1`.
 Design: [proposed ADR 0046](../adr/0046-separate-evidence-correspondence-from-citation-presentation.md).
 

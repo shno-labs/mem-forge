@@ -3638,11 +3638,17 @@ async def _memory_evidence_details(
         if group.doc_id is not None:
             seen_source_keys.add((group.source_id, group.doc_id))
             doc = await db.get_document(group.doc_id)
+            unit_input = await db.get_source_unit_input(group.source_unit_id)
+            if unit_input is not None and unit_input.unit_revision_id != group.source_unit_revision_id:
+                # A latest-input document link is navigation, not proof of this
+                # historical Evidence. Keep the pinned excerpt, never substitute
+                # another revision as its supporting content/PDF.
+                unit_input = None
             document = _memory_evidence_document_detail(
                 group.doc_id,
                 doc,
                 source_row,
-                await db.get_source_unit_input(group.source_unit_id),
+                unit_input,
                 config,
                 artifact_store,
             )

@@ -22,7 +22,7 @@ from memforge.pipeline.projection_context import (
 )
 from memforge.pipeline.revision_assessment import RevisionAssessmentContext
 from memforge.pipeline.source_projection_adapters import project_source_item
-from tests.test_projection_context import _committed_snapshot, _confluence_projection, _jira_projection, _requests
+from tests.test_projection_context import _committed_snapshot, _normalized_document_projection, _jira_projection, _requests
 from tests.test_projection_fragments import _projection
 from tests.test_revision_work import Client
 
@@ -39,7 +39,7 @@ def bounded_output(extractor, catalog):
 def extraction_plan(projection, authority, *, extractor, base=None):
     context = RevisionAssessmentContext(projection=projection, base=base, access_context_hash="scope")
     return plan_extraction_requests(
-        context, authority, extractor=extractor, source_type="confluence", doc_type="document",
+        context, authority, extractor=extractor, source_type=projection.source_type, doc_type="document",
     )
 
 
@@ -75,7 +75,7 @@ def test_large_complete_table_reaches_actual_request_budget(representation, rows
     else:
         table = "<table><tr><th>Rule</th><th>Sandbox</th><th>Small Box</th></tr>" + "".join(
             f"<tr><td>Approval {row}</td><td>Yes</td><td>No</td></tr>" for row in range(rows)) + "</table>"
-    projection = _confluence_projection("Before the table.\n\n" + table + "\n\nAfter the table.")
+    projection = _normalized_document_projection("Before the table.\n\n" + table + "\n\nAfter the table.")
 
     for window in (100_000, 8_000):
         client = LiteLlmStructuredClient(StructuredLlmConfig(
@@ -98,7 +98,7 @@ def test_large_complete_table_reaches_actual_request_budget(representation, rows
         context = RevisionAssessmentContext(projection=projection, base=None, access_context_hash="scope")
         for request in requests:
             prompt = MemoryExtractor.projection_fragment_prompt(
-                request.catalog, source_type="confluence", doc_type="document", revision_context=context,
+                request.catalog, source_type=projection.source_type, doc_type="document", revision_context=context,
             )
             assert client.request_fits(prompt, response_format=ProjectionFragmentMemoryExtractionResponse,
                                        max_tokens=bounded_output(extractor, request.catalog))
@@ -132,8 +132,8 @@ def test_update_reads_only_changed_structures_with_their_reading_group_context()
         "# Approvals\n\nIntro for approvals.\n\nOld unrelated details.\n\nTwo reviewers approve releases.\n\n"
         "# Rollout\n\nRollout starts {day}.\n"
     )
-    initial = _confluence_projection(sections.format(day="Monday"))
-    target = _updated_confluence(initial, sections.format(day="Tuesday"))
+    initial = _normalized_document_projection(sections.format(day="Monday"))
+    target = _updated_normalized_document(initial, sections.format(day="Tuesday"))
     [request] = _requests(target, base=initial, committed=_committed_snapshot(initial))
     read = texts(request)
 
@@ -148,8 +148,8 @@ def test_update_reads_only_changed_structures_with_their_reading_group_context()
 
 
 def test_a_changed_list_item_reads_its_whole_list_but_authorizes_only_the_changed_item():
-    initial = _confluence_projection("Approvals need:\n\n- one reviewer\n- a ticket\n- a rollback plan\n")
-    target = _updated_confluence(initial, "Approvals need:\n\n- two reviewers\n- a ticket\n- a rollback plan\n")
+    initial = _normalized_document_projection("Approvals need:\n\n- one reviewer\n- a ticket\n- a rollback plan\n")
+    target = _updated_normalized_document(initial, "Approvals need:\n\n- two reviewers\n- a ticket\n- a rollback plan\n")
     [request] = _requests(target, base=initial, committed=_committed_snapshot(initial))
     read = " ".join(texts(request))
 
@@ -315,8 +315,8 @@ async def test_a_reading_group_whose_output_stays_invalid_fails_complete_work():
     assert result.metadata["safe_error_code"] == "ValueError"
 
 
-def _updated_confluence(initial, body):
-    """The next revision of ``initial``'s page with this body."""
+def _updated_normalized_document(initial, body):
+    """The next revision of the declared normalized document."""
     item = ContentItem(
         item_id="confluence-42",
         title="Large design",
@@ -327,10 +327,10 @@ def _updated_confluence(initial, body):
     )
     return project_source_item(
         source_id="src-c",
-        source_type="confluence",
+        source_type="validation_normalized_document",
         run_id="run-c-update",
         item=item,
-        raw=RawContent(item=item, body=body.encode(), content_type="text/html"),
+        raw=RawContent(item=item, body=body.encode(), content_type="text/markdown"),
         normalized=NormalizedContent(item=item, markdown_body=body),
         prior_unit_revision=initial.source_unit_revisions[0],
         prior_observation_revisions={revision.observation_id: revision for revision in initial.observation_revisions},

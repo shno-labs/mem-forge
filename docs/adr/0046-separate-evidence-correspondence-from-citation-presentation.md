@@ -49,14 +49,16 @@ These are outputs behind the existing seam, not three public parser modules or
 a persistent Fragment-identity ledger. An Evidence Unit still consists of one
 Primary and its Required refs, and Support is validated and rebound atomically.
 
-The persisted selection binding must carry the pinned input/snapshot identity,
-source-coordinate profile, verified selector or spans, raw integrity digest,
-content-schema version and content digest. Existing Evidence parts own this
-binding; Fragment catalog numbers remain transient. Dependency selections and
-the interpretation-contract version are included in the complete Support's
-reuse check. Presentation text/digest and renderer version remain derivation
-metadata. Digests index candidate matches; a final exact comparison or verified
-native mapping must confirm them. No hash alone proves occurrence identity.
+The existing persisted Evidence anchor, raw integrity digest and immutable
+Observation Revision's versioned representation profile are sufficient authority.
+Recompile the complete pinned revision to reconstruct its selected content value;
+do not introduce stored content-digest columns, a binding ledger or an alias bridge.
+Fragment catalog numbers and reconstructed content values remain operation-local.
+The full revision, rather than an excerpt slice, supplies native parsing context
+and both-side occurrence counts. Stored presentation integrity is checked, but
+equality of presentation digests is not correspondence authority. Complete
+ChangeBundle/Impact/Assessment and the versioned Support contract control reuse.
+No hash alone proves occurrence identity.
 
 For native text and structured textual fields, the existing immutable
 `SourceObservationRevision.content` owns the retained authoritative coordinate
@@ -141,13 +143,14 @@ remain explicit typed limitations, not permission to omit unmatched material,
 infer removal or split atomic publication. Capacity and semantic coverage need
 their own acceptance evidence; a successful indexed lookup is insufficient.
 
-When a source-content schema changes, compare both snapshots under the same
-target schema, using a verified mapping of the old selection into its immutable
-source input. Persisted digests with different schemas must never be compared
-as equivalent. If the old mapping cannot be verified, perform whole-Support
-assessment; do not guess or mutate the historical anchor. This permits future
-renderer upgrades to preserve correspondence without promising that every
-legacy compiler upgrade is a cost-free exact match.
+This rollout does not require exact correspondence across the old/new format
+cutover. The user accepts one-time whole-Support assessment and re-extraction;
+legacy Markdown keeps its original profile and is never relabeled as storage
+XML. Pre-profile historical backfill uses the adapter's frozen legacy declaration,
+not its current native format. Future correspondence is guaranteed within the
+same compatible versioned content schema for unchanged, uniquely identifiable
+selections. A future meaning/schema upgrade may require assessment again;
+renderer-only changes do not. Historical anchors are never guessed or rewritten.
 
 ### 3. Separate correspondence from permission to reuse Support
 
@@ -171,6 +174,15 @@ removed qualifiers. Exact ref matching must not bypass Change Impact. A matched
 Required heading does not prove that everything below it is unchanged. The
 Primary must remain authorized for revalidation; correspondence does not give
 unchanged content new Claim Extraction authority.
+
+This distinction applies to a staged Review challenger as well as an incumbent
+Memory. Corresponding a challenger's refs only locates its current Evidence.
+Reuse the same fixed-claim revision work against the complete baseline named by
+the Review's existing Lifecycle Plan, not the incumbent's newer baseline.
+An unavailable baseline requires complete current assessment. Unjudgeable
+claims preserve their Review without entering the conflict ledger; a complete
+unsupported result does not carry the challenger forward. No second audit
+stage or new durable state is added.
 
 The semantic claim under assessment remains fixed. Only complete current
 Evidence can re-support it. Old giant-table ref to several new row refs is a

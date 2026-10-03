@@ -41,11 +41,11 @@ from memforge.source_representation import in_current_representation, representa
 
 # Versions how a fixed Support is revalidated against a revision: it enters the
 # reconciliation manifest and each revalidated Support's ``support_validation``.
-REVISION_SUPPORT_CONTRACT = "revision-support-v8"
+REVISION_SUPPORT_CONTRACT = "revision-support-v9"
 # Versions how revision Fragments are compiled into catalogs, what every
 # reading adds as context, and Claim Extraction's reading scope. Every catalog
 # this context composes, for extraction or for Support, carries it in its identity.
-REVISION_INPUT_POLICY = "revision-input-v9"
+REVISION_INPUT_POLICY = "revision-input-v10"
 
 
 def reading_group_label(fragments) -> str:
@@ -156,6 +156,12 @@ class RevisionAssessmentContext:
             if r.id in projection.source_unit_revisions[0].observation_revision_ids
         }
         baseline = base.observation_revisions if base else ()
+        # Evidence may predate the Support's last validation baseline. Keep its
+        # exact immutable revision, rather than substituting baseline or latest.
+        self.revisions = {
+            revision.id: revision
+            for revision in (*evidence_revisions, *baseline, *projection.observation_revisions)
+        }
         self.retired = frozenset(r.id for r in (*baseline, *evidence_revisions) if not in_current_representation(r))
         observations = {o.id: o for o in (*known_observations, *(base.observations if base else ()))}
         observations.update({o.id: o for o in projection.observations})

@@ -430,7 +430,10 @@ def test_confluence_operational_display_header_does_not_trigger_extraction() -> 
         prior_observation_revisions={revision.observation_id: revision for revision in first.observation_revisions},
     )
 
-    assert later.observation_revisions[0].content == "# Title\n\nKeep A7."
+    assert json.loads(later.observation_revisions[0].content) == {
+        "title": "Title", "body": "<p>Keep A7.</p>",
+        "representation": "confluence-page-storage:1",
+    }
     assert later.deltas[0].axes == frozenset()
     assert later.deltas[0].requires_extraction is False
 
@@ -1832,7 +1835,7 @@ def test_every_builtin_gene_has_an_explicit_projection_contract() -> None:
 @pytest.mark.parametrize(
     ("source_type", "observation_type", "profile_name", "schema_name", "coordinate_space"),
     [
-        ("confluence", "page_body", "markdown-structural", None, EvidenceCoordinateSpace.UNICODE_SCALAR),
+        ("confluence", "page_body", "canonical-record", "confluence-page-storage", EvidenceCoordinateSpace.UNICODE_SCALAR),
         ("jira", "issue_core", "canonical-record", "jira-issue-core", EvidenceCoordinateSpace.UNICODE_SCALAR),
         ("jira", "comment", "canonical-record", "jira-comment", EvidenceCoordinateSpace.UNICODE_SCALAR),
         ("jira", "changelog", "canonical-record", "jira-changelog", EvidenceCoordinateSpace.UNICODE_SCALAR),

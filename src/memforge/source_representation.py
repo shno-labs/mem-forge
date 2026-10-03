@@ -13,6 +13,10 @@ from memforge.source_adapters.contracts import (
 )
 from memforge.source_adapters.jira import CANONICAL_RECORD_SCHEMAS as JIRA_RECORD_SCHEMAS
 from memforge.source_adapters.teams import CANONICAL_RECORD_SCHEMAS as TEAMS_RECORD_SCHEMAS
+from memforge.source_adapters.confluence import (
+    CANONICAL_RECORD_SCHEMAS as CONFLUENCE_RECORD_SCHEMAS,
+    LEGACY_OBSERVATION_PROFILES,
+)
 from memforge.source_projection import (
     EvidenceCoordinateSpace,
     EvidenceRepresentationProfile,
@@ -58,7 +62,7 @@ def _canonical_record_profile(schema_name: str) -> EvidenceRepresentationProfile
 
 
 _REPRESENTATION_CONTRACTS: Mapping[tuple[str, str], EvidenceRepresentationProfile] = {
-    ("confluence", "page_body"): MARKDOWN_STRUCTURAL_PROFILE,
+    ("confluence", "page_body"): _canonical_record_profile("confluence-page-storage"),
     ("jira", "issue_core"): _canonical_record_profile("jira-issue-core"),
     ("jira", "comment"): _canonical_record_profile("jira-comment"),
     ("jira", "changelog"): _canonical_record_profile("jira-changelog"),
@@ -73,6 +77,7 @@ _REPRESENTATION_CONTRACTS: Mapping[tuple[str, str], EvidenceRepresentationProfil
 _CANONICAL_RECORD_SCHEMAS: Mapping[tuple[str, int], CanonicalRecordSchema] = {
     **JIRA_RECORD_SCHEMAS,
     **TEAMS_RECORD_SCHEMAS,
+    **CONFLUENCE_RECORD_SCHEMAS,
 }
 
 
@@ -189,3 +194,15 @@ def representation_profile_for_observation_contract(
         # The extension-safe projection fallback is explicitly normalized Markdown.
         return MARKDOWN_STRUCTURAL_PROFILE
     return _REPRESENTATION_CONTRACTS.get((source_type, observation_type))
+
+
+def legacy_representation_profile_for_observation_contract(
+    *, source_type: str, observation_type: str,
+) -> EvidenceRepresentationProfile | None:
+    """A known pre-profile writing contract, independent of today's adapter."""
+    return LEGACY_OBSERVATION_PROFILES.get(
+        (source_type, observation_type),
+        representation_profile_for_observation_contract(
+            source_type=source_type, observation_type=observation_type,
+        ),
+    )

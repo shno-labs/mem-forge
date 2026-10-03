@@ -37,6 +37,22 @@ def _memory(memory_id: str = "mem-old") -> Memory:
     )
 
 
+def test_unknown_review_evidence_is_preserved_while_proven_absent_conflict_closes():
+    old = _memory()
+    unknown = LifecycleReview("unknown", "old-plan", old.id, LifecycleReviewStatus.PENDING, {})
+    absent = replace(unknown, id="absent")
+    plan = build_lifecycle_plan(
+        plan_id="plan-review-proof", scope=_scope(), gate_state=LifecycleGateState.ENABLED,
+        operations=(ReconcileOperation(action=ReconcileAction.NOOP, memory_id=old.id, reason="claim supported"),),
+        incumbents={old.id: old}, source_support_unit_ids={old.id: ("eu-old",)},
+        all_active_support_unit_ids={old.id: ("eu-old",)}, support_set_hashes={old.id: "hash"},
+        observation_revision_ids=("obsrev-2",), defaults=_defaults(),
+        coordinator_reviews=(unknown, absent), unresolved_coordinator_review_ids=frozenset({unknown.id}),
+    )
+    closures = [item for item in plan.mutations if item.mutation_type is LifecycleMutationType.RESOLVE_REVIEW]
+    assert [item.payload["review_id"] for item in closures] == [absent.id]
+
+
 def _replacement() -> RawMemory:
     return RawMemory(
         content="A7 is retained and marked as reduced retro chain.",

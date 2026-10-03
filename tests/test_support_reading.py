@@ -167,12 +167,52 @@ def test_unknown_part_takes_priority_over_modified():
     assert support.unknown_observation_ids == ("obs-context",)
 
 
-def test_without_usable_baseline_exact_support_is_assessed_not_rebound():
+def test_without_historical_authority_support_is_assessed_not_exactly_rebound():
     base, current = revisions(f"{RULE}\n", f"{RULE}\n")
     no_baseline = RevisionAssessmentContext(projection=current, base=None, access_context_hash="scope")
     [support] = plan(no_baseline, (part(base, RULE),))
-    assert statuses(support) == [Status.EXACT_UNCHANGED]
+    assert statuses(support) == [Status.MODIFIED]
     assert support.route is SupportRoute.SUPPORT_ASSESSMENT
+
+
+def test_two_old_occurrences_cannot_both_match_one_current_occurrence():
+    base, context = context_for(f"{RULE}\n\n{RULE}\n", f"{RULE}\n")
+    [support] = plan(context, (part(base, RULE),))
+    assert statuses(support) == [Status.AMBIGUOUS]
+    assert support.route is SupportRoute.SUPPORT_ASSESSMENT
+
+
+def test_same_pinned_revision_can_locate_one_occurrence_among_duplicates():
+    base, _ = revisions(f"{RULE}\n\n{RULE}\n", f"{RULE}\n")
+    context = RevisionAssessmentContext(projection=base, base=base, access_context_hash="scope")
+    [support] = plan(context, (part(base, RULE),))
+    assert statuses(support) == [Status.EXACT_UNCHANGED]
+    assert support.parts[0].current[0].anchor == support.item.support[0].anchor
+
+
+def test_corrupt_raw_or_display_integrity_never_reuses_support():
+    base, context = context_for(f"{RULE}\n", f"{RULE}\n")
+    for changed in (
+        {"raw_content_sha256": "0" * 64},
+        {"excerpt": "Fabricated historical text."},
+    ):
+        [support] = plan(context, (replace(part(base, RULE), **changed),))
+        assert statuses(support) == [Status.UNKNOWN]
+        assert support.route is SupportRoute.UNRESOLVED_PARTIAL_COVERAGE
+
+
+def test_evidence_older_than_validation_baseline_uses_its_own_immutable_revision():
+    origin, current = revisions(f"{RULE}\n\n{RULE}\n", f"{RULE}\n")
+    baseline = replace(current, observation_revisions=(
+        replace(current.observation_revisions[0], id="intermediate-revision"),
+        current.observation_revisions[1],
+    ), source_unit_revisions=(replace(current.source_unit_revisions[0], observation_revision_ids=("intermediate-revision", "rev-context")),))
+    context = RevisionAssessmentContext(
+        projection=current, base=baseline, access_context_hash="scope",
+        evidence_revisions=origin.observation_revisions,
+    )
+    [support] = plan(context, (part(origin, RULE),))
+    assert statuses(support) == [Status.AMBIGUOUS]
 
 
 def test_absent_member_observation_is_removed_under_complete_coverage():
