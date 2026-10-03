@@ -1123,7 +1123,7 @@ wording. This is an empirical ordering experiment, not a JSON-order validity gat
 or a cognitive guarantee. All six available prior DTO sets (183 records) convert
 unchanged under the same validators. The large source remains required and both
 previous deadline failures are retained; no successful subset replaces them.
-Results and independent review are still pending.
+The complete results and both independent reviews are retained below.
 
 Private evidence: `understanding-v10-development-freeze.json`;
 `understanding-v10-online-accounting-usage-explicit.json`, SHA256
@@ -1139,3 +1139,89 @@ Private evidence: `understanding-v10-development-freeze.json`;
 The versioned Artifact ordering change passed the combined structured client,
 image and batch-runner selection: 141 tests in 9.32 seconds, with no inference.
 This broader boundary verification does not certify diagram interpretation.
+
+
+### V11 complete field-order experiment and independent execution review
+
+The same final eight fields now select Primary/Required before writing content.
+The source-first instruction and field order add no new semantic stage or
+worksheet. All seven complete sources, final validators, 32,768 output cap and
+300-second logical deadline remain in the experiment. All 141 pinned files
+remained unchanged during inference. The 187 returned Memory objects actually
+place both citation fields before content; this observes response order, not
+reasoning order or a new JSON-order validity rule.
+
+| Source | Private drafts/DTOs | Terminal operation |
+| --- | ---: | --- |
+| Confluence | 56 | Structurally complete |
+| Jira | 7 | Structurally complete |
+| ADR 0045 | 23 | Structurally complete |
+| Source-agnostic extraction design | 59 | Structurally complete |
+| ADR 0028 | 17 | Structurally complete |
+| ADR 0034, large | 0 | Formation exceeded the unchanged 300-second deadline |
+| Original raster | 25 | Structurally complete |
+
+Thirteen logical calls made thirteen native physical attempts, with no provider
+retry, fallback, mechanical correction or semantic origin revision. There are
+187 private DTOs and 48 supplied Required assignments. Known reported usage is
+277,318 input and 38,360 output tokens; large-call usage is unavailable, not zero.
+The explicit usage receipt retains the original accounting and distinguishes
+unknown usage from recorded totals. No product writes occurred.
+
+| Reviewer | All 187 candidate dispositions | Fixed review entries |
+| --- | --- | --- |
+| A | 150 pass, 31 fail, 6 uncertain | All 415 entries retained; 115 large-source entries have no output |
+| B | 143 pass, 44 not-pass/needs-qualification | All 385 entries retained; 138 large-source entries have no output |
+
+Both reviewed all complete inputs, verified 537 raw and 536 text-display
+identities, and viewed original PNG pixels without OCR/crops/native companions.
+Both accept all 187 Primary views as authentic, readable and directly central.
+A accepts all 48 supplied Required assignments; B marks one redundant. Missing
+additional Required recall is nonblocking. Both require an explicit pinned
+**target-design** qualifier in the 25 image claims, which currently say “In the
+MemForge design”; these are standalone qualification findings, not evidence that
+the claims explicitly assert deployed behavior. They separately identify real
+capacity/content mistranslation and ADD-class scope expansion. Value-only and
+source-internal historical/current contradictions remain separately classified.
+No candidate or frozen inventory entry is removed to improve the result.
+
+The complete scheme still fails acceptance. Citation readability/directness
+improved in this cohort, but response field order and a clean same-model audit do
+not reliably establish claim accuracy or large-source execution feasibility.
+The large source now has three retained deadline failures: V10, an unchanged
+V10 repeat, and V11. These do not prove output truncation or provider latency's
+cause. No further unchanged whole-call prompt retry is justified by these data.
+
+Independent static review confirms that Source Unit semantic ownership and
+atomic publication do **not** require one inference. The canonical extraction
+path already creates ReadingGroup work items, packs them and splits certain
+typed failures. The private whole-Unit formation prototype bypasses that runner.
+However, restoring it alone is insufficient: current planning can exclude
+unfit groups from expected coverage, execution can skip unjudgeable groups,
+selector resolution can drop individual candidates, and aggregation counts
+skips without failing the Unit. Existing real execution failures already stop
+subset publication and lifecycle commit. Local reading-context selection also
+does not prove that distant source qualifiers reach each request.
+
+The next narrowly scoped execution hypothesis restores **existing** longest-fit
+packing and failure splitting, carries the same full immutable source context in
+every request, limits origination to each request's owned Primary refs, rejects
+all planning/runtime failures at Unit aggregation, and retains the complete final
+source audit and at most one origin revision. No fixed batch size, reduced batch,
+new deadline-driven segmentation, timeout increase or successful-subset fallback
+is introduced. Preflight still packs all 201 groups into one initial request;
+restoration is therefore not claimed to solve the deadline by itself. Any new
+batching remediation requires the repository's explicit confirmation process.
+This private hypothesis is not canonical runtime integration or deployment.
+
+Private evidence: `understanding-v11-development-freeze.json`, SHA256
+`0ee47c907cea29d9b8d198fb0a8233ac0c6c4a2f4b84421174f737b6ba49e3d3`;
+`understanding-v11-online-accounting-usage-explicit.json`, SHA256
+`bdb8a4539ef5effe4a6e758763336cdaa75940fcf2aa021e2b4cc47dde97c203`;
+`blind-v11-tentative-packet.json`, SHA256
+`46ca8caca7c0232258c938848fe8f0c1f95dbd597347e4d00fad0efcd2f7288e`;
+`blind-v11-a-review.json/.md`, JSON SHA256
+`8f89e55d6b025fd78b34e8020f0c5e5128d0b091c28c1e4575d4ffea54966cd2`;
+`blind-v11-b-review.json/.md`, JSON SHA256
+`2729d16d08d35e4b1301d7b255293fb3c528e9729a5bb3e0945db9fe55cb0631`;
+`extraction-execution-boundary-independent-review.json/.md`.
