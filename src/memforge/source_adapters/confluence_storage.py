@@ -151,10 +151,19 @@ def _nodes(node: _Node):
 def _canonical(node: _Node | _Text):
     if isinstance(node, _Text):
         return ("literal" if node.literal else "text", node.value)
+    children = []
+    for child in node.children:
+        value = _canonical(child)
+        # Entity spelling and CDATA boundaries can split one text value into
+        # parser callbacks; callback boundaries are not authored structures.
+        if isinstance(child, _Text) and children and children[-1][0] == value[0]:
+            children[-1] = (value[0], children[-1][1] + value[1])
+        else:
+            children.append(value)
     return (
         node.tag,
         sorted((key, value) for key, value in node.attrs.items() if key not in _INSTANCE_ATTRIBUTES),
-        [_canonical(child) for child in node.children],
+        children,
     )
 
 

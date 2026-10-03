@@ -115,6 +115,17 @@ def test_display_change_does_not_decide_cross_revision_correspondence():
     assert result.supports[0].parts[0].status is EvidenceCorrespondence.EXACT_UNCHANGED
 
 
+def test_entity_encoding_callback_boundaries_do_not_change_material():
+    base = projection('<p>AB stays required.</p>')
+    old = next(f for f in build_revision_fragment_index(base.observation_revisions[0]).fragments
+               if f.presentation_text == "AB stays required.")
+    target = projection('<p>Inserted.</p><p>A&#66; stays required.</p>', base)
+    _, plan = planned(base, target, old)
+    assert plan.parts[0].status is EvidenceCorrespondence.EXACT_UNCHANGED
+    assert plan.parts[0].current[0].presentation_text == old.presentation_text
+    assert plan.parts[0].current[0].raw_content_sha256 != old.raw_content_sha256
+
+
 def test_new_native_profile_does_not_rewrite_legacy_normalized_revision():
     native = '<p>Stable rule.</p>'
     current = projection(native)
