@@ -371,6 +371,13 @@ are insufficient, but an event can establish lasting knowledge. When uncertain,
 retain supported knowledge for the existing Value judgment. The older six-month,
 refactor and code-recoverability exclusions must not survive in a separate prompt.
 
+Value policy is independent of owned-Evidence language. Preserve the existing
+source-owned language instruction when replacing obsolete Value exclusions:
+final claims retain their owned source language and technical terms; read-only
+context or the instruction language does not translate them by default. This
+changes neither Evidence bytes nor citation roles and introduces no provider-
+specific language parsing.
+
 The Source Unit extraction operation owns complete reading and final formation.
 Existing request packing is a transport detail; a successful request does not
 prove complete Unit coverage. Read all authorized complete ReadingGroups while
