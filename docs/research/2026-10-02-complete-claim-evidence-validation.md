@@ -618,3 +618,53 @@ acceptance. Report SHA:
 Release acceptance, production integration, untouched holdouts, large/full-Unit
 execution, storage/resource/SQLite-HANA parity and deployment remain open. No
 production sync, reprocess, Memory write or deployment occurred.
+
+
+## Fifth development cohort: frozen, semantic acceptance pending
+
+The private ownership prototype now forms final exact clauses and chosen bases
+directly from complete authoritative source, then uses fixed audit criterion
+properties separating material differences, non-actionable notes and unknowns.
+It has no model-produced source assertion/resolution ontology. This is a
+predeclared hypothesis, not an improved semantic result. One complete origin
+revision and mandatory fresh audit remain bounded; no budget, output cap,
+batching, source denominator or admission-pruning change is made.
+
+A new explicit Confluence format entrypoint exposes all present supported native
+parameters with exact source bindings. Its generic receipt controller has no
+provider default, grammar or parameter meanings. **37/37** no-call controls verify
+actual complete source/model visibility, colour-only assessment, offset-only
+correspondence and rendering-only independence. All 11 tables/48 rows retain
+material; the 86-fragment/34-group source plan remains complete. Code parameter
+controls are synthetic grammar checks, not authentic source-obligation evidence.
+Unknown/duplicate/nested unsupported native encodings return typed unavailable.
+Report SHA: `e8aa6bf541ccc1ed7d0b82bc6c22513865963be61e7338ac1c9589f2a7e9d4b1`.
+
+Independent public-path preflight found a real initial source-integrity defect:
+changing actual document/current revision text while retaining declared hashes
+could pass to DTO construction. The failed 79/81 report is preserved. The
+corrected prototype pins and recomputes actual current content/profile identities
+and verifies selected raw/presentation integrity before calls and conversion;
+semantic hashes are not equated with raw hashes. Final independent **103/103**
+checks pass on exact module
+`472cb94518e5ca6a1bf26a0350104480dcdd74cfe2efea121cf2b99fc219a4a3`.
+The producer's separate **203/203** controls pass. Deliberate false-clean semantic
+controls still structurally accept, and positive comparisons misclassified as
+material defects still fail the operation: no mechanical semantic proof is claimed.
+
+Actual CF-resolved model/budget preflight admits 12 complete-source/whole-carry
+capacity samples with zero inference calls. Earlier model outputs are used only
+as capacity samples, never new semantic results. The **87-file** freeze is
+`7eaa599bacb6d73beb4424125d041b8c0e324fd5513add7dab7bfa66ccb00cbd`;
+all 63 V4 inputs remain unchanged. It declares one four-source repetition, two
+initial semantic steps and at most one full revision/fresh audit (four steps,
+eight logical calls per source including allowed mechanical correction). Existing
+canonical transport retry/fallback accounting remains unchanged. The new private
+runner enables the canonical opt-in local failure sink in explicit private
+per-source directories, retaining failed raw structured replies for diagnosis;
+config credentials and transport headers are excluded. Production capture is off.
+
+The online cohort has started; no semantic success, blind acceptance, holdout,
+large/full-Unit, storage/resource/adapter parity or deployment result is asserted.
+Whole original raster delivery remains unchanged so the extraction ownership
+hypothesis is evaluated separately from image-delivery capability.
