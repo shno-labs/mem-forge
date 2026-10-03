@@ -1407,8 +1407,8 @@ failure for this large-source sample; it does **not** establish claim accuracy,
 coverage, production integration or release readiness. Two independent reused
 reviewers received the exact anonymous 176-candidate packet and complete source,
 with producer prompts, audit findings and operation status withheld. Their
-Reviewer A's semantic report is pending at this recording point. Reviewer B's
-completed report is recorded below.
+Both reused reviewers have now completed their full semantic reports, recorded
+below with their distinct criteria and denominators preserved.
 
 Private receipts, SHA256 checked against the retained files:
 
@@ -1440,6 +1440,32 @@ acceptance remains negative, not release/deployment acceptance.
 
 - `blind-v12c-b-review.json`: `2598d63783565f45bc74901df9eb1b400681bdb010b7ef068c419c00d9c52e18`.
 - `blind-v12c-b-review.md`: `445149d02a29828690eabbf3345d839f63895c32feaad6e08b2180b94cfa37d3`.
+
+Reviewer A reports **123 pass / 47 not-pass / six uncertain** across the same
+176 candidates. All 176 Primary pass. Its 84 Required comprise **52 contributing,
+27 redundant and five noncontributing**. Its 115 large-source frozen obligations
+are **102 covered / four partial / nine uncertain**; the other 66 records remain
+outside the diagnostic. Value rejects zero candidates, retaining five uncertain
+ones. Source support is 158 pass / 16 uncertain / two fail; standalone, metadata
+and atomicity findings are separate dimensions rather than additional disjoint
+candidate totals. All source/raw/display hashes and Unicode quote coordinates
+are verified; allowed inputs remain unchanged. A likewise discloses reviewer
+reuse/exposure and makes no fresh-holdout or release claim.
+
+The two reports agree that all Primary are authentic/readable and identify **27
+identical candidate/ref pairs as redundant**. They agree on contribution for
+24 pairs, but A marks another 27 pairs contributing where B marks them redundant.
+These disagreement counts are a program comparison of the complete 84 actual
+selections, not a semantic adjudication. Do not turn B's stricter count into an
+automatic parent-ref deletion rule or assume all not-pass records are false
+claims. Their two source-support failure sets also differ: A flags the omitted
+retired-representation exception and first-match conflict priority; B flags the
+two superseded identity assertions. Source-grounded adjudication and origin
+contract correction remain required. Neither report establishes complete
+semantic acceptance.
+
+- `blind-v12c-a-review.json`: `963c51459753a86ce814a8d2733f3ecbf0646796a8cc7237739eac2d73ea3e34`.
+- `blind-v12c-a-review.md`: `b34c0e8c5d12f11a0a98633ad4d31229a6765569207f423c2e31c22b45e5283a`.
 
 ### V14 bounded audit-discrimination diagnostic
 
