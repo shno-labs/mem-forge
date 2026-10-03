@@ -1479,6 +1479,14 @@ formatting cleanup remain in force. This prevents a reproducible loss of source
 meaning; it does not implement native snapshot history, readable complex-table
 views, stable correspondence or a successful extraction cohort.
 
+This patch protects newly normalized/compiled material, not previously stored
+lossy snapshots. The adapter reuses an existing immutable Observation Revision
+when the native semantic identity is unchanged, so an ordinary reprocess does
+not necessarily replace old Markdown with newly normalized text. Native-profile
+integration must establish the new representation identity without overwriting
+historical revision content or treating unavailable legacy authority as deletion.
+The required historical/cutover work remains in the mainline scope.
+
 Actual canonical test command:
 
 ```text
