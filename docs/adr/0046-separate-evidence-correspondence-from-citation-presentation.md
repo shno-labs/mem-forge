@@ -287,352 +287,176 @@ conventions determine significance; a colour must not silently be inferred from
 a title or treated as decorative universally. Native parameter interpretation
 belongs to the provider-format adapter, not the generic extractor or matcher.
 
-### 5. Select claim-local Evidence within complete reading context
+### 5. Form accurate claims and readable citations at extraction origin
 
-A complete table remains a ReadingGroup. A row may become selectable Evidence
-when the compiler preserves its column association and the structural context
-needed to interpret it, including applicable merged cells or linked footnotes.
-Complex cases without a proven local closure remain whole-structure selections.
-This changes citation granularity for verifiability, not request packing or
-model capacity. Existing complete reading and destructive coverage remain intact.
+A complete structure remains a ReadingGroup. The compiler may offer a smaller
+selectable view when it preserves the applicable structural meaning and exact
+source mapping. A row can include its verified column associations; a list item
+can include its applicable parent scope. Unsupported local interpretation keeps
+the complete structure or reports explicit unavailability. Citation granularity
+must not silently reduce reading scope or origination authority.
 
-#### Primary and Required selection contract
+#### Primary and Required selection
 
-The Primary must directly support the claim's central assertion, read with its
-necessary qualifiers. Selection is determined by the Evidence's contribution
-to the claim, not its provider, document type, field name, structural position,
-length or recency alone. There is no hierarchy that always prefers a particular
-kind of statement or always excludes another. Explicit corrections, conditions,
-source authority and temporal scope still affect what the content supports.
-Required material cannot supply the entire central
-assertion while the Primary supplies only topical association. Among eligible
-Fragments that directly carry the assertion, prefer the smallest complete
-source selection over a broad structure with unrelated facts; retain a whole
-structure when local dependency closure cannot be proven.
+Primary directly supports the claim's central assertion. Choose by the actual
+support relationship and source authority, not by provider, format, field label,
+position, length or recency. Prefer a focused complete readable selection when
+its interpretation is verified; retain a complete structure when necessary.
+Required-only context cannot be promoted to Primary.
 
-Required refs form a sufficient, inclusion-minimal set with the Primary:
-removing any remaining Required part would lose a supported
-condition, scope, exception, time qualification or necessary interpretation.
-This is a semantic necessity check, not a numeric cap or a demand to prove the
-globally smallest set. A heading already adequately represented by another
-selected scope ref is redundant. Nearby text shown in a ReadingGroup stays
-reading context unless its contribution is necessary. Structural dependencies
-are resolved from the compiler's catalog and retain their revision-pinned source
-mapping. Preserving structural meaning does not mean automatically adding all
-headers, captions or footnotes to `required_refs`.
+Required refs are **best-effort additional citations**, prioritizing accuracy,
+readability and low false positives. Select confidently contributing material
+that helps verify the claim's conditions, scope, exception, timing or meaning.
+Omitting an additional related citation alone is acceptable. Neither 100% recall
+nor a proof of an inclusion-minimal dependency set is an acceptance requirement.
+There is no numeric cap. Nearby or topically related material is not automatically
+Required, and a heading, caption, table header or footnote has no mandatory role
+merely because of its structure type. Do not repeat interpretation already
+faithfully represented in the Primary or another selected part.
 
-When a compiler-proven row representation already includes the applicable
-column names or other interpretation in its mapped citation, the model does
-not select the same material again as separate Required refs. Its source
-dependency binding still participates in the Support reuse gate. If the claim
-needs a qualification in another Fragment that this representation does not
-cover, the model selects that Fragment as Required. Unrelated table headings,
-exceptions to another rule and unrelated footnotes stay reading context.
-A readable Evidence Unit presents the selected material with its needed
-interpretation, preserving each actual pinned part without duplicate citations.
+This supersedes the draft's exhaustive selected-basis and inclusion-minimal
+Required requirements. It does not relax claim accuracy: the complete authorized
+immutable source must support every material assertion and qualification in the
+claim and its metadata, and the displayed Primary must directly evidence the
+central assertion. A wrong or misleading citation, an invented source fact, or
+missing claim wording that changes the source meaning remains a defect. Citation
+recall and source-to-claim knowledge coverage are separate measurements.
 
-Claim Extraction and Support Assessment use this same selection contract. New
-compound claims that join independently useful assertions should be extracted
-separately when that gives each its own direct Primary. Expected behavior and a
-dated test outcome remain distinct assertions: "assignment should be allowed"
-and "the recorded run failed" must not become an unqualified permanent product
-rule. Support Assessment cannot split or rewrite an incumbent claim silently;
-it assesses that fixed claim using complete current Evidence.
+Displayed citations are not an exhaustive inventory of source dependencies.
+Compiler-proven interpretation bindings retain their exact immutable mapping.
+Unchanged displayed refs alone cannot authorize whole-Memory reuse: the existing
+complete ChangeBundle includes changed and removed source content outside those
+refs and routes it through Change Impact. Changed interpretation or unresolved
+mapping enters Support Assessment. No new citation-dependency ledger or lifecycle
+state is introduced to compensate for best-effort citation recall.
 
-#### Improve selection at extraction and Support Assessment
-
-Ref quality belongs where the model selects Evidence: Claim Extraction and
-Support Assessment. The model reads the complete supplied catalog/ReadingGroup
-and chooses the correct refs in the original output. It is not limited to a
-previously selected pool when deciding which eligible Fragment directly carries
-the assertion. Candidate admission keeps its existing complete-support, value
-and uniqueness responsibilities and its existing response schema. It neither
-repairs Primary/Required roles nor trims refs, and it gains no rejection reason
-or stricter rejection rule for redundant refs or imperfect role placement.
-
-The same model-facing selection instructions apply to every supported Source
-and representation. Representation adapters supply exact, readable material and
-eligibility, not provider-specific selection prompts. Instructions state the
-following semantic rules; any illustrative examples are source-neutral and
-show a support relationship, not a shortcut based on document labels:
+Extraction and Support Assessment use the same source-neutral instructions:
 
 ```text
-For each durable claim, select its Evidence from the supplied catalog:
-1. Consider every supplied Fragment for independently useful assertions that
-   pass the canonical current Value definition. Do not sample representative
-   claims or let a broad summary stand in for independently useful assertions.
-2. Distinguish an explicitly stated rule, intended behavior, permission or
-   prohibition from an observation of one instance. Preserve the supported rule
-   when nearby outcomes are transient; do not turn an instance result or incident
-   into a timeless rule. A label or status alone proves no unstated rule.
-3. Choose an eligible Primary that most directly supports the claim's central
-   assertion, read with its necessary qualifications. Topical association is
-   insufficient. Do not select or exclude a ref based on its document type,
-   label, location, length or recency alone. Respect explicit corrections,
-   applicable conditions, source authority and the claim's temporal scope.
-   Prefer the smallest complete direct selection with proven interpretation;
-   retain a broad structure when local completeness is not established.
-4. If the Primary's represented material supports the entire claim without
-   ambiguity, return required_refs: []. Being nearby, related or supplied as
-   reading context does not make another ref necessary Evidence.
-5. Add a Required ref only for a distinct condition, scope, exception, time or
-   interpretation that the claim needs and the Primary does not already cover.
-   Ask whether removing it would make the claim unsupported or ambiguous.
-6. Do not repeat a contribution already covered by the mapped Primary or
-   another selected ref. Structure type alone does not make a ref necessary.
-7. Preserve genuinely necessary qualifications; there is no Required-count cap.
-   Do not shorten the claim, omit durable knowledge or skip a supported claim
-   merely to obtain fewer refs.
-   Every material assertion, condition and identifier in the emitted claim must
-   be supported by selected refs and their mapped interpretation. Unselected
-   surrounding text cannot repair a missing selected contribution. Do not
-   silently generalize or bundle an independent assertion or instance outcome.
-8. Keep the catalog's existing role authority: Required-only context cannot
-   become Primary. Use only supplied refs and never invent a source quotation.
+Read all supplied authorized source and interpretation before forming claims.
+For every independently useful, source-supported conclusion:
+- State its actual meaning, including material conditions, scope, logic, timing
+  and modality. Do not turn a recorded instance or a proposed design into an
+  unqualified current rule, or omit useful knowledge to reduce citations.
+- Select an eligible authentic readable Primary that directly supports the
+  central assertion. A merely related heading or closing note is insufficient.
+- Add confidently relevant Required refs that contribute to verification and
+  are not already represented. Aim for useful coverage, without requiring every
+  related ref or duplicating mapped context. Missing an extra citation alone
+  does not justify discarding or rewriting otherwise accurate knowledge.
+- Use only supplied authorized refs. Do not invent quotations, promote context
+  to Primary, infer facts from mutable titles, or interpret provider syntax.
 ```
 
-The semantic examples below describe neutral Fragments A/B/C. Their roles are
-the same whether the material came from prose, a conversation, a structured
-record or a table, provided the represented meaning and authority are the same:
+The same relationship can occur in prose, conversations, structured fields or
+structural documents. A short statement can directly state the rule; a formally
+named section can be unrelated. Optional prompt examples illustrate these
+relationships without introducing provider or document-type heuristics.
 
-| Supplied meaning and claim | Selection principle |
-| --- | --- |
-| A states "In mode M, the limit is three attempts"; B merely mentions reviewing that limit; claim repeats A's rule | A is Primary; B adds no necessary contribution |
-| A states "The limit is three attempts"; B establishes that this statement applies only in mode M; claim states the rule for M | A is Primary and B is Required if A's mapped representation does not already carry that scope |
-| A already states the complete rule for M; B repeats the same scope and C concerns another condition not used by the claim | A is Primary; neither B nor C is Required |
+Ref quality is corrected at extraction origin and fixed-claim Support
+Assessment. Candidate admission does not trim refs, switch their roles, repair
+wording, or reject additional valid Memories as a remedy for selection quality.
+Its existing schema and authority remain; the canonical source-grounding
+instructions must agree across extraction, assessment and admission. Semantic
+contract changes participate in durable work identity and cached-work invalidation.
+The first rollout reassesses legacy selection quality; exact source matching
+alone does not certify an old Primary or Required set as correct.
 
-Examples must include the reverse of any tempting format heuristic in the
-evaluation corpus: a brief item can carry the actual assertion, and a formally
-named section can be unrelated. Neither brevity nor a section/field label
-determines the role. These evaluation examples need not all be shipped in the
-prompt; keep prompt examples small and generic rather than accumulating
-provider-specific exceptions.
+#### One semantic owner for final words and citations
 
-The compiler supplies correctly bounded, readable candidate material and
-visible source-mapped structure so these instructions can be applied. Generic
-prompt advice cannot repair a catalog that offers a swallowed list or only a
-giant raw table as the selectable Primary. Resolver checks remain mechanical:
-known IDs, role eligibility, source/revision/access binding and valid dependency
-mapping, with the existing typed selector correction/failure boundary. No new
-post-extraction role fixer, semantic pruning pass or per-ref model call is added.
-
-Selection semantics change extraction and Support-assessment contract versions
-and durable work identities; admission's response contract remains unchanged.
-A presentation-only update does not change selection semantics. Every origin
-phase schema, renderer and semantic contract participates in durable derivation
-and work identity; changing an inner protocol behind an unchanged outer prompt
-digest must not reuse old cached work.
-The first rollout must reassess legacy selection quality; exact matching alone
-must not preserve an old incorrect Primary or redundant Required set. Subsequent
-rebinds may reuse selections only under the validated selection-contract version.
-Semantic model selection requires stored-input replay and evaluation against
-annotated source/claim fixtures; it is not the deterministic guarantee of
-unchanged-source matching. Evaluation measures direct Primary selection,
-unnecessary Required refs, complete qualification and durable-claim coverage
-together. A prompt that reduces ref count by omitting otherwise supported,
-valuable Memories fails acceptance. The before/after replay reports every lost
-expected claim, rather than measuring only ref count among surviving candidates.
-
-Evaluate semantic patterns across multiple supported representations, including
-unstructured text, conversations, structured fields and complete structural
-documents. Compare contribution/role correctness and knowledge coverage, not
-identical ref IDs when representations have different boundaries. Use held-out
-source/representation families and counterexamples so success on the motivating
-table/comment cohort alone cannot pass. Harmless changes in catalog ordering,
-labels, proximity or verbosity must not switch roles without a change in support
-or authority. Genuine changes of meaning or an explicit correction must change
-the selection when appropriate. Use one shared prompt/selection contract; no
-provider-specific prompt route or hidden document-type preference is introduced.
-When several selections are equally valid, accept their contribution/role
-equivalence rather than imposing a single ref ID as the only correct answer.
-
-#### Complete claim formation belongs to the Source Unit
-
-The canonical Value definition is the accepted ADR 0043/0034 amendment: keep
-lasting reusable system or domain behavior, constraints, decisions and reasons,
+The current canonical Value definition is the accepted ADR 0043/0034 amendment:
+lasting reusable system/domain behavior, constraints, decisions and reasons,
 ownership, configuration/limits and repeatable procedures. Events or status alone
-are insufficient; an event can establish lasting knowledge. When uncertain,
-keep the knowledge for the existing admission judgment. This supersedes the
-extraction prompt's remaining ADR 0012-era six-month/refactor and
-code-recoverability exclusions. Extraction and admission must not use different
-Value definitions, and evaluation must identify the policy version it applies.
+are insufficient, but an event can establish lasting knowledge. When uncertain,
+retain supported knowledge for the existing Value judgment. The older six-month,
+refactor and code-recoverability exclusions must not survive in a separate prompt.
 
-One shared complete-Support definition applies to extraction, Support Assessment
-and admission. Every factual specific, including material entity names, scope,
-conditions, exceptions, quantifiers and temporal modality, must be supported by
-selected immutable Evidence or its verified immutable interpretation mapping.
-The current Unit title is a display/identity hint, not factual proof. An adapter
-may retain a citation-relevant provider title or field in the immutable source
-representation under an explicit coordinate/profile contract; a compiler must
-not infer global identity from the first heading of arbitrary content. Source
-identity and applicable ancestor scope can be rendered as labeled interpretation
-of a selection with exact dependency bindings. Title-only display changes do
-not invalidate source correspondence; changes to an actual source scope binding
-invalidate Support reuse even when the local material remains unchanged.
+The Source Unit extraction operation owns complete reading and final formation.
+Existing request packing is a transport detail; a successful request does not
+prove complete Unit coverage. Read all authorized complete ReadingGroups while
+keeping reading scope distinct from Claim Extraction authority. Application-owned
+input receipts prove delivery and accounting, not cognitive reading or recall.
+Do not require a model-produced worksheet, assertion ledger or disposition ontology.
 
-The Source Unit extraction operation owns complete reading and claim formation.
-Existing request packing remains a transport detail. It does not define the
-semantic universe, nor does a successful request certify exhaustive extraction.
-The origin protocol separates three operation-local responsibilities behind the
-same extraction seam. This is semantic ownership, not schema splitting or
-batching to bypass provider capacity:
+Form each final standalone Memory's exact content and chosen citations together,
+with one independently useful conclusion and its material qualifiers. A connected
+procedure or inseparable decision/reason can remain one conclusion; independent
+rules are not bundled merely because they share a topic. Explicitly authored
+setup, scope, modality, conditions, branches and order must remain in final words.
+The complete source supports actual metadata as well: an explicitly authored
+entity may correspond to a supported alias in the claim without appearing as an
+identical character substring. Mere occurrence of a name elsewhere is not proof
+that it is an entity of that claim. Display titles are identity hints unless
+retained as factual immutable source under the adapter contract. An update or
+report date is not an effective boundary.
 
-1. Read every authorized complete ReadingGroup as source assertions, necessary
-   qualifications, observations and explicitly authored relationships. Retain
-   the actual subject, predicate, scope and modality, with exact source selections.
-   Account for every complete group, but do not require a second model-produced
-   assertion/relationship ledger or disposition ontology. Input completeness and
-   reading receipts prove delivery/accounting, not cognitive reading or recall.
-   Internal source understanding precedes final claim formation; an intermediate
-   model summary cannot become Evidence or proof of coverage.
-2. Re-read complete authoritative source/context and jointly form final exact
-   Memory clauses and their chosen Evidence. Each has one asserted conclusion and all necessary
-   scope, phase, conditions, exceptions, quantifiers, modality and authored order.
-   A source-grounded event may establish a lasting cause or fix; an unrelated
-   instance outcome is not appended to a general rule. Preserve every valid
-   lasting assertion and its lineage. A connected procedure or inseparable
-   decision/reason can remain one conclusion; independent rules cannot be bundled
-   merely because they share a topic or source selection. Select a direct Primary
-   in the core's chosen joint basis. Each final clause states its complete exact
-   meaning and chosen basis once. Required is the stable union of these bases
-   minus Primary, rather than a second model-selected list. This union proves
-   accounting, not semantic necessity. Application joins those clauses unchanged;
-   it does not repair, prune or add claim text. A declaration of one conclusion
-   cannot itself prove semantic atomicity: independently evaluate source
-   understanding and final Memories against complete immutable sources.
-3. Before Candidate construction, check semantic closure against the complete
-   authoritative source and the exact final clauses with their chosen bases.
-   Check both directions separately: useful source predicates must actually
-   appear in final knowledge, and every final assertion must be supported by
-   its selected Evidence or verified immutable interpretation. Source entailment
-   of a broad summary does not prove preservation of the concrete source rules.
-   Reading receipts, producer resolution labels and associations certify neither
-   direction. A privately tasked checker receives source and exact words/bases,
-   rather than producer rationales as support for a clean result. Use one fixed
-   property per required criterion. Each property separates material source-grounded
-   differences, verification notes and unresolved meaning. Its property path names
-   the criterion; do not generate a second overlapping classification vocabulary.
-   A confirmation or nonmaterial observation is not an actionable defect. Typed
-   separation prevents bookkeeping conflation, but cannot prove that the checker
-   classified a difference correctly.
+Use a compact formation output: final content, type, entities/effective boundaries,
+direct `primary_ref` and additional `required_refs`, matching the existing
+Candidate citation interface. Application emits those words and selections
+unchanged. Calling the displayed selection a complete joint basis can imply the
+exhaustive dependency obligation that the human contract rejects. This output
+is accounting, not proof of semantic accuracy. It neither joins
+model-authored clause/context trees nor runs a later wording model. Repeating
+full meanings and modality fields for every ref does not establish Support and
+adds another lossy semantic representation.
 
-Specific source-grounded findings may trigger at most one joint origin revision,
-followed by a fresh closure check of the complete revised result. Revision may
-add omitted conclusions, split independent ones or narrow unsupported inventions;
-it must preserve every valid useful remainder and correct words/bases together.
-No valid claim is removed merely to satisfy a role, ref-count or coverage check.
-An unresolved, incomplete or failed final check returns whole-operation failure,
-with no earlier-result fallback or successful subset. It does not create a
-per-Memory corrective lifecycle state or move repair into Candidate admission.
+Before Candidate construction, a fallible checker receives the complete actual
+source and exact final content/metadata/citations. Check both directions: useful
+source knowledge must survive in final claims, and the claims must be accurate
+with direct readable evidence and relevant citations. A broad entailed summary
+does not prove that concrete source rules were retained. Producer rationales,
+other Memories and navigation hints supply no missing source authority.
 
-This adds a proposed verification responsibility inside the existing Unit owner,
-not a later wording owner. It supersedes relying on formation's full-source
-reread and declared retained resolutions alone: the real-source trace found
-specific rules fully read, labeled retained, but absent from final words.
-The checker remains fallible, including correlated visual or semantic errors
-when it uses the same model. Its clean judgment is not a completeness theorem;
-independent full-source evaluation and untouched holdouts remain required.
-Artifact viewing capability is separately validated and is not repaired merely
-by adding a model check. The finite protocol keeps current budgets, retains
-all initial/corrective responses and permits no score-based regeneration.
+The checker returns only actionable source-grounded changes and genuinely
+unresolved questions. Findings identify the affected final Memory, actual source
+refs, authored meaning and required correction. Do not output confirmations,
+withdrawn suspicions, notes or missing additional related citations as defects.
+There is no per-criterion audit ontology or classification ledger. Mechanical
+validation checks shape, known IDs, role eligibility, binding and access; it does
+not claim to prove entailment, entity association, atomicity or recall.
 
-This supersedes the draft's separate conclusion-intent and later model-wording
-stages. Repeating full semantic descriptions in per-ref contributions does not
-establish support and can exhaust the response budget. A later model wording
-stage also moves ownership of asserted meaning away from evidence selection.
-Final words and their basis instead have one semantic owner. Source context is
-described once where applicable, with explicit clause differences for mixed
-intended/observed or adopted/proposed knowledge; every emitted claim still states
-its actual modal words. Compactness is not permission to omit useful knowledge.
+Permit at most one whole-origin semantic revision followed by a fresh complete
+check. Correct final words and selections together, preserving valid useful
+knowledge; no score-based regeneration, earlier-result fallback or successful
+subset. An unresolved or failed complete operation returns failure and preserves
+incumbent Support. This introduces no per-Memory corrective lifecycle state and
+moves no repair into admission. A clean model check remains fallible, especially
+for visual/semantic errors shared by producer and checker. Independent source-only
+review, repeated real-model runs and untouched holdouts remain necessary.
 
-The direct formation protocol supersedes the proposed model-produced reading
-worksheet and its resolution ontology. A separate ledger added another lossy
-semantic representation and allowed source predicates to be declared retained
-without appearing in final words. Removing it is an ownership correction to be
-validated, not evidence that direct formation improves recall. Complete source,
-actual final clauses and selected immutable bases are the independent checker's
-inputs; producer reasons, navigation associations and other Memories supply no
-missing Support. Operation-local clause IDs navigate exact output only.
+#### Complete reading, safety and validation
 
-At conclusion origin, each actually asserted contribution chooses an explicitly
-complete joint support basis from the entire authorized immutable catalog. A
-complete row and a whole table may be alternative bases; reading both does not
-require citing both. A question title may identify an object inside a core without
-becoming an independent conclusion. Conversely, putting a reusable rule inside
-a broad topic qualifier does not establish adequate independent retrieval. Source
-examples, dates and instance outcomes may express useful scoped rules or lasting
-knowledge; their shape alone is not a Value rejection. Preserve the authored
-conditions rather than inventing a universal rule. Missing, blank and default
-fields are not authored negative propositions unless the adapter's declared
-native semantics establish that interpretation.
-
-Semantic atomicity, exact chosen Support, direct Primary, minimal Required and
-source-to-final coverage remain independent acceptance questions. No declaration,
-physical containment or clean checker verdict proves them. Partly unsupported
-drafts must preserve every valid useful remainder while correcting their exact
-unsupported predicates at origin.
-
-Assertion mode, source commitment and logical conditions are distinct. An
-intended conditional behavior and an observed test result remain independently
-identified assertions. A failed or blank test status does not negate the
-requirement, and a passing status does not promote a target design into current
-implemented behavior. Every standalone Memory preserves its supported modality.
-
-This supersedes the private experiment's implicit all-of reading-ref contract
-and whole-endpoint wording closure, both falsified by real source traces. The
-revised contract remains proposed until independently validated. The current private
-experiment allows at most one mechanical contract correction per origin stage,
-retains both responses and never chooses a response by its blind-review score.
-Failure after that correction returns no completed subset. This supersedes the
-earlier Memory-shaped survey draft: exact accounting could preserve a paragraph
-containing independent rules and statuses without exposing that semantic error.
-
-A tested origin schema may express one supported core and only its necessary
-qualifier facets, with witness-bearing names and effective-time boundaries.
-Application joins those sentences unchanged and unions the model's exact
-selected witness refs, preserving its direct Primary; it does not add factual
-text or semantically prune selections. Model quotes are operation-local scratch
-material, never authoritative Evidence or persisted source coordinates. If optional model scratch quotes are used, literal
-membership proves only that the supplied material was read, not entailment,
-field meaning, atomicity or qualification. A literal-copy scratch prerequisite
-must not replace application-owned source selection binding. An update timestamp cannot become
-an effective boundary. Textual and visual witnesses have distinct authority:
-image-only meaning requires actually supplied revision-pinned Artifact bytes and
-matching digest/access receipts, not a textual caption or literal-quote check.
-Unsupported modality is explicit before model calls, never empty success.
-
-The reading plan is model data, not Evidence or a complete-coverage certificate.
-Group cardinality and assertion accounting are mechanical transport checks.
-Semantic coverage, unsupported draft dispositions, atomicity, qualification and
-selected-Evidence sufficiency require independent source-based evaluation. There
-is no new durable state, semantic ref repair after Candidate creation or
-admission rejection for citation clutter. A failed complete Unit operation does
-not publish a successful subset. This materially supersedes the current
-`ExtractionPlan` policy that commits other groups when one oversized group is
-skipped, with retry only on another source-structure change. The complete
-extraction contract reports typed unavailability/failure, preserves incumbent
-Support and uses ordinary retry/reprocess semantics. It does not interpret an
-unread group as empty or absent knowledge.
-
-For several existing requests, Unit-wide closure must traverse the complete
-ordered reading input and resolve dependencies across request boundaries before
-forming completed Candidates. Re-reading each local request twice is
-insufficient. A prototype that requires one complete Unit catalog does not
-validate this multi-request contract. The ordered reader/continuation boundary
-must preserve source identities, complete coverage, stale guards and atomic
-publication; it may not silently infer that a local catalog contains all relevant
-conditions. Whole-unit evidence and claim-plan capacity are checked with the
-actual schemas before model calls. Increasing limits or transport splitting to
+A complete Unit cannot silently skip an oversized or unread ReadingGroup and
+publish other groups as complete. Use typed unavailability/failure, ordinary
+retry/reprocess and incumbent preservation, without interpreting unread source
+as absence. This supersedes the current partial `ExtractionPlan` behavior.
+For existing multi-request workloads, the Unit owner must carry complete ordered
+source context and resolve distant qualifications across request boundaries;
+request-local rereading does not validate this contract. A one-catalog prototype
+is not evidence of multi-request correctness. Actual schema and full-source
+capacity are checked before calls; increasing limits or splitting transport to
 bypass a failure is not implied by this decision.
 
-Phase-specific typed inputs and renderers make the ownership explicit. They do
-not append conflicting response instructions to the legacy extraction prompt or
-recover runtime authority by parsing rendered digest text. The compiler exposes
-generic complete structural containers for ReadingGroups; a table is not
-encoded as a list solely to reuse a partition flag. Correct structure parsing
-replaces invalid overlapping/swallowed selections while accounting for every
-source region. Adding good row refs beside an invalid raw-XML Primary does not
-complete the readability repair.
+Text and image authority remain distinct. Image-only facts require the actual
+revision-pinned Artifact bytes, source/access identity and validated viewing
+capability, not captions, model quotations, OCR hints or an unproven native
+companion. Provider/format syntax belongs to its adapter; model image-delivery
+limits belong to the LLM boundary. Multiple delivery views of one image remain
+views of one Evidence selection, never new refs or authoritative source content.
+
+Phase-specific inputs and renderers make ownership explicit without appending
+competing legacy response instructions. Compiler containers faithfully describe
+actual structures; a table is not labeled as a list to reuse a packing flag.
+Adding focused refs beside an invalid raw-XML Primary does not repair readability.
+
+Evaluation reports claim accuracy, direct Primary, citation readability,
+Required false positives/redundancy and best-effort recall separately from
+knowledge coverage. Use complete authentic sources, frozen source-only knowledge
+inventories, untouched source/representation holdouts and counterexamples. Accept
+equivalent valid selections rather than requiring one arbitrary ref ID. Report
+all operations, failures, corrections and lost expected claims; ref-count gains
+obtained by discarding otherwise useful knowledge fail acceptance. Declaration,
+receipt, literal membership or clean checker output is never semantic proof.
 
 ### 6. Carry citations through the actual tool boundary
 
@@ -717,11 +541,12 @@ reprocess. This order is not a split lifecycle or partial publication contract.
 | Only Required-only context carries the core assertion | Existing catalog authority retained; no promotion or new admission remediation rule |
 | Duplicate headings, unrelated neighbors or footnotes are in reading context | Extraction/assessment omits them from Required; necessary qualification and claim coverage remain complete |
 | Applicable column names are already in the mapped Primary representation | No duplicate Required header ref; revision-pinned dependency mapping and reuse check remain intact |
-| A condition or exception needed by the claim appears only in another Fragment | Extraction/assessment selects it as Required; no count cap or blanket requirement based on its structure type |
+| A condition or exception needed by the claim appears only in another Fragment | Complete reading preserves it in accurate claim meaning; extraction/assessment aims to cite it when confidently contributing, with no 100% additional-ref recall gate |
+| Additional related citation is omitted, or a nearby unrelated ref is selected | An omission alone is acceptable; wrong, misleading or redundant citations are counted separately and corrected at origin without dropping valid knowledge |
 | Extraction, assessment and admission apply different Value or complete-Support definitions | Canonical accepted Value and one shared definition; source-only frozen inventory scores retained |
 | Display title changes, or an immutable source title/identity changes | Display-only change leaves correspondence intact; real source dependency change prevents blind reuse |
 | A complete extraction plan skips a ReadingGroup or reads only changed Primary scope | No false complete-Unit success; read scope remains separate from origination authority |
-| Necessary qualification is in another existing extraction request | One complete ordered Unit-wide closure discovers and selects it; local rereading and request-local ref IDs are insufficient |
+| Necessary qualification is in another existing extraction request | One complete ordered Unit-wide reading preserves its actual meaning; local rereading and request-local ref IDs are insufficient |
 | A provisional assertion bundles several rules, or is unsupported | One-to-many outcome preserves every valid proposition; independent review of source-grounded dispositions, not model self-certification |
 | Ref count improves but an otherwise supported durable claim disappears | Evaluation fails; lost expected claims reported, no admission tightening used as remediation |
 | Claim joins a durable rule and a transient test outcome | New extraction separates assertions and applies the canonical current Value definition; incumbent assessment keeps its claim fixed |

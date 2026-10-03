@@ -7,7 +7,7 @@ Design: [proposed ADR 0046](../adr/0046-separate-evidence-correspondence-from-ci
 ## Contract and experiment boundary
 
 The goal is complete useful claim coverage together with faithful qualifications,
-atomic assertions, direct Primary, necessary Required and readable pinned
+atomic assertions, direct Primary, accurate best-effort Required and readable pinned
 citations. Candidate admission does not repair selections, trim refs or reject
 valid knowledge for citation clutter. Model response counts and mechanical group
 accounting do not certify semantic coverage.
@@ -740,3 +740,162 @@ minimality/standalone wording, fallible audit comparison semantics and original
 image delivery/readability. More audit bookkeeping does not prove any of these.
 Untouched holdouts, repeats, large/full-Unit execution, persistence/resources,
 SQLite-HANA/proxy parity, production integration and deployment remain open.
+
+## Human Required-citation policy and compact origin, 2026-10-03
+
+The user explicitly accepts reasonable omissions of additional related Required
+refs: prioritize accurate readable citations and low false positives, while
+covering relevant refs as well as possible. ADR 0046 now supersedes the draft's
+100% selected-basis/dependency and inclusion-minimal Required requirements.
+This is a human contract change, not a retrospective pass for earlier cohorts.
+Source-grounded claim meaning, direct Primary, immutable mapping and complete
+source-change assessment remain required. Knowledge coverage is measured
+separately from supplementary citation recall.
+
+The current shared route already sends exact selected refs with changed or
+removed content elsewhere to Change Impact. Five existing OSS tests verified
+that routing, no-change rebind and removed-text reading once. Best-effort
+citations therefore do not require a new dependency ledger; canonical native
+mapping and persisted/runtime adapter parity are still unimplemented acceptance
+work, and these existing tests do not certify that proposed integration.
+
+### V6 complete authentic text cohort
+
+Direct formation returns exact whole content/metadata and citations, without
+model-authored clause/context trees or a property-audit ontology. The checker
+returns only actual needed changes and unresolved questions. Sources, actual
+CF-bound `sap/anthropic--claude-4.6-sonnet`, output request 32,768, complete reading
+and whole-operation failure remained fixed. Finite offline preflight: producer
+47 checks and independent reviewer 22 checks; these were not semantic acceptance.
+
+All three operations finished with 98 frozen files unchanged:
+
+| Source | Logical / physical calls | Terminal result | Private CandidateDTOs |
+| --- | --- | --- | --- |
+| Confluence | 2 / 2 | Nonliteral entity rejected after one mechanical correction | 0 |
+| Jira | 4 / 4 | Completed formation, revision and fresh audit | 6 |
+| ADR 0045 | 2 / 2 | Nonliteral entity rejected after one mechanical correction | 0 |
+
+Totals: eight actual native provider calls, zero provider retries/fallbacks,
+two application mechanical corrections, 171,836 prompt and 31,701 completion
+tokens. No product write. Read-only diagnosis found five source-corroborated
+entity associations rejected solely because the name did not occur as an exact
+substring in the claim. The canonical DTO/extractor has no such prerequisite;
+metadata association must be judged against the actual source and claim, not
+promoted from unrelated names or mutable titles.
+
+Two fresh source-only blind reviewers scored all 89 latest outputs, including
+failed-operation drafts, under the new human Required policy. They received no
+producer prompts, audits, code or peer results; all source/citation hashes held.
+
+| Reviewer | Claim accuracy | Frozen text knowledge inventory | Required findings, denominator 78 |
+| --- | --- | --- | --- |
+| A | 85 supported, 3 partial, 1 misleading / 89 | 68 complete, 1 partial / 69; none missing or distorted | 23 relevant, 52 redundant/unnecessary, 3 misleading |
+| B | 86 accurate, 3 defective / 89 | 54 complete / 54 | 25 contributing, 53 redundant |
+
+Neither found an actual entity/effective-date error. Both found broad parent
+structures repeated beside complete Primary views and unsupported causal or
+completed-fix wording. A also found an overbroad error boundary. Missing an
+additional related citation was not used as a defect. Good knowledge coverage
+and readable source renderings did not establish citation quality or acceptance.
+
+Private receipts: `understanding-v6-text-failure-diagnosis.json` SHA
+`6faac3e97a2fb63b48870f329c66f8319987376f3fce118cd74e25b6c4143c4d`;
+`understanding-v6-text-online-accounting.json`;
+anonymous packet `93c6a7f2b18d1a4f33ed2869d671e2f2ff8c26f379bc6b2f3e32fbb7f38fdd45`;
+`blind-v6-text-a-review.json/.md`, `blind-v6-text-b-review.json/.md`.
+
+### V7 source-associated metadata rerun
+
+V7 changes only the noncanonical entity-substring prerequisite and corresponding
+generic instructions: actual source-authored subjects may use supported aliases
+in claim wording; unrelated, inferred-title and invented tags remain defects.
+No alias registry, extra fields, metadata pruning or relaxed factual grounding.
+Producer 18 focused controls and six root independent controls passed offline;
+false-clean semantic negatives deliberately demonstrate the mechanical limit.
+All prior 98 frozen files remained unchanged; nine real-budget whole-text
+capacity estimates fitted before inference.
+
+One declared development repetition produced 86 private CandidateDTOs: 56
+Confluence, seven Jira and 23 ADR. Every source operation completed; Confluence
+and ADR used formation plus audit, Jira additionally used one complete origin
+revision and fresh audit. Eight logical/eight physical native calls, no provider
+retries/fallbacks or application correction; 173,330 prompt and 16,564 completion
+tokens. All 107 frozen inputs stayed unchanged, with no product publication.
+This is successful protocol execution, not semantic or release acceptance.
+Fresh independent source-only reviews of all 86 outputs are still being recorded.
+
+Private receipts: module `9962b512f96cb59f307c7eb276e9ed54dd595302d3f64c55214dff6db5ee6745`;
+freeze `062b3c125bad40bf24fa90e752c8afddd983ec8a8467eff54695ee85931e3618`;
+online manifest `a70b2ec14f1a9715365ca006a5e779e67925186858c9550298f9e66dc72158d2`;
+anonymous packet `1077d76db428eba365d058c0a2229617522ba75ea1bb5daa6860f8b11453f8ce`.
+
+### Original-raster delivery-only experiment
+
+An isolated canonical client seam accepts one original Artifact and a validated
+whole-plus-complete-overlapping-pixel delivery bundle. The original bytes remain
+sole Evidence; delivery views create no source refs. Format decoding/geometry
+is separate from LLM-owned documented image limits. The existing original-image
+path stays intact. Default transport remains late-bound; a reproduced falsey
+injected-transport bug was fixed with an explicit None check and focused test.
+Producer post-fix selected suites passed 89 tests; independent seven controls
+and three boundary tests passed without provider calls. This is a narrow
+experimental single-upright-PNG capability, not production pipeline/parity proof.
+
+The retained 2,040 × 2,410 PNG hash stayed
+`1bddb850aeb0d2b51cf78a3a4c7649b2c422718bb51a504ea6e0f35ef16234aa`.
+Seven views used 1,528,994 wire-image bytes; manifest
+`f8de75c3d6a111bff20af4d5ef24ecf741c315dd3f62b783246f704ab363a4fa`.
+One logical formation call used the exact prior V5 semantic instruction/schema
+and 32,768 output request. Actual multimodal labels/payload/work identity changed.
+Native response rejected an extra group field; the canonical text fallback
+returned 15 drafts: two physical attempts, zero retry, one fallback, 29,411
+prompt and 12,809 completion tokens. No semantic correction or DTO construction.
+The initial runner mechanics check omitted a required groups argument; offline
+correct invocation then failed the old bound-clause entity literal prerequisite.
+Both setup observations remain recorded; neither caused another inference.
+Documented visual bounds/common-envelope estimates are not SAP upstream capacity
+attestation.
+
+Two fresh original-pixel-only reviewers independently examined all 15 drafts
+and all 82 frozen image obligations. Both reported substantive pixel coverage
+72 complete, seven partial, two missing and one distorted. Strict standalone
+source-qualified coverage remains five complete, 74 partial, two missing and
+one distorted: most final words omit the authored target-design qualification.
+A changed/removed/ambiguous branch is wrongly routed through Change Impact;
+the original arrow goes directly to Support Assessment. Additional split policy,
+branch destination, coordinator and async details remain missing/partial. All
+Primary citations authenticate the readable exact original; no impossible
+Required recall gate was applied. This experiment therefore does not pass.
+
+Private receipts: `image-delivery-independent-review.json/.md`;
+`image-delivery-formation-online-manifest-v2.json`;
+`image-delivery-formation-postflight-mechanics.json`;
+anonymous packet `30f6592fc90b20b1fd8c7a8cd68f802ba15f816931fb7a03a3446a1277ecf802`;
+`blind-image-delivery-a-review.json/.md`, `blind-image-delivery-b-review.json/.md`.
+
+Untouched holdouts/repeats, large and existing multi-request Unit execution,
+canonical native/history persistence and resources, storage/proxy parity,
+production integration and Cloud deploy/smoke remain required. This work adds
+neither batching nor an admission role/ref repair pass, and does not authorize
+reprocess or claim design completion from a successful model audit.
+
+### V7 final source-only blind findings
+
+The two fresh reviews are complete; protocol success did not survive semantic
+acceptance. A evaluated 86 outputs: 39 passed all dimensions, 47 had defects;
+all 69 frozen knowledge obligations were complete. B evaluated all 86 outputs
+and 54 obligations: 53 complete and one distorted error-boundary obligation.
+Both independently found 43 redundant containing-structure Required refs.
+A distinguished a genuinely relevant remote setup from broad redundant overlap;
+there is no blanket ban on containing selections. Claims, partial Primary
+contributions, independent utility and effective-time meaning still have
+source-grounded defects. All source/citation/inventory hashes remained unchanged.
+
+The next falsifiable hypothesis concerns extraction's role interface and
+contribution instructions: emit the canonical direct Primary/Required fields
+instead of naming the displayed list a joint support basis, and illustrate
+source-neutral containment versus genuinely additional support. Renaming alone
+cannot prove relevance. No fixed cap, automatic parent-ref removal, source-type
+selection heuristic or admission pruning is proposed. The previous complete
+cohort, all failures and blind results remain intact.
