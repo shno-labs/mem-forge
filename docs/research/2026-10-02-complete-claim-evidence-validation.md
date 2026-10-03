@@ -899,3 +899,72 @@ source-neutral containment versus genuinely additional support. Renaming alone
 cannot prove relevance. No fixed cap, automatic parent-ref removal, source-type
 selection heuristic or admission pruning is proposed. The previous complete
 cohort, all failures and blind results remain intact.
+
+### V8 direct roles: citation improvement, remaining content failures
+
+The next frozen operation uses the existing `primary_ref` and `required_refs`
+fields directly, with source-neutral examples distinguishing redundant
+containment from genuinely additional contribution. All final words and role
+selections are copied unchanged. Related citation recall remains best-effort;
+there is no ref-count cap, parent-ref pruning or candidate-admission repair.
+The image cohort uses the separately reviewed original-Artifact delivery bundle.
+
+All four complete sources finished against the same actual CF-bound online
+Sonnet model and unchanged 32,768 requested output tokens. All 126 frozen files
+remained unchanged. Ten logical calls made ten native physical attempts, with
+no retry, fallback or mechanical correction. One Confluence origin revision
+was performed. Usage was 319,177 input and 37,235 output tokens.
+
+| Source | Latest drafts | Private CandidateDTOs | Terminal operation |
+| --- | ---: | ---: | --- |
+| Confluence | 52 | 0 | Final audit still reported changes; whole operation failed |
+| Jira | 8 | 8 | Structurally complete; semantic acceptance failed |
+| ADR 0045 | 26 | 26 | Structurally complete; semantic acceptance failed |
+| Original raster | 24 | 24 | Structurally complete; semantic acceptance failed |
+
+The source-only blind packet includes all 110 latest drafts, including the
+failed Confluence operation. Both fresh independent reviewers read full text
+sources and original PNG pixels; they did not receive prompts, prior scores,
+producer reasoning or execution outcomes. All packet/source hashes remained
+unchanged. There are 23 supplied Required-role assignments. A identifies three
+defective supplied roles; B identifies one. Neither treats omitted additional
+related refs as failures. This improves the previous excessive duplicate
+containing citations, without proving content accuracy or total recall.
+
+| Reviewer | Frozen text knowledge inventory | Qualified original-pixel inventory |
+| --- | --- | --- |
+| A | 63 complete, 2 partial, 4 missing of 69 | 81 partial, 1 distorted of 82 |
+| B | 46 complete, 4 partial, 4 missing of 54 | 81 partial, 1 distorted of 82 |
+
+Both find a false issue-to-scenario association, an incorrect diagram branch,
+and standalone claims missing the diagram's authored target-design qualification.
+Other findings include source objectives promoted to verified behavior,
+unqualified provider-error boundaries and missing scenario setup. B rates all
+110 presentations readable and authentic; readability does not cure these
+meaning defects. The four missing text requirements are valid source knowledge,
+not failed additional-citation recall. A and B differ on citation directness,
+redundancy and atomic granularity; those judgments remain separately recorded.
+In particular, an unfocused whole-Artifact citation is not automatically invalid
+when no authorized equally complete focused Evidence selection exists.
+
+A separate read-only diagnostic verifies all 86 Confluence source bindings and
+all 126 frozen hashes. Of the five final audit entries, three are confirmations
+or withdrawn concerns and two propose unsupported changes. The actual remaining
+issue association error was missed by both model audits. An earlier genuine
+issue-association error was corrected while preserving that scenario's valid
+Memory. The final audit was not filtered, the failed operation remains at zero
+DTOs, and no saved draft or partial subset was published. These results expose
+both false-positive and false-negative semantic checking; an empty model audit
+cannot certify correctness, and bookkeeping cannot replace source understanding.
+
+Private evidence: `understanding-v8-development-freeze.json` SHA256
+`01b9a6fd139f0669950fa13f7a2b7b65cf7961ed6bea46f61ee78bf206d4db8c`;
+`understanding-v8-online-development-manifest.json`;
+`understanding-v8-online-accounting.json`;
+anonymous `blind-v8-tentative-packet.json` SHA256
+`d353727ab24d217496811440048f27b65e7d4eef2693e1907dee3a39ae3d4862`;
+`blind-v8-a-review.json/.md`, `blind-v8-b-review.json/.md`;
+`understanding-v8-confluence-final-failure-diagnosis.json/.md`, diagnosis JSON
+SHA256 `dca36039aaa973129ee0dc176a7fec840ca83c6f821824e632cc12a9a578bdf9`.
+The full extraction design remains unaccepted; no production write, deploy,
+reprocess, inventory reduction or new deferred scope follows from this result.
