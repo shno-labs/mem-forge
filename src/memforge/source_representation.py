@@ -6,6 +6,13 @@ from dataclasses import dataclass, replace
 from typing import Mapping
 
 from memforge.source_artifacts import SOURCE_ARTIFACT_OBSERVATION_TYPE
+from memforge.source_adapters.contracts import (
+    CanonicalRecordField,
+    CanonicalRecordSchema,
+    EvidenceRepresentationContract,
+)
+from memforge.source_adapters.jira import CANONICAL_RECORD_SCHEMAS as JIRA_RECORD_SCHEMAS
+from memforge.source_adapters.teams import CANONICAL_RECORD_SCHEMAS as TEAMS_RECORD_SCHEMAS
 from memforge.source_projection import (
     EvidenceCoordinateSpace,
     EvidenceRepresentationProfile,
@@ -40,36 +47,6 @@ class EvidenceProfileBackfillReport:
     unresolved_revision_ids: tuple[str, ...]
 
 
-@dataclass(frozen=True, slots=True)
-class CanonicalRecordField:
-    json_pointer: str
-    nested_profile: str | None = None
-    comparison_keys: tuple[str, ...] = ()
-    contextual: bool = False
-
-    def __post_init__(self) -> None:
-        if self.nested_profile not in {None, "markdown-structural", "plain-text"}:
-            raise ValueError("unsupported nested canonical-record text profile")
-
-
-@dataclass(frozen=True, slots=True)
-class CanonicalRecordSchema:
-    name: str
-    version: int
-    fields: tuple[CanonicalRecordField, ...]
-    tombstone_pointer: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class EvidenceRepresentationContract:
-    profile: EvidenceRepresentationProfile
-    canonical_schema: CanonicalRecordSchema | None = None
-
-    def __post_init__(self) -> None:
-        if (self.profile.name == "canonical-record") != (self.canonical_schema is not None):
-            raise ValueError("canonical schema ownership must match the representation profile")
-
-
 def _canonical_record_profile(schema_name: str) -> EvidenceRepresentationProfile:
     return EvidenceRepresentationProfile(
         name="canonical-record",
@@ -94,58 +71,8 @@ _REPRESENTATION_CONTRACTS: Mapping[tuple[str, str], EvidenceRepresentationProfil
 }
 
 _CANONICAL_RECORD_SCHEMAS: Mapping[tuple[str, int], CanonicalRecordSchema] = {
-    ("jira-issue-core", 1): CanonicalRecordSchema(
-        name="jira-issue-core",
-        version=1,
-        fields=(
-            CanonicalRecordField("/summary"),
-            CanonicalRecordField("/description", nested_profile="markdown-structural"),
-            CanonicalRecordField(
-                "/status",
-                comparison_keys=("id", "key", "name", "value"),
-            ),
-            CanonicalRecordField(
-                "/priority",
-                comparison_keys=("id", "key", "name", "value"),
-            ),
-            CanonicalRecordField(
-                "/assignee",
-                comparison_keys=(
-                    "accountId",
-                    "id",
-                    "key",
-                    "name",
-                    "displayName",
-                ),
-            ),
-            CanonicalRecordField("/labels"),
-            CanonicalRecordField(
-                "/resolution",
-                comparison_keys=("id", "key", "name", "value"),
-            ),
-        ),
-    ),
-    ("jira-comment", 1): CanonicalRecordSchema(
-        name="jira-comment",
-        version=1,
-        fields=(CanonicalRecordField("/body", nested_profile="markdown-structural"),),
-    ),
-    ("jira-changelog", 1): CanonicalRecordSchema(
-        name="jira-changelog",
-        version=1,
-        fields=(
-            CanonicalRecordField("/created", contextual=True),
-            CanonicalRecordField("/items/*/field", contextual=True),
-            CanonicalRecordField("/items/*/fromString", nested_profile="markdown-structural"),
-            CanonicalRecordField("/items/*/toString", nested_profile="markdown-structural"),
-        ),
-    ),
-    ("teams-message", 1): CanonicalRecordSchema(
-        name="teams-message",
-        version=1,
-        fields=(CanonicalRecordField("/content", nested_profile="markdown-structural"),),
-        tombstone_pointer="/deleted",
-    ),
+    **JIRA_RECORD_SCHEMAS,
+    **TEAMS_RECORD_SCHEMAS,
 }
 
 

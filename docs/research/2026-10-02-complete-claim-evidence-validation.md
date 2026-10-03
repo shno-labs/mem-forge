@@ -1550,3 +1550,29 @@ and a generation/unsigned-input rule through conversion and compilation. These
 are program/connector fixture tests, not online semantic or Cloud deployment
 acceptance. Independent static review and Cloud-impacting release checks remain
 required before completion.
+
+### Canonical adapter declaration ownership
+
+Jira issue/comment/changelog fields and Teams message/tombstone fields now live
+in their own `source_adapters` modules. The shared representation registry only
+assembles declared contracts; source-neutral types live at the existing
+declaration interface and are re-exported as the same class objects. Standard
+JSON/Markdown/HTML compilation remains shared. No dynamic registration system,
+new native profile, storage field or matching path is introduced by this move.
+
+An operation-local fixture capture compares contracts, catalogs, complete
+indexes and canonical field ranges for 12 supported/unknown source declarations.
+Before and after files are byte-identical, SHA256
+`ac55faa16b15fe300ad40bb73612837a433bda006b13aa5640a680924ffe7f21`.
+The actual compiler/projection/reading/assessment/matching/SQLite test command
+completed with **187 passed in 20.25 seconds**:
+
+```text
+/Users/i551096/Dev/memforge-cloud/.venv/bin/python -m pytest tests/test_evidence_fragments.py tests/test_source_projection_adapters.py tests/test_revision_reading.py tests/test_revision_assessment.py tests/test_support_reading.py tests/test_source_projection_store.py -q
+```
+
+Independent static review verifies unchanged type/schema ASTs, import ownership
+and exact capture equality, finding no blocker in this bounded declaration move.
+The reviewer did not rerun the tests. This is encapsulation evidence, not a
+native parser, immutable-native/history integration, exact native correspondence,
+provider semantic acceptance or Cloud deployment.
