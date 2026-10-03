@@ -1050,3 +1050,92 @@ provider failure or an implementation of the deferred feature. Artifact
 eligibility and byte/token checks do not establish model image-input capability.
 The receipt `model_image_capability_current_gap.json` has SHA256
 `1657f981c7457cd039fac0b91aafa9d6ac0a03845f27523dd9ea6514f07bbe1c`.
+
+### V10 seven-source acceptance, large runtime limitation and blind results
+
+The next fixed cohort adds the two previously unextracted real documents and the
+pinned 123,896-character ADR 0034. The shared schema/validators and best-effort
+Required policy are unchanged; the audit compares source predicates, conditions,
+quantifiers, destinations and metadata independently, without a new worksheet.
+All seven complete inputs fit the actual unchanged model capacity estimate.
+The large document contains 244 catalog refs and 201 complete ReadingGroups.
+All 137 frozen files remained unchanged during actual inference.
+
+| Source | Private drafts/DTOs | Terminal operation |
+| --- | ---: | --- |
+| Confluence | 56 | Structurally complete |
+| Jira | 6 | Structurally complete |
+| ADR 0045 | 21 | Structurally complete after one origin revision |
+| Source-agnostic extraction design | 62 | Structurally complete |
+| ADR 0028 | 14 | Structurally complete |
+| ADR 0034, large | 0 | Formation exceeded the 300-second logical deadline |
+| Original raster | 24 | Structurally complete after one origin revision |
+
+Seventeen logical calls made seventeen native physical attempts; no provider
+retry, fallback or mechanical correction occurred. There are 183 private DTOs
+and 68 supplied Required assignments, with no product writes. Known reported
+usage is 342,463 input and 54,487 output tokens. The timed-out call supplied no
+usage; its usage is unknown, not zero. The explicit accounting receipt corrects
+that interpretation while retaining the original manifest and aggregation.
+
+One bounded independent same-input repeat of the large Source Unit also failed
+at 300 seconds before any parsed formation. The exact formation prompt, schema,
+source, model, 32,768 output limit and existing deadline remain unchanged. It
+made one native attempt, no retry/fallback and zero DTOs, again with unreported
+usage. Static review confirms the client starts its logical deadline after
+local admission and cancels the in-flight transport at that deadline. Neither
+receipt establishes output truncation, upstream cancellation, billing or a
+specific cause of latency. Input fit does not prove execution feasibility.
+The original zero-output source remains in the cohort and blind denominators;
+no batch-size, timeout or output-limit workaround was applied.
+
+Before seeing candidate outputs, the two reviewers independently froze new
+source-only inventories: A 181 obligations (55 design, 11 ADR 0028, 115 large),
+B 203 (51 design, 14 ADR 0028, 138 large). They then reviewed every output and
+all earlier inventory entries as well. Earlier inventories already contain
+independent requirements for the two design holdouts; these overlap with the
+new independent inventories. Their combined counts therefore represent fixed
+assessment entries, not a count of distinct facts or a unique recall universe.
+No item was removed or retuned. Source-internal historical/current amendments,
+removed identity behavior and conflicting legacy statements remain qualified
+uncertainties rather than being adjudicated from external code or runtime.
+
+| Reviewer | All 183 candidate dispositions | All fixed assessment entries |
+| --- | --- | --- |
+| A | 157 acceptable, 20 rejected, 6 source-uncertain | 281 covered, 11 partial/inconsistent, 6 source/inventory-uncertain, 2 missing, 115 source-no-output / 415 |
+| B | 166 accepted, 13 rejected, 4 source-adjudication | 233 covered, 2 covered with inventory uncertainty, 11 partial, 1 uncovered, 138 source-zero-output / 385 |
+
+Both directly viewed original PNG pixels and verified all seven original hashes,
+537 catalog raw identities and 536 text-display identities. All allowed input
+hashes remain unchanged. Both find a false issue association, incorrect
+persistent-conflict routing, lost ADD qualification, capacity translated as
+content, and two Primary refs containing only navigation headings. Value and
+source-internal contradictions are separate from false content. Omitted extra
+Required citations alone are accepted. The complete product still fails.
+A more detailed source-first audit instruction therefore did not establish
+reliable semantic checking; neither its clean result nor readable citations
+justify release or reprocess.
+
+The next bounded hypothesis changes the generation interface rather than adding
+another semantic ontology: the same final Primary/Required fields precede content
+in the formation schema, and instructions ask for actual source selection before
+wording. This is an empirical ordering experiment, not a JSON-order validity gate
+or a cognitive guarantee. All six available prior DTO sets (183 records) convert
+unchanged under the same validators. The large source remains required and both
+previous deadline failures are retained; no successful subset replaces them.
+Results and independent review are still pending.
+
+Private evidence: `understanding-v10-development-freeze.json`;
+`understanding-v10-online-accounting-usage-explicit.json`, SHA256
+`5e18acac651c21367ddf59043558fa22f060e8b404c569c807c37312a1c3f6da`;
+`understanding-v10-online-development-manifest.json`;
+`understanding-v10-large-repeat-manifest.json`;
+`blind-v10-tentative-packet.json`, SHA256
+`82ad6e7f1f266e64c5e6ab604f2f8231f296382f65de2e48af04ee9cda735c7f`;
+`blind-v10-a-review.json/.md`, JSON SHA256
+`d39a79d1aa35cc7897d69f5de337cb8c6500e6b4821771ce1b09c6a198f06214`;
+`blind-v10-b-review.json/.md`, JSON SHA256
+`ec7c7fc4b40c109629956abe415b28fa04229a518d268f9f0bf4298ac62cd03b`.
+The versioned Artifact ordering change passed the combined structured client,
+image and batch-runner selection: 141 tests in 9.32 seconds, with no inference.
+This broader boundary verification does not certify diagram interpretation.
