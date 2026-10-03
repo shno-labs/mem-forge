@@ -71,3 +71,16 @@ Canonical design and full retained development evidence are in
 Private source/response bytes, credentials and personal identifiers are excluded
 from this repository. This change does not authorize partial publication,
 caption/OCR replacement of Evidence or reprocessing stored Memories.
+
+The final combined structured-client, image-delivery/image, and batch-runner
+selection passed 141 tests in 9.32 seconds without provider inference. The
+private boundary receipt `artifact-delivery-v2-public-boundary-regression.json`
+has SHA256 `8b8efaee1491ccbcfc36a8289517f7e804c101ed6d838577756649dc20e06dea`.
+This checks the transport boundary, not semantic extraction acceptance.
+
+The later complete seven-source field-order experiment retained 187 private DTOs
+across six sources, including 25 from the original diagram. Both source-only
+reviewers accept all Primary selections as authentic/readable/direct but still
+require standalone target-design qualification and identify capacity/content and
+ADD-scope errors. The large text source remains in both reviews with no output.
+No diagram-understanding, complete-scheme or deployment pass is claimed.
