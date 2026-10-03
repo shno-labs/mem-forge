@@ -1407,13 +1407,39 @@ failure for this large-source sample; it does **not** establish claim accuracy,
 coverage, production integration or release readiness. Two independent reused
 reviewers received the exact anonymous 176-candidate packet and complete source,
 with producer prompts, audit findings and operation status withheld. Their
-semantic reviews are pending at this recording point.
+Reviewer A's semantic report is pending at this recording point. Reviewer B's
+completed report is recorded below.
 
 Private receipts, SHA256 checked against the retained files:
 
 - `understanding-v12c-online-development-manifest.json`: `2169932d2acd560c75bb9761c657bb6a6675ebe05249ecb2445152410a3f0a60`.
 - `understanding-v12c-online-accounting-usage-explicit.json`: `3d9cbe2b82cf8945f562f9610d48323ac00ee27eb0a326bff41ceb5b78386601`.
 - `blind-v12c-tentative-packet.json`: `990fbcc73d3219f7f4907ab0aba6411f4fef6a5c9ae1ca09a412dcb0fa5f180f`.
+
+Reviewer B read the complete source, all 176 candidates and its own frozen
+138-obligation large-source inventory. It reports **118 pass / 58 not-pass**,
+with **two semantically false candidates** stating removed identity attachment
+as current. These denominators must not be conflated: not-pass also includes
+standalone scope, metadata, atomicity and citation-quality failures. All **176
+Primary** pass authenticity/readability/direct-central-support checks. Of **84
+actual Required**, **25 contribute, 57 are redundant and two are unrelated to
+the claim**. Twelve candidates have standalone failures, two metadata failures
+and two atomicity failures, with overlaps; Value has zero failures and ten
+source-uncertainty judgments remain separately classified. Its 138 obligations
+are **123 covered / 14 partially covered / one not covered**; the other 65
+frozen records are explicitly outside this diagnostic, not silently removed.
+
+All 244 raw/display hashes and exact scope/body reconstructions pass. A separate
+expected interpretation digest was not supplied; the reviewer records computed
+digests without claiming to have compared them with an independent expected
+hash. Input hashes remain unchanged. This is a reused reviewer, and a previous
+coordination message disclosed success/176 status. The report therefore does
+not claim a fresh or completely status-blind holdout. It did not read producer
+prompts, audit artifacts or peer results. The complete large-source semantic
+acceptance remains negative, not release/deployment acceptance.
+
+- `blind-v12c-b-review.json`: `2598d63783565f45bc74901df9eb1b400681bdb010b7ef068c419c00d9c52e18`.
+- `blind-v12c-b-review.md`: `445149d02a29828690eabbf3345d839f63895c32feaad6e08b2180b94cfa37d3`.
 
 ### V14 bounded audit-discrimination diagnostic
 
