@@ -444,6 +444,15 @@ is not evidence of multi-request correctness. Actual schema and full-source
 capacity are checked before calls; increasing limits or splitting transport to
 bypass a failure is not implied by this decision.
 
+Each request's presented Primary eligibility must equal its origination
+authority. Full source context does not make every readable ref eligible to
+originate a claim in that request. Keep the complete source selections and
+reading structure, while presenting non-owned refs as supplementary context
+and possible Required citations. Request-scoped eligibility and its identity
+must agree in rendering and selector validation; aggregation and the complete
+source audit retain the Unit's full authority. Limiting a role does not require
+renumbering refs, changing native selections or filtering claim content.
+
 Text and image authority remain distinct. Image-only facts require the actual
 revision-pinned Artifact bytes, source/access identity and validated viewing
 capability, not captions, model quotations, OCR hints or an unproven native

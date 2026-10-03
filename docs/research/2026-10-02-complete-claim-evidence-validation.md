@@ -1225,3 +1225,164 @@ Private evidence: `understanding-v11-development-freeze.json`, SHA256
 `blind-v11-b-review.json/.md`, JSON SHA256
 `2729d16d08d35e4b1301d7b255293fb3c528e9729a5bb3e0945db9fe55cb0631`;
 `extraction-execution-boundary-independent-review.json/.md`.
+
+### V12 retained instrumentation failure on the large Source Unit
+
+The large ADR 0034 attempt exercised the restored existing runner against the
+same complete immutable source. It made **four native physical attempts** on
+`sap/anthropic--claude-4.6-sonnet`, with the unchanged 32,768 requested output
+limit. Two calls returned drafts of 45 and 40 records; two failed calls supplied
+no usage. Known reported usage is **151,602 input and 17,198 output tokens**.
+The two unavailable usage records remain unknown, not zero or complete billing.
+
+The terminal operation failed locally with
+`formation_request_not_admitted_by_renderer`. The retained accounting classifies
+this as an extra private instrumentation guard rejecting a canonical correction,
+not a model semantic rejection or proof that the restored runner cannot execute
+the source. The manifest preserves the earlier provider errors and both returned
+draft sets. The operation produced **zero private DTOs**, published no successful
+subset and made zero product writes. Its six zero-provider runner controls passed,
+but neither those controls nor the partial returned drafts establish complete
+execution or semantic acceptance. The original V12 failure is retained. V12B
+was subsequently interrupted by the agent; its bounded interruption evidence is
+recorded below rather than treated as a completed provider outcome.
+
+Private evidence (all SHA256 values checked against the retained local files):
+
+- `understanding-v12-development-freeze.json`: `319e319679842ac9a4c01bb67ca653a69a443d0b9da21425f751cd50cc57f719`.
+- `understanding-v12-online-development-manifest.json`: `96747ccd6cb5f05534fc32393511d3588da6c55db98180e6c292dc2e84032888`.
+- `understanding-v12-retained-failure-accounting.json`: `ee22dd9c4e4e4327743d80a3efb29cf99ebfb123503657fcf24e0171f59abbae`.
+- `understanding-v12-failure-adr0034.json`: `7aa5fefe1f22eb327f8f5b63040c7e014cd74ecbf5b46a16c8b8193ee5855af6`.
+- `understanding-v12-no-inference-runner-controls.json`: `9f7989e0b576d68006ddfeaa037564e9b98f945473c5c411e7d22ef62a2f12dd`.
+
+### V13 owned-language restoration and repeated two-source diagnosis
+
+This bounded diagnostic restores the original owned-Evidence-language
+requirement. The independent static report confirms an exact match to the pinned
+canonical rule body. Restoring that existing contract is not a relaxed semantic
+bar, a new extraction guarantee or evidence that source meaning now passes.
+The diagnostic attempts only retained Confluence and the original pinned raster;
+it is not a complete seven-source acceptance run or an additional untouched
+holdout. The large-source execution problem remains separate.
+
+Both operations finished structurally, returning **54 Confluence and 22 raster
+private DTOs**, 76 in total. The actual online manifest records one formation and
+one audit call per source: **four logical calls and four native physical
+attempts** on `sap/anthropic--claude-4.6-sonnet`. The accounting records no provider
+retry, fallback, mechanical correction or semantic origin revision. Reported
+usage is **149,785 input and 17,854 output tokens**. Frozen files remained
+unchanged, with zero product writes. These completion and accounting receipts do
+not certify the same-model audits or semantic acceptance.
+
+| Repeat reviewer | All 76 candidate dispositions | Actual supplied Required |
+| --- | --- | --- |
+| A | 10 pass, 66 fail | 6 contributing, 42 redundant / 48 |
+| B | 14 pass, 62 not-pass | 6 contributing, 42 redundant / 48 |
+
+Both reviewers read the complete original CF and native PNG pixels, checked
+87 catalog raw identities and 86 text-display identities, and accepted all
+76 Primary views as authentic, readable and directly central. Whole-original
+Artifact Primary remains legitimate without an authorized equally complete
+focused view; a Primary need not alone prove every compound detail. Both find
+42 containing-table Required selections repeating their already supplied rows
+and interpretation headings. The cumulation scenario2 table does contribute the
+scenario1 premise, but that citation does not repair missing standalone scenario
+conditions. Missing extra Required recall is not penalized; no minimum-set proof,
+admission pruning or inventory reduction supplies the result.
+
+Both identify missing authored target-design qualifications, missing routing
+endpoints, an unresolved scenario antecedent and a compound of independently
+useful verification scenarios. Value judgments and source-internal ambiguity
+remain separate from false content: the unchanged-correction PASS/comment/fix
+wording and execution-error/fallback tension are not adjudicated using code or
+provider behavior. A and B differ on marginal Value, qualification wording and
+inventory granularity; their original dispositions remain separate.
+
+These are the same reviewers reused after earlier exposure, not fresh untouched
+holdouts. For this repeat they were withheld the new producer prompts, audits,
+operation metadata and peer findings until their source-only reports were
+complete. A retains all 152 earlier text obligations (44 CF in scope and 108
+outside this diagnostic) plus all 82 raster obligations; B retains all 100 earlier
+text obligations (33 CF in scope and 67 outside) plus all 82 raster obligations.
+Untested sources are explicitly outside scope, not fabricated no-output failures.
+These are assessment entries with preserved granularity, not independent fact
+counts or complete seven-source coverage. The two-source diagnostic still fails
+semantic acceptance. No release, deployment, reprocess or lifecycle acceptance
+claim follows from language restoration, call completion or the repeated reviews.
+
+Private evidence (all SHA256 values checked against the retained local files):
+
+- `understanding-v13-development-freeze.json`: `12876d4d7372d40ef5856e5f935163b783192b751ee679347951480cb936d185`.
+- `understanding-v13-online-development-manifest.json`: `f68b3c4aaa12ec7867c31163ea4a2e23999b63c70eb630bccb0f567f4da219d2`.
+- `understanding-v13-online-accounting.json`: `6f9a2f2a7f17277cfae0a42b89b4beca8448249227a2d22b8a58e61d6becf0bc`.
+- `owned-language-v13-static-review.json`: `5b2cb9ecc5ba8a493c0a5f8dc26108b1d5d23dd8456cfec078b4b418f5f5f0e8`.
+- `blind-v13-tentative-freeze.json`: `da3097d629d1491c832f6d7452628f61d72aa20da13928504f32d11930bbe38d`.
+- `blind-v13-tentative-packet.json`: `64b5067b89c817e4de67442e2c8ee9cdbc6155ab071775059d1491f3c8042ec8`.
+- `blind-v13-a-review.json`: `64f6fbce23c90310da813a168e1b57d97f91eb5cef78ad16eb32cb80803da67c`.
+- `blind-v13-a-review.md`: `b3bdf44400a1f0341d497b7c7ea772cdfa197460f50d6fad7c4d9d579c7b9dfb`.
+- `blind-v13-b-review.json`: `527c4dd0f85894f0e03400c266d2dd1860022ca8db1cd8f6bf3901449278f21f`.
+- `blind-v13-b-review.md`: `0d0a368df57b294e943cba5ab6d0d0509d99b2e19476d8e7cf222b41c3fcde63`.
+
+### V12B agent interruption and request-authority contradiction
+
+The agent stopped V12B with **SIGINT (exit 130)** after a separate independent
+input diagnostic confirmed that the complete catalog presented all **244 refs as
+Primary**, while later requests owned only **3–126 refs each**. Six retained mechanical
+correction inputs report the same
+`formation_primary_outside_request_authority` rejection. This is an observed
+presentation/ownership contradiction, not permission to discard foreign candidates
+or reduce source coverage. The earlier narrow instrumentation static review did
+not certify this later request-ownership behavior.
+
+The final interruption accounting records **21 input files and 17 parsed output
+files**. These are retained file counts, not logical-call or native-transport
+counts. Both call totals and token usage remain unavailable, not zero; missing
+outputs are not assumed timeouts. This was **agent verification interruption**,
+not user-requested cancellation, a completed provider failure or semantic
+acceptance. Frozen files remained unchanged. There is no complete-operation
+receipt, no published DTO, no successful subset and no product write.
+
+Private interruption receipt, SHA256 checked against the retained file:
+
+- `understanding-v12b-retained-interruption-accounting.json`: `14284abdfacabd8b196fb51f197ca6918627e295b0ab1dbf253219fa5db70910`.
+
+### V12C request-scope repair: private controls only
+
+The private repair keeps all **201 ReadingGroups and 244 refs**, the complete
+native material, full source context and existing global ref tokens. It changes
+only request-local Primary eligibility and its bound scope digest; render and
+decode use the same request mask, while whole-Unit aggregation and final audit
+remain global. It introduces no ref aliases, source partition, candidate-role
+rewrite, new batch policy or changed 32,768 output / 300-second limits.
+
+Six zero-provider runner controls, including negative admission and aggregation
+cases, pass. A control exercising the real extractor callback with injected
+fixtures/deadlines records **eight stub calls, three splits, one correction and
+one aggregate conversion**, with zero provider inference and zero product writes.
+It verifies exact owned Primary eligibility and preservation of groups/material;
+the clean audit is a stub. These controls are not Sonnet execution or semantic
+acceptance. V12C has no live result recorded at this control stage.
+
+The completed independent static reread confirms the scope/digest repair and
+records correction of a mutable Value-rendering gap. It identifies no remaining
+concrete blocker within that static scope. The reviewer did not execute provider
+or control calls, did not inspect semantic outputs and did not independently
+rerun the six controls. The supplied callback receipt lacks an explicit tested
+module fingerprint. Static and supplied callback evidence therefore remain
+bounded diagnostics, not code/semantic certification, seven-source acceptance,
+production integration or release/deployment acceptance.
+
+Private control and static receipts, SHA256 checked against the retained files:
+
+- `understanding-v12c-no-inference-preflight.json`: `d65bae885645db3fa7e3e3b504f2cd967d9d30706a5aaaadc051fa57b0789e35`.
+- `understanding-v12c-no-inference-runner-controls.json`: `84d34b488010d9f5a1cbc343571971f7a043b5c5ed09911f179cf1426bed73b1`.
+- `understanding-v12c-actual-callback-no-provider-control.json`: `e91bd2fd26604838b2b7bc4f30d90e00f7c5e4fc7dee6b67132c3d1c9c35528c`.
+- `extraction-execution-boundary-v12c-static-review.json`: `313e50286f1104cf8582d8fe2b2caa5cd9dc0969d677e518ea3c69729a7b325c`.
+- `extraction-execution-boundary-v12c-static-review.md`: `2cba18b99c686882d961b14e08098cc3831082e8ac0733d98636fbc1712a822d`.
+
+The separate corrected online experiment was launched after a 159-file freeze
+(`understanding-v12c-development-freeze.json`, SHA256
+`63a0d6bfc5553f041b1cbf1afd3b2ca883a6cb5bda7b4be5a95f13318ada3190`).
+It uses the complete large ADR, the same CF-bound Sonnet route and unchanged
+runner policy. Its result is still pending; the preceding stub directories and
+injected errors must not be mistaken for this actual model operation.
