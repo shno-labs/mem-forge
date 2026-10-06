@@ -158,8 +158,14 @@ The [production-path integration verification](../research/2026-10-06-focused-di
 confirms the separation through persistence, API/MCP, UI and online Sonnet
 extraction/Assessment. A fresh blind review found no major claim or display
 faithfulness defect in86 claims, but found useful omissions and did not establish
-95% coverage. This validates the tested mechanics, without changing the original
-coverage criterion or declaring product release accepted.
+95% coverage. The subsequent user clarification treats useful coverage as a
+quality metric for this provisional release rather than a deployment blocker.
+The original95% cohort target remains a measured improvement objective in
+[Issue500](https://github.com/shno-labs/mem-forge/issues/500). Source-integrity,
+claim-faithfulness and complete joint Support lifecycle requirements remain
+release gates; neither omitted knowledge nor role-quality acceptance proves
+those gates. No frozen failed result is rescored. Product acceptance still
+requires checked deployment and named live smoke.
 
 ## Consequences and acceptance
 

@@ -646,7 +646,7 @@ reported as unverified, never replaced by a synthetic fixture and called real.
 | A3 | Full compiler integrity | Every source selection and adapter-rendered factual value binds to pinned source; code/structure preserved; no raw control markup masquerades as readable evidence. Generated focused text is separate presentation, assessed for faithfulness rather than described as compiler-guaranteed verbatim material. |
 | A4 | Reading/work authority | Every authorized selection planned once; no skipped semantic work, context-authority expansion or missing structural interpretation. |
 | A5 | Claim faithfulness | No accepted critical/major unsupported conclusion, lost material condition, invented modality/date or external resolution; report minor precision findings separately. |
-| A6 | Useful knowledge coverage | At least 95% of adjudicated independent useful-claim inventory covered per source family; no material branch/guard omitted; no benefit from silent admission pruning. |
+| A6 | Useful knowledge coverage | Preserve the original95% independent useful-claim target and report omissions separately from facts only present in refs. Under the subsequent2026-10-06 user clarification, coverage is a quality metric for provisional deployment, tracked in Issue500; it is not a claimed pass or an admission-pruning license. Claim conditions and source/lifecycle integrity remain release gates. |
 | A7 | Primary relevance | Direct support remains the selection prompt's goal and is measured. Under the 2026-10-06 clarification, nonideal roles are provisionally acceptable if authentic authorized joint Evidence supports the claim and complete retrieval/revision assessment remain correct; eligibility and source-time semantics still apply. |
 | A8 | Required quality | Preserve the original 95% relevant, nonredundant measurements and per-source counts. No recall/minimum-count target. Role-quality misses alone are no longer release blockers under the functional conditions in A7; unsupported claim meaning and irrelevant provenance are not waived. |
 | A9 | Correspondence | All unchanged unique/stably identified selections correspond under declared insertion/reordering/format transformations; all ambiguity, changed semantics and corrupt source guards behave correctly. |
@@ -657,7 +657,7 @@ reported as unverified, never replaced by a synthetic fixture and called real.
 | A14 | Upgrade/reprocess | Exact bounded dry-run and explicit cutover preserve old history and establish new future-revision contracts; no fake provenance. |
 | A15 | Product acceptance | Checked CF deploy and named smoke evidence for changed cloud runtime before release; source-only/model-only replay is not deployment acceptance. |
 
-The original 95% targets are user-approved cohort acceptance criteria, not production probability
+The original95% targets remain user-approved cohort quality objectives. A6 coverage and A7/A8 role quality have the explicit provisional-release qualifications above; no failed experiment is rescored. They are not production probability
 guarantees. They permit occasional supplementary-reference mistakes rather
 than claiming perfection. Serious unsupported assertions and wrong central
 citations remain release blockers. Reviewer inventories need adjudication of
@@ -675,7 +675,7 @@ reviews and reasons; it does not choose a favorable reviewer.
 Keep input loss, extraction loss and materiality/equivalence disagreements
 separate in the causal report. A native-to-prompt failure cannot be diagnosed as
 a model's inability to infer facts it never received. This classification does
-not waive A1/A6 or rescore a frozen experiment. The supplemental
+not waive A1 or rescore a frozen experiment. The later A6 deployment qualification does not change this causal classification. The supplemental
 [causal audit](../research/2026-10-04-claim-evidence-causal-audit.md) records this
 boundary and the historical representation regression; v7 clarifies acceptance,
 not a new prompt or a validated architecture.
