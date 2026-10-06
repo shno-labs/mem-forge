@@ -62,7 +62,15 @@ unacceptable. Compiler contract version 9 invalidates the prior compilation
 contract; no stored source, coordinate, digest or matching rule is rewritten.
 The independent incremental reviewer approved the narrow correction, including
 negative syntax cases. All ten affected test files passed: **669 passed**,
-31.10s. Full CI for the resulting commit remains a separate release gate.
+31.10s. Complete CI for commit `22ebc69b` passed: **3,861 Python tests**, V1/V2 UI
+tests and builds, V2 browser end-to-end tests, distribution verification,
+OpenAPI/package-copy checks and lint. Useful-coverage follow-up is tracked in
+[Issue500](https://github.com/shno-labs/mem-forge/issues/500); it is a quality
+metric for this provisional release, not a claimed95% pass.
+
+The changed MCP response requires a distinct plugin cache identity. Package,
+MCP, hook and both plugin manifests are advanced together to0.1.64 for a remote
+RC-tag installation test; no final package/tag publication is implied.
 
 ## Online production path
 
