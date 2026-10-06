@@ -44,6 +44,26 @@ display schema. Corrected fixtures preserve their intended malformed-JSON,
 unknown-selector and capacity assertions; no product bypass was added. No batch
 policy, provider limit or output budget was changed.
 
+## Full-CI regression closure
+
+The first complete Python CI run failed: 73 failed, 3,784 passed. The earlier
+1,024 affected-path tests were not a substitute for that full run. Native
+Jira/Confluence test providers still emitted snapshots without their declared
+native/provider-rendered representation; MCP and relation expectations predated
+retained identity and typed field interpretation. Those fixtures/assertions were
+aligned without changing production adapters or weakening lifecycle assertions.
+
+Two public managed-session Memory-detail tests exposed a production defect:
+valid Markdown HTML claim-marker comments were recorded as compilation errors,
+so pinned-view verification rejected otherwise complete source representations.
+The generic Markdown compiler now excludes valid comment-only framing without
+creating Evidence or an error. Malformed/nested comments and unsafe HTML remain
+unacceptable. Compiler contract version 9 invalidates the prior compilation
+contract; no stored source, coordinate, digest or matching rule is rewritten.
+The independent incremental reviewer approved the narrow correction, including
+negative syntax cases. All ten affected test files passed: **669 passed**,
+31.10s. Full CI for the resulting commit remains a separate release gate.
+
 ## Online production path
 
 The actual Cloud structured-client factory from the fresh Cloud worktree and the
