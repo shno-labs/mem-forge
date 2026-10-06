@@ -1,7 +1,9 @@
 # Focused Evidence integration and production-path verification
 
-Status: implementation verified at the tested seams; not a complete extraction
-quality or product-release acceptance. No deployment or live reprocess occurred.
+Status: provisional acceptance at the tested extraction, storage, delivery and
+revision-lifecycle seams. The checked Cloud deployment and one bounded real
+Confluence reprocess passed. Useful-coverage quality remains unscored; authentic
+consecutive provider edits and both desktop-client release lanes are not claimed.
 
 ## Runtime contract
 
@@ -123,8 +125,73 @@ coverage score. Earlier two-reviewer scores and failures remain unchanged;
 this result does not supersede or rescore them. Accurate claims, useful coverage,
 faithful displays and deterministic provenance are separate measurements.
 
-Claude Code CLI is unavailable on this host. No Claude Code reviewer lane or
-remote plugin installation/restart validation is claimed by this report.
+Claude Code CLI is unavailable on this host. No Claude Code reviewer or remote
+Claude plugin installation/restart lane is claimed by this report.
+
+## Checked deployment and bounded product acceptance
+
+Cloud commit `31b85d4c7c9ccde637b21cb8abffd679fb3ba58b` pins OSS runtime commit
+`0f2bdbde61c875775c75f155dc6aef630c9d7dba`. Complete OSS CI passed at that commit,
+including Python, both UI packages, browser end-to-end checks and distribution
+contracts. Deployment used the prescribed checked prepare-deploy entrypoint,
+composed both matching UIs and restored the temporary worker scale change.
+Runtime package metadata independently confirmed0.1.64 from the pinned GitHub
+archive. The development service has one1GB web and one2GB worker process;
+both were running after the acceptance run and `/healthz` returned200/ok.
+
+One previously declared Confluence document was reprocessed, with no provider
+content edit, workspace-wide replay or historical repair. Report-only preview
+found one available unit,46existing Memories/Supports and83estimated model calls.
+That old-representation estimate is not executed-call telemetry. The actual run
+completed successfully in272seconds, one lease attempt, no recovery. Its new
+derivation uses `projection-extraction-v20`; extraction and lifecycle telemetry
+report expected outcomes. Lifecycle Assessment recorded four model calls.
+
+A repeatable-read physical HANA snapshot correlated this exact run, unit,
+creation watermark, projection lineage, plan, mutations, Support, Reviews and
+vector outbox. The single applied plan checked all46incumbents and contains
+32Memory creates,76Support attaches,46old-Support removals and two supersessions.
+Current population is76active Memories/Supports with215ref parts. Every active
+part points at its current observation revision and has nonempty focused text.
+All34new vector-outbox entries are completed, with no new Review or open scope
+transition. Four pending and six stale historical Reviews remain unchanged;
+inactive Support and terminal Memories are classified separately. No new
+Finding is inferred from historical populations. Exact parameterized SQL, pinned
+run IDs, timestamps and redacted CF evidence are retained in the private handoff.
+
+The originally reported Memory retained its ID and claim. Its Primary text fell
+from7,268characters to242; its complete cleaned source block remains464characters.
+Three Required parts retain relevant context and the second scenario, including
+its failure status. HANA NCLOB text, API text/full excerpt and both source
+digests match for all four parts. Actual remote-installed MCP processes return
+the same four parts, typed views, Support/anchor IDs and pinned resource URLs;
+the complete authentic pinned source resource remains readable. Authenticated
+deployed UI smoke confirmed focused paragraphs and expandable original Evidence.
+This is a provenance/display/lifecycle acceptance, not a new semantic coverage
+score or a claim that every role choice is ideal.
+
+The first joint audit read timed out through CF SSH. A read-only transport probe
+and the same joint query with stage diagnostics completed in108seconds. No
+second product run, data patch, query splitting or relaxed assertion was used.
+The captured snapshot converged; no additional canary was started.
+
+## Remote plugin acceptance boundary
+
+Remote tag `memforge-memory-v0.1.64-rc.1` names committed plugin/runtime revision
+`73b29b52b5e5fd059e5770caa8281a5be513566e`. A disposable Codex profile installed
+`memory@memforge` from the GitHub marketplace at that tag. Marketplace commit,
+cache0.1.64 and packaged-file parity were verified. New CLI processes repeated
+plugin-version and MCP-cwd checks. Two fresh installed stdio processes before
+and after reprocess passed `initialize`,16-tool inventory, real `get_memory`
+and pinned `get_resource` reads. Installed SessionStart, Stop and PreCompact
+commands also passed against an isolated local receipt receiver, with no product
+writes or transcript capture.
+
+No user cache was edited or manual MCP registration added. This proves isolated
+CLI/process restart behavior, not an actual restart of the user's Codex Desktop.
+The current conversation still uses its earlier plugin process. The RC is not
+a final package publication; Claude Code and user Desktop release gates remain
+explicit boundaries rather than being silently marked complete.
 
 ## Completion-contract audit
 
@@ -140,11 +207,11 @@ remote plugin installation/restart validation is claimed by this report.
 | A8 Required quality | All parts retained; omissions remain best effort. No new95% relevance score asserted. |
 | A9 Correspondence | Unchanged/moved, modified, duplicate and interpretation tests pass; controlled revisions, not real consecutive provider edits. |
 | A10 Outside-ref changes | Governing changes route to full Support work; old display cleared on changed interpretation. |
-| A11 Lifecycle/stores | SQLite actual persistence/lifecycle and HANA query/decode parity pass; physical HANA acceptance pending. |
-| A12 Citation delivery | DTO/MCP pinned-resource and privacy tests plus both UI builds; deployed API/UI smoke pending. |
+| A11 Lifecycle/stores | SQLite persistence/lifecycle, HANA parity and one physical bounded HANA lifecycle/NCLOB roundtrip pass. All215current parts and34completed new vector entries checked; historical Reviews preserved. |
+| A12 Citation delivery | DTO/MCP privacy and both UI tests pass; deployed authenticated API/UI and remote installed MCP/pinned-resource smoke pass for the declared document. |
 | A13 Large execution | Complex full-source extraction and full-current-source Assessment completed online; typed capacity semantics retained. |
-| A14 Upgrade | SQLite additive upgrade and historical contracts tested; live exact-count cutover/reprocess not performed. |
-| A15 Product acceptance | Checked CF deployment and named live smoke not performed. |
+| A14 Upgrade | SQLite additive upgrade, physical HANA additive column and one exact-count live native-representation upgrade pass; no broad historical recovery performed. |
+| A15 Product acceptance | Checked pinned CF deployment and declared document smoke pass provisionally. Coverage is a quality metric under Issue500; genuine consecutive provider edits and user Desktop/Claude release lanes are not certified. |
 
 Private root: `Downloads/MemForge-Evidence-Validation-2026-10-02/private/focused-display-integration-20261006`.
 It contains sources, prompts, schema, immutable packet hashes, raw parsed outputs,
