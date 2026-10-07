@@ -23,3 +23,26 @@ Evidence, promotes the challenger, supersedes the incumbent, and publishes the
 Review vector outbox. A changed Support Set makes the Review stale.
 
 This decision adds no Memory, Support, Relation, Lifecycle Plan, or Review status. It supersedes the earlier assumption in ADR 0004 that every Review is one generic current-versus-proposed destructive choice, while preserving ADR 0004's lifecycle planner, gate, Support authority, stale-guard, and outbox contracts.
+
+Queue membership and Memory navigation share one caller-scoped Review read
+module. Storage adapters return internal candidates and participant facts; the
+shared reader checks all participants and configured Sources and derives
+version staleness before ordering, exact pagination, or selecting a Memory's
+newest open Review. Review participant access includes the caller’s own private
+Memories and every stored lifecycle status independently of Memory page display
+filters. Lifecycle reads check participant Sources as well as the Plan Source.
+A newer hidden or stale candidate never shadows an older
+eligible one. Candidate reads for a Memory page include every pending Review
+involving its waiting Memories, including related challengers. They do not
+infer authorization from one visible participant or durable `pending` alone.
+A visible stale Review remains inspectable in history; the read neither changes
+its durable status nor grants decision authority. Source management and
+transactional decision guards remain separately enforced at apply time.
+Decision and manifest validation check complete Review visibility before
+management authority, so an unauthorized caller cannot distinguish a hidden
+Review from a missing one.
+
+Lifecycle staged Evidence is hydrated only for the selected queue page. Exact
+queue totals still require all matching candidates and current participant
+versions; this read contract promises complete eligibility and bounded page
+hydration, not storage cost independent of queue size.
