@@ -29,10 +29,30 @@ adapters. Callers must provide `doc_id` explicitly; adapters do not infer it
 from title, source URL, source type, or content. No source-specific
 disambiguation or read-time fallback is permitted.
 
-Existing recorded artifact URIs remain readable by their exact URI. New writes
-use the Document-identity namespace. Historical colliding rows require a
-bounded inventory and controlled rematerialization from authoritative source
-evidence; this decision does not silently rewrite their URIs or bytes.
+Every reuse or read of a Document's raw, normalized or PDF object requires
+`DocumentStore.belongs_to_document(uri, source_id=, doc_id=)`. The local adapter
+checks the resolved Document directory; the object-store adapter checks the
+workspace, Source and Document key. This replaces the prior assumption that a
+historical recorded URI is sufficient proof of ownership. The same rule governs
+sync reuse, previous-content comparison, stored-input reprocessing, provenance
+links and artifact responses. An unowned object is unavailable; a normal sync
+writes freshly collected content into the correct namespace, even when the
+normalized content has not changed.
+
+Historical repair is explicit and bounded, separate from database startup.
+Only bytes matching the recorded raw SHA-256 or normalized content hash may be
+copied under the Document's keys and rebound to the same input. A package's
+Document ID alone does not establish its revision. Unprovable references are
+cleared under exact revision, timestamp and old-value guards; their files,
+Evidence, Memory and lifecycle history remain intact. PDFs have no recorded
+fingerprint and must be exported again from the provider. Retained Source
+Artifacts keep their independent revision-pinned ownership contract. No
+runtime legacy-path exception or automatic object migration is introduced.
+
+Document file release requires the same ownership check before authorizing
+cleanup. Storage constructors receive the workspace DocumentStore for this
+check; a data-only store without it cannot authorize file deletion. This does
+not read objects or run repairs during startup.
 
 Artifact cleanup continues to operate on exact recorded URIs. A cleanup task
 for one Document must not derive or delete a sibling Document's location.

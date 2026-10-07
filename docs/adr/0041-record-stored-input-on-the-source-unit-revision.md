@@ -71,7 +71,9 @@ is unchanged (store the raw content first, then record the revision), and it
 now binds exactly that raw content to exactly that revision.
 
 A reader uses the input only when `unit_revision_id` is the Unit's current
-revision (`get_source_unit_input`). A tombstone or any other revision recorded
+revision (`get_source_unit_input`). Recorded file URIs must also satisfy the
+Source and Document ownership rule in [ADR 0013](0013-bind-document-artifacts-to-document-identity.md);
+a stored URI alone does not establish ownership. A tombstone or any other revision recorded
 without input leaves the Unit without current input.
 
 The input is one row per Unit rather than columns on `source_unit_revisions`.
