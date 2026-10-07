@@ -20,6 +20,16 @@ provider-specific pipeline branch, business status or model repair is added.
 
 ## Adapter ownership
 
+The built-in projection owners are `confluence`, `jira`, `teams`, `github_repo`,
+`github_pages`, `local_markdown` and `agent_session` in `source_adapters`.
+Session receipt interpretation belongs to the session adapter. Confluence parent
+pages and GitHub file predecessors are declared as typed Unit endpoints; shared
+projection code assigns stable IDs without parsing provider-specific prefixes.
+Standard Markdown structure remains a shared format. The GitHub Pages and local
+Markdown adapters own URL/path/lineage and coverage semantics, not copies of the
+Markdown parser. This projection boundary does not change managed-session intake
+or its conversation-retention policy.
+
 Every provider-specific tag, class, attribute, macro and field rule belongs in
 its source adapter. Jira rendering decoration is declared in one element/class
 policy table. Confluence native containers and macros declare their attributes,
