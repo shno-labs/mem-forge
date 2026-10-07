@@ -15,6 +15,20 @@ passes the specific introductory-Primary/substantive-Required case. This accepts
 that role-quality limitation; it does not declare every generated claim correct,
 accept a source-authority violation, or establish product release completion.
 
+Acceptance clarification, 2026-10-07: the user provisionally accepts the observed
+composite-to-subset replacement error as residual model risk. This supersedes
+treating that specific error as an outstanding release blocker; it does not
+make the replacement semantically correct or remove whole-incumbent preservation
+from the intended contract. The main model's boolean assessments are fallible
+judgments, not program-verifiable entailment proofs. A subsequent real Sonnet
+assessment of the complete claim pair and its original selected Evidence returned
+`preserves_incumbent_truth=false`; the coordinator then kept the incumbent and
+added the challenger. That assessment used a smaller catalog, so it does not
+establish the original error's stochastic frequency. Retain both observations.
+No extra self-review stage, semantic repair layer or restriction on all automatic
+replacements is required by this disposition. Diagram/ADR failure-policy alignment
+and the remaining implementation review are still required for completion.
+
 The v19 source-framing and generic single-pass extraction hypothesis failed
 independent coverage and Required-quality gates. Readable native binding and
 deterministic correspondence are useful prerequisites, not proof that this
