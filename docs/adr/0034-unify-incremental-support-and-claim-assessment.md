@@ -23,16 +23,37 @@ Impact, the pair review and cross-document relations are Decision tasks that run
 on one decision model after they pass their evaluation, otherwise on the main
 model. The classifier-model statements below are superseded where they differ.
 
+Amended 2026-10-07: catalog extraction owns claim faithfulness and Primary/Required
+selection; Candidate Admission judges value and same-round duplicates without
+citation repair. Unit Title is display-only; factual framing is immutable
+source material owned by the adapter. Readable generated citation text is
+separate from canonical Evidence, correspondence and lifecycle authority. These
+amendments implement [ADR 0047's selected catalog path](0047-define-claim-evidence-extraction-outcomes.md)
+and [focused presentation contract](../design/claim-evidence-focused-display.md).
+The local failure rules remain unchanged: an isolated capacity/invalid-output
+item is accounted for by its stage, not an execution error. Extraction skips its
+ReadingGroup; admission rejects its Candidate for this round; independently
+unresolved Support keeps the incumbent. Successful work commits in one existing
+atomic Lifecycle Plan after complete incumbent outcomes and stale/authority
+guards. Provider, timeout, request, input-integrity and commit errors leave the
+Unit revision uncommitted. A skipped extraction group is revisited on a later
+change or explicit reprocess, not automatically on an unchanged sync. Execution
+contracts `projection-extraction-v22` and `candidate-admission-v7` supersede
+pending older work; no new durable state or database migration is introduced.
+The observed composite-to-subset model error is provisionally accepted as a
+known inference limitation under ADR 0047; whole-incumbent preservation remains
+the intended requirement, not a proven model guarantee.
+
 Current implemented contract: Support Assessment uses exact correspondence,
 Change Impact and the [ordered read](#ordered-current-revision-reading) with
 cumulative witnesses. Claim Extraction reads as described in
 [Unified revision input planning](#unified-revision-input-planning-and-bounded-execution)
-under `revision-input-v8`: changed structures with their ReadingGroups on an
+under `revision-input-v10`: changed structures with their ReadingGroups on an
 update, every ReadingGroup on a first import, one runner item per ReadingGroup,
 with no cost comparison and no truncation. Every model reading shows the Unit
 Title as context ([The Unit Title](#the-unit-title)).
 [Candidate admission](#candidate-admission) is implemented as
-`candidate-admission-v5`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
+`candidate-admission-v7`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
 request is implemented as `claim-revision-v8-sparse-catalog`, described in
 [Sparse claim catalog](../design/sparse-claim-catalog.md). Relation runs
 concurrently with Support Assessment over every same-Unit old Memory, and
@@ -128,7 +149,7 @@ that owns the detail.
   ReadingGroups as context; a first import streams per ReadingGroup. Extraction
   makes no Delta/current-full cost comparison
   ([Unified revision input planning](#unified-revision-input-planning-and-bounded-execution)).
-  Implemented as `revision-input-v8`.
+  Implemented as `revision-input-v10`.
 - Every Source adapter supplies the Unit Title, the Unit's human-facing name, as
   a value of its projection. It is no Observation, no selectable Evidence and no
   part of a Unit revision, and every model reading of the Unit shows it as
@@ -213,7 +234,7 @@ The durable design uses responsibility names rather than model-stage numbers:
 | Responsibility | Meaning |
 | --- | --- |
 | Claim Extraction | extract new claims from authorized current change |
-| Candidate Admission | check that each Candidate's selected Evidence completely supports it and merge same-round duplicates |
+| Candidate Admission | judge lasting value and merge same-round duplicates without repairing extraction |
 | Support Assessment | test one fixed existing claim and rebuild its complete current Evidence Unit |
 | Sparse Relation (same-Unit Claim Reconciliation) | propose relations between admitted Candidates and same-Unit Active Memories: one row per Candidate, only meaningful relations |
 | Support and Relation coordination | combine Support and Relation results by one fixed table before Lifecycle Reconciliation |
@@ -224,46 +245,28 @@ methods, result states and new documentation must use the domain names above.
 
 ### Complete support
 
-Support Assessment and Candidate Admission judge the same relation: whether
-selected Evidence completely supports a claim. It has one definition, and both
-model requests carry the same text of it (`pipeline/complete_support.py`).
+Support Assessment judges whether authentic current source Evidence supports the
+whole incumbent claim, including conditions, exceptions, scope, modality,
+attribution and effective time boundaries. Changes outside selected refs can
+qualify or revoke that Support; an omitted supplementary ref alone does not
+prove the knowledge unsupported. Support reads the complete eligible revision
+before an `UNSUPPORTED` verdict and validates every selected ref against supplied
+source material. Its single definition is `pipeline/complete_support.py`.
 
-Selected Evidence completely supports a claim only when every specific the claim
-states appears in that Evidence or in the [Unit Title](#the-unit-title), or
-follows directly from them. Specifics include names of people, systems and
-things, identifiers, quantities, dates and times, statuses, conditions and
-scope. A claim that states any specific the Evidence contradicts, or one that
-neither the Evidence nor the Unit Title contains, is not supported, even when
-the rest of the claim matches, and no knowledge outside the Evidence and the
-Unit Title counts.
+The Unit Title is display-only. It cannot substantiate a claim fact; factual
+framing used to support a claim must be retained in an immutable source revision
+and interpreted by its source adapter. A harmless display-name difference does
+not itself invalidate an authenticated source fact or referent. Generated
+citation `display_text` is presentation, not source Evidence, and does not enter
+semantic assessment or correspondence.
 
-The Unit Title is never Evidence, but every value it shows, such as the Unit's
-key, type, summary, title or path, is a fact about the Unit that a claim may
-state without Evidence for it; a Jira claim may state the issue type or repeat
-the summary. A claim that names its Unit by an earlier name, such as a former
-title or path, still speaks of that Unit: the name differing from the current
-Unit Title is never alone a reason for `UNSUPPORTED`. Apart from the Unit's own
-earlier names, an identifier that neither the Unit Title nor the Evidence
-contains, such as another Unit's key, is not supported. Candidate Admission
-reads a Candidate's selected Evidence with the Unit Title.
-
-Matching the topic, the action or most of the wording is therefore not enough:
-a claim that names another Unit's key that neither the Unit Title nor its
-Evidence contains, or a different person, number or date than its Primary
-Evidence, is `UNSUPPORTED` in Support Assessment and `REJECTED` with
-`evidence_incomplete` in Candidate Admission. Change Impact does not judge
-support and does not use this definition.
-
-A change to the definition changes the meaning of both results, so it raises
-`REVISION_SUPPORT_CONTRACT`, the Support Assessment work contract and the
-candidate admission contract together; completed work under an earlier
-definition is never reused. The current contracts are `revision-support-v8`,
-`support-ordered-reading-v6` and `candidate-admission-v5`.
-
-Cloud impact: the definition is shared OSS prompt text. Cloud receives it by
-upgrading the pin; its HANA derivation work and reconciliation manifests carry
-the new contract identities without a schema change, and completed work under
-the earlier identities is recomputed rather than reused.
+Extraction preserves claim meaning and selects citations in its own response.
+Admission neither judges complete support nor rejects `evidence_incomplete`;
+it applies the independent [Value definition](#value) and same-round duplicate
+rules. Ref authenticity, eligibility and membership remain program-validated.
+This separation supersedes the former shared admission/Support entailment duty.
+Current contracts are `revision-support-v11`, `support-ordered-reading-v9` and
+`candidate-admission-v7`; older completed work is not reinterpreted under them.
 
 ### Backend-neutral context and judgment execution
 
@@ -354,27 +357,20 @@ values present in the provider payload, without guessing and without
 source-specific prompt instructions: a kind and named values (`UnitTitle` on
 `SourceProjection`). A tombstone names no Unit.
 
-The Unit Title is reading context carried by the projection, never an
-Observation and never selectable Evidence. It takes no part in Unit revision
-identity, so a change of only its values, or naming it with other values,
-creates no revision and no model work. A name that also appears in the content
-or the locator, such as a Confluence page title in the page body or a file path
-in the locator, changes as content or location does. Every model reading of the
-Unit, whether a Claim Extraction request, a Candidate Admission request, a
-Support Assessment step or a Change Impact bundle, shows the current Unit Title,
-rendered once from those values (`pipeline/unit_title.py`). Each prompt
-describes it the same way: the Unit's kind and current values, each a fact about
-the Unit that a claim may state, never source text and never Evidence. A Unit
-Title that changes along with content is seen as the name of the revision being
-read, never as one of its changes. [Complete support](#complete-support) says
-how a claim may use it.
+The Unit Title is display context carried by the projection, never selectable
+Evidence. Its mutable display values do not contribute to revision identity or
+claim support. Every model reading shows it once through `pipeline/unit_title.py`
+with its display-only interpretation. Adapters separately retain claim-bearing
+keys, field roles, authored titles, dates and actor framing in immutable source
+material; those facts participate in revision identity, reading and impact.
 
-The Unit Title is stored with the projection payload (`PROJECTION_PAYLOAD_JSON`
-in Cloud). A payload stored without it decodes to no Unit Title, and a reading
-of such a projection shows neither a Unit Title nor its description. The
-complete-support definition is one fixed text and always names the Unit Title;
-a reading without one, such as of a payload stored before it, shows no Unit
-Title block, so a claim there has only its Evidence.
+A title-only change creates semantic work only when it changes that immutable
+material, rather than merely the display label. Source-specific factual framing
+is declared by the adapter, not inferred by a shared prompt or dispatcher.
+The Unit Title remains in the projection payload; old payloads without it show
+no title block. Historical claim-bearing representations cannot simply be
+removed and treated as exact Support reuse; unknown historical views preserve
+Support as unresolved or use an explicitly authorized upgrade reprocess.
 
 ### Comparison in the current representation
 
@@ -573,37 +569,31 @@ schema changes; Cloud upgrades the pin with no HANA or configuration change.
 
 ### Candidate admission
 
-Implemented as `candidate-admission-v5`; execution through the LLM batch runner.
+Implemented as `candidate-admission-v7`; execution through the LLM batch runner.
 
-Candidate admission runs between Claim Extraction and Sparse Relation, for
-every Candidate, whether or not the Unit has old Memories. One admission request
-covers both duties, with no additional call round:
-
-1. Complete evidence support: the Candidate's selected Primary and Required
-   Evidence completely support its Claim, including scope, exceptions and
-   table-header qualifiers, as defined in [Complete support](#complete-support):
-   every specific the Claim states needs that Evidence.
-2. Same-round deduplication: the Candidate states the same knowledge as another
-   Candidate of this round. Every admission request carries all of this round's
-   Candidate claims (Candidate ID and claim text, no Evidence) as shared context,
-   so a duplicate is found even when the two Candidates are judged in different
-   requests. Candidates with the same normalized Claim, type and validity are
-   duplicates without the model saying so, but each is still judged on its own
-   Evidence. The program merges duplicates deterministically into one: only
-   admitted Candidates merge, by connected groups of duplicates, and each group
-   keeps its most specific (longest normalized) Candidate, the earliest
-   extracted among equals. If that
-   list does not fit, the LLM batch runner chunks it as shared context and
-   returns one result per Candidate and chunk; a Candidate rejected in any chunk
-   is rejected, and the reported duplicates of all chunks are united.
+Every extracted Candidate is accounted for, whether or not its Unit has old
+Memories. One request judges lasting [Value](#value) and same-round duplicates.
+Selected authentic Primary/Required Evidence provides value context; admission
+does not reselect citations, rewrite claims or judge citation completeness.
+Each request carries the round's Candidate IDs and claims as shared context,
+so duplicate claims in different requests can still be identified. Exact
+normalized claim/type/validity equality is deterministic duplicate evidence;
+only admitted Candidates merge. Each connected group keeps the most specific
+(longest normalized) claim, earliest extraction among equals. A rejected or
+unjudgeable Candidate neither absorbs nor links others. With context chunks,
+any rejection wins and duplicate links are united.
 
 | Result | Handling |
 | --- | --- |
 | `ADMITTED` | enters Sparse Relation |
-| `REJECTED` (Evidence insufficient, or reason `low_value` under the [Value definition](#value)) | not added this round; no Review |
+| `REJECTED(low_value)` | not added this round; no Review |
 | same-round duplicate | merged; one Candidate continues to Sparse Relation |
-| Candidate that stays unjudgeable in isolation (it alone exceeds capacity, or its output stays invalid after the one correction) | `REJECTED` for this round with reason `capacity_exceeded` or `invalid_response`, recorded like any rejection; no ADD, no Review |
-| execution error (provider error, timeout, rejected request, unexpected exception) | the Source Unit revision is not committed and the next sync retries it |
+| Candidate still unjudgeable in isolation | rejected for this round with `capacity_exceeded` or `invalid_response`; existing rejection audit records the technical reason; no ADD or Review |
+| execution or input-integrity error | Source Unit revision is not committed; existing retry/error rules apply |
+
+The model schema contains only semantic `low_value` rejection. The program owns
+technical skip reasons. Rejected candidates do not imply old claims are
+unsupported; complete incumbent Support/Relation processing remains independent.
 
 #### Value
 
@@ -1512,7 +1502,7 @@ Compiler 4 independently changes structural boundaries as described in ADR 0030.
 Legacy stage records remain immutable history. See ADR 0017 for storage ownership.
 
 Claim Extraction scope is defined in [Decision](#decision) item 2 and implemented
-as `revision-input-v8`: `plan_projection_evidence_work` computes Primary authority
+as `revision-input-v10`: `plan_projection_evidence_work` computes Primary authority
 only, and each ReadingGroup that holds authorized Primary is one LLM batch runner
 item, read with its reading context demoted to Required-only. The runner packs
 items into requests by actual capacity; each planned request is staged as one
@@ -1751,7 +1741,7 @@ and the compiler stays 4. [Complete support](#complete-support), with prior
 Evidence offered only as selectable candidates, gives the current contracts
 `revision-support-v7` and `support-ordered-reading-v5`. The Unit Title as
 projection context, with comparison in the current representation, gives
-`revision-input-v8`, `revision-support-v8`, `support-ordered-reading-v6`,
+`revision-input-v10`, `revision-support-v8`, `support-ordered-reading-v6`,
 `change-impact-v3`, `candidate-admission-v4`, `projection-extraction-v11` and
 model presentation policy 6. The [Value definition](#value) gives
 `candidate-admission-v5`. Completed work under an

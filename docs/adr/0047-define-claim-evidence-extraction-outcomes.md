@@ -26,8 +26,9 @@ assessment of the complete claim pair and its original selected Evidence returne
 added the challenger. That assessment used a smaller catalog, so it does not
 establish the original error's stochastic frequency. Retain both observations.
 No extra self-review stage, semantic repair layer or restriction on all automatic
-replacements is required by this disposition. Diagram/ADR failure-policy alignment
-and the remaining implementation review are still required for completion.
+replacements is required by this disposition. Failure handling follows ADR 0034: isolated unjudgeable extraction/admission
+items are diagnosed locally; execution and integrity errors prevent Unit commit.
+Final implementation review and checked runtime validation remain required.
 
 The v19 source-framing and generic single-pass extraction hypothesis failed
 independent coverage and Required-quality gates. Readable native binding and
@@ -113,9 +114,14 @@ validated:
 * Composite text Evidence carries one typed, versioned view descriptor with
   exact source-bound interpretation origins through existing reference records
   and both stores. It is provenance, not another domain graph or Required role.
-* Value/deduplication decisions cover all candidates; unjudgeable work fails the
-  derivation atomically. Citation reselection is removed and malformed selectors
-  are technical failures, not normalized semantic success.
+* Value/deduplication accounts for every candidate. Isolated capacity or
+  persistently invalid output rejects that candidate for the round; extraction
+  skips the corresponding unjudgeable ReadingGroup. Provider, timeout, request
+  and source-binding errors prevent Unit commit. Successful work is still
+  committed atomically with complete incumbent outcomes. Citation reselection
+  is removed; malformed selectors are source-binding failures, not normalized
+  semantic success. This restores ADR 0034's local-failure policy and supersedes
+  this proposal's stricter all-items-success assumption.
 * Meaning-bearing reply/framing facts belong in immutable Observation records;
   their edits participate in revision and whole-Support impact.
 * Canonical schemas declare field-role labels and exact sibling interpretation

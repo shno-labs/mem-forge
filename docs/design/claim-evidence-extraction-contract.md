@@ -326,9 +326,15 @@ ref must not erase an otherwise accurate useful claim. The shared admission
 prompt/schema and work-manifest expectations must change explicitly, rather
 than leaving candidate-admission-v5 behind the new extraction contract. Raw
 extraction is evaluated before value/deduplication can alter its denominator.
-Every candidate must receive a value/deduplication decision. Capacity or invalid
-output leaves the derivation explicitly failed with no partial publication;
-only an actual low-value judgment or duplicate decision may omit a candidate.
+Every candidate must be accounted for by value/deduplication. After existing
+bounded runner retries, isolated capacity or invalid output rejects that
+candidate for this round with its technical diagnostic; independent candidates
+continue. Extraction similarly diagnoses and skips unjudgeable ReadingGroups,
+without shortening their content. A skipped group is revisited on a later edit
+or explicit reprocess, not automatically on an unchanged sync. Provider, timeout,
+request, authenticity and commit errors prevent Unit commit. All successful
+work commits once through the existing atomic lifecycle transaction, after
+complete incumbent outcomes; unresolved old Support is kept independently.
 Existing bounded transport/schema validation retries remain technical execution,
 not a second source interpretation or citation-reselection call. Duplicate or
 ineligible citation selectors fail the complete extraction rather than being

@@ -8,6 +8,16 @@ Amended: 2026-09-29, see [Amendment: shared context and equivalent results](#ame
 
 Amended: 2026-09-30, see [Amendment: candidate admission judges value by one definition](#amendment-2026-09-30-candidate-admission-judges-value-by-one-definition).
 
+Amended 2026-10-07: the implemented catalog path separates value/deduplication
+from extraction faithfulness, and permits focused citation display in extraction
+and the existing supported-assessment response. The task boundaries below are
+current; [ADR 0047](0047-define-claim-evidence-extraction-outcomes.md) and
+[focused display](../design/claim-evidence-focused-display.md) define that
+presentation. Decision model routing remains contract-gated: the current eligible
+task registry is empty, so production executes these tasks on the main model.
+The independent classifier executor/evaluation remains tracked in
+[Cloud issue #506](https://github.com/dodoman-sun/memforge-cloud/issues/506).
+
 ## Context
 
 Every model step in the Source lifecycle runs on one Structured LLM. The
@@ -59,10 +69,10 @@ shape of its output.
 
 | Step | Kind | Why |
 |---|---|---|
-| Claim Extraction (with selector correction) | Generation | writes the claim, its dates and entity names |
+| Claim Extraction | Generation | writes the claim, its dates, entity names and focused citation display; selects refs in the same response |
 | Managed agent patch | Generation | writes the replacement claim |
-| Candidate admission | Reasoning | complete support over the selected Evidence parts uses the same definition as Support Assessment (`COMPLETE_SUPPORT_DEFINITION`), and same-round duplicates are found by scanning every Candidate of the round |
-| Support Assessment | Reasoning | ordered reading with carried witnesses; Primary and Required are one dependent choice |
+| Candidate admission | Reasoning | judges lasting value and discovers same-round duplicates by scanning the round; does not repair citations or judge complete Support |
+| Support Assessment | Reasoning | ordered reading with carried witnesses; Primary and Required are one dependent choice, with focused display returned in the same supported response |
 | Same-Unit Sparse Relation | Reasoning | finds the few related old Memories among all of the Unit's, which similarity cannot narrow inside one document; refinement is decided by entailment and drives SUPERSEDE, DELETE and UPDATE |
 | Same-Unit pair review | Decision | the program supplies two refinements of the same old Memory; do they contradict |
 | Change Impact | Decision | one ChangeBundle and one fixed claim; `affected` or `unaffected` |
@@ -70,9 +80,10 @@ shape of its output.
 | Entity adjudication | Decision | one mention and its supplied candidates; pick one or none |
 | Agent-session authority | Decision | one user message with its context; one authority kind |
 
-Admission and Support Assessment run on the same model: a Candidate admitted
-under one reading of complete support must not be retired by a different
-reading at the next revision.
+Admission and Support Assessment run on the main model for their respective
+Reasoning duties. Admission no longer performs the complete-support judgment;
+claim faithfulness and citation selection belong to extraction. A decision
+model cannot replace these stages merely because some outputs are closed labels.
 
 Out of scope: retrieval rerank, a ranking task for a dedicated reranker that
 stays disabled by default and unused by Cloud, and the offline semantic judge,
@@ -80,11 +91,13 @@ which is evaluation tooling rather than a product step.
 
 ### Model outputs are the knowledge or the choice, nothing else
 
-A Generation contract returns text only in the fields that are the generated
-knowledge (the claim, its validity dates, entity names). A Reasoning or
-Decision contract returns only values the program defined: labels, booleans,
-and refs or IDs from lists the request supplied. No contract returns an
-explanation or a model-reported confidence. Records that used a model reason
+A Generation contract returns generated knowledge and focused citation display.
+Reasoning normally returns defined labels, booleans and supplied refs/IDs.
+Support Assessment additionally returns focused display for its selected refs
+in the same supported response; that presentation has no identity, comparison
+or lifecycle authority. This narrow extension does not make the entire ordered
+Support task eligible for a classifier. Decision contracts retain closed options
+without generated display, explanations or model-reported confidence. Records that used a model reason
 keep their program-owned text (for example the fallback replacement reason);
 people read the Memories and the Evidence.
 
