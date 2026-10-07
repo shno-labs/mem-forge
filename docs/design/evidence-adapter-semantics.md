@@ -94,9 +94,11 @@ material, presentation, origins and reading groups for these inputs.
 
 Changing an already accepted input's interpretation, selection boundaries or
 presentation requires a new source contract and retained old interpretation.
-Changing only the computation policy for new-work planning uses the existing
-execution-contract versions: compiler contract 10 and extraction v21 supersede
-unapplied older work. They do not reinterpret or migrate historical Evidence.
+Changing only computation policy uses execution-contract versions to supersede
+unapplied older work without reinterpreting or migrating historical Evidence.
+The current identities are compiler contract 10, extraction v22 and admission v7;
+the approved local failure policy and its validation are recorded in
+[the canonical alignment evidence](../research/2026-10-07-local-failure-alignment-validation.md).
 
 ## Acceptance
 
