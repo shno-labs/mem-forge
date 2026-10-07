@@ -113,8 +113,19 @@ validated:
 * Duplicate population changes have distinct reading and authority duties:
   Support reads every affected current occurrence and identifies historical
   copies as absent only when none remain. New-work authority cannot select an
-  arbitrary added copy by position. Shared native and standard text follow the
-  same policy; no repair stage or new lifecycle state is introduced.
+  arbitrary added copy by position. Independent new material retains its
+  authority: an ambiguous occurrence identity does not make the Unit's other
+  extraction work unplannable. Shared native and standard text follow the same
+  policy; complete Support coverage and atomic commit guards remain required.
+  No repair stage or new lifecycle state is introduced.
+* Source adapters declare native presentation containers, semantic controls and
+  external-content constructs through their existing format interface. Layout
+  and rendering decoration preserve authored children; links, task status,
+  table interpretation and literal content preserve meaning. An uncollected
+  external dependency cannot be silently erased and called complete Evidence.
+  Compatible syntax extensions preserve registered fragment, comparison,
+  presentation and reading contracts. Incompatible changes need new contracts
+  with retained historical interpretation, independently of execution versions.
 * Declared native-format structures receive the same narrow changed-work
   calculation as standard nested text. A changed JSON body field does not
   authorize all unchanged native structures.

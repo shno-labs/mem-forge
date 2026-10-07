@@ -555,10 +555,12 @@ Their changes therefore change revision identity and reach ordinary whole-Suppor
 impact assessment. PRECEDES remains reading order, never proof of a reply.
 
 Equal repeated material creates no newly asserted content merely because offsets
-shift. This authority conclusion does not establish physical correspondence;
-Support still reports bilateral ambiguity. Increasing the count of an identical
-occurrence without stable identity is an explicit planning limitation, not
-permission to select an arbitrary occurrence as the new Primary.
+shift or occurrence counts grow. This authority conclusion does not establish
+physical correspondence; Support still reports bilateral ambiguity and reads
+every affected current copy. Independent new material retains Primary authority.
+An unknown duplicate occurrence identity is a correspondence limitation, not a
+Unit-wide extraction planning failure or permission to select an arbitrary copy
+as newly asserted Primary material.
 
 Changed framing or qualifiers must participate in the relevant current work and
 Support impact assessment; they cannot be ignored because body text matches.
