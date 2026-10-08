@@ -9,7 +9,7 @@ Both failures belong to shared OSS behavior, not the HANA adapter or model outpu
 
 The repair keeps provider syntax in the Jira adapter. Explicitly declared layout
 decoration leaves authored content intact; issue/attachment/user identities,
-literal code, inserted/deleted text and citation structure remain semantic
+literal code, formatting and citation structure remain semantic
 material. Unknown semantic controls, malformed structure and unsupported CSS
 remain explicit failures. No issue-specific branch, model repair or Cloud shim
 is introduced.
@@ -61,3 +61,37 @@ acceptance must additionally attest the pinned OSS package, retry the failed
 source through the normal sync path, and inspect its bounded new run/derivation
 outcomes and current Support lineage. Keep historical failed jobs and Evidence.
 Do not clear errors or rewrite provenance merely to make the UI green.
+
+
+## Provider formatting correction
+
+A further native/rendered corpus check found 28 `<ins>` nodes; 20 exactly match
+native Jira `+text+` spans and none came from authored `<ins>` HTML. Rendering
+these as `[inserted: …]` introduced an event meaning that the Jira source does
+not assert. Generic HTML element semantics were insufficient for this provider.
+The public Jira renderer help endpoint required authentication during this
+check; the paired native/rendered provider snapshots are the concrete evidence.
+
+The same corpus contains 62 `<del>` nodes, including ten exact native `-text-`
+pairs. These denote strikethrough, not a deletion event.
+
+The correction is source-owned: format 2 normalizes parsed `<ins>` to underline
+and strikethrough tags to a formatting node with `[struck through: …]` text
+while preserving coordinates and authored children. New issue/comment schema 5
+uses it; historical schemas 2–4 keep format 1, and changelog schema 4 stays
+unchanged. Existing incompatible-profile planning and Support assessment apply,
+with subsequent same-profile changes remaining incremental. No historical
+Evidence is rewritten and no additional lifecycle state is introduced.
+
+Verification includes paragraph, standalone text and table/header origins;
+schema 4-to-5 non-exact Support and schema 5-to-5 exact correspondence for
+unchanged content. Differential replay against the deployed `d8f2d264` parser
+covers all 598 real rendered fields with zero changes to format-1 output.
+The legacy-to-current corpus replay remains the same controlled harness, not a
+claim that stored lifecycle history has been reconstructed.
+
+The final focused adapter, projection-store, native-semantics and text-view
+suites pass 270 tests (55 Jira-specific). Current replay of all 598 rendered
+fields emits no invented insertion/deletion labels; registered format-1 output
+continues to match the deployed parser exactly. Standards and Spec reviews find
+no remaining blocking issues in this versioned correction.

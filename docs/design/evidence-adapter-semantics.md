@@ -49,7 +49,12 @@ comment markers, task lists, emoticons and local excerpt bodies. The Jira additi
 cover provider table classes/wrappers, panels/noformat wrappers, mentions, font
 controls and emoticon classes. Standard Jira link icons, no-wrap wrappers,
 bookmark anchors, list markers and image sizing are rendering decoration;
-issue-link identities and inserted/cited text retain their semantic material.
+issue-link identities and cited text retain their semantic material. Jira wiki
+`+text+` is provider-rendered as `<ins>` for underline, not a content insertion
+event. Format 2 normalizes that marker to underline before the same comparison
+and presentation traversal; historical format 1 remains bound to schemas 2–4.
+Likewise `-text-` / `<del>` is strikethrough, presented as `[struck through: …]`
+without asserting a deletion event. Only issue/comment schemas advance to 5; literal changelog schema 4 is unchanged.
 Source-specific declarations also cover Jira syntax-highlight classes and forced
 line breaks. This is not a claim of universal plugin grammar
 support. Malformed structures and unknown semantic controls still fail explicitly.
