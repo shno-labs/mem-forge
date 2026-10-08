@@ -44,6 +44,13 @@ an inaccessible explicit selector. If multiple candidates remain, it returns
 The response identifies the effective workspace through
 `MemForge-Workspace`.
 
+Browser resource links use the same client workspace target as API requests.
+Opening stored content, PDF, or an Evidence artifact in another tab must carry
+the selected `workspace_id`; a page's workspace selection is not a server-side
+default for the new request. The client URL boundary preserves other query
+parameters and fragments and does not attach workspace selection to external
+source links. Resource authorization remains enforced at the request boundary.
+
 `GET /api/v1/workspaces` is principal-scoped discovery and does not itself
 require a workspace. It reports accessible and selectable workspaces without a
 server-side default. There is no default-workspace mutation route or MCP tool.
