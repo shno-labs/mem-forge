@@ -47,7 +47,11 @@ remain interpretation origins, and task completion participates in comparison.
 The explicit supported Confluence additions are layout/section/cell, inline
 comment markers, task lists, emoticons and local excerpt bodies. The Jira additions
 cover provider table classes/wrappers, panels/noformat wrappers, mentions, font
-controls and emoticon classes. This is not a claim of universal plugin grammar
+controls and emoticon classes. Standard Jira link icons, no-wrap wrappers,
+bookmark anchors, list markers and image sizing are rendering decoration;
+issue-link identities and inserted/cited text retain their semantic material.
+Source-specific declarations also cover Jira syntax-highlight classes and forced
+line breaks. This is not a claim of universal plugin grammar
 support. Malformed structures and unknown semantic controls still fail explicitly.
 
 External Confluence include, children and excerpt-include output is not present
@@ -96,6 +100,13 @@ Changing an already accepted input's interpretation, selection boundaries or
 presentation requires a new source contract and retained old interpretation.
 Changing only computation policy uses execution-contract versions to supersede
 unapplied older work without reinterpreting or migrating historical Evidence.
+When a registered Observation profile changes, the planner validates the current
+contract and authorizes the current Observation as upgrade reading. It does not
+compute narrow ranges across different schema or text-format contracts. Stored
+Evidence remains pinned to its historical representation; the existing
+whole-Support assessment decides current claim support without exact reuse across
+profiles. Subsequent same-profile revisions again use narrow changed ranges.
+Authority segmentation policy 8 records this execution change.
 The current identities are compiler contract 10, extraction v22 and admission v7;
 the approved local failure policy and its validation are recorded in
 [the canonical alignment evidence](../research/2026-10-07-local-failure-alignment-validation.md).
@@ -119,3 +130,5 @@ the approved local failure policy and its validation are recorded in
 Official grammar references:
 * https://confluence.atlassian.com/doc/confluence-storage-format-790796544.html
 * https://docs.python.org/3/library/html.parser.html
+* https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/ins
+* https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/cite
