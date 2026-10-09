@@ -32,10 +32,54 @@ or its conversation-retention policy.
 
 Every provider-specific tag, class, attribute, macro and field rule belongs in
 its source adapter. Jira rendering decoration is declared in one element/class
-policy table. Confluence native containers and macros declare their attributes,
-body shape and semantic role. Parsing, canonical material, presentation and
-selection traversal consume those same declarations. CanonicalRecord schemas
-and the existing format interface remain the shared compiler's only input.
+policy table. Confluence native containers and macros declare their body shape
+and semantic role. Parsing, canonical material, presentation and selection
+traversal consume those same declarations. CanonicalRecord schemas and the
+existing format interface remain the shared compiler's only input.
+
+## Open vocabulary, closed structure
+
+Both grammars read structure, not a list of names
+([ADR 0048](../adr/0048-read-native-evidence-by-structure-with-an-open-vocabulary.md)).
+A declaration refines how a known construct reads; it is never a gate. Only
+markup that is not well formed is rejected: unbalanced or unclosed elements,
+duplicate attributes, undefined entities, unclosed CDATA, and content placed
+directly in a layout container that holds only sections or cells.
+
+Confluence storage:
+
+* An undeclared element is a container of its children. Text placed directly
+  in a layout cell is its own selection.
+* A macro is read by its envelope. A declared rule applies only when the
+  instance has exactly the parameters and body shape it describes. Otherwise a
+  macro without a body reads `[Macro name: parameter=value; …]`, a plain-text
+  body is literal, and a rich-text body is a container: its blocks stay
+  individually selectable, each non-empty parameter is a selection that governs
+  them, and headings inside it govern nothing after it. A body with text placed
+  directly in it stays one selection with the macro's name and parameters.
+* A table's own rows form its grid; a table inside a cell is that cell's
+  content. A table whose rows and spans form no rectangular grid is one whole
+  selection read row by row.
+* List content placed between items continues the item above it.
+* Declared omissions: `ac:placeholder` is template instruction shown only in
+  the editor, and `ac:task-id` / `ac:task-uuid` are opaque identities. They stay
+  in comparison material.
+
+Jira rendered HTML:
+
+* An undeclared element is an inline container of its children. `script` and
+  `style` content and comments are never displayed by HTML and are not text.
+* An attribute, class or style outside the declared tables is never erased. It
+  stays in comparison material and is shown after the text it controls, for
+  example `Hidden exception [style: display:none]`. Its element is neither
+  transparent nor omitted, so declared decoration cannot hide it.
+* A table with spans, nested tables or uneven rows is one whole selection read
+  row by row.
+
+A Confluence macro without a body states what the page embeds: a child listing,
+an include, an issue query, a diagram. What Confluence generates for it when
+the page is viewed belongs to no page revision. It is never fetched during
+compilation and never Evidence, so its absence cannot be read as a deletion.
 
 Presentation containers preserve authored children and independent evidence
 granularity. Layout cells bound heading interpretation to their own column.
@@ -56,14 +100,14 @@ and presentation traversal; historical format 1 remains bound to schemas 2–4.
 Likewise `-text-` / `<del>` is strikethrough, presented as `[struck through: …]`
 without asserting a deletion event. Only issue/comment schemas advance to 5; literal changelog schema 4 is unchanged.
 Source-specific declarations also cover Jira syntax-highlight classes and forced
-line breaks. This is not a claim of universal plugin grammar
-support. Malformed structures and unknown semantic controls still fail explicitly.
+line breaks. Constructs outside these declarations read by the structural rules
+above.
 
 External Confluence include, children and excerpt-include output is not present
-in the existing immutable snapshot. These constructs cannot be unwrapped or
-dropped and called complete Evidence. Their adapter error identifies the missing
-external content. Expanding collection/dependency ownership is outside this change;
-no source-body fetch is introduced during compilation or get_memory.
+in the immutable snapshot. These macros read as the reference they state, never
+as the content they would display. Expanding collection/dependency ownership is
+a separate decision; no source-body fetch is introduced during compilation or
+get_memory.
 
 ## Three representations, one authentic input
 

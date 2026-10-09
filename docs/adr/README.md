@@ -76,3 +76,4 @@ historical records; status and relationships remain in each record.
 | [0044](0044-build-the-admin-ui-v2-beside-v1-and-remove-v1-after-a-parallel-run.md) | Build the admin UI V2 beside V1 and remove V1 after a parallel run |
 | [0045](0045-prove-document-absence-from-a-listing-not-from-the-run-kind.md) | Prove document absence from a listing, not from the run kind |
 | [0047](0047-define-claim-evidence-extraction-outcomes.md) | Define claim and Evidence extraction outcomes before implementation |
+| [0048](0048-read-native-evidence-by-structure-with-an-open-vocabulary.md) | Read native Evidence by structure, with an open vocabulary |
