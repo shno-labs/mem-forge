@@ -343,7 +343,7 @@ Catalog 正文在每个请求中只出现一次；请求放不下时由 LLM batc
 | `UNRESOLVED(partial_coverage)` | 无关系 | 保留原状 |
 | 任意 | 同一旧 Memory 同时有 equivalent 边和 contradicts 边 | 进入 Review |
 
-已换绑的 `UNAFFECTED` 且无 contradicts 边，按 `SUPPORTED` 行处理；REFINES 与不确定关系沿用局部 unresolved 规则（协调器与 revision proof 规则），未决组件内的旧 Memory 不做 refinement 两两比较。同一 Candidate 对不同旧 Memory 得到不同处理，或者同时暂存在多个旧 Memory 的 Review 里时，同样沿用局部 unresolved 的连通组件规则：整个相关组件在本轮被消费，不 ADD，也不做破坏性动作。同一 Candidate 暂存两次时没有唯一决定：每次批准都会再执行一遍，要么再建一次同一条 Memory，要么把第二个旧 Memory 也换绑到同一 Claim。`UNAFFECTED` × contradicts 补做的那次 Support 即该 Claim 唯一的一次复核，结果重新查表。
+已换绑的 `UNAFFECTED` 且无 contradicts 边，按 `SUPPORTED` 行处理；REFINES 与不确定关系沿用局部 unresolved 规则（协调器与 revision proof 规则），未决组件内的旧 Memory 不做 refinement 两两比较。同一 Candidate 对不同旧 Memory 得到不同处理，或者同时暂存在多个旧 Memory 的 Review 里时，同样沿用局部 unresolved 的连通组件规则：整个相关组件在本轮被消费，不 ADD，也不做破坏性动作。未决关系只扣住 Candidate 要做的事：组件内的旧 Memory 若自身 Support 结果为保留（`SUPPORTED` 或 `UNAFFECTED`，且有已验证的当前 Evidence），仍换绑到该 Evidence；其余保持不变。有待处理协调器 Review 的旧 Memory 例外，它的 Support 保持 Review 提案所指的状态。同一 Candidate 暂存两次时没有唯一决定：每次批准都会再执行一遍，要么再建一次同一条 Memory，要么把第二个旧 Memory 也换绑到同一 Claim。`UNAFFECTED` × contradicts 补做的那次 Support 即该 Claim 唯一的一次复核，结果重新查表。
 
 已知限制：某条 Claim 的单个 ReadingGroup 单独就超出模型容量时，其 Support 为 `UNRESOLVED(capacity)`；这条 Claim 单独的输出纠正一次后仍不合法时，为 `UNRESOLVED(invalid_response)`。旧 Memory 保持不变，诊断写明 Source Unit 和 ReadingGroup，revision 照常提交。相关 Candidate 在本轮被消费，不 ADD，也不做破坏性动作；因为更新时只提取变化的结构，这些新知识要等该结构再次变化才会重新提取。Relation 单独判断仍无法判断的 Candidate 同样被消费；它缺少完成行期间，本 Unit 的旧 Memory 只保留，不删除、不替代、不修订。除局部 unresolved 关系规则外，只有这几种情况会让 Candidate 未经判定就被消费。
 
