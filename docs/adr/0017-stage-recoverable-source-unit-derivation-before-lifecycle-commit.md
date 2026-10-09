@@ -487,9 +487,12 @@ Artifact in a remote model request.
 Artifact revisions created before this classifier are interpreted only through
 the historical writer contract centralized in the Source Artifact module.
 Missing eligibility is not proof of ineligibility: the pre-classifier contract
-admits the revision only within its recorded inference byte budget. A legacy
-false value without a reason is accepted only when that same size proves the
-byte-limit reason. Lifecycle and derivation callers consume this one parsed
+admits the revision only when its recorded media type is an image a model
+request can carry and its recorded size is within the inference byte budget. A
+stored document such as a PDF is therefore never inference eligible, whichever
+writer recorded it, and every consumer of the parsed result agrees with the
+image loader. A legacy false value without a reason is accepted only when that
+same size proves the byte-limit reason. Lifecycle and derivation callers consume this one parsed
 result and do not compose their own legacy field combinations.
 
 Integrity failures that make the stored bytes untrustworthy still fail
