@@ -725,7 +725,9 @@ unresolved rules in [Local unresolved claim relationships](#local-unresolved-cla
 When one Candidate receives different treatments across several old Memories,
 or is staged in the Reviews of more than one old Memory, the same local
 unresolved component rule applies: the whole related component is consumed this
-round, with no ADD and no destructive action. The treatments are consumed as an
+round, with no ADD and no destructive action. An old Memory of the component
+whose own Support result keeps it is still bound to its verified current
+Evidence. The treatments are consumed as an
 equivalent, staged in a Review, and replacing an old Memory; a Candidate that
 only refines without revising has none. A Candidate staged twice has no single
 decision: each approval would apply it again, creating it a second time or
@@ -830,11 +832,13 @@ Reviews keep their existing rules.
   revision decides the old Memory and no longer raises the conflict, the
   conflict is gone and the revision's Plan closes the Review with the existing
   `stale` status, before any destructive mutation of the Plan. An old Memory the
-  revision keeps unchanged without a decision (an unresolved component,
+  revision keeps without a decision (an unresolved component,
   `UNRESOLVED(capacity)` or `UNRESOLVED(invalid_response)`, or a destructive
   decision DestructiveValidation kept)
   keeps its pending Reviews as they are; a later revision that decides it
-  refreshes or closes them. A different conflict has a different Candidate claim
+  refreshes or closes them. While such a Memory has a pending Review, its
+  Support also stays as it is, because the Review's proposal and stale guard
+  name that Support. A different conflict has a different Candidate claim
   hash or proposal and therefore its own Review. A reviewer cannot refresh a
   stale coordinator Review by hand; the next revision that raises its conflict
   reopens it.
@@ -1527,12 +1531,33 @@ material, is unresolved locally. Candidate admission
 already owns whether supplied current Evidence entails the challenger, including
 table column associations; relation classification cannot repair candidate text.
 
-For an unresolved pair, the coordinator consumes the candidate and emits a bare skipped
-NOOP for the incumbent, preserving Support, Evidence and validation baseline.
-If either participates in other related pairs, preserve the related component
-together so a shared candidate cannot escape as ADD or drive another destructive
-operation. An old Memory without an edge never spreads this uncertainty. Exclude that component
-from conditional refinement work; independent candidates and incumbents continue.
+For an unresolved pair, the coordinator consumes the candidate and keeps the
+incumbent without a relationship decision. If either participates in other
+related pairs, keep the related component together so a shared candidate cannot
+escape as ADD or drive another destructive operation. An old Memory without an
+edge never spreads this uncertainty. Exclude that component from conditional
+refinement work; independent candidates and incumbents continue.
+
+An unresolved relationship withholds only what a Candidate would do. Support
+and Relation are separate lines, so an incumbent of the component keeps its own
+Support result:
+
+| Support result of the incumbent | Kept as |
+|---|---|
+| `SUPPORTED` or `UNAFFECTED`, with verified current Evidence | bound to that Evidence, like any kept old Memory |
+| any other result | a bare skipped NOOP that preserves Support, Evidence and validation baseline |
+
+Re-extraction does not cut claims at stable boundaries: one Candidate may
+restate several old Memories and refine another, which gives it different
+treatments and leaves the component unresolved although no judgment is
+uncertain. On a complete re-read this is common, and every old Memory involved
+has usually just been verified against the current revision. Binding it to that
+Evidence keeps the Memory on the revision that is current instead of a
+superseded one, adds nothing and removes nothing the Support line did not
+verify. An incumbent with a pending coordinator Review is the exception: it
+stays a bare skipped NOOP until a revision decides it, because the Review
+proposes against its current Support.
+
 The existing skipped-Support proof and stale guards remain the only Plan mechanism.
 The coordinator's single re-check and the pending coordinator Review rules are the
 only additions; there is no new Review state and atomic commit ownership is
