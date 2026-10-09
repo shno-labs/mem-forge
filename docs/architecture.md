@@ -685,6 +685,14 @@ scope is explicit:
   aliases, so private or repository-scoped wording cannot affect another scope;
 - generated Memory tags are unrelated to entity resolution and are removed.
 
+Entity IDs are workspace-internal graph identities, not access authority. The
+admin entity surfaces (list, detail, aliases, linked Memory counts, and the
+aggregate entity count) admit an Entity only through a linked Memory visible
+under the caller's access predicate, so a name learned from another user's
+private Memory is never discoverable. Adding or removing manual aliases and
+merging entities change workspace-wide state and require workspace
+administration; they also require the caller to discover every Entity involved.
+
 Embeddings provide recall for bounded unresolved candidates; the LLM decides
 only genuine ambiguity. Neither stage scans the full entity table or Memory
 corpus. Relation Discovery consumes resolved entity IDs as one retrieval signal,
