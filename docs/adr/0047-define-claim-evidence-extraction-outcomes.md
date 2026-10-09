@@ -152,6 +152,13 @@ validated:
 * Incompatible historical claim-bearing representations cannot be silently
   dropped and called exact Support reuse. Preserve history and use the accepted
   bounded upgrade reprocess or explicit existing unresolved assessment.
+  New-work planning compares field ranges only within the same registered
+  Evidence profile. A changed profile authorizes reading the current Observation
+  in full after validating its contract; it does not attempt a fine-grained diff
+  across incompatible formats. Whole-Support assessment still independently
+  checks the old claim, and subsequent same-profile revisions return to narrow
+  changed-work authority. This supersedes planning canonical records by profile
+  name alone, which incorrectly treated schema upgrades as comparable text.
 * Support checks pinned raw/origin/presentation integrity and reconstructs
   supported descriptors before current membership/coverage routing. Unknown
   historical profiles/views preserve the whole Support as unresolved, including
