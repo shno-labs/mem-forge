@@ -1072,7 +1072,7 @@ Claim Extraction 得到候选 C1 → 程序验证证据 → 候选准入（价�
 使用 `projection-extraction-v22` 和 compiler 10、authority policy 7、presentation
 policy 11、`revision-support-v11`、`support-ordered-reading-v9`、`change-impact-v3`、
 `candidate-admission-v7`、`claim-revision-v8-sparse-catalog` 和 `memory-pair-review-v1`；
-阅读范围与阅读上下文使用 `revision-input-v10`，并进入 inference capability hash 与
+阅读范围、清单顺序与阅读上下文使用 `revision-input-v11`，并进入 inference capability hash 与
 source-derivation `semantic_input_policy`。去掉 Support 结论与证据蕴含字段的 Relation
 请求和候选准入各自有新的合同版本，也进入生命周期操作输入身份。改变这些输入不能复用
 旧结果，也不能通过改 compiler 常量代替正确的工作身份失效。

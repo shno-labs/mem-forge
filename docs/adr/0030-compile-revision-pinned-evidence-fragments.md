@@ -1384,6 +1384,12 @@ groups.
   above.
 - A registered `canonical-record` adds only schema-declared contextual fields for
   a selected field, using the same parent/root rules as the canonical schema. A
+  contextual field is context of its record's other fields: a catalog never
+  lists it as Primary or reads it as an entry of its own. Fields the schema
+  declares as record framing are already displayed on every entry with an exact
+  origin, so a catalog does not list them again, and a change to one of them is
+  a change to every entry that displays it. Evidence that selected such a field
+  is assessed again against the current catalog instead of being reused. A
   registered nested `markdown-structural` string gets the same Markdown/raw-HTML
   section and list groups through its decoded-to-raw boundary map. Arbitrary JSON
   receives no inferred reading structure.
@@ -1396,6 +1402,14 @@ groups.
 Tables and binary Artifacts retain their existing atomic representation and gain
 no additional group. The reading index owns neither request budgets nor batching;
 the revision-input request policy applies actual route capacity after expansion.
+
+A composed catalog lists Observations in source-time order, the time the source
+reports for each Observation's content, and each Observation's Fragments by
+position. A conversation and an issue's comments therefore read in the order
+they were written, on a new projection and on a stored one alike. An Observation
+whose source reports no time is no event on that timeline, such as a Unit's
+identity or an undated body, and is read before it. This is reading order only:
+it proves neither a reply nor a supersession.
 
 Reading groups are request metadata only. They do not merge Evidence Units,
 alternative Supports, claims or lifecycle work; do not change Fragment catalog

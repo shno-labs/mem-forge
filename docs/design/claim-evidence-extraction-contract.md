@@ -279,8 +279,10 @@ Prefer a focused, complete source-proven view when it is equally meaningful.
 Keep a larger complete view when a safe smaller one is unavailable. A table row
 can display source-bound column labels. An ordered instruction retains necessary
 ordering context. A message paragraph can display source-bound sender/time
-framing. These source views do not invent evidence or ask the LLM to reconstruct
-source. Separately, the selected focused-display extension lets the model restate
+framing. Framing fields are shown on the entries they frame and are not listed
+as entries of their own; a contextual field is never Primary. Entries read in
+source-time order. These source views do not invent evidence or ask the LLM to
+reconstruct source. Separately, the selected focused-display extension lets the model restate
 relevant material from each view in the same selection response. That display is
 not a new source view or an exact quotation.
 
