@@ -48,10 +48,12 @@ Current implemented contract: Support Assessment uses exact correspondence,
 Change Impact and the [ordered read](#ordered-current-revision-reading) with
 cumulative witnesses. Claim Extraction reads as described in
 [Unified revision input planning](#unified-revision-input-planning-and-bounded-execution)
-under `revision-input-v10`: changed structures with their ReadingGroups on an
+under `revision-input-v11`: changed structures with their ReadingGroups on an
 update, every ReadingGroup on a first import, one runner item per ReadingGroup,
-with no cost comparison and no truncation. Every model reading shows the Unit
-Title as context ([The Unit Title](#the-unit-title)).
+with no cost comparison and no truncation. Every catalog reads in source-time
+order and lists record framing only as context
+([ADR 0030](0030-compile-revision-pinned-evidence-fragments.md)). Every model
+reading shows the Unit Title as context ([The Unit Title](#the-unit-title)).
 [Candidate admission](#candidate-admission) is implemented as
 `candidate-admission-v7`, and the [Sparse same-Unit Relation](#sparse-same-unit-relation)
 request is implemented as `claim-revision-v8-sparse-catalog`, described in
@@ -149,7 +151,7 @@ that owns the detail.
   ReadingGroups as context; a first import streams per ReadingGroup. Extraction
   makes no Delta/current-full cost comparison
   ([Unified revision input planning](#unified-revision-input-planning-and-bounded-execution)).
-  Implemented as `revision-input-v10`.
+  Implemented as `revision-input-v11`.
 - Every Source adapter supplies the Unit Title, the Unit's human-facing name, as
   a value of its projection. It is no Observation, no selectable Evidence and no
   part of a Unit revision, and every model reading of the Unit shows it as
@@ -1506,7 +1508,7 @@ Compiler 4 independently changes structural boundaries as described in ADR 0030.
 Legacy stage records remain immutable history. See ADR 0017 for storage ownership.
 
 Claim Extraction scope is defined in [Decision](#decision) item 2 and implemented
-as `revision-input-v10`: `plan_projection_evidence_work` computes Primary authority
+as `revision-input-v11`: `plan_projection_evidence_work` computes Primary authority
 only, and each ReadingGroup that holds authorized Primary is one LLM batch runner
 item, read with its reading context demoted to Required-only. The runner packs
 items into requests by actual capacity; each planned request is staged as one
