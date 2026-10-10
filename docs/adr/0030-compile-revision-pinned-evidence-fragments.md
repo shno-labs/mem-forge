@@ -1407,8 +1407,9 @@ A composed catalog lists Observations in source-time order, the time the source
 reports for each Observation's content, and each Observation's Fragments by
 position. A conversation and an issue's comments therefore read in the order
 they were written, on a new projection and on a stored one alike. An Observation
-whose source reports no time follows those that have one. This is reading order
-only: it proves neither a reply nor a supersession.
+whose source reports no time is no event on that timeline, such as a Unit's
+identity or an undated body, and is read before it. This is reading order only:
+it proves neither a reply nor a supersession.
 
 Reading groups are request metadata only. They do not merge Evidence Units,
 alternative Supports, claims or lifecycle work; do not change Fragment catalog
